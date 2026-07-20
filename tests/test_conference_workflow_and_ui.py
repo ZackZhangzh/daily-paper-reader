@@ -157,6 +157,22 @@ class ConferenceWorkflowAndUiTest(unittest.TestCase):
         self.assertIn("DEFAULT_RERANKER_PROFILE.value", secret_js)
         self.assertIn("secret.private", gitignore)
 
+    def test_setup_accepts_openai_compatible_provider(self):
+        root = pathlib.Path(__file__).resolve().parents[1]
+        secret_js = (root / "app" / "secret.session.js").read_text(encoding="utf-8")
+        daily_workflow = (root / ".github" / "workflows" / "daily-paper-reader.yml").read_text(encoding="utf-8")
+        conference_workflow = (root / ".github" / "workflows" / "conference-paper-retrieval.yml").read_text(encoding="utf-8")
+
+        self.assertIn("LLM Provider（必填）", secret_js)
+        self.assertIn('id="secret-setup-llm-base-url"', secret_js)
+        self.assertIn("https://token.sensenova.cn/v1", secret_js)
+        self.assertIn("providerType: inferChatApiProfile", secret_js)
+        self.assertIn("secretNameLlmApiKey = 'LLM_API_KEY'", secret_js)
+        for workflow in (daily_workflow, conference_workflow):
+            self.assertIn("LLM_API_KEY: ${{ secrets.LLM_API_KEY }}", workflow)
+            self.assertIn("LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}", workflow)
+            self.assertIn("LLM_MODEL: ${{ secrets.LLM_MODEL }}", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()

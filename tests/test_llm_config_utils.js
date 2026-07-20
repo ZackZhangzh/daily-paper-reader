@@ -93,7 +93,7 @@ function testInferProviderType() {
         model: 'other-model',
       },
     }),
-    'deepseek',
+    'openai-compatible',
   );
 }
 
@@ -118,8 +118,8 @@ function testInferChatApiProfile() {
     inferChatApiProfile('https://api.deepseek.com', 'deepseek-v4-flash'),
     'deepseek',
   );
-  assert.equal(inferChatApiProfile('https://example.com/v1', 'other-model'), 'unsupported');
-  assert.equal(inferChatApiProfile('https://example.com/v1', 'other-model'), 'unsupported');
+  assert.equal(inferChatApiProfile('https://example.com/v1', 'other-model'), 'openai-compatible');
+  assert.equal(inferChatApiProfile('https://token.sensenova.cn/v1', 'deepseek-v4-flash'), 'deepseek');
 }
 
 function testResolveJsonResponseMode() {

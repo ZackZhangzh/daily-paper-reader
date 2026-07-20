@@ -74,6 +74,25 @@ class MainPipelineTest(unittest.TestCase):
         self.assertEqual(env["LLM_PRIMARY_BASE_URL"], "https://summary.example.com/v1")
         self.assertEqual(env["DEEPSEEK_MODEL"], "deepseek-v4-flash")
 
+    def test_resolve_summary_step_env_prefers_generic_provider(self):
+        with patch.dict(
+            os.environ,
+            {
+                "LLM_API_KEY": "generic-key",
+                "LLM_BASE_URL": "https://token.sensenova.cn/v1",
+                "LLM_MODEL": "deepseek-v4-flash",
+                "DEEPSEEK_API_KEY": "legacy-key",
+            },
+            clear=True,
+        ):
+            env = self.mod.resolve_summary_step_env()
+
+        self.assertEqual(env["LLM_API_KEY"], "generic-key")
+        self.assertEqual(env["SUMMARY_API_KEY"], "generic-key")
+        self.assertEqual(env["DEEPSEEK_API_KEY"], "generic-key")
+        self.assertEqual(env["LLM_BASE_URL"], "https://token.sensenova.cn/v1")
+        self.assertEqual(env["LLM_MODEL"], "deepseek-v4-flash")
+
     def test_main_runs_local_rerank_without_remote_rerank_base(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

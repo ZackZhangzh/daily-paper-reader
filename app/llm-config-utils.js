@@ -113,10 +113,11 @@
     const safeSecret = secret && typeof secret === 'object' ? secret : {};
     const llmProvider = safeSecret.llmProvider || {};
     const explicit = normalizeText(llmProvider.type || llmProvider.provider || '').toLowerCase();
-    if (explicit === 'deepseek') {
-      return 'deepseek';
-    }
-    return 'deepseek';
+    if (explicit) return explicit;
+    const summary = resolveSummaryLLM(safeSecret);
+    return summary && inferChatApiProfile(summary.baseUrl, summary.model) === 'deepseek'
+      ? 'deepseek'
+      : 'openai-compatible';
   };
 
   const getDeepSeekPreset = (key) => {
@@ -140,7 +141,7 @@
     if (normalizedModel.startsWith('deepseek-')) {
       return 'deepseek';
     }
-    return 'unsupported';
+    return 'openai-compatible';
   };
 
   const resolveJsonResponseMode = ({ baseUrl, model, preferSchema = true }) => {

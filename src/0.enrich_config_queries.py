@@ -18,10 +18,11 @@ CONFIG_FILE = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "config.yaml"))
 MODEL_NAME = (
   os.getenv("DEEPSEEK_REWRITE_MODEL")
   or os.getenv("SUMMARY_MODEL")
+  or os.getenv("LLM_MODEL")
   or os.getenv("DEEPSEEK_MODEL")
   or "deepseek-v4-flash"
 )
-BASE_URL = os.getenv("DEEPSEEK_BASE_URL") or os.getenv("SUMMARY_BASE_URL") or "https://api.deepseek.com"
+BASE_URL = os.getenv("LLM_BASE_URL") or os.getenv("SUMMARY_BASE_URL") or os.getenv("DEEPSEEK_BASE_URL") or "https://api.deepseek.com"
 
 def log(message: str) -> None:
   ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -146,9 +147,9 @@ def main() -> None:
     if not os.path.exists(CONFIG_FILE):
         raise FileNotFoundError(f"找不到 config.yaml：{CONFIG_FILE}")
 
-    api_key = os.getenv("DEEPSEEK_API_KEY") or os.getenv("SUMMARY_API_KEY")
+    api_key = os.getenv("LLM_API_KEY") or os.getenv("SUMMARY_API_KEY") or os.getenv("DEEPSEEK_API_KEY")
     if not api_key:
-        raise RuntimeError("缺少 DEEPSEEK_API_KEY 或 SUMMARY_API_KEY 环境变量，无法调用 DeepSeek。")
+        raise RuntimeError("缺少 LLM_API_KEY、SUMMARY_API_KEY 或 DEEPSEEK_API_KEY，无法调用 LLM Provider。")
 
     group_start("Step 0.0 - load config")
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
