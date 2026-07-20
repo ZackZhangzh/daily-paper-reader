@@ -1,0 +1,819 @@
+Title: Trajectory Forcing: Structure-First Generation with Controllable Semantic Trajectories
+
+URL Source: https://arxiv.org/pdf/2606.22527v1
+
+Published Time: Tue, 23 Jun 2026 02:14:54 GMT
+
+Number of Pages: 30
+
+Markdown Content:
+# Trajectory Forcing: Structure-First Generation with Controllable Semantic Trajectories 
+
+Merve Kocabas 1,3 , Gege Gao 1,2 †,Bernhard Schölkopf 2,3,4,5 ‡, and Andreas Geiger 1,4,5 ‡ 
+
+> 1
+
+University of Tübingen, Tübingen, Germany 
+
+merve.kocabas@student.uni-tuebingen.de {gege.gao,a.geiger}@uni-tuebingen.de  
+
+> 2
+
+ETH Zürich, Zürich, Switzerland  
+
+> 3
+
+Max Planck Institute for Intelligent Systems, Tübingen, Germany 
+
+bs@tuebingen.mpg.de  
+
+> 4
+
+ELLIS Institute, Tübingen, Germany  
+
+> 5
+
+Tübingen AI Center, Tübingen, Germany  
+
+> †
+
+Project lead. ‡ Shared last authorship. 
+
+https://mervekocabas.github.io/TrajectoryForcing/ 
+
+Abstract. Diffusion and flow-based generative models produce strong images, yet their controllability remains largely endpoint-centric: users specify conditions and receive final outputs, while the intermediate gen-erative dynamics remain hidden. Recent methods have begun to exploit generation order and process decomposition to improve sample qual-ity, but still treat intermediate states as internal computation rather than objects for interaction. We propose Trajectory Forcing (TF) ,a trajectory-centric framework that makes the generation path explicit, semantic, and editable. TF organizes synthesis as a sequence of semanti-cally structured stages, progressing from global layout to object-, part-, and detail-level representations. Each stage produces a decodable la-tent state that can be inspected, evaluated, and locally edited before the next stage begins. To instantiate this path, we derive coarse-to-fine teacher hierarchies by clustering pretrained visual representations such as DINOv2, and train a hierarchy-conditioned one-step flow-matching model at each level. We further introduce trajectory-aware metrics that measure structural consistency and local controllability beyond endpoint quality metrics such as FID. Experiments show that TF achieves com-petitive sample quality while exposing coherent intermediate states and supporting localized edits across semantic levels. By shifting the focus from final images to the generative path itself, TF opens a route toward controllable, trajectory-aware image synthesis. 
+
+Keywords: Trajectory-Centric Generation · Hierarchical Intermediate States · Structured Generative Control 
+
+## 1 Introduction 
+
+To control generation, we must expose not only its destination, but also its path. 
+
+> arXiv:2606.22527v1 [cs.CV] 21 Jun 2026
+
+2 M. Kocabas et al. Data-driven Trajectory   
+
+> Trajectory Forcing (TF)
+> Object/background Parts
+> Subparts
+> Finest
+> RAE Decoder RAE Decoder
+> RAE Decoder
+> RAE Decoder
+> Noise
+
+Fig. 1: Trajectory Forcing (TF) replaces the opaque, data-driven denoising trajec-tory (bottom, red) with a deliberately structured coarse-to-fine progression through semantic levels (top, blue). Every intermediate state is decodable via a shared decoder into a visually interpretable image, enabling inspection and editing at each level. 
+
+Modern image generators typically cast synthesis as a direct mapping from noise to a finished image. Although denoising traverses intermediate states, these states are not deliberately structured for human understanding or intervention; they are computational by-products discarded after the final output is produced. This contrasts with human visual creation, which is inherently coarse-to-fine: global composition is established before local details are refined, and each in-termediate stage can be inspected and revised. We take this contrast as our starting point and ask whether generative trajectories themselves can be made interpretable, semantically structured, and editable. Recent works have begun to exploit trajectory structure in generation [2,5,33, 48], showing that generation order and process decomposition can substantially affect output quality. However, these trajectories remain optimized for the final image: intermediate states are used as computational scratchpads, frequency components, or token-completion steps, rather than as semantic objects a user can inspect, compare, and redirect. We therefore propose Trajectory Forcing (TF) , a framework that orga-nizes image synthesis as a sequence of semantically structured stages. Each stage produces an interpretable latent state that can be decoded, evaluated, and edited before the next stage begins. Rather than collapsing generation into a single opaque mapping from noise to image, TF exposes a coarse-to-fine hierarchy from global layout, through object-level structure, to fine-grained detail, making every intermediate level visually meaningful and amenable to controlled intervention. Making this hierarchy operational requires a representation space whose ge-ometry organizes semantic structure. Raw pixels entangle appearance, layout, and identity, whereas pretrained visual representations provide a more suitable substrate. Following the representation alignment hypothesis [52], we operate in DINOv2 feature space [35], where hierarchical clustering over latent tokens em-pirically recovers object-part-subpart decompositions (Sec. 4.1) that supervise our trajectory design. Trajectory Forcing 3
+
+A natural concern with multi-stage generation is inference cost: progressive formulations typically require network function evaluations (NFE) that scale as 
+
+L × T , where L is the number of structural stages and T the number of denoising steps per stage. TF addresses this by integrating one-step flow matching [15, 16, 31] at each stage. Instead of iterative denoising at every level, each stage uses a single function evaluation to map noise to the current-level target, conditioned on the previous stage. This reduces inference to L-NFE, making TF comparable to modern few-step generators while preserving trajectory-level controllability. Our contributions are as follows: 
+
+• We propose Trajectory Forcing (TF) , a generation framework that mod-els image synthesis as a structured coarse-to-fine trajectory of interpretable semantic stages, enabling inspection and editing at every level. 
+
+• We introduce a hierarchy-conditioned one-step flow formulation that extends one-step generation to multi-level trajectories via level-wise condi-tioning and structural consistency supervision. 
+
+• We design trajectory-aware metrics that go beyond FID to measure structural consistency and local controllability across generation levels. 
+
+• We validate TF on class-conditional ImageNet generation, achieving com-petitive image quality and fast FID convergence while enabling interpretable multi-level trajectories and interactive editing. 
+
+## 2 Related Work 
+
+2.1 Diffusion and Flow-Based Generation Latent-space models. Latent Diffusion Models [39] established the paradigm of performing generative dynamics in a compressed latent space, decoupling rep-resentation learning from the denoising process. Subsequent work scales the back-bone with Transformers [32, 37] or revisits the representation interface through alternative autoencoding schemes [54]. 
+
+Pixel-space models. A parallel line of work revisits pixel-space generation, re-moving reliance on pretrained tokenizers. Recent approaches include flow-based pixel modeling [6], neural-field diffusion [47], and end-to-end training with self-supervised pretraining [25]. JiT [26] shows that direct clean-image prediction enables diffusion in high-dimensional pixel spaces, establishing a strong pixel-space baseline. While these works show that compression-based latents are not strictly necessary, our use of a representation space is motivated by semantic structure rather than compression: pretrained features support both hierarchy construction and visual decodability of intermediate states. 
+
+One and few-step models. Reducing inference cost is a major research direc-tion [19, 49, 53]. Distillation-based methods compress multi-step models [34, 41]. Consistency models learn to map arbitrary intermediate states to the ODE end-point [30, 42, 43], with trajectory-aware extensions [23]. More recently, shortcut parameterizations [11, 55] and reparameterized matching objectives, including Mean Flows [15, 16, 31] and drifting-based formulations [9], enable one-step or 4 M. Kocabas et al. Fine-to-coarse hierarchy building direction      
+
+> DINOv2 (Ours)  VQ-VAE
+> Binary tree merging (VQ-VAE): 1+ log 2(16×16) = 9
+> Hierarchical Clustering
+> Object/background Parts Subparts Finest
+
+Fig. 2: Hierarchy comparison. NVG’s binary merging in VQ-VAE latent space pro-duces a resolution-tied hierarchy ( 1+log 2(16 ×16) = 9 levels) whose intermediate stages lack clear semantic groupings. In contrast, clustering DINOv2 features recovers a com-pact object-part-subpart hierarchy with semantically interpretable levels. 
+
+few-step generation. Our work inherits the mean-flow framework and extends it with hierarchical conditioning and structural supervision. 
+
+2.2 Generation Ordering and Trajectory Design 
+
+The ordering of generation has recently emerged as an important design axis for controlling how information is revealed during synthesis. 
+
+Per-token noise scheduling. Diffusion Forcing [5] assigns independent noise levels to individual tokens, enabling flexible generation orderings in sequential data. This idea is theoretically grounded: different conditioning orders can lead to exponential differences in the learnability of data distributions [17]. 
+
+Frequency-domain reordering. DeCo [33] factorizes pixel diffusion along fre-quency components, using a lightweight decoder for high-frequency details while the main DiT specializes in low-frequency semantics. This decoupling improves both training efficiency and generation quality for pixel-space models. 
+
+Latent-pixel reordering. Latent Forcing [2] jointly diffuses self-supervised la-tent features and pixels with separate time schedules. By revealing latent struc-ture before pixel detail, it achieves the convergence benefits of latent diffusion while remaining end-to-end in pixel space. The generated latent features serve as a computational scratchpad and are discarded after generation. All of these methods use trajectory structure to improve generation quality ,while intermediate states remain either implicit or disposable. In contrast, our work treats the structured trajectory as a user-facing interface: intermediate stages are designed to be semantically interpretable, decodable, and editable, enabling trajectory-level control that goes beyond endpoint optimization. 
+
+2.3 Progressive and Hierarchical Generation Autoregressive and masked models. Token-based approaches generate im-ages by predicting discrete tokens [10] or masked subsets [27], sometimes com-bined with diffusion-based training [28,50]. These naturally expose partial inter-Trajectory Forcing 5
+
+mediate samples, but progression is defined over token completion rather than continuous semantic refinement. 
+
+Scale-level progression. Visual Autoregressive Modeling (VAR) [45] and FlowAR [38] organize generation along spatial resolution, predicting coarse struc-tures first and refining at higher resolutions. Our hierarchy is orthogonal: levels correspond to semantic granularity (object, part, subpart) at a fixed spatial res-olution, rather than resolution upscaling. 
+
+Granularity-level progression. Explicit semantic or object-level structure has been used to organize visual scenes in related settings [1,12–14,46]. Most closely related to our hierarchical design, Next Visual Granularity (NVG) [48] decom-poses images into granularity levels by bottom-up clustering in VQ-VAE latent space, and autoregressively predicts structure maps and tokens at each level. While NVG demonstrates the value of explicit structure control, its hierarchy is constrained by greedy binary L2 merging ( k = 2 ) in VQ-VAE space, whose limited semantic geometry makes meaningful groupings, such as object-part-subpart, difficult. Consequently, its stages are tied to latent resolution (e.g., 
+
+log 2(16 ×16) = 8 ), its intermediates lack clear semantic abstractions (Fig. 2), and its discrete codebook limits intermediate-state flexibility and continuity. Our approach shares NVG’s goal of making structure explicit in generation, but differs in substrate, dynamics, and interface: we build semantically grounded hierarchies by clustering geometrically regular pretrained representations (e.g., DINOv2 [35]), use one-step flow matching per level for L-NFE inference instead of L×T , and keep all intermediate states continuously decodable and editable for interactive trajectory-level control. 
+
+2.4 Representation-Space Generation 
+
+Recent work has shown that pretrained visual representations can improve gen-erative modeling. REPA [52] aligns intermediate diffusion features with DI-NOv2 [35] latents via an auxiliary loss, accelerating convergence. Representa-tion Autoencoders (RAE) [54] further train decoders to reconstruct images from DINOv2 features, enabling generation in a semantically structured and visually decodable representation space. This provides the two ingredients our framework relies on: a geometry suitable for coarse-to-fine hierarchies, and a decoder that makes each intermediate level both semantic and visually interpretable. 
+
+## 3 Background 
+
+We build on two technical ingredients: (i) a flow-matching formulation that en-ables one-step generation, and (ii) a pretrained representation space whose geo-metric structure supports both meaningful hierarchical decomposition and visual decoding of intermediate states. 
+
+3.1 Flow Matching and Mean Flows 
+
+We briefly review the progression from flow matching to one-step mean-flow generators, culminating in the backbone we build upon. 
+
+Flow Matching. Flow Matching [29] learns a velocity field that transports between a prior distribution and the data distribution. Given data x ∼ pdata 6 M. Kocabas et al. 
+
+and noise ϵ ∼ N (0, I), a flow path is defined by the linear interpolation 
+
+zt = (1 −t) x + t ϵ, (1) with t ∈ [0 , 1] . The conditional velocity is v = ϵ − x, and a network vθ is trained by minimizing LFM = Et, x,ϵ∥vθ (zt, t ) − v∥2. Samples are generated by solving the ODE ddt zt = vθ (zt, t ) from t=1 (noise) to t=0 (data), typically requiring many network evaluations. 
+
+Mean Flows. MeanFlow (MF) [15] enables one-step generation by modeling an average velocity field. Viewing Flow Matching’s v(zt, t ) as the instantaneous 
+
+velocity, MF defines the average velocity over an interval [r, t ] as: 
+
+u(zt, r, t ) ≜ 1
+
+t − r
+
+Z tr
+
+v(zτ , τ ) dτ.  (2) Since directly evaluating this integral during training is intractable, MF differ-entiates both sides with respect to t to derive the MeanFlow Identity :
+
+u(zt, r, t ) = v(zt, t ) − (t − r) ddt u(zt, r, t ), (3) where the total derivative ddt u is computed via a Jacobian-vector product (JVP). A network uθ (zt, r, t ) is trained to satisfy this identity using the conditional velocity v(zt, t ) as ground-truth signal and a stop-gradient on the JVP term, denoted JVP sg [15]. Once trained, one-step sampling reduces to z0 = z1 −
+
+uθ (z1, 0, 1) with z1 ∼ N (0, I).Improved MeanFlow (iMF) [16] reformulates the objective as a v-loss re-parameterized through uθ , constructing a compound prediction Vθ = uθ +( t−r)·
+
+JVP sg that is regressed against a guided velocity vg . This resolves a variance am-plification issue in the original JVP computation. Furthermore, iMF incorporates classifier-free guidance (CFG) directly into training by constructing the guided velocity as: 
+
+vg = ω v(zt | c) + (1 −ω) v(zt), (4) where ω is a guidance scale sampled at training time and provided to the network 
+
+uθ alongside the class label y and time interval [r, t ] as global conditioning. This enables flexible adjustment of the guidance strength at inference without retraining. We collectively denote these standard conditions (class label, [r, t ],and ω) as c hereafter, distinguishing them from the hierarchy-specific conditions introduced in Sec. 4.2. 
+
+x-prediction. Orthogonal to the training objective, the choice of prediction tar-get also matters. Pixel MeanFlow (pMF) [31] introduces a denoised-image field 
+
+ˆx(zt, r, t ) ≜ zt − t · u(zt, r, t ) and lets the network directly predict the denoised data ˆx. The average velocity is recovered via uθ = 1 
+
+> t
+
+(zt − ˆxθ ). This parameteriza-tion is motivated by the manifold hypothesis adopted from JiT [26]: the denoised output ˆx lies approximately on a low-dimensional data manifold, making it a more tractable regression target than the noisy velocity field [31]. This assump-tion extends naturally to our setting, where ˆx corresponds to DINOv2 features on a structured representation manifold. We therefore adopt x-prediction combined with v-loss objective as our generative backbone and extend it with hierarchical conditioning in Sec. 4. Trajectory Forcing 7@yerenhb  
+
+> Fig. 3: Speed painting illustrates a coarse-to-fine creation process: artists first establish global shape and color blocks before refining local details, yet intermediate stages are already recognizable. (Images courtesy of @yerenhb.)
+
+3.2 Representation Autoencoders 
+
+Our framework operates in the feature space of a pretrained visual understand-ing encoder DINOv2 [35]. This choice is motivated by two properties. First ,the representation alignment hypothesis [52] posits that such feature spaces are geometrically well-organized: semantic factors of variation (e.g., object identity, part structure, spatial layout) are well-separated, so that simple unsupervised clustering over DINOv2 tokens reliably recovers object-part-subpart decomposi-tions without any supervised annotations. We leverage this directly to construct the teacher hierarchies that guide our trajectory design (Sec. 4.1). Second , Rep-resentation Autoencoders (RAE) [54] train a decoder that reconstructs images directly from DINOv2 features, making any point in this space visually decod-able. Because our generation proceeds as a sequence of intermediate refinements in DINOv2 space, the RAE decoder renders every intermediate level as a visual output, enabling inspection and editing before generating the next stage. 
+
+## 4 Method 
+
+Artistic training and generative modeling. Human visual artists typically adopt a coarse-to-fine workflow, first establishing global structure and dominant color relationships before refining local details, as illustrated in Fig. 3. Across artistic training practices, beginners are repeatedly advised to avoid chasing de-tails and instead focus on structural abstraction and global coherence. The re-currence of this principle across instructors and contexts suggests that it reflects a stable cognitive regularity: global organization precedes and constrains local articulation. Motivated by this observation, we incorporate this structural prior into our model design, translating the coarse-to-fine principle into a hierarchical generation framework where global consistency guides detail refinement. 
+
+4.1 Build Teacher Hierarchy 
+
+To enable hierarchical generation with intermediate control, we first construct a semantic hierarchy over latent tokens, which serves as a teacher signal for 8 M. Kocabas et al. (a) Build Teacher Hierarchy               
+
+> K-means (K=2)  Hierarchical Clustering
+> Teacher Hierarchy Building Direction  Object/Background
+> Parts
+> Subparts
+> Finest (DINOv2)
+> d_parts = 0.35 d_subparts = 0.65
+> (b) Hierarchy-conditioned Denoising
+> Hierarchical Generation Direction
+> Object/Background Parts Subparts Finest
+> 𝑙 𝑙 L(fixed depth L=4)
+> 。。。
+> 𝑙 𝑙
+> Sample level 𝑙
+> (training time)
+> DINOv2 Latent Space
+> (level 𝑙 )
+> x-Prediction
+> 𝑡
+> g
+> y
+> 𝑙
+> DiT Model
+> condition canvas (level 𝑙 -1)
+> Noisy level parts
+> Embed Embed
+> Fusion
+> t+ (1 - t)
+> clean canvas (level 𝑙 )
+> =
+> noisy latent
+> latent Noise ε ~ Ν(0, I)
+> 𝑡
+> g
+> y
+> 𝑙
+> : time steps
+> : CFG factors
+> : class label
+> : level index
+> standard
+> conditions c
+> Global Conditions
+> Clean level parts
+> Supervision Eq. (9)
+
+Fig. 4: Trajectory Forcing pipeline. Given an input image, we extract DINOv2 features and construct a teacher hierarchy via unsupervised clustering, producing level canvases from fine (original features, l = L − 1) to coarse (object/background, l = 0 ). A single shared network is trained across all levels: at each training step a level l is sampled, and the network denoises the current-level canvas z(l)(t) conditioned on the previous-level canvas z(l−1) . At inference, the direction reverses: generation proceeds sequentially from coarse to fine. ⊕ denotes channel-wise concatenation. 
+
+training. Rather than assuming access to human-annotated part hierarchies, we derive this structure directly from pretrained visual representations, leveraging their inherent semantic organization, as illustrated in Fig. 4(a). Given an input image, we extract dense latent features z = {zi}Ni=1 with 
+
+zi ∈ RC , where N =H×W is the number of spatial tokens. We assign each token a hierarchical cluster index at three granularity levels : object/background, parts, and subparts, via unsupervised clustering, forming a fixed-depth hierarchy shared across all samples. 
+
+(i) Object/background: At the coarsest level, we apply K-means with K=2 in the feature space to obtain two clusters; the cluster whose tokens are on average closer to the image center is designated as object (center prior), and the other as background. This yields a binary partition that serves as the foundation for finer-grained decomposition. 
+
+(ii) Part and Subpart: We construct a hierarchy over object tokens only 
+
+via agglomerative clustering with a combined semantic-spatial distance :
+
+D(i, j ) = cos ⟨zi, zj ⟩ + α ∥pi − pj ∥2, (5) where pi is the normalized spatial coordinate of token i and α controls the spatial regularization strength. This encourages semantically coherent, spatially contiguous clusters. From the resulting dendrogram, we extract a fixed-depth hierarchy by cutting at predefined distance thresholds : higher thresholds ( 0.65 )yield finer subparts, lower thresholds ( 0.35 ) produce coarser parts. 
+
+(iii) Output Hierarchy: The resulting hierarchy assigns each token a tuple of cluster indices (object/background, part, subpart). These indices are stored Trajectory Forcing 9
+
+as dense maps aligned with the latent grid and serve as region assignments in subsequent stages. 
+
+4.2 Hierarchy-conditioned Denoising 
+
+Given the teacher hierarchies from Sec. 4.1, we train a hierarchy-conditioned one-step flow model that refines latent features across semantic levels, inducing structured and steerable denoising trajectories. 
+
+Level Targets. We construct a set of level canvases {z(l)}L−1 
+
+> l=0
+
+that serve as denoising targets at each granularity. For levels l = 0 , . . . , L −2, each token is replaced by the mean feature of its assigned region: 
+
+z(l) 
+
+> i
+
+= μ(l)
+
+> R(l)
+> i
+
+, μ(l) 
+
+> k
+
+= 1
+
+|R(l) 
+
+> k
+
+|
+
+X
+
+> j∈R(l)
+> k
+
+zj , (6) where R(l) 
+
+> i
+
+is the region assignment of token i at level l. At the finest l = L−1, the canvas is the original feature: z(L−1) = z. The resulting canvases progress from coarse, piecewise-constant representations to the full-resolution latent, naturally encoding a semantic trajectory from global structure to fine detail. 
+
+Level-wise Conditioning. A single shared network is trained across all hi-erarchy levels. During training, a level index l is sampled uniformly at ran-dom for each batch element. Beyond the standard conditions c, the network re-ceives three hierarchy-specific inputs: (1) the noised current-level canvas z(l)(t) = (1 −t) z(l) + t ϵ, (2) the previous-level canvas z(l−1) as a spatial condition, and (3) the level index l as a global condition. For level l=0 , the conditioning canvas is set to zero, making the coarsest level unconditional (aside from c). A natural way to supply the previous-level canvas is in-context condition-ing [16]: the conditioning tokens are appended to the input token sequence so that the transformer attends over both, but this doubles the sequence length. For efficiency, we instead fuse the two inputs in the channel dimension: the noisy canvas and the previous-level canvas are independently embedded to D dimen-sions, concatenated to 2D, and projected back to D via a linear fusion layer, preserving the original sequence length. The level index is encoded through a learned embedding table and injected as additional conditioning tokens alongside class and guidance embeddings. 
+
+Total Training Objective. (i) Flow loss: We adopt x-prediction combined with v-loss [31]. The network predicts denoised latents ˆxθ (z(l)(t), l, z(l−1) ; c), from which the average velocity is recovered as uθ = ( z(l)(t) − ˆxθ )/t . The compound prediction Vθ = uθ + ( t−r) ·
+
+JVP sg is constructed and regressed against the guided velocity vg :
+
+Lflow = Et,r,l 
+
+ ∥Vθ − vg ∥2  . (7) 
+
+(ii) Structural loss: To encourage the prediction to respect region structure, we penalize the deviation of each predicted token from the ground-truth mean of its assigned region. Let μ(l) 
+
+> k
+
+denote the target region mean as in Eq. (6). For each token i in region k, we compute the squared cosine distance between the predicted token ˆxθ,i and its region’s target mean, averaged over all valid tokens 10 M. Kocabas et al. 
+
+and regions: 
+
+Lstruct = 1
+
+KlKlX
+
+> k=1
+
+1
+
+|R(l) 
+
+> k
+
+|
+
+X
+
+> i∈R(l)
+> k
+
+
+
+1 − cos 
+
+D
+
+ˆxθ,i , μ(l)
+
+> k
+
+E 2
+
+, (8) where Kl is the number of valid regions. This loss is applied to l ∈ { 0, . . . , L − 2}
+
+and disabled at the finest level, where no region structure is imposed. 
+
+Overall objective. The full training loss is: 
+
+L = Lflow + λ Lstruct , (9) where λ controls the structural loss weight. 
+
+4.3 Hierarchical Sampling 
+
+At inference, generation proceeds sequentially through the hierarchy from l = 0 
+
+to L−1. At the coarsest level, the model generates from pure noise with zero spatial conditioning: ˆz(0) := ˆ xθ (ϵ, l =0 , 0; c). For each subsequent level l > 0,fresh noise is drawn and the model generates conditioned on the output of the previous level: 
+
+ˆz(l) := ˆ xθ (ϵ′, l, ˆz(l−1) ; c). (10) Each level requires a single network function evaluation (NFE), yielding a total cost of L-NFE for the complete hierarchy. Crucially, every intermediate output 
+
+ˆz(l) is decodable into a visual image via the RAE decoder, providing a meaningful preview at each generation stage. 
+
+4.4 Interactive Generation and Editing 
+
+Because generation is decomposed into discrete, interpretable levels, users can inspect, modify, and re-generate at any point along the trajectory. 
+
+Editing workflow. Given a fully generated trajectory {ˆz(l)}L−1 
+
+> l=0
+
+, a user inspects the decoded output at level l∗ and produces an edited canvas ˜z(l∗). Generation then resumes from this edit: levels l > l ∗ are re-generated conditioned on the modified output, while all coarser levels l < l ∗ remain unchanged. This workflow supports two complementary editing operations: 
+
+(i) Feature editing: The user replaces the mean feature of a selected region in ˆz(l∗) with a feature sourced from another region or image (e.g., swapping one part’s semantics with another), then propagates forward through subsequent levels. Because semantically similar content maps to nearby features in DINOv2 space, this transfers the semantic identity of the source region to the target. 
+
+(ii) Shape editing: The user modifies the spatial extent of a region by reassign-ing tokens at the boundary between adjacent regions in ˆz(l∗), then propagates forward. This changes where a region is without altering its feature content, for example, enlarging or shrinking a part, or reshaping its contour. A key property underlying both operations is editing scope control . Since generation is Markov (each level conditioned only on the preceding one), an edit at level l∗ propagates through levels l > l ∗ but leaves coarser levels untouched. This gives users predictable control over editing scope: coarser edits cascade through more stages and have broader semantic impact, while finer edits re-main spatially localized. These editing operations motivate the trajectory-aware evaluation metrics introduced in Sec. 5. Trajectory Forcing 11  
+
+> Fig. 5: Decoded samples with PCA colored latent stages.
+
+## 5 ImageNet Experiments 
+
+We evaluate on ImageNet [8] at 256 ×256 resolution. Following the hierarchical sampling of Sec. 4.3, each image is produced in L=4 one-step denoising stages in DINOv2 [35] feature space, with every intermediate output decodable via a pre-trained ViT-XL decoder [54]. We report FID [18] and IS [40] on 50k samples. Our backbone is a DiT [37] transformer shared across all levels, with patch size 16 ×16 (denoted TF/16). By default, we train TF with structural loss weight 
+
+λ=1 and the Muon optimizer [21] at a constant learning rate of 1e − 2. Imple-mentation details, full hyperparameters, scalability across model sizes, and λ
+
+ablation are provided in the supplementary material. 
+
+5.1 System-level Comparison 
+
+We compare with prior methods in Tab. 1. Since work on hierarchical latent generation is scarce, we include representative pixel-space as well as latent-space baselines, spanning both multi-step and one-step diffusion/flow approaches. Un-less otherwise noted, we report results for models trained from scratch. At 80 training epochs, TF shows rapid convergence relative to baselines that typically require several hundred epochs. We note that these are early-training results; the primary contribution of TF is not FID optimization but trajectory-level controllability, which no other method in the table provides. 
+
+Relation to prior work. The most related prior work is NVG [48], which also performs hierarchical generation; we discuss conceptual differences in Sec. 2. From a practical standpoint, two differences are worth highlighting: (i) NVG requires training a custom multi-granularity VQ-VAE to support its resolution-based hierarchy, whereas TF operates directly in pretrained DINOv2 features without a task-specific tokenizer; (ii) NVG’s structure generation relies on a multi-step rectified flow model at each stage ( 9 content steps + 7 × 25 Euler steps = 184 NFEs); moreover, its discrete nature makes it difficult to leverage recent one-step advances [9, 16, 31], whereas TF naturally integrates one-step matching and produces each level in a single evaluation ( L=4 NFEs total). 
+
+5.2 Evaluation beyond FID 
+
+Standard metrics such as FID evaluate distributional quality, but do not cap-ture the controllability and structural faithfulness central to TF. To measure 12 M. Kocabas et al. 
+
+Table 1: Comparison on ImageNet 256 ×256. FID and IS are computed on 50k samples with CFG where applicable ( ×2 on NFE indicates CFG doubles the cost). We compare against baselines of comparable model size and, when applicable, similar training epochs; extended comparisons can be found in in the supplementary. 
+
+ImgNet 256 ×256 NFE Space Params Epochs FID( ↓) IS( ↑)
+
+Multi-step pixel diffusion/flow 
+
+JiT-B/16 (Heun) [26] 100 × 2 pixel 131M 200 4.37 275.1 JiT-L/16 (Heun) 100 × 2 pixel 459M 200 2.36 298.5 DeCo-XL/16 [33] 100 × 2 pixel 682M 320 1.90 303.0 LF-ViT/L (Heun) [2] 50 × 2 pixel+DINOv2 465M 200 2.48 –
+
+Multi-step latent diffusion/flow 
+
+DiT-B/2 [37] 250 SD-VAE 130M 80 43.47 278.2 DiT-XL/2 250 SD-VAE 675M 1400 9.62 121.5 DiT-XL/2 (cfg=1.50) 250 × 2 SD-VAE 675M 1400 2.27 278.2 SiT-B/2 [32]+REPA [52] 250 SD-VAE 130M 80 24.40 –SiT-XL/2 250 SD-VAE 675M 1400 8.61 131.7 SiT-XL/2 (cfg=1.50) 250 × 2 SD-VAE 675M 1400 2.06 270.3 RAE+DiT DH -XL/2 [54] 50 × 2 DINOv2 839M 800 1.13 262.6 
+
+Autoregressive latent diffusion/flow 
+
+VAR-d16 [45] 250 VQ-VAE 310M 200 3.30 274.4 VAR-d20 250 VQ-VAE 600M 250 2.57 302.64 NVG-d16 [48] 184 * VQ-VAE 255M 200 3.03 279.2 NVG-d20 184 * VQ-VAE 497M 250 2.44 310.4 
+
+1-NFE diffusion/flow 
+
+pMF-B/16 [31] 1 pixel 119M 320 3.12 254.6 pMF-L/16 1 pixel 411M 320 2.52 262.6 EPG-B/16 [25] 1 pixel 229M 240 25.10 –EPG-L/16 [25] 1 pixel 540M 560 8.82 –iCT-XL/2 [42] 1 SD-VAE 675M 240 34.24 † –Shortcut-XL/2 [11] 1 SD-VAE 676M 240 10.60 † 102.7 IMM-XL/2 [55] 1×2 SD-VAE 676M 240 7.77 † –MeanFlow-B/4 [15] 1 SD-VAE 131M 80 15.53 –iMF-M/2 [16] 1 SD-VAE 174M 640 2.27 –iMF-L/2 [16] 1 SD-VAE 409M 640 1.86 –
+
+TF-B/16 (ours) 4×1 DINOv2 177M 80 7.93 221.4 
+
+TF-B/16 +FD-loss ‡ (ours) 4×1 DINOv2 515M 80 2.52 245.6 
+
+TF-L/16 (ours) 4×1 DINOv2 177M 80 6.38 248.1 
+
+TF-L/16 +FD-loss ‡ (ours) 4×1 DINOv2 515M 80 2.02 259.3 
+
+TF-H/16 (ours) 4×1 DINOv2 1.1B 80 5.97 256.8 
+
+TF-H/16 +FD-loss ‡ (ours) 4×1 DINOv2 1.1B 80 1.98 261.6 
+
+> *NVG requires 184 NFEs total; see text Sec. 5.1 for breakdown.
+> †Results reported from the original MeanFlow paper (trained from scratch).
+> ‡Inception-space FD-loss [51] post-training; see text App. A.1 for details.
+
+these properties, we introduce trajectory-aware metrics along two complemen-tary axes: (i) spatial locality of edits and (ii) structural coherence across levels. 
+
+5.2.1 Local Invariance under Manipulation. We evaluate whether editing at level ℓ∗ introduces unintended changes to regions that are not explicitly modified. Let ˆz(ℓ) denote the generated latent at level ℓ before manipulation and ˆz′(ℓ) the corresponding latent after re-generation from the edited canvas. Given a spatial mask M ∈ { 0, 1}H×W indicating edited tokens ( Mij =1 ), we define the Latent Invariance Score (LIS) as the average cosine distance over unedited tokens: 
+
+f (ℓ)
+
+lis = 1
+
+|Ωunedit |
+
+X
+
+(i,j )∈Ωunedit 
+
+
+
+1 − cos 
+
+D
+
+ˆz(ℓ)
+
+i,j , ˆz′(ℓ)
+
+i,j 
+
+E 
+
+, (11) where Ωunedit = {(i, j ) | Mij =0 }. Lower scores indicate stronger local invariance. We evaluate LIS at each downstream level ℓ ≥ ℓ∗ to study how edits propagate Trajectory Forcing 13 parts subparts finest    
+
+> Downstream level
+> 0.00
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> LIS (↓)
+> Edited level
+> obj/bg
+> parts
+> subparts
+> (a) Local Invariance Score (LIS) obj/bg→parts parts→subparts subparts→finest
+> Downstream level
+> 0.00
+> 0.04
+> 0.08
+> 0.12
+> PMR (↓)
+> Spatial
+> Feature (b) Structural Consistency (PMR)
+
+Fig. 6: Trajectory-aware evaluation. (a) LIS shows coarser edits propagate more strongly, while finer edits remain localized. (b) Both spatial and feature PMR remain low, indicating hierarchical consistency across levels. We evaluate on TF alone as no baseline produces semantic-region intermediates (NVG uses binary splits over discrete tokens without region structure). 
+
+through subsequent generation stages. Fig. 6(a) shows a clear scale-dependent behavior: coarser edits produce larger downstream deviations, whereas finer edits remain more localized. Object/background edits yield the highest LIS at the final level, followed by parts and subparts edits. This confirms that TF exposes a controllable hierarchy where the spatial extent of changes can be modulated by the editing level. 
+
+5.2.2 Structural Consistency across Levels. Beyond editing invariance, we evaluate structural coherence between consecutive levels: each child-level region should be spatially contained within a single parent region; a child straddling multiple parents signals structural drift. To formalize this, given generated outputs at consecutive levels ℓ and ℓ+1 , we cluster each into regions using the procedure of Sec. 4.1. At level ℓ, we obtain Kℓ
+
+parent regions with mean-feature centers {μ(ℓ) 
+
+> i
+
+}Kℓ 
+
+> i=1
+
+and per-token assignments 
+
+a(ℓ)(n) ∈ { 1, . . . , K ℓ}. At level ℓ+1 , we obtain Kℓ+1 child regions {Cj }Kℓ+1  
+
+> j=1
+
+.Since a child region may partially overlap multiple parent regions near bound-aries, we assign each child a parent by spatial majority: 
+
+parent( j) = arg max  
+
+> i
+
+{n ∈ Cj : a(ℓ)(n) = i} .
+
+This induces a token-level expected parent: every token n in child region j inher-its parent( j) as its expected parent. We define two complementary token-level 
+
+Parent Misrouting Rates (PMR) :
+
+(i) Spatial PMR. The fraction of tokens whose parent-level cluster assignment disagrees with the majority-voted parent of their child region: 
+
+f (ℓ) 
+
+> pmr-s
+
+= Pn
+
+h
+
+a(ℓ)(n)̸ = parent( jn)
+
+i
+
+, (12) where jn denotes the child region containing token n. This measures whether child regions are cleanly contained within single parent regions. 
+
+(ii) Feature PMR. The fraction of tokens whose feature is closer to an incorrect parent center than to the assigned one: 
+
+f (ℓ) 
+
+> pmr-f
+
+= Pn
+
+h
+
+arg max  
+
+> i
+
+cos 
+
+D
+
+ˆz(ℓ+1)  
+
+> n
+
+, μ(ℓ)
+
+> i
+
+E̸
+
+= parent( jn)
+
+i
+
+. (13) 14 M. Kocabas et al. 
+
+This captures whether generation has shifted token features away from their assigned parent’s semantic mode. Lower values indicate stronger structural consistency; both metrics are eval-uated at each consecutive level pair. Fig. 6(b) shows that spatial PMR remains near zero across levels, indicating that child regions are largely contained within their parent regions. Feature PMR is slightly higher and increases at deeper levels due to finer semantic partitioning, but remains low overall. These results indicate that TF preserves hierarchical consistency while progressively refining semantic detail. 
+
+Edit effectiveness and decoded-space checks. The metrics above verify that edits do not disrupt unedited regions and that generation is structurally coherent. We additionally evaluate whether edits achieve their intended effect in the target region, and verify that latent-level properties translate to pixel space by decoding intermediate outputs via the frozen RAE decoder. Editing examples and decoded-space analysis are provided in the supplementary material. 
+
+Why a shared decoder? A natural question is whether a single decoder suffices for all levels, since intermediate canvases differ in distribution from the final latent. We deliberately avoid per-level finetuning for two reasons: first, a shared decoder ensures that decoded images across levels live in a consistent visual space, which is essential for editing: a user must be able to compare the output at level ℓ∗ with the final image; second, no ground-truth intermediate images exist, as level canvases are piecewise-constant abstractions in feature space, making per-level supervision unavailable by construction. 
+
+## 6 Discussion and Conclusions 
+
+We presented Trajectory Forcing, an approach that treats the generative tra-jectory as a first-class, user-facing object rather than a hidden computational process. By operating in a semantically structured representation space and combining hierarchical conditioning with one-step flow matching, TF produces a coarse-to-fine sequence of decodable, editable intermediate states in L=4 NFE. 
+
+Limitations. Our hierarchy is derived from unsupervised clustering with a fixed depth and a center prior for object/background separation, which may not gen-eralize well to images without a centered dominant object. Because each level is conditioned only on the immediately preceding one, coarser-level information reaches finer levels indirectly through the chain rather than via direct condition-ing. Current results are reported at 40/80 training epochs; longer training and scaling analysis are deferred to the supplementary material. 
+
+Future work. Natural extensions include replacing the fixed clustering pipeline with richer hierarchy sources (such as model segmentations [3]), adaptive hier-archy depth per image, and extending TF to text-conditional generation. Trajectory Forcing 15 
+
+## Acknowledgements 
+
+Merve Kocabas is supported by the Konrad Zuse School of Excellence in Learn-ing and Intelligent Systems (ELIZA) through the DAAD programme Konrad Zuse Schools of Excellence in Artificial Intelligence, sponsored by the German Federal Ministry of Education and Research. Gege Gao acknowledges the Eu-roHPC Joint Undertaking for awarding access to computational resources under project ID EHPC-AIF-2026PG01-147 on the Discoverer+ GPU partition hosted by Sofia Tech Park. Andreas Geiger is a member of the Machine Learning Cluster of Excellence, EXC 2064/1, project number 390727645. The authors gratefully acknowledge the ML Cloud and the Tübingen AI Center for providing the com-putational resources and facilities that supported this work. 
+
+## References 
+
+1. Atanov, A., Allardice, J., Bachmann, R., Kar, O.F., Fu, P., Griffiths, D., Hjelm, D., Dehghan, A., Zamir, A.: VideoFlexTok: Flexible-length coarse-to-fine video tokenization. In: Proc. of the International Conf. on Machine learning (ICML) (2026) 2. Baade, A., Chan, E.R., Sargent, K., Chen, C., Johnson, J., Adeli, E., Fei-Fei, L.: Latent forcing: Reordering the diffusion trajectory for pixel-space image generation. arXiv preprint arXiv:2602.11401 (2026) 3. Carion, N., Gustafson, L., Hu, Y.T., Debnath, S., Hu, R., Suris, D., Ryali, C., Alwala, K.V., Khedr, H., Huang, A., et al.: Sam 3: Segment anything with concepts. arXiv preprint arXiv:2511.16719 (2025) 4. Chefer, H., Esser, P., Lorenz, D., Podell, D., Raja, V., Tong, V., Torralba, A., Rombach, R.: Self-supervised flow matching for scalable multi-modal synthesis. arXiv preprint arXiv:2603.06507 (2026) 5. Chen, B., Monsó, D.M., Du, Y., Simchowitz, M., Tedrake, R., Sitzmann, V.: Diffu-sion forcing: Next-token prediction meets full-sequence diffusion. In: Advances in Neural Information Processing Systems (NeurIPS) (2025) 6. Chen, S., Ge, C., Zhang, S., Sun, P., Luo, P.: Pixelflow: Pixel-space generative models with flow. arXiv preprint arXiv:2504.07963 (2025) 7. Chong, M.J., Forsyth, D.: Effectively unbiased fid and inception score and where to find them. In: Proc. IEEE Conf. on Computer Vision and Pattern Recognition (CVPR) (2020) 8. Deng, Jia, Dong, Wei, Socher, Richard, Li, Li-Jia, Li, Kai, Fei-Fei, Li: Imagenet: A large-scale hierarchical image database. In: Proc. IEEE Conf. on Computer Vision and Pattern Recognition (CVPR) (2009) 9. Deng, M., Li, H., Li, T., Du, Y., He, K.: Generative modeling via drifting. arXiv preprint arXiv:2602.04770 (2026) 10. Esser, P., Rombach, R., Ommer, B.: Taming transformers for high-resolution image synthesis. In: Proc. IEEE Conf. on Computer Vision and Pattern Recognition (CVPR) (2021) 11. Frans, K., Hafner, D., Levine, S., Abbeel, P.: One step diffusion via shortcut models. In: Proc. of the International Conf. on Learning Representations (ICLR) (2025) 12. Gao, G., Huang, H., Fu, C., He, R.: Causal representation learning for context-aware face transfer. arXiv preprint arXiv:2110.01571 (2021) 13. Gao, G., Liu, W., Chen, A., Geiger, A., Schölkopf, B.: Graphdreamer: Composi-tional 3d scene synthesis from scene graphs. In: Proc. IEEE Conf. on Computer Vision and Pattern Recognition (CVPR) (2024) 16 M. Kocabas et al. 14. Gao, G., Schölkopf, B., Geiger, A.: Slots, transitions, loops: Learning composable world models for arc. arXiv preprint arXiv:2606.12316 (2026) 15. Geng, Z., Deng, M., Bai, X., Kolter, J.Z., He, K.: Mean flows for one-step genera-tive modeling. In: Advances in Neural Information Processing Systems (NeurIPS) (2025) 16. Geng, Z., Lu, Y., Wu, Z., Shechtman, E., Kolter, J.Z., He, K.: Improved mean flows: On the challenges of fastforward generative models. arXiv preprint arXiv:2512.02012 (2025) 17. Gupta, S., Jalal, A., Parulekar, A., Price, E., Xun, Z.: Diffusion posterior sampling is computationally intractable. In: Proc. of the International Conf. on Machine learning (ICML) (2024) 18. Heusel, M., Ramsauer, H., Unterthiner, T., Nessler, B., Hochreiter, S.: Gans trained by a two time-scale update rule converge to a local nash equilibrium. In: Advances in Neural Information Processing Systems (NeurIPS) (2017) 19. Hu, Z., Lai, C.H., Wu, G., Mitsufuji, Y., Ermon, S.: Meanflow transformers with representation autoencoders. arXiv preprint arXiv:2511.13019 (2025) 20. Jayasumana, S., Ramalingam, S., Veit, A., Glasner, D., Chakrabarti, A., Kumar, S.: Rethinking fid: Towards a better evaluation metric for image generation. In: Proc. IEEE Conf. on Computer Vision and Pattern Recognition (CVPR) (2024) 21. Jordan, Keller, Jin, Yuchen, Boza, Vlado, Jiacheng, You, Cecista, Franz, Newhouse, Laker, Bernstein, Jeremy: Muon: An optimizer for hidden layers in neural networks (2024), https://kellerjordan.github.io/posts/muon 
+
+22. Karras, T., Aittala, M., Lehtinen, J., Hellsten, J., Aila, T., Laine, S.: Analyzing and improving the training dynamics of diffusion models. In: Proc. IEEE Conf. on Computer Vision and Pattern Recognition (CVPR) (2024) 23. Kim, D., Lai, C.H., Liao, W.H., Murata, N., Takida, Y., Uesaka, T., He, Y., Mitsu-fuji, Y., Ermon, S.: Consistency trajectory models: Learning probability flow ODE trajectory of diffusion. In: Proc. of the International Conf. on Learning Represen-tations (ICLR) (2024) 24. Kynk"a"anniemi, T., Karras, T., Aittala, M., Aila, T., Lehtinen, J.: The role of imagenet classes in fréchet inception distance. In: Proc. of the International Conf. on Learning Representations (ICLR) (2023) 25. Lei, J., Liu, K., Berner, J., HoiM, Y., Zheng, H., Wu, J., Chu, X.: There is no vae: Advancing end-to-end pixel-space generative modeling via self-supervised pre-training. In: Proc. of the International Conf. on Learning Representations (ICLR) (2026) 26. Li, T., He, K.: Back to basics: Let denoising generative models denoise. arXiv preprint arXiv:2511.13720 (2026) 27. Li, T., Tian, Y., Li, H., Deng, M., He, K.: Autoregressive image generation with-out vector quantization. In: Advances in Neural Information Processing Systems (NeurIPS) (2024) 28. Li, Y., Bornschein, J., Chen, T.: Denoising autoregressive representation learning. In: Proc. of the International Conf. on Machine learning (ICML) (2024) 29. Liu, X., Gong, C., Liu, Q.: Flow straight and fast: Learning to generate and transfer data with rectified flow. arXiv preprint arXiv:2209.03003 (2022) 30. Lu, C., Song, Y.: Simplifying, stabilizing and scaling continuous-time consistency models. In: Proc. of the International Conf. on Learning Representations (ICLR) (2025) 31. Lu, Y., Lu, S., Sun, Q., Zhao, H., Jiang, Z., Wang, X., Li, T., Geng, Z., He, K.: One-step latent-free image generation with pixel mean flows. arXiv preprint arXiv:2601.22158 (2026) Trajectory Forcing 17 32. Ma, N., Goldstein, M., Albergo, M.S., Boffi, N.M., Vanden-Eijnden, E., Xie, S.: Sit: Exploring flow and diffusion-based generative models with scalable interpolant transformers. In: European Conference on Computer Vision. pp. 23–40. Springer (2024) 33. Ma, Z., Wei, L., Wang, S., Zhang, S., Tian, Q.: Deco: Frequency-decoupled pixel diffusion for end-to-end image generation. arXiv preprint arXiv:2511.19365 (2025) 34. Meng, C., Rombach, R., Gao, R., Kingma, D.P., Ermon, S., Ho, J., Salimans, T.: On distillation of guided diffusion models. In: Proc. IEEE Conf. on Computer Vision and Pattern Recognition (CVPR) (2023) 35. Oquab, M., Darcet, T., Moutakanni, T., Vo, H.V., Szafraniec, M., Khalidov, V., Fernandez, P., Haziza, D., Massa, F., El-Nouby, A., et al.: Dinov2: Learning robust visual features without supervision. arXiv preprint arXiv:2304.07193 (2023) 36. Parmar, G., Zhang, R., Zhu, J.Y.: On aliased resizing and surprising subtleties in gan evaluation. In: Proc. IEEE Conf. on Computer Vision and Pattern Recognition (CVPR) (2022) 37. Peebles, W., Xie, S.: Scalable diffusion models with transformers. In: Proc. of the IEEE International Conf. on Computer Vision (ICCV) (2023) 38. Ren, S., Yu, Q., He, J., Shen, X., Yuille, A., Chen, L.C.: Flowar: Scale-wise autore-gressive image generation meets flow matching. arXiv preprint arXiv:2412.15205 (2024) 39. Rombach, R., Blattmann, A., Lorenz, D., Esser, P., Ommer, B.: High-resolution image synthesis with latent diffusion models. In: Proc. IEEE Conf. on Computer Vision and Pattern Recognition (CVPR) (2022) 40. Salimans, T., Goodfellow, I., Zaremba, W., Cheung, V., Radford, A., Chen, X.: Im-proved techniques for training gans. In: Advances in Neural Information Processing Systems (NeurIPS) (2016) 41. Salimans, T., Ho, J.: Progressive distillation for fast sampling of diffusion models. In: Proc. of the International Conf. on Learning Representations (ICLR) (2022) 42. Song, Y., Dhariwal, P.: Improved techniques for training consistency models. In: Proc. of the International Conf. on Learning Representations (ICLR) (2024) 43. Song, Y., Dhariwal, P., Chen, M., Sutskever, I.: Consistency models. In: Proc. of the International Conf. on Machine learning (ICML) (2023) 44. Szegedy, C., Vanhoucke, V., Ioffe, S., Shlens, J., Wojna, Z.: Rethinking the incep-tion architecture for computer vision. In: Proc. IEEE Conf. on Computer Vision and Pattern Recognition (CVPR) (2016) 45. Tian, K., Jiang, Y., Yuan, Z., PENG, B., Wang, L.: Visual autoregressive mod-eling: Scalable image generation via next-scale prediction. In: Advances in Neural Information Processing Systems (NeurIPS) (2024) 46. Venkataramanan, S., Pariza, V., Salehi, M., Knobel, L., Gidaris, S., Ramzi, E., Bursuc, A., Asano, Y.M.: Franca: Nested matryoshka clustering for scalable visual representation learning. arXiv preprint arXiv:2507.14137 (2025) 47. Wang, S., Gao, Z., Zhu, C., Huang, W., Wang, L.: Pixnerd: Pixel neural field diffusion. In: Proc. of the International Conf. on Learning Representations (ICLR) (2026) 48. Wang, Y., Wang, Z., Wu, Z., Tao, Q., Liao, K., Loy, C.C.: Next visual granular-ity generation. In: Proc. of the International Conf. on Learning Representations (ICLR) (2026) 49. Wang, Z., Zhang, Y., Yue, X., Yue, X., Li, Y., Ouyang, W., Bai, L.: Transition mod-els: Rethinking the generative learning objective. arXiv preprint arXiv:2509.04394 (2025) 18 M. Kocabas et al. 50. Wei, C., Mangalam, K., Huang, P.Y., Li, Y., Fan, H., Xu, H., Wang, H., Xie, C., Yuille, A., Feichtenhofer, C.: Diffusion models as masked autoencoders. In: Proc. of the IEEE International Conf. on Computer Vision (ICCV) (2023) 51. Yang, J., Geng, Z., Ju, X., Tian, Y., Wang, Y.: Representation fréchet loss for visual generation. arXiv preprint arXiv:2604.28190 (2026) 52. Yu, S., Kwak, S., Jang, H., Jeong, J., Huang, J., Shin, J., Xie, S.: Representation alignment for generation: Training diffusion transformers is easier than you think. In: Proc. of the International Conf. on Learning Representations (ICLR) (2025) 53. Zhang, H., Siarohin, A., Menapace, W., Vasilkovsky, M., Tulyakov, S., Qu, Q., Skorokhodov, I.: Alphaflow: Understanding and improving meanflow models. arXiv preprint arXiv:2510.20771 (2025) 54. Zheng, B., Ma, N., Tong, S., Xie, S.: Diffusion transformers with representation autoencoders. In: Proc. of the International Conf. on Learning Representations (ICLR) (2026) 55. Zhou, L., Ermon, S., Song, J.: Inductive moment matching. In: Proc. of the Inter-national Conf. on Machine learning (ICML) (2025) Trajectory Forcing 19 
+
+# Appendix 
+
+## Table of Contents 
+
+A Experimental Settings . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 20 A.1 Additional Implementation Details . . . . . . . . . . . . . . . . . . . . . . . . . . 20 A.2 Hyperparameter Settings . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 20 
+
+B Editing Analysis . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 21 B.1 Editing Workflow . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 22 B.2 Feature Editing . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 22 B.3 Shape Editing . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 23 B.4 Editing Scope Control . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 24 B.5 Decoded-space Sanity Checks . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 24 
+
+C Additional Ablation Studies . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 25 C.1 Structural Loss Weight . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 25 C.2 Optimizer: AdamW vs. Muon . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 26 
+
+D Extended Discussion . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 27 D.1 Interpretability of Intermediate States . . . . . . . . . . . . . . . . . . . . . . . 27 D.2 Parameter Sharing across Levels . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 27 D.3 On Generation Beyond Reconstruction . . . . . . . . . . . . . . . . . . . . . . . 28 
+
+E Additional Qualitative Results . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 29 20 M. Kocabas et al. 
+
+## A Experimental Settings 
+
+A.1 Additional Implementation Details Architecture. Following pMF [31], our network uses a shared backbone with split u/v prediction heads. The previous-level canvas is fused via channel-wise concatenation: both the noisy input and the conditioning canvas are indepen-dently projected to the hidden dimension, concatenated along the channel axis, and projected back via a linear layer. The level index is encoded through a learned embedding table (4 tokens) and appended to the conditioning token sequence alongside class and timestep. 
+
+Data preprocessing. Images are center-cropped to 256 ×256 , normalized to 
+
+[−1, 1] , and augmented with random horizontal flips (50%). DINOv2 features and hierarchical region maps (object/background, parts, subparts) are precomputed offline and stored alongside images. 
+
+Decoder. We use a frozen ViT-XL RAE decoder [54] pretrained on DINOv2 features. The decoder maps 16 ×16 latent grids with 768-dimensional tokens back to 256 ×256 RGB images. No per-level decoder finetuning is performed; the same decoder is used for all hierarchy levels. 
+
+EMA. We maintain three exponential moving averages with EDM-style schedul-ing [22] and select the best-performing one during inference. 
+
+Classifier-free guidance. We disable classifier-free guidance (CFG) through-out training and inference. Unless otherwise stated, all results are reported with a guidance scale of ω = 1 .0.
+
+Post-training with Fréchet Distance (FD) loss. Since FID remains a widely reported benchmark metric, TF can optionally adopt the Inception-space FD-loss post-training procedure [51] to improve terminal-image fidelity under the conventional FID protocol. This stage is orthogonal to our trajectory objective and does not change the proposed trajectory-structured training. We also stress that Inception-space FD/FID should be interpreted only as a proxy for perceptual quality. Prior work has shown that FID can be sensitive to the choice of feature representation, finite-sample estimation, and evaluation protocol, and may disagree with human perceptual judgment [7,20,24,36]. Con-sistently, [51] observes that optimizing FD in modern representation spaces can yield visually better samples despite worse Inception FID. Therefore, we use FD-loss post-training only as an optional metric-oriented refinement of final images, while our main contribution remains structuring and controlling the intermediate generative trajectory. 
+
+A.2 Hyperparameter Settings 
+
+The full configurations are given in Table 2. Our implementation is based on pMF [31], using JAX on 8 × H200 GPUs. We highlight several key choices below. 
+
+Timestep sampling. Following Self-Flow [4], we sample the timesteps (t, r )
+
+using a plateau-logit-normal distribution parameterized by a mean of 0.0, a standard deviation of 1.0, and a shift factor of α = 10 .0.Trajectory Forcing 21 
+
+Structural loss. We set λ=1 for the structural loss weight across all model sizes. The structural loss is applied only to levels l ∈ { 0, . . . , L −2} and disabled at the finest level. 
+
+Model scaling. We train three model sizes: TF-B/16 (177M parameters), TF-L/16 (515M), and TF-H/16 (1.1B). We train TF-B/16 in fp32 for the ablation studies for 80 epochs, whereas TF-L/16 and TF-H/16 are trained in bf16 for efficiency. TF-B/16 and TF-L/16 use a global batch size of 1024, while TF-H/16 uses a global batch size of 512.                                             
+
+> Table 2: Configuration of Trajectory Forcing. configs TF-B/16 TF-L/16 TF-H/16
+> depth 16 32 48 hidden dim 768 1024 1280 attn heads 12 16 16 noise scale 1.0 aux-head depth 8class tokens 8time tokens 4level tokens 4linear layer init N(0 , σ 2), σ 2= 0 .1/fan _in
+> epochs 80 80 80 batch size 1024 1024 512 precision fp32 bf16 bf16 optimizer Muon, with (β1, β 2) = (0 .9,0.95)
+> learning rate constant 0.01 ema half-life (Mimgs) {500, 1000, 2000}
+> (t, r )cond t−rt, r sampler plateau-logit-normal(0.0, 1.0) time shift (α)10.0 Structural loss weight 1Post-training FD-loss [51] Inception-v3 [44]
+
+## B Editing Analysis 
+
+A central claim of Trajectory Forcing is that the structured generative trajectory enables interactive control: users can inspect intermediate states, apply targeted modifications, and resume generation from the edit point. In the main paper, we describe two editing operations (feature editing and shape editing) and quantify their locality via LIS and structural coherence via PMR. Here we provide step-by-step procedures, qualitative examples at multiple hierarchy levels, and decoded-space sanity checks. 22 M. Kocabas et al. Object/background 
+
+Editing level 
+
+> Parts
+> Unedited Edited
+> Subparts
+> (Change agaric with bolete)
+> (Change lemon with orange)
+> (Change the wing of coucal with the wing of ringlet butterfly)
+> (Change the center disk of daisy with calendula)
+> (Add sun to the seashore)
+> (Make hamburger double patty)
+
+Fig. 7: Feature editing at different hierarchy levels. The top row shows the original generated images, and the bottom row shows results after feature editing. A target region is selected and its latent tokens are replaced with a source feature token. Editing at the object/background level changes the global semantic identity of the scene while preserving spatial layout. Editing at the part level modifies a single object part while keeping the rest of the object unchanged. Editing at the subpart level produces localized edits affecting only fine-grained details. This demonstrates that editing earlier hierarchy levels produces broader semantic changes, while deeper levels enable precise local control. 
+
+B.1 Editing Workflow 
+
+Since generation proceeds sequentially from coarse to fine, editing is naturally interleaved with generation. At each level l, the user performs three steps: 1. Generate. Produce ˆz(l) from noise conditioned on the (possibly edited) output of the previous level (or from zero conditioning at l=0 ). 2. Inspect. Decode ˆz(l) via the shared RAE decoder to obtain a visual preview 
+
+at the current granularity. This preview reveals the semantic content decided so far, allowing the user to assess whether the layout, part assignment, or detail matches their intent before committing to finer levels. 3. Edit (optional). If the user wishes to intervene, modify ˆz(l) to produce an edited canvas ˜z(l). The specific modification depends on the editing type (feature replacement or shape change; see below). All unedited tokens remain unchanged. The output of each level (edited or not) serves as the conditioning input for the next, so modifications are automatically propagated through all subsequent levels. This workflow is fully deterministic given a fixed noise seed, making edits reproducible and comparable. 
+
+B.2 Feature Editing 
+
+Feature editing changes what a region represents while preserving its spatial layout. Trajectory Forcing 23 Object/background 
+
+Editing level 
+
+> Parts
+> Unedited Edited
+> Subparts
+> (Shrink the goldfish size)
+> (Make the coral reef wide spread)
+> (Make the nose of irish setter bigger)
+> (Delete cinnamon grounds on top of eggnog)
+> (Make the beak of crane shorter)
+> (Decrease the spots of the spotted salamander)
+
+Fig. 8: Shape editing at different hierarchy levels. The top row shows the original generated images, and the bottom row shows results after shape editing. A boundary between two adjacent regions is modified by reassigning tokens from one region to the other. Editing at the object/background level changes the coarse spatial allocation be-tween foreground and background. Editing at the part level reshapes individual object parts while preserving their semantic identity. Editing at the subpart level produces localized contour adjustments. Because only region assignments are changed, semantic feature content remains unchanged while spatial structure is modified. 
+
+Procedure. Given the generated canvas ˆz(l∗), the user selects a target region 
+
+Rtgt and a source feature fsrc . The source can be: (a) the mean feature of another region in the same image (e.g., swapping the semantics of two parts), or (b) a mean feature extracted from a different image (e.g., transferring the appearance of a specific object part from a reference). The edit replaces all tokens in Rtgt 
+
+with fsrc :
+
+˜z(l∗) 
+
+> i
+
+=
+
+(
+
+fsrc if i ∈ Rtgt ,
+
+ˆz(l∗) 
+
+> i
+
+otherwise .
+
+Because DINOv2 features are semantically organized, nearby features correspond to similar visual content. Replacing a region’s feature therefore transfers the semantic identity of the source to the target location, while the spatial structure (region shape and surrounding context) is preserved. 
+
+Effect at different levels. Editing at the object/background level ( l∗=0 ) swaps the global semantic identity of the foreground or background, causing all down-stream levels to regenerate with the new identity: the broadest possible semantic change. Editing at the part level ( l∗=1 ) replaces a single part (e.g., changing the wing of a bird) while keeping other parts and the overall object layout intact. Editing at the subpart level ( l∗=2 ) produces the most localized change, affecting only fine-grained details within a subregion. 
+
+B.3 Shape Editing 
+
+Shape editing changes where a region is without altering its semantic content. 24 M. Kocabas et al. 
+
+Procedure. The user selects a boundary between two adjacent regions Ra and 
+
+Rb in ˆz(l∗) and reassigns boundary tokens from one region to the other. Con-cretely, for each reassigned token i moved from Ra to Rb:
+
+˜z(l∗) 
+
+> i
+
+= μRb ,
+
+where μRb is the mean feature of the receiving region. This enlarges Rb at the expense of Ra (or vice versa), effectively reshaping region contours. The feature content of both regions remains unchanged; only the spatial extent is modified. 
+
+Effect at different levels. At the object/background level, shape editing ad-justs the coarse spatial allocation between foreground and background. For in-stance, enlarging the object region or shifting its position. At the part level, it reshapes individual parts (e.g., making a nose bigger), which then propagates to finer subpart structure in downstream levels. At the subpart level, the change is confined to local contour adjustments. 
+
+B.4 Editing Scope Control 
+
+A distinctive property of TF editing is predictable scope control : the choice of editing level l∗ directly determines the breadth of downstream impact. Since generation is Markov (each level conditioned only on the immediately preceding one), an edit at l∗ propagates through all levels l > l ∗ but leaves all coarser levels l < l ∗ untouched. To illustrate this, we apply the same type of edit ( feature replacement of a single region) at three different levels: object/background ( l∗=0 ), part ( l∗=1 ), and subpart ( l∗=2 ), and compare the resulting changes in the final decoded im-age. As shown in Fig. 9, editing at l∗=0 causes global semantic change across the entire image; editing at l∗=1 alters one part while preserving overall lay-out; editing at l∗=2 produces a spatially localized change confined to a small subregion. This directly corresponds to the quantitative LIS results in the main paper Fig. 6(a), where coarser edits produce progressively larger downstream deviations. In practice, we provide an interactive interface where users can either select individual tokens or automatically group a contiguous region by cosine similarity to a seed token, making editing straightforward at any granularity. 
+
+B.5 Decoded-space Sanity Checks 
+
+The trajectory-aware metrics in the main paper (LIS, PMR) operate in DINOv2 feature space. To verify that latent-level invariance translates to pixel space, we decode generated outputs before and after editing using the frozen RAE decoder and compute two standard perceptual metrics restricted to unedited regions: 
+
+• Masked SSIM : structural similarity computed over the full image, then averaged only over unedited pixels Ωunedit .
+
+• Masked LPIPS : perceptual distance computed over the full image, then averaged over Ωunedit .Trajectory Forcing 25 TF generation process of brittany spaniel TF generation process of panda                   
+
+> (a) Edit from object/background level
+> Object/background Parts Subparts Final
+> Source tokens
+> from brittany spaniel
+> Tokens to be replaced
+> in panda Edited latent
+> Decoded Space Trajectory
+> (b) Edit from parts level
+> (c) Edit from subparts level
+> Object/background Parts Subparts Final Object/background Parts Subparts Final
+
+Fig. 9: Editing scope control. The same feature replacement operation is applied at different hierarchy levels on the same generated image. Red boxes indicate the selected region. Editing at (a) the object/background level produces a global semantic change; editing at (b) the part level modifies a single part while preserving overall layout; editing at (c) the subpart level results in a spatially localized change. This demonstrates that the editing level directly controls the breadth of downstream impact. 
+
+As shown in Table 3, high masked SSIM and low masked LPIPS confirm that unedited regions remain visually unchanged after editing, validating that the latent-level locality measured by LIS is preserved through decoding. 
+
+## C Additional Ablation Studies 
+
+We ablate additional important factors below. 
+
+C.1 Structural Loss Weight 
+
+The structural loss Lstruct encourages region-level consistency, which is also a prerequisite for reliable hierarchical editing. Without coherent region structure, edits applied at a given level may not propagate correctly to downstream levels. However, an excessively large weight λ can interfere with the flow objective Lflow 
+
+and degrade generative quality. 26 M. Kocabas et al. 
+
+Table 3: Decoded-space sanity checks in unedited regions. We decode images before and after editing using the frozen RAE decoder and compute masked SSIM and masked LPIPS over unedited pixels only. Higher SSIM and lower LPIPS indicate that edits remain localized after decoding. Results are reported for feature edits (top) and shape edits (bottom) at editing different hierarchy levels. 
+
+Object/Background Parts Subparts Feature edits 
+
+Masked SSIM ( ↑) 0.77 0.84 0.92 Masked LPIPS ( ↓) 0.08 0.061 0.042 
+
+Shape edits 
+
+Masked SSIM ( ↑) 0.89 0.93 0.96 Masked LPIPS ( ↓) 0.028 0.024 0.013 
+
+We therefore perform an ablation over λ ∈ { 1, 2, 5, 10 } and track the resulting FID during training, as shown in Fig. 10(a). Smaller weights consistently pro-duce better results: λ = 1 yields the lowest final FID and continues improving throughout training. In contrast, larger weights ( λ = 5 , 10 ) converge quickly but plateau at significantly worse FID values, indicating that overly strong structural constraints hinder the generative objective. Based on these results, we use λ = 1 for all experiments in the main paper and supplementary. 0 40 80    
+
+> Epochs
+> 10
+> 15
+> 20
+> 25
+> 30
+> L-NFE FID
+> 11.66
+> 14.81
+> 19.54
+> 20.04
+> = 1
+> = 2
+> = 5
+> = 10
+> (a) Structural loss weight ablation. 040 80
+> Epochs
+> 10
+> 20
+> 30
+> 40
+> L-NFE FID
+> 11.66
+> 24.40
+> Adam
+> Muon (b) Optimizer ablation (AdamW vs. Muon).
+
+Fig. 10: Ablation studies on TF-B/16. (a) We sweep λ ∈ { 1, 2, 5, 10 } and report 
+
+L-NFE FID throughout training. Smaller weights lead to better final sample quality: 
+
+λ=1 achieves the lowest FID, while larger weights converge earlier but plateau at worse performance. (b) Optimizer comparison. Under identical training settings, Muon consistently achieves lower L-NFE FID than Adam, indicating faster convergence. 
+
+C.2 Optimizer: AdamW vs. Muon 
+
+Recent work on one-step flow matching [31] has shown that the Muon opti-mizer [21] yields substantially faster FID convergence than AdamW for flow-based generation. We verify whether this advantage carries over to the hierar-Trajectory Forcing 27 
+
+chical setting of TF by training TF-B/16 under identical conditions with both optimizers. As shown in Fig. 10 (b), Muon consistently achieves lower L-NFE FID throughout training compared to AdamW, matching observations in prior work on one-step flow matching [31] and suggesting that Muon is better suited for the trajectory prediction objective used in TF. Based on these results, we adopt Muon as the default optimizer for all ex-periments reported in this work. 
+
+## D Extended Discussion 
+
+D.1 Interpretability of Intermediate States 
+
+A core premise of TF is that every intermediate level can be decoded into a vi-sually meaningful image. This property underpins the inspect step of the editing workflow (Sec. B.1): the user relies on decoded previews to decide whether and where to intervene. In practice, coarser levels produce piecewise-constant fea-ture maps (region means), which lie outside the typical distribution of DINOv2 encodings. Despite this distribution shift, the shared RAE decoder produces rec-ognizable outputs at all levels ( L=4 ), likely because region-mean features still reside in the convex hull of naturally occurring token features. However, for very coarse levels over highly cluttered scenes, decoded images may lose fine structural cues, reducing their utility for user inspection. 
+
+D.2 Parameter Sharing across Levels Observation: level-specific target distributions. By construction, the tar-get canvases at different hierarchy levels occupy distinct regions of feature space: coarse levels are piecewise-constant region means, while the finest level consists of original DINOv2 tokens. These level-specific targets effectively define differ-ent target manifolds with different statistical properties. In the current design, a single shared network learns to map noise to all of these manifolds, distinguished only by the level index and the previous-level conditioning canvas. While this full sharing is parameter-efficient and already achieves competitive FID, the dis-tributional gap between levels suggests room for improvement through more specialized architectures. 
+
+Future directions. A natural extension is to relax the degree of parameter shar-ing. Concrete strategies include level-specific prediction heads (shared backbone, per-level output projection), lightweight per-level adapters (e.g., LoRA-style modules injected at each transformer block), or fully independent models per level at the cost of increased parameters. Exploring this sharing-specialization trade-off is a promising direction for improving hierarchical generation. 28 M. Kocabas et al. 
+
+D.3 On Generation Beyond Reconstruction 
+
+Modern generative models are primarily evaluated on photorealistic reconstruc-tion, yet visual creation extends well beyond pixel-level fidelity. As discussed in the main paper (Fig. 3), artists work in terms of color relationships, spatial structure, and perceptual coherence rather than material reproduction – and recognizable imagery emerges long before fine details are rendered. This intuition is reflected in the design of TF. TF’s intermediate states are a concrete instance of generation beyond reconstruction: coarse-level outputs capture object layout and part structure without photographic detail, yet remain semantically interpretable and useful for downstream editing. The fact that users can inspect, evaluate, and redirect generation at these abstract levels suggests that photorealism is not a prerequisite for meaningful visual output – structure alone carries substantial information. We believe this perspective opens a broader design space for generative mod-els, where the trajectory itself, not only the final image, serves as a useful creative artifact. Developing evaluation criteria and interfaces that embrace structural generation beyond endpoint fidelity is an interesting direction for future work. Trajectory Forcing 29 
+
+## E Additional Qualitative Results 
+
+Fig. 11: Uncurated 4-NFE class-conditional generation samples of TF-L/16 on Ima-geNet 256 ×256. 30 M. Kocabas et al. 
+
+Fig. 12: Visualization of the full hierarchical generation process. For each sample we show the four generation levels from coarse to fine: object/background, parts, subparts, and the final latent. Latent tokens are visualized using PCA-based coloring, while the right column shows images decoded with the frozen RAE decoder. This illustrates how global structure emerges at coarse levels and progressively refines into detailed image content at the final level.

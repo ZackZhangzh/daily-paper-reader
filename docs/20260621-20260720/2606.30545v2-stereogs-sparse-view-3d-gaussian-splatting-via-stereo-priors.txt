@@ -1,0 +1,514 @@
+Title: StereoGS: Sparse-View 3D Gaussian Splatting via Stereo Priors
+
+URL Source: https://arxiv.org/pdf/2606.30545v2
+
+Published Time: Tue, 07 Jul 2026 01:56:06 GMT
+
+Number of Pages: 29
+
+Markdown Content:
+# StereoGS: Sparse-View 3D Gaussian Splatting via Stereo Priors 
+
+Wenhao Yuan , Yiyuan Ge , and Deli Cai ⋆
+
+South China University of Technology, China 
+
+wenhaoyuan.stringer@gmail.com, yiyuange@mail.scut.edu.cn, eecaideli@mail.scut.edu.cn 
+
+Abstract. 3D Gaussian Splatting (3DGS) has achieved remarkable suc-cess in real-time novel view synthesis, yet it suffers from severe overfit-ting under sparse-view settings due to insufficient geometric constraints. While recent methods introduce monocular depth priors to mitigate this, they inherently struggle with scale ambiguity and cross-view in-consistency, leading to defective geometry. In this paper, we propose StereoGS, a novel sparse-view 3DGS framework that integrates stereo priors to establish reliable binocular consistency. Unlike scale-agnostic monocular constraints, StereoGS introduces a Stereo Depth Regulariza-tion by constructing virtual stereo pairs during optimization and lever-aging a foundation stereo model to enforce absolute scale and binocular-consistent structures. To further suppress overfitting and eliminate re-dundant primitives, we design a zero-overhead, plug-and-play Gradient-Aware Opacity Decay strategy that dynamically penalizes Gaussians based on their relative opacity gradient magnitudes. Combined with a Consistency-Aware Dense Initialization using zero-shot multi-view depth estimation, StereoGS effectively anchors primitives to accurate scene surfaces. Extensive experiments on LLFF, DTU, Mip-NeRF360, and Blender datasets demonstrate that StereoGS achieves state-of-the-art performance in sparse-view settings without incurring any additional in-ference overhead. Project Page: https://stringerywh00.github.io/ StereoGS_project_page/ 
+
+Keywords: Novel View Synthesis · 3D Gaussian Splatting · Sparse View Synthesis 
+
+## 1 Introduction 
+
+Novel View Synthesis (NVS) [1, 24, 37] aims to synthesize realistic images from unseen viewpoints. While Neural Radiance Field (NeRF) [20] and 3D Gaus-sian Splatting (3DGS) [14] have revolutionized high-fidelity NVS, 3DGS has gained particular attention for its real-time rendering capabilities. However, vanilla 3DGS relies heavily on dense input views. Under sparse-view settings [8, 24, 37, 53], limited view overlap and insufficient appearance correspondences  
+
+> ⋆
+
+Corresponding author.  
+
+> arXiv:2606.30545v2 [cs.CV] 5 Jul 2026 2W. Yuan et al.
+
+restrict sufficient geometric constraints, inevitably leading to severe overfitting. Consequently, achieving robust sparse-view 3DGS remains a critical yet chal-lenging task for real-world applications. To mitigate this, existing methods for sparse-view 3DGS [4, 18, 53] attempt to introduce geometric priors by using monocular depth estimation for geom-etry regularization. While effective, we argue that relying solely on monocular cues suffers from two fundamental limitations. First, monocular depth inherently suffers from scale ambiguity, producing relative rather than absolute depth es-timates. Since these relative depth maps lack a unified metric scale, enforcing them as regularization often conflicts with photometric consistency derived from the input images, thereby misguiding the optimization and leading to defective geometry. Second, monocular depth maps lack cross-view consistency because they are inferred independently for each view. Consequently, the same spatial point is frequently assigned inconsistent depth values across different viewpoints. When back-projected into 3D space, these view-wise inconsistencies lead to spa-tial misalignments, destabilizing the Gaussian optimization and causing severe artifacts. Recent studies [8,41,51] attempt to integrate cross-view consistency for Gaus-sian optimization. For instance, Binocular3DGS [8] applies photometric loss on binocular images via the rendered depth map. However, this indirect pixel-level constraint lacks direct gradient guidance to 3D Gaussian primitives, failing to anchor them accurately to scene surfaces. NexusGS [51] leverages the traditional epipolar geometry for initialization, but relying solely on initialization without continuous binocular consistency constraints during optimization still results in geometric degradation, especially in textureless or occluded regions. In this paper, we propose StereoGS , a sparse-view Gaussian Splatting frame-work that integrates stereo priors to establish reliable binocular consistency dur-ing Gaussian optimization. StereoGS is optimized via stereo priors during both initialization and optimization, compelling the 3D Gaussians to learn scale-accurate geometry. Specifically, unlike previous methods that rely on scale-agnostic monocular depth constraints, StereoGS regularizes the geometry by imposing a novel stereo depth constraint during optimization. For each training view, we construct a virtual right camera to form a stereo pair and render the right-view image, and depth maps for training views. By feeding the RGB pair of the ground-truth left-view and the rendered right-view into a foundation stereo model [39], we obtain a highly accurate reference depth map that serves as an external stereo depth prior. We then perform supervision between the rendered and reference depth maps. This process effectively integrates a scale-aware stereo depth prior into the optimization, compelling the 3D Gaussians to learn absolute scale and binocular-consistent structures. To suppress overfitting and eliminate redundant primitives, we introduce a general gradient-aware opacity decay strategy. Our core insight is that the opac-ity gradient of a Gaussian inherently reflects its necessity for scene reconstruc-tion. Therefore, we dynamically penalize Gaussians based on their gradient mag-nitudes: primitives with smaller gradients are deemed less critical for rendering StereoGS 3
+
+and receive a stronger decay penalty, while those with larger update demands are preserved. These mechanisms, alongside the stereo priors, serve as struc-tural signals that backpropagate through the rendering pipeline to Gaussian primitives. As a result, StereoGS learns highly accurate, binocular-consistent geometric representations, directly mitigating the severe overfitting inherent in sparse-view settings. Additionally, for Gaussian initialization, we employ a pre-trained multi-view depth estimator [10] combined with strict consistency filtering to estimate the multi-view-consistent depth maps for each view. By further applying cross-view reprojection errors, we eliminate outliers in the depth maps and fuse them into a dense point cloud, which serves as a robust initialization. Notably, because the approaches in StereoGS are training-time strategies, employing StereoGS incurs no additional computational overhead during infer-ence compared to the vanilla 3DGS. Extensive experiments on LLFF, DTU, Mip-NeRF360, and Blender datasets demonstrate that StereoGS achieves state-of-the-art performance in sparse-view settings, effectively balancing geometric accuracy with rendering quality. Our main contributions are summarized as follows: 
+
+– We introduce a Stereo Depth Regularization that utilizes stereo priors to en-force absolute scale constraints during optimization, fundamentally resolving the scale ambiguity inherent in monocular depth priors. 
+
+– We design Gradient-Aware Opacity Decay to dynamically adjust opacity dur-ing training based on the gradient, effectively eliminating redundant primi-tives and suppressing overfitting to ensure a compact and robust scene rep-resentation. 
+
+– Extensive experiments on LLFF, DTU, Mip-NeRF360, and Blender datasets demonstrate that our method achieves state-of-the-art results compared to existing sparse-view methods. 
+
+## 2 Related Works 
+
+2.1 Radiance Fields 
+
+Radiance Fields are employed for reconstructing 3D scenes and synthesizing novel views. Neural Radiance Fields (NeRFs) [20] have seen significant advances that learn neural volumetric representations of 3D scenes and render images via volume rendering. While NeRF enables high-quality reconstruction from images, it requires high computational costs and suffers from slow training and inference speeds. Subsequent research has focused on addressing these bottlenecks by im-proving the rendering quality [1, 2], computational efficiency [22, 35], frequency regularization [43]. A significant breakthrough in achieving real-time rendering is 3D Gaussian Splatting (3DGS) [14], which represents scenes using a set of explicit 3D Gaus-sian primitives. 3DGS reconstructs high-quality scenes rapidly by utilizing dif-ferentiable splatting, excelling particularly in handling high-frequency details 4 W. Yuan et al. 
+
+and offering intuitive interpretability. Building on its significant performance, many follow-up works focus on improving the rendering details [15, 42, 46, 50], compressing the Gaussians and accelerating rendering [17, 23]. 
+
+2.2 Novel View Synthesis from Sparse View 
+
+NeRF-based and 3DGS-based methods have demonstrated impressive rendering performance, whereas in real-world scenarios, only a small number of images are available (i.e., sparse input views). Directly applying the methods in a dense-view setting leads to performance degradation due to overfitting. Early studies have investigated the regularization of NeRFs under sparse-view conditions [5, 16, 24, 43]. Other approaches [40, 52] leverage generative models that are pre-trained on large-scale datasets to distill generative prior into 3D representation. In contrast, alternative strategies [5,29,33,37] leverage external geometric priors derived from pre-trained models (e.g., depth priors) to guide and regularize the training process. Recently, 3D Gaussian Splatting has been adapted to sparse settings, with a primary focus on initialization, depth regularization, and structural constraints. For Gaussian initialization, Chung et al. [4] and CoherentGS [25] estimate monoc-ular depth maps and refine them to achieve more accurate initialization. DNGaus-sian [18] and FSGS [53] apply depth regularization based on monocular depth estimators. However, relying on monocular depth often lacks absolute scale depth perception. Although MVPGS [41] leverages Multi-View Stereo (MVS) depth es-timation to obtain a well-initialized, view-consistent point cloud, the absence of continuous geometric regularization during optimization causes this high-quality initial structure to gradually deteriorate. Other approaches, such as Gaussian pruning based on point disagreement [47] and a random dropout strategy [26], also effectively mitigate overfitting to known yet sparse views. While several methods have explored integrating stereo matching models for dense-view set-tings [30] or surface reconstruction [7, 48], their potential in sparse-view novel view synthesis remains largely underexplored. To integrate cross-view consis-tency during optimization, Binocular3DGS [8] warps rendered RGB images and applies a photometric loss between the constructed binocular RGB images. We argue that this self-supervision constraint on RGB images lacks explicit geomet-ric constraints and leads to geometric artifacts. Despite improvements, existing methods predominantly lack explicit cross-view consistency constraints during Gaussian optimization and can lead to inevitable geometric artifacts. In con-trast, we propose integrating a stereo constraint from the stereo matching prior into the optimization process. 
+
+## 3 Method 
+
+3.1 Preliminary for 3D Gaussian Splatting 
+
+3D Gaussian Splatting (3DGS) [14] models the 3D scene as a collection of anisotropic 3D Gaussians, serving as an explicit scene representation. Each prim-StereoGS 5
+
+itive Gi is spatially defined by a center position μ and a 3D covariance matrix 
+
+Σ. The influence of a Gaussian at a spatial coordinate x is formulated as: 
+
+G(x) = exp 
+
+
+
+− 12 (x − μ)⊤Σ−1(x − μ)
+
+
+
+. (1) To ensure the positive semi-definite property of the covariance matrix during optimization, Σ is factorized into a scaling matrix S and a rotation matrix R,such that Σ = RSS ⊤R⊤. Additionally, each Gaussian encodes view-dependent appearance via spherical harmonic (SH) coefficients and a learnable opacity α.To synthesize novel views, these 3D Gaussians are projected into the 2D image plane via differentiable splatting. Given a viewing transformation W and the Jacobian of the affine approximation of the projective transformation J, the 3D covariance Σ is transformed into a 2D planar covariance Σ′ = JW ΣW ⊤J⊤.The rendering pipeline employs a tile-based rasterizer that sorts the Gaussians overlapping a specific pixel by depth. The final pixel color C is derived through 
+
+α-blending, accumulating the contribution of N ordered Gaussians: 
+
+C =
+
+> N
+
+X
+
+> i=1
+
+ciα′
+
+> ii−1
+
+Y
+
+> j=1
+
+(1 − α′ 
+
+> j
+
+), (2) where ci denotes the color decoded from SH coefficients, and α′ 
+
+> i
+
+represents the effective 2D opacity. Similarly, the final pixel depth D can be rendered by accumulating the pro-jected depth values di (the distance from the camera center to the Gaussian center) using the same blending weights: 
+
+D =
+
+> N
+
+X
+
+> i=1
+
+diα′
+
+> ii−1
+
+Y
+
+> j=1
+
+(1 − α′ 
+
+> j
+
+). (3) 3D Gaussian Splatting is typically trained end-to-end by minimizing the dis-crepancy between the rendered and ground-truth images using a combination of 
+
+L1 and D-SSIM loss terms. 
+
+3.2 Stereo Depth Regularization 
+
+Geometric inaccuracy remains a critical bottleneck in sparse-view 3D Gaussian Splatting. Several prior works [18, 53] incorporate monocular depth [27, 28, 44] as a regularization term during the optimization process. However, the recon-structed geometry often remains suboptimal due to the inherent scale ambi-guity and cross-view inconsistency of these monocular priors. To address this limitation, recent approaches [8] enforce stereo consistency using photometric constraints. They warp synthesized views to the input views using the rendered depth to minimize reconstruction errors. However, this warping-based approach lacks direct supervision on Gaussian geometry and is prone to failure in texture-less or repetitive regions. 6 W. Yuan et al. MVS Depths 
+
+> (c) Consistency-Aware Dense Initialization
+> Stereo Cameras
+> Stereo Depth
+> (a) Stereo Depth Regularization (b) Gradient-Aware Opacity Decay
+> Input Views
+> …
+> …
+> MVS Model
+> … Filtering
+> Training Camera (Left)
+> Virtual Camera (Right)
+> Initialize
+> Render Depth
+> GT
+> Stereo Model Render
+> Render Left View
+> Render Right View
+> 𝐀 depth
+> 𝐀 color
+
+Fig. 1: Overview of StereoGS , comprising three components: (a) Stereo Depth Regularization synthesizes virtual stereo pairs to extract stereo depth, enforcing ex-plicit geometric consistency between paired views during optimization. (b) Gradient-Aware Opacity Decay dynamically penalizes Gaussian opacities according to their gra-dients, facilitating the removal of redundant primitives and mitigating overfitting. (c) Consistency-Aware Dense Initialization leverages multi-view depth priors and geomet-ric filtering to construct a dense and reliable geometric foundation. 
+
+To overcome these limitations, we propose stereo depth regularization. By constructing virtual stereo pairs and leveraging a foundation stereo model [39], we derive reliable stereo depth to regularize the Gaussian geometry, as illustrated in Fig. 1 (a). 
+
+Stereo Camera Pair Construction. During optimization, we treat the train-ing view as the left camera and synthesize a virtual right camera by applying a horizontal translation. We then render the corresponding right-view image ˆIr us-ing the current 3D Gaussians, forming a stereo pair (Il, ˆIr ) with the ground-truth left image Il.
+
+Left-Right Consistency Check. We employ FoundationStereo [39] as our pre-trained stereo matching model Φ. The left-view disparity is computed as 
+
+ˆDl = Φ(Il, ˆIr ). We explicitly use the clean ground-truth left image instead of a rendered one because the estimated disparity serves as an absolute depth reference; avoiding optimization noise and rendering artifacts ensures a highly reliable geometric prior. To filter out unreliable predictions, we apply the left-right consistency check that is widely applied in stereo vision literature [6, 9, 12]. We simultaneously extract the right-view disparity. Since standard stereo models typically output left-view disparity, we introduce a horizontal flipping operator F(·) to compute it: ˆDr = F
+
+
+
+Φ
+
+
+
+F(Il), F( ˆIr )
+
+ 
+
+. The left-right consistency effectively identifies occluded regions and eliminates false matches by judging whether the disparity discrepancy between ˆDl and ˆDr exceeds a threshold, forming an occlusion mask 
+
+Mocc . For specific details, please refer to the supplementary material. StereoGS 7
+
+To further refine the valid regions, we compute a background mask Mbg and a disparity anomaly mask Manomaly . The final validity mask for depth regular-ization is derived by fusing these masks: Mvalid = 1 − (Mbg ∨ Mocc ∨ Manomaly ).
+
+Depth Regularization. We convert the estimated disparity ˆDl into depth 
+
+Zstereo using the standard triangulation formula: Zstereo = f d/ ˆDl, where f is the focal length and d is the baseline between camera pairs. This Zstereo serves as pseudo-ground-truth and the stereo prior from the external stereo model. To further improve numerical stability during loss computation and to better constrain the geometric accuracy in near-foreground regions, we minimize the 
+
+L1 error in the inverse depth space between Zstereo and the rendered left-view depth ˆZ for all valid pixels, using the validity mask Mvalid .
+
+Ldepth = ∥Mvalid ⊙ ( 1ˆZ − 1
+
+Zstereo 
+
+)∥1, (4) 
+
+3.3 Gradient-Aware Opacity Decay 
+
+Opacity determines the visibility and contribution of each Gaussian primitive to the rendered image. Despite the importance of this attribute, existing meth-ods [4,14,18,41,51,53] predominantly rely on a periodic opacity reset mechanism to eliminate noisy primitives. While effective in dense-view scenarios, this aggres-sive reset indiscriminately suppresses both stable surface structures and transient floaters in sparse-view settings. Although recent sparse-view techniques [8] em-ploy a strategy with fixed decay rate that penalizes all Gaussians equally, this approach cannot effectively evaluate the importance of individual Gaussians or distinguish useful geometry from noise. Motivated by these limitations, we propose a gradient-aware opacity decay strategy. Our core insight is that the opacity gradient magnitude indicates a Gaussian primitive’s importance: Gaussians with large opacity gradients con-tribute significantly to reducing photometric error and should be preserved, whereas those with negligible gradients likely represent redundant floaters or noise. To implement this insight, we derive a dynamic decay factor γ by incorporat-ing the local gradient magnitude into a predefined base factor γbase . This factor 
+
+γ is then used to modulate the original opacity α. Formally, let g = |∇ αL| denote the magnitude of the gradient of the loss function L with respect to the opacity 
+
+α. We observe that the absolute values of g are typically minuscule (e.g., on the order of 10 −6). To ensure robustness against such scale variations, we guide the opacity decay using a relative gradient magnitude. Inspired by Group Relative Policy Optimization (GRPO) [32], which evaluates the output actions based on their relative advantages within a group rather than relying on an absolute value network, we compute a relative gradient β = g/ ¯g for each Gaussian, where ¯g is the mean opacity gradient magnitude across all Gaussians at the current itera-tion. Incorporating a basic decay factor γbase , we derive a dynamic decay factor 
+
+γ via an exponential soft-thresholding function: 
+
+γ = 1 − (1 − γbase ) exp ( −s · β) , (5) 8 W. Yuan et al. 
+
+where s is a sensitivity hyperparameter controlling the decay curvature. Finally, the opacity is scaled by ˆα = γα .
+
+3.4 Consistency-Aware Dense Initialization 
+
+Previous methods [4,14] typically utilize sparse point clouds generated by Structure-from-Motion (SfM) [31] for initialization. However, in sparse-view settings, SfM often yields point clouds that are too sparse and noisy to adequately represent the scene. While some recent works [8,41] have explored using MVS priors (e.g., MVS models [3] and keypoint matching networks [36]) to improve initialization, their performance is often constrained by the domain gap between pre-training data and diverse in-the-wild scenes, as illustrated in Fig. 1 (c). Building on this MVS-based paradigm, we overcome the generalization bot-tleneck by leveraging a more advanced zero-shot model, MVSAnywhere [10], to extract multi-view-consistent depth maps. Specifically, for each training view (treated as the target image), we input it along with the remaining source images into the MVS model to estimate its depth map. By iterating over all training views, we obtain a set of cross-view consistent depth maps. We then adopt a geo-metric filtering strategy [45] based on cross-view reprojection errors to eliminate outliers. The filtered depth maps are finally back-projected and fused into a uni-fied dense point cloud. Thanks to the robust zero-shot capabilities of MVSAny-where, we obtain higher-quality point clouds compared to [41] and [8], providing a significantly more robust initialization for the 3D Gaussians. We provide visual comparisons of the initialization point clouds in the experiment section. 
+
+3.5 Training Loss 
+
+The total objective function comprises two components: the proposed stereo matching prior-guided depth regularization Ldepth , as detailed in Eq. (4), and the color reconstruction loss Lcolor adopted from 3DGS [14]. We define the overall loss L as: 
+
+L = Lcolor + Ldepth , (6) where Lcolor represents a linear combination of the L1 loss and the D-SSIM loss 
+
+LD-SSIM , formulated as: 
+
+Lcolor = (1 − λ)L1 + λLD-SSIM . (7) 
+
+## 4 Experiments 
+
+4.1 Experimental Settings Datasets. We conduct experiments on four public datasets: LLFF [19], DTU [11], Mip-NeRF360 [2], and Blender [20]. Following prior works [8, 18, 24, 53], we used 3, 6, and 9 views as training sets for the LLFF and DTU datasets, 12 and 24 views for the Mip-NeRF360 dataset, and 8 images for training on the StereoGS 9
+
+Table 1: Quantitative comparison on LLFF with 3, 6, 9 training views. 
+
+We mark the best , second best , and third best methods in cells, respectively. “*” denotes using random dropout proposed by [26].                                                                                                                                          
+
+> Methods 3-view 6-view 9-view PSNR ↑SSIM ↑LPIPS ↓PSNR ↑SSIM ↑LPIPS ↓PSNR ↑SSIM ↑LPIPS ↓
+> RegNeRF [24] 19.08 0.587 0.336 23.10 0.760 0.206 24.86 0.820 0.161 FreeNeRF [43] 19.63 0.612 0.308 23.73 0.779 0.195 25.13 0.827 0.160 SparseNeRF [37] 19.86 0.624 0.328 23.26 0.741 0.235 24.27 0.781 0.228 3DGS [14] 16.02 0.465 0.378 19.45 0.627 0.268 21.13 0.715 0.214 DNGaussian [18] 19.12 0.591 0.294 22.18 0.755 0.198 23.17 0.788 0.180 FSGS [53] 20.31 0.652 0.288 24.20 0.811 0.173 25.32 0.856 0.136 CoR-GS [47] 20.45 0.712 0.196 24.49 0.837 0.115 26.06 0.874 0.089 MVPGS [41] 20.54 0.727 0.194 23.64 0.819 0.137 24.23 0.843 0.120 DropGaussian [26] 20.76 0.713 0.200 24.74 0.837 0.117 26.21 0.874 0.088 NexusGS [51] 21.07 0.738 0.177 ------Binocular3DGS [8] 21.44 0.751 0.168 24.87 0.845 0.106 26.17 0.877 0.090 D2GS [34] 21.35 0.746 0.179 24.84 0.834 0.122 ---Ours 21.91 0.773 0.157 24.92 0.853 0.104 26.25 0.879 0.087 Ours* 22.05 0.783 0.147 25.40 0.856 0.102 26.44 0.883 0.082
+
+Blender dataset. The selection of test images remained consistent with previous works [8,18,24,53]. The downsampling rates for the LLFF, DTU, Mip-NeRF360, and Blender datasets are 8, 4, 8, and 2, respectively. 
+
+Baselines. We compare the proposed StereoGS with representative existing methods, including NeRF-based approaches (RegNeRF [24], FreeNeRF [43], and SparseNeRF [37]) and 3DGS-based approaches (3DGS [14], DNGaussian [18], FSGS [53], CoR-GS [47], MVPGS [41], NexusGS [51], DropGaussian [26], Binoc-ular3DGS [8], and D 2GS [34]). For most evaluated methods, we directly report the best quantitative results from the respective original publications. For the vanilla 3DGS, we report the results obtained from our own implementation. We employ the average values of PSNR, SSIM [38], and LPIPS [49] as the quanti-tative evaluation metrics. 
+
+4.2 Comparison Comparison on LLFF. Table 1 presents the quantitative results on the LLFF dataset under configurations of 3, 6, and 9 input views. Our StereoGS con-sistently outperforms prior approaches across all view configurations in terms of PSNR, SSIM, and LPIPS. For NexusGS, we could not reproduce their re-sults and report only the 3-view result from their paper. Fig. 2 provides visual comparisons of novel view synthesis and depth rendering for the fern and trex 
+
+scenes from the LLFF dataset. As demonstrated by the rendered RGB images, vanilla 3DGS [14] captures only the coarse scene layout and suffers from severe patchy artifacts. For methods that employ monocular depth regularization, such as DNGaussian [18] and FSGS [53], the primary limitation lies in an inability to accurately reconstruct the underlying scene geometry. Although MVPGS [41] and Binocular3DGS [8] utilize MVS to establish an improved geometric initial-10 W. Yuan et al. GT3DGS DNGaussian FSGS MVPGS Binocular3DGS Ours
+
+> ferntrex
+
+Fig. 2: Visual comparison on LLFF dataset, including RGB images and col-ored depth maps. The Gaussians are learned under 1/8 resolution with 3 input views. 
+
+Table 2: Quantitative comparison on DTU with 3, 6, 9 training views. We mark the best , second best , and third best methods in cells, respectively. “*” de-notes using random dropout proposed by [26].                                                                                                                        
+
+> Methods 3-view 6-view 9-view PSNR ↑SSIM ↑LPIPS ↓PSNR ↑SSIM ↑LPIPS ↓PSNR ↑SSIM ↑LPIPS ↓
+> RegNeRF [24] 18.89 0.745 0.190 22.20 0.841 0.117 24.93 0.884 0.089 FreeNeRF [43] 19.52 0.787 0.173 23.25 0.844 0.131 25.38 0.888 0.102 SparseNeRF [37] 19.47 0.829 0.183 23.26 0.843 0.135 25.13 0.871 0.114 3DGS [14] 10.99 0.585 0.313 20.33 0.776 0.223 22.90 0.816 0.173 DNGaussian [18] 18.91 0.790 0.176 22.10 0.851 0.148 23.94 0.887 0.131 FSGS [53] 17.34 0.818 0.169 21.55 0.880 0.127 24.33 0.911 0.106 CoR-GS [47] 19.21 0.853 0.119 24.51 0.917 0.068 27.18 0.947 0.045 MVPGS [41] 20.65 0.877 0.099 23.98 0.921 0.066 26.45 0.946 0.047 NexusGS [51] 20.21 0.869 0.102 ------Binocular3DGS [8] 20.71 0.862 0.111 24.31 0.917 0.073 26.70 0.947 0.052 Ours 21.46 0.879 0.099 24.86 0.926 0.064 26.83 0.955 0.049 Ours* 22.00 0.890 0.095 25.41 0.938 0.063 27.39 0.955 0.047
+
+ization, these approaches still struggle during the optimization process. Specif-ically, Binocular3DGS relies on a self-supervised photometric consistency loss that is inherently unreliable in textureless regions. Furthermore, the use of a fixed-ratio opacity decay rate in Binocular3DGS fails to preserve essential sur-face Gaussians, as shown by the skeleton of the trex . These limitations result in geometric distortion and subsequent rendering artifacts, ultimately degrading the reconstructed details. In contrast, our StereoGS utilizes stereo depth regular-ization and employs a gradient-aware opacity decay strategy, effectively resolving ambiguities in textureless regions and preserving critical scene geometry. 
+
+Comparison on DTU. Table 2 presents the quantitative results on the DTU dataset with 3, 6, and 9 input views. Our StereoGS achieves state-of-the-art StereoGS 11 DNGaussian FSGS MVPGS Binocular3DGS Ours 
+
+> scan38 scan40
+> GT
+> scan55
+
+Fig. 3: Visual comparison on DTU under 1/8 resolution with 3 views. Table 3: Quantitative results on Mip-NeRF360 with 12 and 24 views.                                                                          
+
+> Methods 12-view 24-view PSNR ↑SSIM ↑LPIPS ↓PSNR ↑SSIM ↑LPIPS ↓
+> RegNeRF [24] 18.55 0.524 0.426 22.19 0.643 0.335 FreeNeRF [43] 18.68 0.528 0.421 22.78 0.689 0.323 SparseNeRF [37] 18.73 0.531 0.419 22.85 0.693 0.315 3DGS [14] 18.52 0.523 0.415 22.80 0.708 0.276 FSGS [53] 18.80 0.531 0.418 23.28 0.715 0.274 CoR-GS [47] 19.52 0.558 0.418 23.39 0.727 0.271 NexusGS [51] ---23.86 0.753 0.206 DropGaussian [26] 19.74 0.577 0.364 24.05 0.761 0.226 D2GS [34] 20.09 0.587 0.356 24.13 0.763 0.221 Ours 20.25 0.618 0.312 24.18 0.775 0.222 Ours* 20.51 0.625 0.309 24.25 0.783 0.206
+
+performance across most evaluation metrics. Specifically, under the highly con-strained 3-view setting, StereoGS demonstrates significant improvements in PSNR, SSIM, and LPIPS compared to recent approaches such as Binocular3DGS [8] and MVPGS [41]. Fig. 3 provides visual comparisons for three scenes from the DTU dataset. As observed in the rendered novel views, DNGaussian [18], FSGS [53], and MVPGS [41] yield blurry results, whereas Binocular3DGS [8] exhibits nu-merous artifacts in textureless regions due to self-supervised photometric con-straints. In contrast, our StereoGS significantly reduces artifacts in textureless regions while achieving superior rendering quality. 
+
+Comparison on Mip-NeRF360. Table 3 presents the quantitative results on the Mip-NeRF360 dataset using 12 and 24 input views. The proposed method achieves superior performance across most evaluation metrics. Specifically, when compared to recent state-of-the-art approaches, such as D 2GS [34] and Drop-Gaussian [26], StereoGS demonstrates significant improvements under both the 12-view and 24-view configurations. Figure 3 provides visual comparisons of novel view synthesis and depth rendering for the bicycle and stump scenes from the Mip-NeRF360 dataset. In the bicycle scene, baseline methods includ-12 W. Yuan et al. bicycle    
+
+> FSGSCoR-GSDropGaussianOursGT
+> stump
+> Fig. 4: Visual comparison on the Mip-NeRF360 dataset.
+
+ing FSGS [53], CoR-GS [47], and DropGaussian [26] exhibit prominent artifacts in large textureless regions (for example, the grass areas indicated by dashed boxes), whereas the proposed approach maintains high rendering fidelity. Fur-thermore, in the stump scene, these baseline approaches show difficulty in re-constructing fine-grained object details, which are successfully preserved by the proposed method. Consistent with the results of RGB rendering, the proposed method produces significantly more accurate and coherent depth rendering than the baselines. 
+
+Comparison on Blender. Table 4 presents the quantitative results on the Blender dataset using 8 input views. Our proposed method consistently out-performs all baselines across all metrics, demonstrating its superior capability in sparse-view reconstruction. Fig. 5 provides visual comparisons for two scenes from the Blender dataset. 
+
+4.3 Ablation Studies 
+
+To verify the effectiveness of the proposed consistency-aware dense initializa-tion, stereo depth regularization, and gradient-aware opacity decay strategy, we conduct ablation studies by incrementally integrating these components on the LLFF and DTU datasets. As demonstrated in Table 5, the removal of any pro-posed module leads to a clear degradation in performance. 
+
+Effectiveness of Consistency-Aware Dense Initialization. As shown in the second row of Table 5, incorporating consistency-aware dense initialization substantially improves performance over the baseline ( e.g ., PSNR increases from 16.02 to 19.75 on the LLFF dataset and from 10.99 to 14.10 on the DTU dataset). As illustrated in Fig. 6, the baseline 3DGS fails to reconstruct meaningful ge-StereoGS 13 
+
+Table 4: Quantitative results on Blender with 8 training views.                                        
+
+> Methods PSNR ↑SSIM ↑LPIPS ↓
+> RegNeRF [24] 23.86 0.852 0.105 FreeNeRF [43] 24.26 0.883 0.098 SparseNeRF [37] 24.04 0.876 0.113 3DGS [14] 23.20 0.870 0.104 DNGaussian [18] 24.31 0.886 0.088 FSGS [53] 24.64 0.895 0.095 CoR-GS [47] 24.43 0.896 0.084 NexusGS [51] 24.37 0.893 0.087 DropGaussian [26] 24.42 0.888 0.089 Binocular3DGS [8] 24.71 0.872 0.101 Ours 24.83 0.899 0.081 Ours* 25.04 0.899 0.078
+
+DNGaussian3DGS Ours GT
+
+> drumsmaterials
+
+Fig. 5: Visualization on Blender under 1/2 resolution with 8 input views. 
+
+ometry, resulting in disordered depth maps and severe floaters. In contrast, the proposed dense initialization enables the clear recovery of the overall scene struc-ture. This demonstrates that zero-shot MVS priors provide a more robust and crucial geometric foundation than sparse SfM points. Furthermore, to validate specific design choices, we conduct additional ablation studies using different MVS models and compare the generated point clouds with recent state-of-the-art methods in the supplementary material. However, despite this strong foundation, local details in the rendered depth maps, such as the dinosaur horn (indicated by the yellow dashed box in Fig. 6), still contain severe holes and artifacts. This limitation necessitates the introduction of further geometric constraints. 
+
+Effectiveness of Stereo Depth Regularization. Building upon the dense initialization, the integration of stereo depth regularization further refines the geometry. Table 5 demonstrates consistent quantitative improvements across all metrics. More importantly, Fig. 6 illustrates the substantial qualitative impact of this module: severe depth holes on the horn are effectively filled, and the back-14 W. Yuan et al. 
+
+Table 5: Ablation studies on LLFF and DTU datasets with 3 input views.                                                                                 
+
+> Consistency-Aware Dense Initialization Stereo Depth Regularization Gradient-Aware Opacity Decay LLFF DTU PSNR ↑SSIM ↑LPIPS ↓PSNR ↑SSIM ↑LPIPS ↓
+> ✗✗✗16.02 0.465 0.378 10.99 0.585 0.313
+> ✓✗✗19.75 0.691 0.215 14.10 0.786 0.196
+> ✗✓✗17.32 0.524 0.317 12.46 0.697 0.208
+> ✗✗✓18.18 0.569 0.291 15.05 0.751 0.202
+> ✗✓✓18.96 0.605 0.262 17.66 0.784 0.172
+> ✓✓✗19.79 0.695 0.214 15.57 0.812 0.166
+> ✓✗✓21.18 0.741 0.171 19.76 0.863 0.112
+> ✓✓✓21.91 0.773 0.157 21.46 0.879 0.099 RGB
+> Baseline(3DGS)+DenseInit+StereoRegularization+OpacityDecay
+> Depth
+
+Fig. 6: Ablation Study of Visual Quality. We compare the rendered RGB images and depth maps of novel views to verify the contributions of each proposed component. 
+
+ground geometry becomes significantly smoother. To verify that these improve-ments arise from the proposed regularization formulation rather than a specific network architecture, we evaluate the results of different stereo matching models in the supplementary material. 
+
+Effectiveness of Gradient-Aware Opacity Decay. Finally, the replacement of the standard periodic reset with the proposed gradient-aware opacity decay strategy yields the most significant visual and quantitative refinements. This module achieves a best performance of 21.91 PSNR on the LLFF dataset and 21.46 PSNR on the DTU dataset, and it excels at pruning redundant noise. As shown in the final column of Fig. 6, the remaining floaters in the background and around the boundaries of the foreground are cleanly eliminated. By dynam-ically evaluating the importance of each Gaussian through the relative gradient, the proposed strategy successfully preserves essential surface structures while pruning noise points. To rigorously justify our opacity decay formulation, we compare our exponential decay function against alternative mapping strategies (e.g ., constant, step, and linear decay) and raw gradient inputs in the supple-mentary material. StereoGS 15 
+
+## 5 Conclusion 
+
+In this paper, we presented StereoGS, a novel framework that effectively ad-dresses the critical challenges of scale ambiguity and geometric inconsistency in sparse-view 3D Gaussian Splatting. By seamlessly integrating foundation stereo models, we introduced a Stereo Depth Regularization mechanism that constructs virtual stereo pairs to enforce absolute scale and binocular consistency during op-timization. Furthermore, we designed a Gradient-Aware Opacity Decay strategy that dynamically prunes redundant primitives based on their relative optimiza-tion gradients, preserving essential geometry while eliminating noise. Coupled with a Consistency-Aware Dense Initialization, StereoGS establishes a robust geometric foundation from the outset. Extensive experiments across multiple standard benchmarks demonstrate that StereoGS achieves state-of-the-art novel view synthesis quality under sparse-view conditions, all while maintaining the real-time rendering efficiency of vanilla 3DGS. 
+
+Limitations. Stereo models may produce inaccurate predictions in extremely textureless regions. Furthermore, online stereo depth regularization inevitably incurs additional training overhead. Addressing these challenges represents a promising direction for future research. 
+
+## References 
+
+1. Barron, J.T., Mildenhall, B., Tancik, M., Hedman, P., Martin-Brualla, R., Srini-vasan, P.P.: Mip-nerf: A multiscale representation for anti-aliasing neural radiance fields. In: Proceedings of the IEEE/CVF International Conference on Computer Vision. pp. 5855–5864 (2021) 1, 3 2. Barron, J.T., Mildenhall, B., Verbin, D., Srinivasan, P.P., Hedman, P.: Mip-nerf 360: Unbounded anti-aliased neural radiance fields. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 5470– 5479 (2022) 3, 8 3. Cao, C., Ren, X., Fu, Y.: Mvsformer: Multi-view stereo by learning robust image features and temperature-based depth. arXiv preprint arXiv:2208.02541 (2022) 8, 20, 29 4. Chung, J., Oh, J., Lee, K.M.: Depth-regularized optimization for 3d gaussian splat-ting in few-shot images. In: Proceedings of the IEEE/CVF Conference on Com-puter Vision and Pattern Recognition. pp. 811–820 (2024) 2, 4, 7, 8 5. Deng, K., Liu, A., Zhu, J.Y., Ramanan, D.: Depth-supervised nerf: Fewer views and faster training for free. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (2022) 4 6. Godard, C., Mac Aodha, O., Brostow, G.J.: Unsupervised monocular depth es-timation with left-right consistency. In: Proceedings of the IEEE conference on computer vision and pattern recognition. pp. 270–279 (2017) 6 7. Gu, M., Zhang, J., Li, J., Yu, X., Luo, H., Zheng, J., Bai, X.: Sparsesurf: Sparse-view 3d gaussian splatting for surface reconstruction. In: Proceedings of the AAAI Conference on Artificial Intelligence. vol. 40, pp. 4311–4319 (2026) 4 8. Han, L., Zhou, J., Liu, Y.S., Han, Z.: Binocular-guided 3d gaussian splatting with view consistency for sparse view synthesis. Advances in Neural Information Pro-cessing Systems 37 , 68595–68621 (2024) 1, 2, 4, 5, 7, 8, 9, 10, 11, 13, 22, 25 16 W. Yuan et al. 9. Hirschmuller, H.: Stereo processing by semiglobal matching and mutual informa-tion. IEEE Transactions on Pattern Analysis and Machine Intelligence 30 (2), 328– 341 (2008) 6 10. Izquierdo, S., Sayed, M., Firman, M., Garcia-Hernando, G., Turmukhambetov, D., Civera, J., Mac Aodha, O., Brostow, G.J., Watson, J.: MVSAnywhere: Zero shot multi-view stereo. In: CVPR (2025) 3, 8, 20, 27, 28 11. Jensen, R., Dahl, A., Vogiatzis, G., Tola, E., Aanæs, H.: Large scale multi-view stereopsis evaluation. In: Proceedings of the IEEE conference on computer vision and pattern recognition. pp. 406–413 (2014) 8 12. Jie, Z., Wang, P., Ling, Y., Zhao, B., Wei, Y., Feng, J., Liu, W.: Left-right compar-ative recurrent model for stereo matching. In: Proceedings of the IEEE conference on computer vision and pattern recognition. pp. 3838–3846 (2018) 6 13. Jing, J., Luo, W., Mao, Y., Mikolajczyk, K.: Lite any stereo: Efficient zero-shot stereo matching. arXiv preprint arXiv:2511.16555 (2025) 20, 22 14. Kerbl, B., Kopanas, G., Leimkühler, T., Drettakis, G.: 3d gaussian splatting for real-time radiance field rendering. ACM Trans. Graph. 42 (4), 139–1 (2023) 1, 3, 4, 7, 8, 9, 10, 11, 13 15. Kheradmand, S., Rebain, D., Sharma, G., Sun, W., Tseng, Y.C., Isack, H., Kar, A., Tagliasacchi, A., Yi, K.M.: 3d gaussian splatting as markov chain monte carlo. NeurIPS (2024) 4 16. Kim, M., Seo, S., Han, B.: Infonerf: Ray entropy minimization for few-shot neural volume rendering. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 12912–12921 (2022) 4 17. Lee, J.C., Rho, D., Sun, X., Ko, J.H., Park, E.: Compact 3d gaussian representation for radiance field. In: CVPR (2024) 4 18. Li, J., Zhang, J., Bai, X., Zheng, J., Ning, X., Zhou, J., Gu, L.: Dngaussian: Opti-mizing sparse-view 3d gaussian radiance fields with global-local depth normaliza-tion. In: CVPR (2024) 2, 4, 5, 7, 8, 9, 10, 11, 13 19. Mildenhall, B., Srinivasan, P.P., Ortiz-Cayon, R., Kalantari, N.K., Ramamoorthi, R., Ng, R., Kar, A.: Local light field fusion: Practical view synthesis with prescrip-tive sampling guidelines. ACM Transactions on Graphics (ToG) 38 (4), 1–14 (2019) 820. Mildenhall, B., Srinivasan, P.P., Tancik, M., Barron, J.T., Ramamoorthi, R., Ng, R.: Nerf: Representing scenes as neural radiance fields for view synthesis. Commu-nications of the ACM 65 (1), 99–106 (2021) 1, 3, 8 21. Min, J., Jeon, Y., Kim, J., Choi, M.: S2m2: Scalable stereo matching model for reli-able depth estimation. In: Proceedings of the IEEE/CVF International Conference on Computer Vision. pp. 26729–26739 (2025) 20, 22 22. Müller, T., Evans, A., Schied, C., Keller, A.: Instant neural graphics primitives with a multiresolution hash encoding. ACM Trans. Graph. 41 , 102:1–102:15 (2022) 3 23. Niedermayr, S., Stumpfegger, J., Westermann, R.: Compressed 3d gaussian splat-ting for accelerated novel view synthesis. In: CVPR (2024) 4 24. Niemeyer, M., Barron, J.T., Mildenhall, B., Sajjadi, M.S., Geiger, A., Radwan, N.: Regnerf: Regularizing neural radiance fields for view synthesis from sparse inputs. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 5480–5490 (2022) 1, 4, 8, 9, 10, 11, 13 25. Paliwal, A., Ye, W., Xiong, J., Kotovenko, D., Ranjan, R., Chandra, V., Kalantari, N.K.: Coherentgs: Sparse novel view synthesis with coherent 3d gaussians. In: European Conference on Computer Vision. pp. 19–37. Springer (2024) 4 StereoGS 17 26. Park, H., Ryu, G., Kim, W.: Dropgaussian: Structural regularization for sparse-view gaussian splatting. In: Proceedings of the Computer Vision and Pattern Recognition Conference. pp. 21600–21609 (2025) 4, 9, 10, 11, 12, 13, 27 27. Ranftl, R., Bochkovskiy, A., Koltun, V.: Vision transformers for dense prediction. In: Proceedings of the IEEE/CVF international conference on computer vision. pp. 12179–12188 (2021) 5 28. Ranftl, R., Lasinger, K., Hafner, D., Schindler, K., Koltun, V.: Towards robust monocular depth estimation: Mixing datasets for zero-shot cross-dataset transfer. IEEE transactions on pattern analysis and machine intelligence 44 (3), 1623–1637 (2020) 5 29. Roessle, B., Barron, J.T., Mildenhall, B., Srinivasan, P.P., Nießner, M.: Dense depth priors for neural radiance fields from sparse input views. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (2022) 430. Safadoust, S., Tosi, F., Güney, F., Poggi, M., et al.: Self-evolving depth-supervised 3d gaussian splatting from rendered stereo pairs. In: 2024 Proceedings of the British Machine Vision Conference (BMVC). pp. 1–17 (2024) 4 31. Schonberger, J.L., Frahm, J.M.: Structure-from-motion revisited. In: Proceedings of the IEEE conference on computer vision and pattern recognition. pp. 4104–4113 (2016) 8, 20, 29 32. Shao, Z., Wang, P., Zhu, Q., Xu, R., Song, J., Bi, X., Zhang, H., Zhang, M., Li, Y., Wu, Y., et al.: Deepseekmath: Pushing the limits of mathematical reasoning in open language models. arXiv preprint arXiv:2402.03300 (2024) 7, 24 33. Song, J., Park, S., An, H., Cho, S., Kwak, M.S., Cho, S., Kim, S.: Därf: Boosting radiance fields from sparse inputs with monocular depth adaptation. In: NIPS (2023) 4 34. Song, M., Lin, X., Zhang, D., Li, H., Li, X., Du, B., Qi, L.: D 2 gs: Depth-and-density guided gaussian splatting for stable and accurate sparse-view reconstruction (2026) 9, 11 35. Sun, C., Sun, M., Chen, H.T.: Direct voxel grid optimization: Super-fast conver-gence for radiance fields reconstruction. In: Proceedings of the IEEE/CVF Con-ference on Computer Vision and Pattern Recognition. pp. 5459–5469 (2022) 3 36. Truong, P., Danelljan, M., Timofte, R., Van Gool, L.: Pdc-net+: Enhanced proba-bilistic dense correspondence network. IEEE Transactions on Pattern Analysis and Machine Intelligence 45 (8), 10247–10266 (2023) 8, 20, 29 37. Wang, G., Chen, Z., Loy, C.C., Liu, Z.: Sparsenerf: Distilling depth ranking for few-shot novel view synthesis. In: Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) (2023) 1, 4, 9, 10, 11, 13 38. Wang, Z., Bovik, A.C., Sheikh, H.R., Simoncelli, E.P.: Image quality assessment: from error visibility to structural similarity. IEEE transactions on image processing 
+
+13 (4), 600–612 (2004) 9 39. Wen, B., Trepte, M., Aribido, J., Kautz, J., Gallo, O., Birchfield, S.: Foundation-stereo: Zero-shot stereo matching. In: Proceedings of the Computer Vision and Pattern Recognition Conference. pp. 5249–5260 (2025) 2, 6, 20, 22, 27 40. Wynn, J., Turmukhambetov, D.: Diffusionerf: Regularizing neural radiance fields with denoising diffusion models. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (2023) 4 41. Xu, W., Gao, H., Shen, S., Peng, R., Jiao, J., Wang, R.: Mvpgs: Excavating multi-view priors for gaussian splatting from sparse input views. In: European Conference on Computer Vision. pp. 203–220. Springer (2024) 2, 4, 7, 8, 9, 10, 11 18 W. Yuan et al. 42. Yan, Z., Low, W.F., Chen, Y., Lee, G.H.: Multi-scale 3d gaussian splatting for anti-aliased rendering. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 20923–20931 (2024) 4 43. Yang, J., Pavone, M., Wang, Y.: Freenerf: Improving few-shot neural rendering with free frequency regularization. In: Proceedings of the IEEE/CVF International Conference on Computer Vision (CVPR) (2023) 3, 4, 9, 10, 11, 13 44. Yang, L., Kang, B., Huang, Z., Xu, X., Feng, J., Zhao, H.: Depth anything: Un-leashing the power of large-scale unlabeled data. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 10371–10381 (2024) 5 45. Yao, Y., Luo, Z., Li, S., Fang, T., Quan, L.: Mvsnet: Depth inference for unstruc-tured multi-view stereo. In: Proceedings of the European conference on computer vision (ECCV). pp. 767–783 (2018) 8, 27 46. Ye, Z., Li, W., Liu, S., Qiao, P., Dou, Y.: Absgs: Recovering fine details in 3d gaussian splatting. In: ACM MM (2024) 4 47. Zhang, J., Li, J., Yu, X., Huang, L., Gu, L., Zheng, J., Bai, X.: Cor-gs: sparse-view 3d gaussian splatting via co-regularization. In: European Conference on Computer Vision. pp. 335–352. Springer (2024) 4, 9, 10, 11, 12, 13 48. Zhang, J., Zhang, Y., Tosi, F., Gu, M., Li, J., Yu, X., Zheng, J., Bai, X., Poggi, M.: Eve3d: Elevating vision models for enhanced 3d surface reconstruction via gaussian splatting. Advances in Neural Information Processing Systems 38 , 67934–67960 (2026) 4 49. Zhang, R., Isola, P., Efros, A.A., Shechtman, E., Wang, O.: The unreasonable effectiveness of deep features as a perceptual metric. In: Proceedings of the IEEE conference on computer vision and pattern recognition. pp. 586–595 (2018) 9 50. Zhang, Z., Hu, W., Lao, Y., He, T., Zhao, H.: Pixel-gs: Density control with pixel-aware gradient for 3d gaussian splatting. In: ECCV (2024) 4 51. Zheng, Y., Jiang, Z., He, S., Sun, Y., Dong, J., Zhang, H., Du, Y.: Nexusgs: Sparse view synthesis with epipolar depth priors in 3d gaussian splatting. In: Proceedings of the Computer Vision and Pattern Recognition Conference. pp. 26800–26809 (2025) 2, 7, 9, 10, 11, 13 52. Zhou, Z., Tulsiani, S.: Sparsefusion: Distilling view-conditioned diffusion for 3d reconstruction. In: CVPR (2023) 4 53. Zhu, Z., Fan, Z., Jiang, Y., Wang, Z.: Fsgs: Real-time few-shot view synthesis using gaussian splatting. In: European Conference on Computer Vision. Springer (2024) 1, 2, 4, 5, 7, 8, 9, 10, 11, 12, 13 StereoGS 19 
+
+## StereoGS: Sparse-View 3D Gaussian Splatting via Stereo Priors Supplementary Material A Role of Opacity Gradient 
+
+We use opacity gradient only as an optimization-state indicator, not as a mea-sure of geometric importance. Geometric consistency is enforced by Stereo Depth Regularization, and the opacity gradient is computed from the total loss, includ-ing the stereo depth loss. Thus, depth inconsistency also affects the decay signal, making the opacity decay complement stereo regularization. For a floater, a large opacity gradient does not freeze or increase its opacity. It only reduces the ex-tra decay at the current step. The floater is still updated by the photometric and depth losses. If it remains unsupported after optimization, its opacity will decrease and be pruned. 
+
+## B Failure Cases 
+
+Fig. 7 shows two cases. First, Consistency-Aware Dense Initialization may fail on reflective objects on specific view, as view-dependent reflections make MVS depths filter by reprojection filtering. Second, large textureless regions can make stereo matching ambiguous, producing erroneous stereo depth and inaccurate geometric constraints. Point CloudView 1 MVS Depth 1 Filter Mask 1 View 2 MVS Depth 2 Filter Mask 2 View 3 MVS Depth 3 Filter Mask 3               
+
+> LeftView(GT)RightView(Virtual)StereoDepthLeftView(GT)RightView(Virtual)StereoDepth
+
+Fig. 7: Visualization of failure cases 
+
+## C Additional Ablation Results 
+
+C.1 Ablation Study on Different MVS Models 
+
+To validate the design choice of our Consistency-Aware Dense Initialization mod-ule, we compare different Multi-View Stereo (MVS) models for point cloud ini-tialization. As discussed in the main paper, relying solely on sparse point clouds 20 W. Yuan et al. 
+
+generated by Structure-from-Motion (SfM) [31] provides insufficient geometric guidance under sparse-view settings. This inevitably leads to suboptimal novel view synthesis, yielding only 18.96 dB and 17.66 dB in PSNR on the LLFF and DTU datasets, respectively, under the 3-view setting. To address this, we evaluate the integration of various learning-based MVS priors, including PDCNet+ [36], MVSFormer [3], and our adopted MVSAny-where [10]. As detailed in Tab. 6, while PDCNet+ and MVSFormer improve upon the SfM baseline, their performance is constrained by the domain gap between their pre-training data and diverse in-the-wild scenes. In contrast, MVSAny-where leverages powerful zero-shot generalization to extract highly accurate, multi-view-consistent depth maps. Consequently, StereoGS equipped with MVSAny-where achieves the best quantitative results across all metrics. This superiority is further corroborated by the qualitative comparisons in Fig. 8. Visualizations of the fern and horns scenes demonstrate that models initialized with PDCNet+ or MVSFormer still struggle with geometric artifacts and incomplete structures in challenging regions. Conversely, MVSAnywhere provides a significantly more robust and dense geometric foundation, enabling our framework to render sharper details and highly accurate depth maps that closely align with the ground truth (GT). 
+
+Table 6: Quantitative results of different MVS models on LLFF and DTU datasets with 3 input views.                                
+
+> Methods LLFF DTU PSNR ↑SSIM ↑LPIPS ↓PSNR ↑SSIM ↑LPIPS ↓
+> Ours (w/ SfM [31]) 18.96 0.605 0.262 17.66 0.784 0.172 Ours (w/ PDCNet+ [36]) 20.10 0.666 0.222 19.81 0.843 0.133 Ours (w/ MVSFormer [3]) 21.08 0.737 0.176 20.71 0.865 0.115
+> Ours (w/ MVSAnywhere [10]) 21.91 0.773 0.157 21.46 0.879 0.099
+
+C.2 Ablation Study on Different Stereo Models 
+
+To demonstrate the universality and adaptability of the proposed Stereo Depth Regularization, we evaluate the compatibility of the module with different stereo matching priors. Specifically, we substitute the default FoundationStereo [39] prior with other recent large-scale generalized stereo models, including S2M2 [21] and LiteAnyStereo [13]. To ensure a fair comparison, we replace only the stereo matching model, keeping all other network components and training settings unchanged. As reported in Table 7, the integration of any of these stereo priors yields consistent and significant improvements over the baseline. This observation indi-cates that the proposed depth regularization strategy is not limited to a specific stereo architecture. Instead, the strategy serves as a universal component that effectively leverages general stereo priors to enhance novel view synthesis. StereoGS 21 w/ PDCNet+ w/ MVSFormer w/ MVSAnywhere GT     
+
+> fernhorns
+> Fig. 8: Qualitative comparison of different MVS initialization models. Visual results on the fern and horns scenes demonstrate that while our framework benefits from various MVS priors, the default configuration (with MVSAnywhere) synthesizes the sharpest details and the most accurate depth maps compared to other variants.
+
+Among the used models, the default configuration using FoundationStereo achieves the most substantial performance gains. As further illustrated in Fig. 9, qualitative comparisons on the fortress and room scenes demonstrate that the proposed method equipped with FoundationStereo produces the sharpest geo-metric details and the fewest rendering artifacts. This result justifies the selection of FoundationStereo as the default prior while confirming the overall flexibility and generalizability of the proposed framework. We provide the qualitative comparisons in Fig. 9. The visualizations verify that using any stereo model improves detail, and FoundationStereo yields the sharpest geometric details and the fewest rendering artifacts. This confirms the overall flexibility and generalizability of the proposed framework. 
+
+C.3 Ablation Study on the Validity Mask 
+
+To validate the necessity of the validity mask ( Mvalid ) in our Stereo Depth Reg-ularization, we conduct an ablation study on the LLFF and DTU datasets with 3 input views. Specifically, we remove the mask during optimization and apply 22 W. Yuan et al. 
+
+Table 7: Quantitative results of different stereo models on LLFF and DTU datasets with three input views.                                
+
+> Methods LLFF DTU PSNR ↑SSIM ↑LPIPS ↓PSNR ↑SSIM ↑LPIPS ↓
+> Ours (w/o Stereo Depth Reg) 21.18 0.741 0.171 19.76 0.863 0.112 Ours (w/ LiteAnyStereo [13]) 21.28 0.747 0.166 20.84 0.841 0.111 Ours (w/ S2M2 [21]) 21.53 0.758 0.163 21.12 0.854 0.108
+> Ours (w/ FoundationStereo [39]) 21.91 0.773 0.157 21.46 0.879 0.099
+
+the stereo depth loss to all pixels indiscriminately, keeping all other components and training settings entirely unchanged. As reported in Table 8, removing the validity mask leads to a noticeable performance drop across both datasets. This decline occurs because foundation stereo models inevitably produce erroneous disparity estimates in occluded, tex-tureless, or anomalous regions. Without the validity mask to filter out these unreliable priors, the optimization process is misguided by noisy depth supervi-sion, thereby degrading the overall rendering quality. Qualitative comparisons on the flower and trex scenes in Fig. 10 further sup-port this conclusion. As shown in the visualizations, optimizing without the va-lidity mask introduces severe geometric artifacts and floaters, particularly around complex object boundaries and heavily occluded areas (e.g., the background of the flower and the skeletal structure of the trex). In contrast, our model (w/ 
+
+Mvalid ), which leverages the validity mask to enforce supervision strictly on re-liable regions, successfully preserves clean and accurate scene geometry. 
+
+Table 8: Quantitative results of the validity mask ablation on the LLFF and DTU datasets with 3 input views.                      
+
+> Methods LLFF DTU PSNR ↑SSIM ↑LPIPS ↓PSNR ↑SSIM ↑LPIPS ↓
+> Ours (w/o Mvalid )21.30 0.748 0.165 20.82 0.841 0.107
+> Ours (w/ Mvalid )21.91 0.773 0.157 21.46 0.879 0.099
+
+C.4 Ablation Study on Opacity Decay Strategies 
+
+To validate the design of the proposed Gradient-Aware Opacity Decay module, we compare the default exponential strategy against several other functions: Constant, Step, and Linear. Table 9 presents the quantitative ablation results on the LLFF dataset. Fig. 12 provides the curves of different functions for intuitive understanding. Fig. 13 illustrates the statistical distribution of opacity gradients during training. Fig. 11 provides qualitative visual results. We first analyze the Constant strategy [8], which applies a uniform decay penalty across all Gaussians. The primary limitation of this approach is the StereoGS 23 wo/Stereo Depth Reg w/LiteAnyStereo w/S2M2 w/FoundationStereo GT
+
+> fortressroom
+
+Fig. 9: Qualitative comparison of different stereo models. Visual results on the 
+
+fortress and room scenes demonstrate that while the proposed regularization module is compatible with various priors, the default configuration (with FoundationStereo) synthesizes the sharpest details and the fewest artifacts compared to other variants and the baseline. 
+
+lack of discrimination: it fails to distinguish between important Gaussians and floaters. As shown in the highlighted regions of Fig. 11, this indiscriminate penalty incorrectly suppresses essential geometric structures, leading to render-ing artifacts in the RGB images and missing surfaces in the depth maps. To address this limitation, we ablate a Step or Linear function based on the relative gradient β. However, as shown in Table 9, these functions yield lower PSNR scores (21.17 and 21.24) than the Constant baseline. The mathematical curves in Fig. 12 explain this failure: since the majority of gradients exceed the mean value (i.e., β > 1), both Step and Linear functions tend to maintain high opacity for an excessive number of invalid Gaussian primitives. Specifically, the Step function causes abrupt truncations that fail to filter these regions, while the Linear function insufficiently penalizes primitives with moderate-to-high gradients. This leads to a suboptimal quantitative performance compared to the Constant decay. 
+
+Raw or Relative Gradient Norm. As illustrated in Fig. 13, the absolute opacity gradients ( g) during training are extremely small, predominantly on the order of 10 −6. Consequently, when applying exponential decay directly to these raw gradients (Exp-g), the exponential term exp (Exp-g) remains nearly con-stant at approximately 1.0. This causes the decay function to degenerate into the Constant function, which is why its quantitative performance (21.41 PSNR) 24 W. Yuan et al. w/o valid mask w/ valid mask GT      
+
+> flowertrex
+> Fig. 10: Qualitative comparison of the validity mask on the LLFF dataset with 3 input views. Visual results on the flower and trex scenes demonstrate that optimizing without the validity mask leads to noticeable floaters and geometric distor-tions around complex boundaries. By filtering out unreliable stereo priors, our model (w/ Mvalid ) synthesizes significantly cleaner and more accurate geometry.
+
+is close to the Constant results in Table 9. This observation underscores the ne-cessity of our relative gradient β, which provides a properly scaled normalization to ensure stable and effective opacity attenuation. Our default exponential function using the relative gradient β (Exp-β) strat-egy serves as an effective solution, achieving a significant 21.91 PSNR. Inspired by the concept of relative advantage in GRPO [32], the relative metric β nor-malizes the small and noisy absolute gradients. This normalization provides a stable, scale-invariant measure of structural importance. Exp-β accurately tar-gets and heavily penalizes below-average floaters ( β < 1) to remove background noise, while it rapidly increases the retention rate for above-average valid struc-tures. As shown in Fig. 11, this collaboration effectively preserves high-frequency details, yielding sharp novel-view synthesis and complete depth maps. StereoGS 25 
+
+Table 9: Quantitative results of different opacity decay strategies on LLFF with 3 input views.                                                                                      
+
+> Independent Variable Decay Strategies Function Formula PSNR ↑SSIM ↑LPIPS ↓
+> Constant [8] ˆα=α·γbase 21.45 0.751 0.164
+> β=g/ ¯g
+> Step ˆα=α·(1 −(1 −γbase )·1β< 2s)21.17 0.747 0.163 Linear ˆα=α·(1 −(1 −γbase )·(1 −s·β)) 21.24 0.747 0.164
+> Exp-β(Ours) ˆα=α·(1 −(1 −γbase )·exp( −s·β)) 21.91 0.773 0.157
+> gExp-gˆα=α·(1 −(1 −γbase )·exp( −s·g)) 21.41 0.742 0.171 StepLinearConstantExp-𝐀 Exp-𝐀 (Ours)GT
+> trexfern
+
+Fig. 11: Visual comparison of different opacity decay strategies on the LLFF dataset with 3 input views. 
+
+C.5 Ablation study for hyperparameter γbase 
+
+We perform ablation studies on the LLFF and DTU datasets to investigate the impact of the hyperparameters in our Gradient-Aware Opacity Decay strategy. We first evaluate the base decay factor γbase , varying its value from 0.960 to 1.0 under the 3-view setting, with results presented in Table 10. Note that setting 
+
+γbase = 1 .0 is mathematically equivalent to disabling the opacity decay entirely. As shown in Table 10, setting γbase too low (e.g., 0.960) leads to aggressive pruning, which mistakenly eliminates essential surface primitives and degrades the rendering quality. Conversely, a value too close to 1.0 fails to effectively suppress redundant floaters, leading to overfitting and artifacts. We find that the best balance between preserving stable structures and pruning noise is achieved when γbase is set to 0.99 on both datasets. Furthermore, we investigate the sensitivity hyperparameter s, which controls how easily a Gaussian can escape the opacity penalty based on its normalized gradient. According to our formulation, an excessively small s (e.g., 0.1) dictates that a Gaussian requires a significantly large gradient to avoid the penalty, re-sulting in the indiscriminate pruning of useful primitives. On the other hand, an 26 W. Yuan et al. 0.0 0.5 1.0 1.5 2.0 2.5                
+
+> 0.990
+> 0.992
+> 0.994
+> 0.996
+> 0.998
+> 1.000
+> base =0.99, s=0.5
+> =base
+> = 1 (1 base )1< 2 s
+> = 1 (1 base )(1 s)
+> = 1 (1 base )exp( s)
+
+Fig. 12: Visualization of Opacity De-cay Functions. 
+
+Fig. 13: Statistical distribution of opacity gradients during training. 
+
+excessively large s (e.g., 1.0) makes the mechanism overly sensitive, protecting even noisy floaters with minor gradients from being pruned and leaving redun-dant artifacts in the scene. Therefore, we adopt a balanced value of s = 0 .5.
+
+Table 10: Ablation studies for γbase on LLFF and DTU datasets with 3 input views. 
+
+γbase 0.960 0.970 0.980 0.985 0.990 0.995 1.0 LLFF PSNR ↑ 19.12 20.45 21.25 21.68 21.91 21.45 19.79 SSIM ↑ 0.612 0.695 0.745 0.761 0.773 0.755 0.695 LPIPS ↓ 0.315 0.242 0.185 0.168 0.157 0.165 0.214 DTU PSNR ↑ 13.55 16.80 19.85 20.85 21.46 20.60 15.57 SSIM ↑ 0.710 0.795 0.852 0.865 0.879 0.868 0.812 LPIPS ↓ 0.250 0.185 0.125 0.110 0.099 0.108 0.166 
+
+C.6 Ablation Study for the Baseline d between Virtual Camera Pairs. 
+
+We provide the ablation results for the baseline d between virtual left-right camera pairs, as shown in Table 11. We use d = 4 .0 as our default setting. 
+
+Table 11: Ablation studies for d on LLFF with 3 input views. 
+
+d 0.5 1.0 2.0 3.0 4.0 5.0 6.0 8.0 10.0 LLFF PSNR ↑ 21.71 21.71 21.86 21.89 21.91 21.90 21.88 21.86 21.85 SSIM ↑ 0.758 0.759 0.764 0.771 0.773 0.773 0.772 0.769 0.769 LPIPS ↓ 0.173 0.174 0.166 0.163 0.157 0.157 0.159 0.162 0.163 StereoGS 27 
+
+## D Experiment Details 
+
+D.1 Implementation Details 
+
+To initialize the 3D Gaussians, we employ the pre-trained MVSAnywhere [10] model to extract depth maps from the training views. These depth maps are subsequently fused into a dense point cloud via a geometric consistency filtering strategy [45]. During optimization, we densify the Gaussians every 100 itera-tions, beginning at iteration 1,000. For Stereo Depth Regularization, we adopt FoundationStereo [39] as the stereo matching model. Within the Gradient-Aware Opacity Decay module, we set the hyperparameters to γbase = 0 .99 and s = 0 .5.The training schedule varies across datasets. For the LLFF, DTU, and Mip-NeRF360 datasets, we train the model for a total of 30,000 iterations and apply Stereo Depth Regularization at iteration 20,000. For the Blender dataset, we set the total number of iterations to 7,000 and enable regularization at iteration 4,000. Furthermore, we report the performance of two variants of the proposed approach: the standard method without dropout (denoted as Ours ) and a vari-ant with a fixed dropout rate of 0.3 (denoted as Ours ∗) [26]. All experiments are conducted on a single NVIDIA RTX 4090 GPU. 
+
+D.2 Details of Valid Mask Generation in Stereo Depth Regularization 
+
+As mentioned in Section 3.2 of the main text, the validity mask Mvalid is designed to eliminate occlusions, background, and matching anomalies. It is formulated as Mvalid = 1 − (Mbg ∨ Mocc ∨ Manomaly ). The specific definitions are as follows: 
+
+Left-Right Consistency Occlusion Mask (Mocc ). To identify occluded re-gions, we perform a left-right disparity consistency check. For a pixel coordinate 
+
+(u, v ), the mask is defined as: 
+
+Mocc (u, v ) = 
+
+(1, ˆDl(u, v ) − ˆDr (u − ˆDl(u, v ), v ) > τ 
+
+0, otherwise  (8) where τ = 2 .0 is the consistency threshold. 
+
+Background Mask (Mbg ). The strategy for generating the background mask varies slightly depending on the dataset characteristics to effectively filter out background regions: For datasets with dark or unlit backgrounds (e.g., DTU), we extract the mask based on the RGB intensity of the training ground-truth image Igt . If the maximum of R, G, B channels of a pixel is less than an intensity threshold θbg ,we consider this pixel as background. The mask is formulated as: 
+
+Mbg (u, v ) = 
+
+(
+
+1, max c∈{ R,G,B } Ic
+
+> gt
+
+(u, v ) < θ bg 
+
+0, otherwise  (9) 28 W. Yuan et al. 
+
+For synthetic datasets that provide RGBA images (e.g., Blender), we directly utilize the ground-truth alpha channel αgt . The background mask is simply ob-tained by taking the inverse of the alpha mask: 
+
+Mbg (u, v ) = 
+
+(
+
+1, αgt (u, v ) = 0 0, otherwise  (10) 
+
+Anomaly Mask (Manomaly ). We also construct a disparity anomaly mask to filter out non-positive or invalid values (such as Infinity or NaN) generated by the stereo model: 
+
+Manomaly (u, v ) = 
+
+(
+
+1, ˆDl(u, v ) ≤ 0 ∨ ˆDl(u, v ) = Inf ∨ ˆDl(u, v ) = NaN 
+
+0, otherwise  (11) SfM SfM(Stereo Fusion) PDCNet+ MVSFormer MVSAnywhere 
+
+> fern horns fortress room
+
+Fig. 14: Visual comparison of different Gaussian initialization methods. We visualize the initial point clouds extracted from the fern , horns , fortress , and room 
+
+scenes. Compared to the sparse SfM baseline and other advanced matching meth-ods, MVSAnywhere provides significantly denser and structurally more complete point clouds, offering an optimal geometric prior for Gaussian optimization. 
+
+## E Additional Visualization Results 
+
+E.1 Visualization of Different Gaussian Initialization 
+
+In this section, we provide comprehensive visual comparisons to demonstrate the effectiveness of our adopted initialization method, MVSAnywhere [10]. As illustrated in Fig. 14, we compare the initial point clouds generated by our StereoGS 29 
+
+method against traditional baselines and recent dense matching frameworks, including standard Structure-from-Motion [31] (SfM), SfM with Stereo Fusion, PDCNet+ [36], and MVSFormer [3]. The visualizations are evaluated across four distinct scenes exhibiting vary-ing levels of geometric complexity: fern , horns , fortress , and room . As shown in the comparisons, traditional SfM often yields highly sparse representations, particularly in textureless regions. While other learning-based methods like PD-CNet+ and MVSFormer improve the density, they may still struggle to recover complete fine-grained structures. In contrast, MVSAnywhere consistently gen-erates the most complete, dense, and uniformly distributed point clouds across all scenes. This superior geometric initialization provides a highly robust prior for 3D Gaussian Splatting, which effectively minimizes floaters, accelerates the optimization process, and ultimately leads to higher-fidelity novel view synthesis. 
+
+## F Trade-off between Training Overhead and Deployment Efficiency. 
+
+While StereoGS incurs higher training costs due to its reliance on an external pre-trained model for online Stereo Depth Regularization, our Gradient-based Opacity Decay strategy mitigates this by substantially pruning the number of 3DGS primitives, thereby ensuring high deployment efficiency. 
+
+Table 12: Average Training Overhead and 3DGS Count.

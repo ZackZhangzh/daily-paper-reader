@@ -1,0 +1,249 @@
+Title: Fast 3D Foundation Model Initialized Gaussian Splatting
+
+URL Source: https://arxiv.org/pdf/2607.03209v1
+
+Published Time: Tue, 07 Jul 2026 01:09:00 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+> VI. International Conference on Electrical, Computer and Energy Technologies (ICECET 2026) 6-8 July 2026, Rome-Italy
+
+# Fast 3D Foundation Model Initialized Gaussian Splatting 
+
+1st Anurag Dalal 
+
+Dep. of Eng. Sciences University of Agder 
+
+Grimstad, Norway anurag.dalal@uia.no 
+
+2nd Daniel Hagen 
+
+Dep. of Eng. Sciences University of Agder 
+
+Grimstad, Norway daniel.hagen@uia.no 
+
+3rd Kjell G. Robbersmyr 
+
+Dep. of Eng. Sciences University of Agder 
+
+Grimstad, Norway kjell.g.robbersmyr@uia.no 
+
+4th Kristian Muri Knausg˚ ard 
+
+Top Research Centre Mechatronics University of Agder 
+
+Grimstad, Norway kristianmk@ieee.org 
+
+Abstract —This paper introduces a fast method for high-quality 3D Gaussian Splatting (3DGS) reconstruction without traditional Structure-from-Motion (SfM). The proposed approach leverages 3D Foundation Models (3DFMs) for camera pose and point-cloud initialization, then jointly optimizes both camera poses and Gaussian primitives using a depth-guided loss function. This enables fast convergence even from rough initialization with as few as 50–60 input views. To further improve reconstruction quality in sparse-view scenarios, an MLP-based pose refinement module is introduced alongside depth-guided supervision from the foundation model. Extensive experiments on Mip-NeRF 360, Tanks and Temples, and RobustNeRF demonstrate that the proposed method achieves competitive reconstruction quality (23.61 dB PSNR, 0.19 LPIPS) while reducing training time to approximately three minutes per scene. The proposed method produces ready-to-use 3DGS models at a fraction of the time required by existing pipelines, making it suitable for near real-time applications in robotics, VR, and autonomous navigation. 
+
+I. I NTRODUCTION 
+
+3D Gaussian Splatting (3DGS) [1] has emerged as a power-ful technique for high-quality and computationally efficient 3D scene reconstruction, transforming applications ranging from VR and robotics to autonomous navigation. Alongside, 3D Foundation Models (3DFMs) have gained tremendous popular-ity for geometric understanding tasks. However, most existing 3DGS pipelines rely on precise camera poses obtained from Structure-from-Motion (SfM) systems like COLMAP [2], [3]. SfM is computationally intensive, scales quadratically with the number of input images, and can be unreliable in challenging scenarios such as low-texture scenes or limited viewpoints [4]. This dependency not only increases overall processing time but also limits the use of 3DGS in real-time or large-scale scenarios, while propagating pose estimation errors into the reconstruction. Recent advances in 3DFMs [5]–[7] have shown promise in reducing the reliance on SfM by employing alternative           
+
+> We would like to extend our sincere thanks to Aust-Agder utviklings-og kompetansefond (AAUKF) for the generous funding of the Arven etter Dannevig (The legacy of Dannevig) project, nr 62/22 which has been instrumental in the completion of this paper.
+
+methods for camera pose estimation and scene reconstruction. These methods often utilize transformer-based deep learning techniques to infer camera poses directly from multi-view images of a scene. By integrating these approaches with 3DGS, it is possible to achieve rapid initialization of the gaussian primitives in order of milliseconds and accurate 3D reconstructions without the overhead of traditional SfM pipelines, which takes a long time depending on the dataset size. VGGT-X [8], which is based on 3DFM VGGT [5] is one such method that has demonstrated the ability to estimate camera poses along with a point-cloud with improved accuracy and low latency compared to COLMAP, making it a suitable candidate for integration with 3DGS. Another technique that has shown potential in this domain is 3R-GS [9], which optimizes camera poses along with 3DGS. By jointly optimizing both the camera parameters and the Gaussian primitives, 3R-GS can achieve high-quality reconstructions even with a limited number of viewpoints. This approach not only reduces the dependency on accurate initial camera poses, but also enhances the overall robustness of the reconstruction process. The proposed method combines the strengths of VGGT-X and 3R-GS to create a novel pipeline for fast 3DGS without relying on SfM. By leveraging VGGT-X for initial camera pose estimation and subsequently refining these poses using the joint optimization framework of 3R-GS, thereby achieving rapid and accurate 3D reconstructions with few viewpoints, and also being robust enough to cater for hundreds of views. This approach not only accelerates the reconstruction process but also improves the quality of the resulting 3DGS, making it suitable for near real-time applications in various fields such as virtual reality, robotics, and augmented reality. Furthermore, to address the challenges of a sparse set of viewpoints, a depth-guided loss function is introduced that leverages geometric priors to enhance reconstruction quality. When fewer viewpoints are available, traditional photomet-ric losses may be insufficient to constrain the optimization process, leading to ambiguous or inaccurate reconstructions. A depth-guided loss incorporates depth information from the 
+
+> arXiv:2607.03209v1 [cs.CV] 3 Jul 2026
+
+3DFM to provide additional geometric constraints during the joint optimization of camera poses and Gaussian parameters. This approach helps maintain geometric consistency and im-proves the fidelity of rendered images, particularly in regions with sparse view coverage. By combining photometric and geometric supervision, the proposed method achieves much faster reconstruction. In summary, the contributions are as follows:  
+
+> •
+
+A novel pipeline that achieves fast optimization of 3DGS without the need for traditional SfM.  
+
+> •
+
+Joint optimization of camera poses and 3DGS to enhance reconstruction quality.  
+
+> •
+
+An unique loss function and optimization strategy tailored for low-viewpoint scenarios. II. R ELATED WORK 
+
+This section reviews the relevant literature on 3DGS and 3DFMs, focusing on their methodologies, applications, and advancements in the field. 
+
+1) 3D Gaussian Splatting: 3DGS [1] represents a scene as a set of anisotropic Gaussian primitives placed directly in 3D space rather than on a fixed voxel or mesh struc-ture. Each Gaussian stores a mean (3D position), covariance (shape/orientation), color (or SH coefficients), and opacity. Rendering proceeds via forward GPU rasterization, gaussians are projected to screen space and composited front-to-back using alpha blending, enabling real-time novel view synthe-sis without expensive ray marching. The differentiability of the splat pipeline allows gradient-based optimization of both appearance and geometry from posed images. Compared to NeRF-style [10] volumetric integration, 3DGS achieves large speedups in training and interactive FPS while maintaining high fidelity, thanks to adaptive spatial density and learned anisotropy that align splats with local surface structure. This efficiency makes 3DGS well suited for the accelerated pipeline where reliable poses and depth from 3DFMs seed initial Gaus-sian placement and reduce subsequent optimization iterations. The efficiency of 3DGS has rapidly transformed 3D recon-struction workflows across multiple domains [11]. In VR/AR, its real-time rendering enables interactive scene exploration with far lower latency than NeRF-style models. In robotics and autonomous navigation, fast splat updates allow dynamic map refinement. These advances position 3DGS as an enabling geometric substrate that accelerates downstream tasks such as segmentation, tracking, and depth refinement. 
+
+2) 3D Foundation Models: 3DFMs unify multi-view per-ception tasks like camera pose estimation, depth prediction, point map generation, and correspondence reasoning within large transformer architectures trained on diverse large-scale image/video datasets. Most 3DFMs use large vision transform-ers such as DINO [12]–[14] or ViT [15] as the backbone. This work focuses on the recent VGGT [5] rather than DUSt3R [6], or MASt3R [7] on accelerated 3DGS pipelines because of its faster inference time and better accuracy. DUSt3R [6] focuses on dense multi-view matching and geometry reconstruction through learned pixel-aligned descrip-tors and global alignment. It produces relative camera poses and a fused point-cloud by aggregating per-view features into a shared 3D latent representation. MASt3R [7] extends multi-view reconstruction with improved attention aggregation over views, yielding refined depth, normal, and point map predictions along with camera geometry. Its multi-view fusion improves completeness and reduces holes relative to single-view depth estimators. For downstream tasks: normal and depth enhance open-world segmentation by improving region separation (geometry-aware prompting [16]), consistent multi-view depth can bootstrap indoor/outdoor scale estimation modules, and predicted surface orientation can modulate splat anisotropy by aligning Gaussian covariance with local tangent planes for sharper renderings with fewer splats. VGGT [5] proposes a unified transformer with DINO as its backbone, as shown in Fig. 1 that ingests a set of un-ordered multi-view images and jointly infers (a) camera ex-trinsics/intrinsics, (b) per-pixel depth maps, (c) dense tracking features, and (d) point maps or normalized 3D coordinates. It leverages cross-frame attention to build a geometry-aware latent space without an explicit SfM step. The model learns implicit epipolar constraints through large-scale pretraining and can output camera parameters in a single forward pass. VGGT-X [8] further improves pose accuracy and depth quality by integrating dense feature matching and geometric consis-tency losses during fine-tuning. Its enhanced pose estimates and depth maps provide reliable initialization for downstream 3D reconstruction tasks, making it well suited for the SfM-free 3DGS pipeline. In summary, 3DFMs provide a unified set of geometric primitives like poses, depth, normals, point maps, and con-fidence that dramatically compress the traditionally sequential SfM+MVS pipeline into one forward pass, while enabling richer downstream adaptation for depth refinement, semantic segmentation, and for this case accelerated Gaussian Splatting. III. M ETHODOLOGY 
+
+This section details the proposed pipeline that integrates VGGT-X and 3R-GS for fast 3DGS without relying on SfM. Finally, the unique loss function and training strategy that is utilized to handle fewer viewpoints scene as well aids in achieving faster convergence is discussed. 
+
+A. Proposed Pipeline 1) Camera Parameter and Depth Estimation Mechanism: 
+
+The original 3DGS [1] is highly sensitive to initialization. Because Gaussian primitives have limited ability to move far from their starting positions, small pose or point-cloud errors can trap them in poor local minima. Photometric losses provide only local gradients, making it difficult for misaligned Gaus-sians to correct themselves. Additionally, the 3DGS densifica-tion strategy is based on hand-tuned gradient thresholds, which becomes unstable when also optimizing camera poses. VGGT processes a batch of images through (1) patch embedding, (2) multi-view cross-attention blocks, and (3) task heads. Cross-attention mixes tokens across frames, allowing the model to DINO 
+
+> Add
+> camera token
+> Frame
+> Attention
+> Global
+> Attention
+> Camera Head
+
+DPT  Point maps   
+
+> Tracks
+> Cameras
+> Depth maps
+> ×𝐿 times
+> Input
+> Concat
+
+Fig. 1: VGGT. [5] architecture illustrating multi-view fusion and task heads. Multi-View Images {𝐼𝐼 𝑖𝑖 } Global Alignment    
+
+> 3DGS
+> Pose Residual
+> {∆𝑅𝑅 𝑛𝑛 |∆𝑡𝑡 𝑛𝑛 }
+> MCMC-based
+> Joint Training
+> Camera Params
+> & Point Map Feat. Reduce Chunking
+> Patch Embed.
+> Cam  Depth
+> Global Attn.
+> Frame Attn.
+> ×𝐿𝐿 times
+> VGGT
+> XFeat Matching
+> Epipolar Loss Opt.
+> Corr. Weighting
+> BF16
+
+Fig. 2: The pipeline diagram of VGGT-X [8], that refines over VGGT using MCMC based joint training. TABLE I: Learning rates for Gaussian parameters        
+
+> Parameter Learning Rate Mean 1.6e-4 times scene scale Log-scales 5e-3 Quaternion rotation 1e-3 Opacity logit 5e-2 SH color coefficients (DC) 2.5e-3 SH color coefficients (higher orders) 1.25e-4
+
+infer relative orientation and translation by optimizing consis-tency of learned geometric tokens. Pose head outputs extrinsics (rotation, translation) and intrinsics or focal length. The depth head predicts the depth per-pixel aligned to those poses; a point map head may output scene coordinates in a canoni-cal frame. Internally, learned attention patterns approximate epipolar reasoning: correspondences produce constraints the transformer aligns implicitly, akin to neural bundle adjustment without iterative classical optimization. Confidence maps or uncertainty estimates further filter unreliable regions, enabling robust initialization for downstream optimization. Building on top of VGGT, VGGT-X [8], which incorpo-rates a memory-efficient VGGT implementation that scales to 1,000+ images and an adaptive global alignment for VGGT output enhancement, is used for camera pose initialization and getting the depth map. The architecture is shown in Fig. 2 
+
+2) Camera Pose Optimization: Gaussian primitives have a limited ability to move far from their initial positions. When the starting point-cloud or camera poses contain errors, the photometric rendering loss provides only local gradients, which makes it difficult for a misaligned Gaussian to escape poor local minima. This often results in sub-optimal conver-gence and degraded scene reconstruction quality. Furthermore, adaptive density control in 3DGS relies on gradient-magnitude thresholds that require manual tuning, which becomes increas-ingly unstable when jointly optimizing Gaussian primitives and camera poses. To address these issues, the 3DGS-MCMC strategy is employed [17], which reformulates Gaussian optimization as Markov Chain Monte Carlo sampling. The training process is interpreted as sampling from a distribution p(G) that assigns higher probability to Gaussian configurations that accurately reproduce the training images. Under this formulation, stan-dard 3DGS optimization behaves similarly to Stochastic Gra-dient Langevin Dynamics (SGLD), with updates of the form: 
+
+G ← G + a ∇G log p(G) + b η, (1) where η is exploration noise and a and b control the balance between convergence and exploration. The injected noise enables Gaussians to escape local minima caused by imper-fect initialization. Moreover, 3DGS-MCMC replaces heuris-tic densification and pruning strategies with principled state transitions, and incorporates a regularizer that encourages TABLE II: Baseline training metrics for training and validation set. Metrics with ↑ are higher-better; ↓ lower-better.                                                                                                                                                                                      
+
+> Scene Time (s) Mem (GB) Train PSNR ↑
+> Train SSIM ↑
+> Train LPIPS ↓
+> Val PSNR ↑
+> Val SSIM ↑
+> Val LPIPS ↓ATE ↓RTE ↓
+> bicycle 154.18 9.21 22.26 0.7103 0.2003 24.22 0.7103 0.2003 0.0048 0.4078 drjohnson 143.16 9.92 23.63 0.5666 0.4842 19.69 0.5666 0.4842 0.0952 4.8973 stump 141.77 9.92 24.53 0.4966 0.2696 22.59 0.4966 0.2696 0.0117 0.3843 bonsai 173.54 9.58 26.89 0.7979 0.1266 25.99 0.7979 0.1266 0.0052 0.7599 garden 151.84 9.58 26.75 0.6122 0.1415 22.65 0.6122 0.1415 0.0016 0.3844 room 159.79 9.92 29.39 0.8921 0.0897 28.48 0.8921 0.0897 0.0073 0.6652 android 184.26 9.92 24.26 0.7977 0.1442 23.50 0.7977 0.1442 0.0093 0.5867 counter 167.78 9.58 26.80 0.8293 0.1097 26.16 0.8293 0.1097 0.0046 0.6045 crab1 178.50 9.92 25.65 0.8581 0.1725 23.80 0.8581 0.1725 0.0109 1.7140 playroom 140.36 9.92 25.95 0.7936 0.2020 25.04 0.7936 0.2020 0.0531 2.2704 kitchen 175.10 9.58 26.41 0.7485 0.1180 24.52 0.7485 0.1180 0.0052 0.4322 truck 166.74 9.92 23.57 0.8057 0.1275 22.28 0.8057 0.1275 0.0049 0.4924 crab2 249.77 16.48 24.97 0.8387 0.2045 24.12 0.8387 0.2045 0.0147 2.4636 yoda 281.29 16.72 26.15 0.8423 0.2197 25.33 0.8423 0.2197 0.0155 2.6221 statue 226.84 16.48 20.39 0.7374 0.2265 20.09 0.7374 0.2265 0.0077 0.2853 train 184.20 9.92 21.24 0.6839 0.2347 19.24 0.6839 0.2347 0.0057 0.5182 AVG 179.94 11.04 24.93 0.8228 0.1683 23.61 0.7507 0.1919 0.0161 1.2180
+
+TABLE III: Quantitative comparison of novel view synthesis. (-) denotes unreported results for ZeroGS.                                                                
+
+> 3DGS ZeroGS 3RGS Ours Scenes PSNR ↑SSIM ↑LPIPS ↓PSNR ↑SSIM ↑LPIPS ↓PSNR ↑SSIM ↑LPIPS ↓PSNR ↑SSIM ↑LPIPS ↓
+> garden 24.85 0.729 0.126 25.47 0.839 0.107 26.44 0.820 0.131 22.65 0.6122 0.1415 counter 27.57 0.862 0.209 26.87 0.873 0.124 28.80 0.897 0.157 26.16 0.8293 0.1097 bicycle 17.52 0.303 0.567 23.10 0.707 0.201 24.89 0.727 0.252 24.22 0.7103 0.2003 room 30.66 0.899 0.204 ---31.82 0.924 0.154 28.48 0.8921 0.0897
+
+TABLE IV: Quantitative comparison of camera pose registration. (-) indicates unreported results.                                            
+
+> Scenes 3DGS ZeroGS 3RGS Ours Rotation(°) ↓ATE(m) ↓Rotation(°) ↓ATE(m) ↓Rotation(°) ↓ATE(m) ↓Rotation(°) ↓ATE(m) ↓
+> garden 0.19 0.003 0.03 0.002 0.03 0.002 0.3844 0.0016 counter 0.25 0.011 0.03 0.002 0.05 0.003 0.6045 0.0046 bicycle 1.07 0.034 0.04 0.005 0.09 0.013 0.4078 0.0048 room 0.27 0.016 --0.13 0.012 0.6652 0.0073
+
+parsimonious Gaussian usage. Together, these components allow robust joint optimization of camera poses and Gaussian primitives. Despite improved robustness, camera poses may still exhibit shared global drift: even if relative poses are accurate, the entire camera set may be shifted or rotated away from the true configuration. Directly optimizing each pose independently ignores these global correlations and can distort otherwise correct relative geometries due to the inherent non-convexity of pose optimization. To address this, an MLP-based global pose refiner is proposed similar to 3R-GS [9] that predicts pose corrections from a learned camera embedding. For each camera i, the correction is given by: 
+
+∆Ti = RMLP (zi), (2) where zi is a learnable embedding associated with camera 
+
+i, and the output consists of translation ∆ti ∈ R3 and rotation ∆ri ∈ R6 components. The MLP depicted in Fig. 3, is initialized with a zero-mean prior to ensure stable and unbiased refinement. By sharing the refinement network across all cameras, the method captures global pose relationships and improves the accuracy of camera pose adjustment, outperform-ing direct per-camera optimization. 
+
+3) Loss Function: 3DGS uses a combination of loss L1 and a Structural Similarity Index Measure (SSIM) loss [18], to su-pervise rendered images against ground truth. The photometric loss is defined as: 
+
+LPhoto = (1 − λSSIM )LL1 + λSSIM LSSIM , (3) where LL1 is the Mean Absolute Error (MAE) between the rendered image Irender and the ground truth image IGT :
+
+LL1 = 1
+
+N
+
+X
+
+> i
+
+|Irender (i) − IGT (i)| , (4) and LSSIM is the SSIM loss between Irender and IGT .A depth guided loss term ( LDepth ) is also introduced along with LPhoto . In 3DGS, the alpha channel can be used to encode accumulated visibility or effective depth ordering information during the splat compositing process. Unlike traditional raster-ization that relies on a hardware depth buffer, Gaussian splat-ting renders semi-transparent 3D Gaussians in a front to back order using alpha blending. Here, alpha represents the opacity TABLE V: Ablation study comparing training/validation reconstruction metrics and pose errors.                                 
+
+> Configuration Train PSNR ↑Train SSIM ↑Train LPIPS ↓Val PSNR ↑Val SSIM ↑Val LPIPS ↓ATE ↓RTE ↓
+> Full Method 24.93 0.8228 0.1683 23.61 0.7507 0.1919 0.0161 1.2180 w/o MCMC 21.58 0.7242 0.3030 20.99 0.6796 0.3063 0.0156 1.1560 w/o Depth 25.87 0.8316 0.1679 21.58 0.6711 0.2584 0.0211 1.2549 Tx
+> Ty
+> Tz
+> 3D Translation
+> R1x
+> R1z
+> R1y
+> R2x
+> R2z
+> R2y
+> 6D Roation SO(3)
+> (W 1-1 ,B 1-1 )
+> (W 1-2 ,B 1-2 )
+> (W 1-64 ,B 1-64 )
+> (W 2-1 ,B 2-1 )
+> (W 2-2 ,B 2-2 )
+> (W 2-64 ,B 2-64 )
+> (W f-1 ,B f-1 )
+> (W f-2 ,B f-2 )
+> (W f-9 ,B f-9 )
+> Input Embeddings
+> MLP of depth 2 with 64 dimensions Final layer with 9 dimension
+
+Fig. 3: The Pose MLP structure that is used for every camera input of the scene. contribution of each Gaussian, which implicitly encodes how much of the background remains visible. As splats accu-mulate, the alpha channel stores the running transmittance, effectively capturing depth dependent occlusion information. In this sense, alpha acts as a soft, differentiable substitute for a hard Z-buffer, enabling smooth blending, correct visibility, and gradient-based optimization during training. This loss uses the normalized alpha channel of the Gaussian Splatting render ( Drender ) and the normalized depth maps from VGGT-X (DVGGTX ): 
+
+LDepth = 1
+
+N
+
+X
+
+> i
+
+|Drender (i) − DVGGTX (i)| . (5) The total loss is defined as: 
+
+LTotal = LPhoto + λDepth LDepth . (6) 
+
+B. Integration 
+
+First, the multi-view images are passed through VGGT-X to obtain initial camera parameters and depth. These camera poses and depths serve as high-quality initializations for 3D Gaussian Splatting by seeding Gaussian centers from back-projected depth, constraining early optimization with reliable intrinsics and extrinsics, and pruning outlier pixels using con-fidence masks produced by the transformer. Fig. 4 illustrates the overall pipeline. IV. E XPERIMENTS 
+
+This section presents a comprehensive evaluation of the proposed method. 1 First, the datasets used for the evaluation are described. The training strategies and implementation details are then outlined. Finally, quantitative and qualitative results are presented, followed by ablation studies. 
+
+A. Datasets 
+
+The proposed method is evaluated on several publicly avail-able datasets that are commonly used for 3D reconstruction and novel view synthesis tasks. These datasets offer a variety of scenes, viewpoints, and complexities to comprehensively assess the performance of the method. 
+
+1) Mip-NeRF 360: This dataset [10] consists of real-world scenes captured with a camera performing a full 360-degree rotation around a central point of interest. Each scene features complex geometry and rich appearance details, in-cluding reflective surfaces, foliage, and cluttered backgrounds that challenge view synthesis methods. The dataset provides high-resolution images with consistent exposure settings to minimize photometric variation during capture. By spanning both indoor and outdoor environments, Mip-NeRF 360 offers diverse lighting conditions, occlusions, and depth ranges. Its full-360 capture setup and challenging visual complexity make it a widely used benchmark for evaluating 3D reconstruc-tion, neural radiance field methods, and Gaussian splatting approaches. 
+
+2) Tanks and Temples: This dataset [19] is a widely adopted benchmark to evaluate real-world 3D reconstruction and novel view synthesis methods. In these experiments, scenes from the supplementary database subset are used, denoted as tandt_db . The tandt_db subset includes chal-lenging indoor environments such as drjohnson , which features museum-like sculptures and complex lighting, and 
+
+playroom , a cluttered indoor room with diverse objects and occlusions. From the main T&T benchmark, the train scene and the outdoor truck scene is included, the latter being notable for its large-scale geometry, vegetation, and detailed background structures. Together, these scenes provide a di-verse set of indoor and outdoor conditions, enabling a rigorous evaluation of reconstruction robustness and generalization. 
+
+3) RobustNeRF: This dataset [20] consists of natural and synthetic scenes designed to evaluate robustness at varying levels of visual distraction. The natural portion includes seven real-world scenes captured across streets, an apartment, and a robotics lab, where distractor objects are deliberately moved or allowed to move between frames to simulate long-term or  
+
+> 1Code available at: https://github.com/anurag-dalal/FastSplatting image_1 image_2 image_n Input Scene
+> VGGT-X Camera Extrinsics
+> Point-Colud Depth Maps
+> Gaussian Primitives
+> Camera Extrinsics
+> 3DGS Render
+> Loss Calculation
+> Pose MLP
+> Data Flow Gradient Flow
+
+Fig. 4: The proposed pipeline: VGGT-X estimates camera poses and depth maps from multi-view images, which initialize the 3DGS model for joint optimization of Gaussian primitives and camera poses using a depth-guided loss function. android bicycle garden room statue train yoda 
+
+Fig. 5: Rendering results from the proposed method on various scenes in the selected datasets. uncontrolled capture conditions. These scenes vary widely in complexity, containing anywhere from a single distractor to up to 150 distractors, and include cases with strong view-dependent effects such as Street1 , Street2 , and Gloss .Frames are captured without temporal ordering and additional distractor-free images are provided for quantitative evaluation. To complement these real scenes, the dataset also includes synthetic sequences generated with the Kubric engine, where simple geometric objects are placed in a texture-less room, and a subset of them move between frames. By controlling object count, size, and motion, the synthetic setups allow precise analysis of distraction levels and their effect on RobustNeRF’s performance. 
+
+B. Training Strategies 
+
+The proposed method is implemented in PyTorch, based on the 3D Gaussian Splatting framework gsplat [21]. The Gaus-sian primitives are initialized using approximately 500,000 point-cloud points predicted by VGGT-X, camera parameters are also taken from VGGT-X, and the scene scale is defined as the maximum distance from any camera position to the mean camera location. Each Gaussian has learnable parameters: mean, log-scale, quaternion rotation, opacity logit, and degree-3 spherical harmonic (SH) color coefficients. The learning rates (LR) for these parameters are summarized in Table I. An exponential LR scheduler decays the mean LR to 1% over 7,000 steps, with evaluations at 4,000 and 7,000 steps, and SH degree increases by 1 every 1,000 steps. Most of the hyperparameters are chosen from 3DGS [1], 3RGS [9] and VGGT-X [8]. Whereas, a few like the number of total steps and the weights of various losses are manually adjusted to get the best results. The MLP-based module uses an LR of 1.5e-4. For the appearance-embedding module used in MLP-based pose opti-mization, the MLP width is 32 with a depth of 2, with an LR of 1e-2 for the embedding and 1e-3 for the head. λSSIM is the weight for the SSIM loss and is set to 0.2, and λDepth , the depth loss weight is set to 0.05 . Global alignment of VGGT poses provides a consistent coordinate system, while per-image local pose refinement during evaluation runs for 100 iterations with an LR of 8e-4, decaying exponentially to 1%. This refinement uses a gradient-masked L1 objective. The near and far planes are set relative to the scene scale (near = 0.05 × scene scale, far = 1e10). At each evaluation step, memory usage, Gaussian count, PSNR [22], SSIM [23], and LPIPS [24] are recorded. Also, the Absolute Trajectory Error (ATE), which measures the difference between an estimated trajectory and its ground truth by first aligning the two trajectories to minimize the error, and then computing the error at each point and averaging it, often as a Root Mean Square Error (RMSE), along with the rotational errors are measured for the camera poses. This training setup jointly optimizes geometry, radiance (through staged SH activation), and camera parameters, with controlled scheduling, lightweight per-image refinement, and optional correspondence-based constraints. For calculating ATE and rotational error, COLMAP opti-mized camera parameters are used. The extrinsic from the COLMAP is transferred to the predicted coordinates using the Kabsch-Umeyama algorithm [25]–[27]. This is a method for finding the optimal transformation (translation, rotation, and scaling) to align two sets of corresponding points by minimizing the root-mean-square deviation (RMSD). This translation, rotation and scale are used to scale the COLMAP optimized extrinsics and are used as ground-truth. 
+
+C. Results 
+
+All experiments were conducted on a PC with an NVIDIA RTX 4090 GPU and 64GB RAM. Table II summarizes the baseline training performance across diverse indoor and outdoor scenes from Mip-NeRF 360, Tanks and Temples, and RobustNeRF. All runs use 1M Gaussians, with 500,000 Gaussians initialized from VGGT-X. Memory differences stem from per-scene activation and view count. Higher PSNR/SSIM and lower LPIPS/ATE/RTE indicate better reconstruction and pose accuracy. Table III compares novel view synthesis performance against 3DGS [1], ZeroGS [28], and 3RGS [9] across four scenes from Mip-NeRF 360. The proposed method achieves competitive PSNR, SSIM, and LPIPS scores, demonstrating high-fidelity reconstructions with better perceptual quality (LPIPS) while only training for 7,000 iterations, taking an average time of 180 seconds. Notably, it outperforms other techniques in LPIPS score, highlighting the effectiveness of the SfM-free pipeline and joint optimization strategy. Table IV compares the pose errors for the same scenes using the same methods. Some results falls short of baselines because VGGT-X is not as robust as COLMAP for finding the intrinsics and extrinsics, also we are only training for 7,000 steps instead of 30,000 steps as normally used by other splatting based methods. Fig. 5 presents qualitative rendering results from the pro-posed method on various scenes from selected datasets. The renderings are from the validation dataset. The images demon-strate high-fidelity reconstructions with accurate geometry and appearance details, showcasing the effectiveness of the SfM-free 3DGS pipeline. 
+
+D. Ablation Studies 
+
+To quantify the contribution of each component, ablation studies were conducted based on: (1) 3DGS as an MCMC sampler and (2) depth-guided loss, which is summarized in Table V. Evaluations are conducted on selected scenes from the datasets, reporting average metrics for both novel view synthesis and camera pose estimation. The results highlight substantial improvements from the incorporation of each com-ponent. Although the baseline 3DGS method already performs camera pose optimization during training, its performance remains limited without the proposed additions. V. C ONCLUSION 
+
+This paper introduced a novel pipeline that integrates 3DFMs with 3DGS to achieve fast and high-fidelity 3D scene reconstruction without relying on traditional SfM. Using VGGT-X for camera pose and depth estimation, the proposed method effectively initializes the Gaussian Splatting process, reducing optimization time to approximately 180 seconds on average while achieving a validation PSNR of 23.61 dB and LPIPS of 0.19. It is also found that in case the images are from high field of view camera with high barrel distortion, the VGGT-X model does not appropriately infer the camera parameters, thereby resulting in poor reconstruction. The proposed MLP-based pose refinement and depth-guided loss further enhance reconstruction quality, particularly in low-viewpoint scenarios. Ablation studies confirm that both MCMC-based optimization and depth guidance contribute significantly to performance. Extensive experiments on Mip-NeRF 360, Tanks and Temples, and RobustNeRF demon-strated competitive novel view synthesis and camera pose accuracy (ATE of 0.016 m) compared to existing methods. Future work will explore extending this framework to dynamic scenes and integrating semantic understanding for enriched 3D and 4D reconstructions, and improving on foun-dation model framework that can take different types of camera models. REFERENCES [1] B. Kerbl, G. Kopanas, T. Leimk¨ uhler, and G. Drettakis, “3d gaussian splatting for real-time radiance field rendering,” ACM Transactions on Graphics , vol. 42, July 2023. [2] J. L. Sch¨ onberger and J.-M. Frahm, “Structure-from-motion revisited,” in Conference on Computer Vision and Pattern Recognition (CVPR) ,2016. [3] J. L. Sch¨ onberger, E. Zheng, M. Pollefeys, and J.-M. Frahm, “Pixel-wise view selection for unstructured multi-view stereo,” in European Conference on Computer Vision (ECCV) , 2016. [4] J. Lee and S. Yoo, “Dense-sfm: Structure from motion with dense consistent matching,” in Proceedings of the Computer Vision and Pattern Recognition Conference , pp. 6404–6414, 2025. [5] J. Wang, M. Chen, N. Karaev, A. Vedaldi, C. Rupprecht, and D. Novotny, “Vggt: Visual geometry grounded transformer,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,2025. [6] S. Wang, V. Leroy, Y. Cabon, B. Chidlovskii, and J. Revaud, “Dust3r: Geometric 3d vision made easy,” in CVPR , 2024. [7] V. Leroy, Y. Cabon, and J. Revaud, “Grounding image matching in 3d with mast3r,” in European Conference on Computer Vision , pp. 71–91, Springer, 2024. [8] Y. Liu, C. Luo, Z. Tang, J. Peng, and Z. Zhang, “Vggt-x: When vggt meets dense novel view synthesis,” arXiv preprint arXiv:2509.25191 ,2025. [9] Z. Huang, P. Wang, J. Zhang, Y. Liu, X. Li, and W. Wang, “3r-gs: Best practice in optimizing camera poses along with 3dgs,” 2025. [10] J. T. Barron, B. Mildenhall, D. Verbin, P. P. Srinivasan, and P. Hedman, “Mip-nerf 360: Unbounded anti-aliased neural radiance fields,” CVPR ,2022. [11] A. Dalal, D. Hagen, K. G. Robbersmyr, and K. M. Knausg˚ ard, “Gaussian splatting: 3d reconstruction and novel view synthesis: A review,” IEEE Access , vol. 12, pp. 96797–96820, 2024. [12] M. Caron, H. Touvron, I. Misra, H. J´ egou, J. Mairal, P. Bojanowski, and A. Joulin, “Emerging properties in self-supervised vision transformers,” in Proceedings of the International Conference on Computer Vision (ICCV) , 2021. [13] M. Oquab, T. Darcet, T. Moutakanni, H. Vo, M. Szafraniec, V. Khalidov, P. Fernandez, D. Haziza, F. Massa, A. El-Nouby, et al. , “Dinov2: Learning robust visual features without supervision,” arXiv preprint arXiv:2304.07193 , 2023. [14] O. Sim´ eoni, H. V. Vo, M. Seitzer, F. Baldassarre, M. Oquab, C. Jose, V. Khalidov, M. Szafraniec, S. Yi, M. Ramamonjisoa, et al. , “Dinov3,” 
+
+arXiv preprint arXiv:2508.10104 , 2025. [15] A. Dosovitskiy, L. Beyer, A. Kolesnikov, D. Weissenborn, X. Zhai, T. Unterthiner, M. Dehghani, M. Minderer, G. Heigold, S. Gelly, J. Uszkoreit, and N. Houlsby, “An image is worth 16x16 words: Transformers for image recognition at scale,” ICLR , 2021. [16] Z. Ai, Z. Liu, Y. Lei, Z. Cui, X. Zou, and J. Zhou, “Gaprompt: Geometry-aware point cloud prompt for 3d vision model,” arXiv preprint arXiv:2505.04119 , 2025. [17] S. Kheradmand, D. Rebain, G. Sharma, W. Sun, Y.-C. Tseng, H. Isack, A. Kar, A. Tagliasacchi, and K. M. Yi, “3d gaussian splatting as markov chain monte carlo,” Advances in Neural Information Processing Systems ,vol. 37, pp. 80965–80986, 2024. [18] Z. Wang, A. C. Bovik, H. R. Sheikh, and E. P. Simoncelli, “Image quality assessment: from error visibility to structural similarity,” IEEE transactions on image processing , vol. 13, no. 4, pp. 600–612, 2004. [19] A. Knapitsch, J. Park, Q.-Y. Zhou, and V. Koltun, “Tanks and temples: Benchmarking large-scale scene reconstruction,” ACM Transactions on Graphics , vol. 36, no. 4, 2017. [20] S. Sabour, S. Vora, D. Duckworth, I. Krasin, D. J. Fleet, and A. Tagliasacchi, “Robustnerf: Ignoring distractors with robust losses,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pp. 20626–20636, June 2023. [21] V. Ye, R. Li, J. Kerr, M. Turkulainen, B. Yi, Z. Pan, O. Seiskari, J. Ye, J. Hu, M. Tancik, and A. Kanazawa, “gsplat: An open-source library for gaussian splatting,” Journal of Machine Learning Research , vol. 26, no. 34, pp. 1–17, 2025. [22] A. Hore and D. Ziou, “Image quality metrics: Psnr vs. ssim,” in 2010 20th International Conference on Pattern Recognition , pp. 2366–2369, IEEE, 2010. [23] Z. Wang, A. Bovik, H. Sheikh, and E. Simoncelli, “Image quality assess-ment: from error visibility to structural similarity,” IEEE Transactions on Image Processing , vol. 13, no. 4, pp. 600–612, 2004. [24] R. Zhang, P. Isola, A. A. Efros, E. Shechtman, and O. Wang, “The unreasonable effectiveness of deep features as a perceptual metric,” in 
+
+CVPR , 2018. [25] W. Kabsch, “A solution for the best rotation to relate two sets of vectors,” 
+
+Foundations of Crystallography , vol. 32, no. 5, pp. 922–923, 1976. [26] W. Kabsch, “A discussion of the solution for the best rotation to relate two sets of vectors,” Foundations of Crystallography , vol. 34, no. 5, pp. 827–828, 1978. [27] S. Umeyama, “Least-squares estimation of transformation parameters between two point patterns,” IEEE Transactions on pattern analysis and machine intelligence , vol. 13, no. 4, pp. 376–380, 2002. [28] Y. Chen, R. A. Potamias, E. Ververas, J. Song, J. Deng, and G. H. Lee, “Zerogs: Training 3d gaussian splatting from unposed images,” in arXiv ,2024.

@@ -1,0 +1,476 @@
+Title: StereoSplat+: Feed-Forward Stereo Gaussian Splatting with Diffusion-Assisted Progressive Inference
+
+URL Source: https://arxiv.org/pdf/2607.08808v1
+
+Published Time: Mon, 13 Jul 2026 00:04:30 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+# StereoSplat+: Feed-Forward Stereo Gaussian Splatting with Diffusion-Assisted Progressive Inference 
+
+Zihua Liu 1 and Masatoshi Okutomi. 1
+
+Abstract — Recent advances in 3D Gaussian Splatting (3DGS) have enabled high-quality, render-ready scene representations for novel-view synthesis. However, most existing 3DGS pipelines rely on multi-view observations (or non-causal access to future frames) to achieve sufficient coverage, which is often unavailable in on-device robotics and AR settings where sensing is restricted to a single stereo rig. Recovering a high-quality 3DGS scene from one stereo observation, therefore, remains challenging due to occlusions, limited field of view, and missing geometry. We present StereoSplat+, a diffusion-enhanced feed-forward framework that enables causal reconstruction from a single stereo pair. Our method builds on two key components. First, we propose StereoSplat , an input-invariant feed-forward 3D Gaussian estimator that takes a variable number of posed stereo pairs as input and predicts high-quality 3D Gaussians. StereoSplat fuses complementary geometry cues via a cost-volume branch and a triplane-based 3D volume branch, and leverages continuous pose encoding to generalize across view counts and camera configurations. Second, since multiple posed stereo pairs are typically unavailable at inference time, we introduce a diffusion-enhanced one-shot progressive inference scheme called StereoSplat+ : starting from one stereo pair, we render novel stereo views from the predicted 3DGS, refine them with a one-step diffusion enhancer, and feed them back as additional inputs to update the 3DGS. Experiments on the KITTI-360 dataset show that StereoSplat+ improves novel-view rendering quality and geometry accuracy, especially in occluded regions and under strong view extrapolation, outperforming recent feed-forward 3DGS baselines. 
+
+I. I NTRODUCTION 
+
+Feed-forward 3D Gaussian Splatting (3DGS) [1], [2], [3], [4], [5] enables real-time and generalizable scene reconstruc-tion by directly predicting a set of view-renderable Gaussians from multi-view inputs. However, in many practical robotics and on-device AR settings, the input is often restricted to a single stereo pair. With such limited coverage and field of view, distant surfaces and regions occluded in the stereo observations are only weakly constrained, causing existing feed-forward 3DGS pipelines to struggle with reliable ge-ometry coverage and photorealistic novel-view synthesis. Incorporating more views can mitigate these issues, but it increases latency and typically introduces non-causal require-ments (e.g., access to future frames or accurate multi-view poses), which are incompatible with real-time deployment. To tackle this issue, we introduce StereoSplat+ , an input-invariant, feed-forward 3DGS framework for a single stereo pair input with diffusion-enhanced one-shot progressive in-ference . As shown in Figure 1, compared with conventional feed-forward 3DGS estimator,our key idea is to couple  
+
+> 1
+
+Department of systems and Control Engineering, Institute of Science Tokyo, Japan. {zliu,mxo }@ok.sc.e.titech.ac.jp StereoSplat   
+
+> Diffusion
+> Model
+> single stereo pair
+> enhanced psuedo
+> stereo pairs rendered pseudo stereo pairs
+> Fusion
+> Append to
+> Inputs
+> Input View
+> Camera Pose
+> Moving Direction
+> Psuedo Novel View
+> Camera Pose
+> StereoSplat+
+
+Fig. 1. The pipeline of our proposed StereoSplat+ . StereoSplat+ performs progressive inference: starting from one stereo pair, it estimates an initial 3DGS, renders novel stereo views, refines them with a one-step diffusion prior, and re-injects the enhanced views as pseudo inputs to update the 3D Gaussians. 
+
+a view-count-agnostic 3DGS predictor with a single-step diffusion enhancer for progressive inference: Starting from one stereo pair, we predict a provisional 3D Gaussian set, render novel stereo views, enhance the rendered images with a one-step diffusion model, and re-inject the enhanced views as pseudo views to provide additional geometric cues for new Gaussian estimation. The final result is the confidence-based fusion of the single-stereo Gaussians and pseudo-multi-stereo Gaussians. Importantly, we perform exactly one 
+
+render–enhance–reinject round, which densifies multi-view evidence without breaking the feed-forward, real-time nature of the pipeline. At the core of StereoSplat+ is a dual-branch architec-ture that combines a classical cost-volume branch with a lightweight 3D volume branch. The cost-volume branch pre-serves accurate stereo cues, while the 3D branch aggregates geometric evidence to better handle occlusions and long-baseline reasoning. Both branches are jointly optimized to predict depth and 3D Gaussian parameters, eliminating the need for an external depth estimator. To support variable input stereo pairs, we employ continuous sinusoidal pose encodings together with stochastic view sampling, which ran-domly varies both the number and locations of input views during training. To further improve robustness, sampled GT stereo pairs are randomly replaced by rendered pseudo stereo pairs with probability p, encouraging the model to learn from both clean and degraded observations. During inference, 
+
+StereoSplat first predicts an initial 3DGS and renders novel stereo pairs as pseudo-observations. Following [6], these pseudo views are enhanced by a one-step diffusion model before being re-injected into the network, producing a refined 3DGS. arXiv:2607.08808v1 [cs.CV] 9 Jul 2026 We evaluate StereoSplat+ on KITTI-360 [7] for both rendered RGB and depth. Starting from a single stereo pair, our method outperforms prior feed-forward methods, and diffusion-enhanced progressive inference further improves photometric fidelity and geometric in occluded and out-of-frame regions—while preserving the efficiency of a feed-forward pipeline. Our contributions are summarized as follows:  
+
+> •
+
+We propose StereoSplat+ , a progressive, input-invariant feed-forward 3D Gaussian Splatting framework tailored to stereo inputs.  
+
+> •
+
+We design a dual-branch predictor that fuses cost-volume cues with a lightweight 3D volume branch to jointly estimate depth and Gaussian parameters.  
+
+> •
+
+We introduce a one-step diffusion enhancer that im-proves rendered pseudo novel views and re-injects them as additional inputs for one-shot progressive refinement.  
+
+> •
+
+We develop a robust training strategy that combines con-tinuous pose encodings with stochastic view subsam-pling, making the model invariant to both the number of input stereo pairs and their camera placements.  
+
+> •
+
+Experiments on KITTI-360 [7] show consistent gains over feed-forward 3DGS baselines on novel-view and depth metrics, with clear qualitative improvements in weakly constrained regions. II. R ELATED WORK 
+
+A. Feed-Forward 3D Gaussain Splatting 
+
+Feed-forward 3D Gaussian Splatting predicts a scene’s 3D Gaussians from a small set of posed images in a single for-ward pass [8], avoiding slow per-scene optimization. Recent methods illustrate this trend: PixelSplat [4] uses a multi-view epipolar Transformer to recover metric scale and infer Gaussian parameters from dense probability maps, while MVSplat [5] builds a stereo-style cost volume, which is often used in stereo matching methods [9], [10], to jointly esti-mate depth and Gaussian attributes. DepthSplat [3] further strengthens this pipeline by tightly coupling depth prediction with 3DGS estimation, allowing the two tasks to benefit each other. Object-centric variants such as LatentSplat [11] combine variational Gaussians with a lightweight generative decoder for novel-view synthesis. However, estimating 3DGS from a single stereo pair remains difficult: occlusions, low-texture regions, and repetitive patterns often lead to splat drift, floaters, and over-smoothed geometry. 
+
+B. Diffusion-Incorporated 3D Gaussian Splatting 
+
+Diffusion-incorporated 3DGS falls into three concise cate-gories: (1) Text/Image-to-3D pipelines [12], [13] that use 2D diffusion priors to directly synthesize render-ready Gaussian scenes. (2) Diffusion-guided repair/inpainting that refines or completes sparse-view 3DGS by enhancing rendered views and feeding them back as constraints [14], [6], [15]. (3) Diffusion-assisted supervision [16], [17], where diffusion produces view-consistent auxiliary signals to regularize ge-ometry when multi-view evidence is weak. Together, these works show diffusion can create, stabilize, and supervise Gaussian reconstructions. Our method is aligned with this direction, but remains feed-forward and lightweight: we use diffusion only to strengthen under-constrained regions, without heavy per-scene optimization. III. M ETHOD 
+
+In this section, we present the proposed StereoSplat+ 
+
+pipeline. We first outline the overall architecture of Stere-oSplat+ in Subsection III-A. Next, Subsection III-B de-tails the input-invariant StereoSplat, including the network architecture and training strategy. Finally, Subsection III-C describes our progressive, input-invariant feed-forward 3DGS pipeline, StereoSplat+ with a diffusion model. 
+
+A. The Overall Pipeline 
+
+Estimating a reliable 3D Gaussian representation from only single stereo pair is challenging: the field of view is limited, many regions are occluded, and evidence outside the cameras’ view is missing. Inspired by diffusion-assisted 3DGS reconstruction (e.g., [6]), we use diffusion not to directly generate novel views, but as a fast one-step prior that refines rendered pseudo views with more view-consistent cues. This compensates for the limited stereo input and strengthens geometric evidence during inference. As shown in Fig. 1, unlike prior methods that directly consume multi-view posed images and estimate 3DGS in a single pass, our proposed StereoSplat+ pipeline starts from a single rectified stereo pair. We first run StereoSplat —our input-invariant 3DGS estimator—to obtain an initial Gaussian set G (0) (at time t). We then render novel stereo views from G (0) as pseudo inputs and enhance them with a one-step diffusion enhancer to improve structure and suppress artifacts. Finally, we append the enhanced pseudo views to the original inputs and re-run StereoSplat to predict a refined Gaussian set G (1)
+
+with richer geometric evidence. To realize this pipeline, we hinge on two main com-ponents: (1) An input-invariant feed-forward stereo 3DGS estimator StereoSplat : it accepts a variable number of views and remains robust to their relative camera pose, while still producing high-fidelity renders from minimal input. To fur-ther improve robustness under progressive inference, we ad-ditionally employ pseudo-view mixed training by randomly replacing sampled GT stereo pairs with rendered pseudo-stereo pairs during training. We will introduce our proposed input-invariant feed-forward 3DGS network architecture and training scheme in Subsection III-B. (2) A one-step diffu-sion enhancer that reliably improves the low-quality renders produced under sparse views, supplying sharper, more view-consistent images that can be appended as additional inputs. More details can be seen at Subsection III-C. After integrat-ing the input-invariant 3DGS estimator with the diffusion enhancer, our pipeline can emulate pseudo multi-view inputs by one-shot progressive inference, even when only a single stereo pair is available. 
+
+B. Input-Invariant StereoSplat 
+
+In this section, we introduce the network architecture of our input-invariant, feed-forward 3DGS estimator: Stere-Stereo Images 
+
+> Feature
+> Extraction
+> Module
+> Multi-View
+> Transformer
+> DepthAnythingV2
+> Encoder
+> UNet
+> Depth Head
+> 3DGS
+> Head
+> Estimated Depth
+> Offset Head
+> Opacity Head
+> RGB Head
+> Rotation Head
+> Scale Head
+> Stereo
+> Pixel-wise 3DGS
+> mean3d
+> Extrinsic
+> Cost Volume-Based 3D Gaussain Estimation Branch
+> 3D Volume Based 3D Gaussain Estimation Branch
+> Initial Feature Value Assignment
+> Location Information
+> TRi-Plane
+> Transformer
+> Pairs from 1 ～K
+> camera pose
+> encoding
+> ..... Extrinsic
+> Cost
+> Volume
+> MLP
+
+Fig. 2. Overall architecture of StereoSplat . Given a variable number of stereo pairs (1 to K), we extract image and geometry features using a pre-trained Depth-Anything V2 backbone, and predict 3D Gaussians via two complementary heads: a cost-volume branch and a triplane Transformer branch that reasons in 3D space. Following OmniScene [2], cross-branch interaction is enabled by feature-value assignment guided by Gaussian locations estimated by the cost-volume branch. The fused 3DGS is finally rendered for novel-view synthesis. 
+
+oSplat . As shown in Figure. 2, we begin with 1 to K stereo image pairs I = {Ili , Iri }ki=1 and their corresponding camera pose T = {T li , T ri }ki=1 and camera intrinsics K = {Kli , Kri }ki=1
+
+as input, we first use a shared CNN-based feature extraction backbone to extract image features together with geometry feature with a pre-trained Depth-Anything v2 model [18], the geometry feature and the image feature are further used to estimate the 3D Gaussain attributes. Then we adopt a two-branch design: a cost-volume branch that preserves metric stereo cues and a triplane transformer branch that aggregates 3D evidence in Euclidean space. The two branches are coupled via feature-value assignment guided by the Gaussian locations estimated by the cost-volume branch, yielding a fused 3D Gaussian set for novel-view synthesis. Our design is inspired by DepthSplat [3] and OmniScene [2]. DepthSplat constructs a cost volume from stereo images and regresses 3DGS attributes from matching signals; however, lacking explicit 3D aggregation, its improvements in unmatched regions are limited. OmniScene introduces a pixel/volume fusion mechanism for better 3DGS estimation, but the pixel branch assumes precomputed depth (e.g., Metric3D-v2 [19]), placing strong robustness demands on metric monocular depth estimation, which is usually less reliable in practice. In contrast, StereoSplat performs joint estimation of depth and 3D Gaussians: we retain the stereo-friendly cost-volume structure of DepthSplat while introducing a triplane trans-former to aggregate in 3D space, which better suits our sparse-stereo input setting. 
+
+1) Cost Volume-Based 3D Gaussian Estimation Branch.: 
+
+Multi-View Cost Volume Construction. Similar to Depth-Splat [3], we construct a stereo cost volume by com-bining geometry features Fmono  
+
+> L
+
+, Fmono  
+
+> R
+
+from a pre-trained Depth-Anything V2 backbone and aggregated image features 
+
+Fi’  
+
+> L
+
+, Fi’  
+
+> R
+
+. The aggregated features are produced by a multi-view Transformer built with Swin Transformer blocks [20], using both self/cross-attention across the left and right views. We concatenate them to form per-view features: 
+
+Fv(x) = 
+
+h
+
+Fmono  
+
+> v
+
+(x) ∥ Fi’  
+
+> v
+
+(x)
+
+i
+
+, v ∈ { L, R}. (1) To further support a variable number of stereo pairs and make the pipeline input-invariant, we build a cost volume per reference view. Assume K stereo pairs (in total 2 K
+
+views). Let Ii denote the i-th input image with camera pose 
+
+Ti ∈ SE (3). We define a pose-based distance 
+
+d(i, j) = δ (Ti, Tj), j ∈ { 1, . . . , 2K} \ { i}, (2) where δ (·, ·) measures the distance between the translation components of two camera poses. For each reference view 
+
+i, we select its N nearest views: 
+
+Mi = arg TopN  
+
+> j̸=i
+
+  − d(i, j), N < 2K − 1, (3) And then we build a pairwise correlation cost volume with each selected view: 
+
+Ci↔ j = Ψ Ii, Ij; Ti, Tj
+
+, j ∈ Mi, (4) and average them to obtain an input-invariant cost volume: 
+
+Ci = 1
+
+|Mi| ∑
+
+> j∈Mi
+
+Ci↔ j. (5) Here, Ψ(·) denotes the warping-based feature correlation (cost-volume) builder. In our experiments, we use 192 dis-parity candidates. For the depth estimation, We attach a lightweight 2D U-Net depth head to predict a per-view depth map D′ 
+
+> i
+
+from the stacked multi-view inputs. 
+
+Gaussian Parameter Prediction. Following DepthSplat [3], we predict 3D Gaussian parameters (center μ, opacity α,covariance Σ, and color c) with lightweight heads. For each pixel (u, v) in view i, we back-project the predicted depth to the camera frame and learn a 3D offset ∆pi(u, v)
+
+to compensate for the mismatch between raw points and Gaussian means: 
+
+μi(u, v) = Ti
+
+
+
+D′
+
+> i
+
+(u, v) K−1 
+
+> i
+
+[u, v, 1]⊤ + ∆pi(u, v)
+
+
+
+. (6) For opacity, we derive a matching confidence by applying a softmax over the cost volume and map it to α using two convolution layers followed by a sigmoid activation. Color is represented by spherical harmonic (SH) coefficients; in practice, we adopt degree-0 SH, resulting in a view-independent RGB color c for each Gaussian. Additionally, a confidence head with a sigmoid activation predicts aconfidence attribute for each Gaussian. 
+
+2) 3D Volume-Based 3D Gaussian Estimation Branch.: 
+
+The cost-volume branch predicts pixel-aligned Gaussians Gcv 
+
+from stereo depth cues, but it inherits stereo matching failures in ill-conditioned regions (e.g., occlusions and weak texture), which often degrade reconstruction near disocclusions. To complement it, we introduce a 3D volume branch that ag-gregates evidence directly in 3D. Inspired by OmniScene [2], we adopt a Triplane Transformer [21] that factorizes an 
+
+H ×W × Z volume into three axis-aligned planes ( HW , HZ ,
+
+W Z ), improving robustness when image-space correspon-dences are unreliable. The triplane is conditioned on multi-view image features Fli , Fri , cost-volume Gaussian features 
+
+FGS , and camera-pose encodings that disambiguate feature provenance across views. 
+
+Sinusoidal Camera Pose Positional Encoding. Different from the Tri-plane transformer proposed in [2], to support variable view counts, we replace the fixed-size learnable camera embeddings with a continuous sinusoidal encoding of the camera pose. Given a camera-to-world pose Ti =Ri ti
+
+0 1
+
+
+
+∈ SE (3), we normalize translation and map rotation to R3 using the SO (3) log map: 
+
+φ (x) =  sin (ω1x), cos (ω1x), . . . , sin (ωM x), cos (ωM x), (7) 
+
+ωm = 2πb− m−1 
+
+> M−1
+
+, xi =
+
+ ti/st
+
+Log (Ri)/sr
+
+
+
+, (8) PE (Ti) = pad D
+
+  φ (xi,1)∥ · · · ∥ φ (xi,C)∥γxi
+
+ . (9) Here, st , sr > 0 scale translation and rotation to O(1); γ ∈{0, 1} optionally appends the raw normalized pose; and pad D(·) zero-pads or truncates to the target dimension D
+
+(e.g., D=128). Together with the stochastic view subsam-pling proposed in Subsection III-B.3, this encoding yields an input-invariant conditioning over both input frame number and relative camera poses. 
+
+Triplane Transformer for 3D Feature Aggregation. We maintain learnable plane features {QHW , QHZ , QW Z } and update them via alternating cross-image and cross-plane attention, following OmniScene [2]. For a query on a plane (take HW as an example), we expand it along Z into sparse pillar points, project them into each input view using Ti,and sample view-conditioned 2D features (with PE (Ti)). Cross-image deformable attention (CIDA) aggregates multi-view evidence into the plane query. To propagate context when pillars are occluded or outside the frustum, we apply cross-plane deformable attention (CPDA) by orthogonally projecting pillar points onto the other two planes, enabling lightweight information exchange across planes. One update step is summarized as 
+
+qHW ← DA 
+
+
+
+qHW , Ref 2D, {Fi, PE (Ti)}
+
+| {z }
+
+> CIDA
+
+⇒
+
+qHW ← DA 
+
+
+
+qHW , Ref 3D, {QHW , QHZ , QW Z }
+
+| {z }
+
+> CPDA
+
+.
+
+(10) By performing cross-view and cross-plane attention, the triplane features can effectively model the 3D space and its underlying correlations, providing an explicit representation for volume-wise 3DGS estimation. 
+
+Projection-Guided Fusion from the Cost-Volume Branch. 
+
+To explicitly inject metric geometry and improve coverage in occluded/truncated regions, we fuse projected features from the cost-volume branch into the triplane. Concretely, we project Gaussians Gcv and their features FGS onto each plane using their estimated locations, average-pool features that map to the same plane query, adapt them with a linear layer, and add them to the corresponding plane queries (discarding samples outside the H ×W × Z volume). The final Gaussian set is formed as Gfusion = Gcv ∪ Gvolume .
+
+Gaussian Parameter Prediction for the 3D Volume Branch. For each voxel at (h, w, z) (the red dot in Figure 2), we bilinearly sample features from the three planes ( HW ,
+
+HZ , and W Z ) and average them to obtain an aggregated voxel feature fh,w,z. A lightweight predictor then decodes fh,w,z into 
+
+V voxel-wise Gaussians with parameters (α, μ, s, q, c, conf ),where α denotes opacity, μ the Gaussian center, s the scale, q
+
+the rotation (quaternion), c the color represented by spherical harmonics (SH), and conf the confidence score. 
+
+3) Stochastic Stereo View Subsampling for Input-Invariant StereoSplat Training: To make StereoSplat invariant to both the number and placement of input stereo views, we adopt stochastic view subsampling within each temporal bin B =
+
+{(ILi , IRi , Ti)}Ki=1. At each training iteration, we first sample the number of input stereo pairs m ∼ U {1, . . . , K}, and then uniformly sample a subset S ⊂ B with |S| = m as the input. This introduces randomness in both view count and view positions, encouraging view-agnostic 3D Gaussian estima-tion. Crucially, our 3D-volume branch aggregates evidence in scene space rather than view space ; thus, stochastic sub-sampling forces the network to explain consistent geometry under different randomly sampled input sets. In practice, the predicted Gaussians remain stable under subsampling and typically improve as more stereo pairs are provided. 4) Training Loss: For each supervised view i, let ˆ Ibi , ˆ Dbi ,and ˆCbi denote the rendered RGB image, depth map, and confidence map from the branch b ∈ { cv , vol , fuse }, and let 
+
+Ii be the ground-truth image. Let D† 
+
+> i
+
+be the target depth constructed from sparse LiDAR together with pseudo-dense depth predicted by a pre-trained NMRFStereo model [22]. A validity mask Mi indicates pixels supported by LiDAR. To supervise the confidence, we construct a self-supervised con-fidence target C† 
+
+> i
+
+= exp (−β Ei) to supervise the confidence attribute of each 3D Gaussian, where Ei denotes the detached photometric reconstruction error. The confidence branch is supervised by a standard regression loss Lb
+
+> conf
+
+. And the other losses are described as follows: 
+
+Lb 
+
+> rec
+
+= λ1
+
+N ∑
+
+> i
+
+ˆIbi − Ii 22 + λ2
+
+N ∑
+
+> i
+
+LPIPS 
+
+ ˆIbi , Ii
+
+
+
+, (11) 
+
+LD-est = 1
+
+N ∑
+
+> i
+
+D′ 
+
+> i
+
+− D†  
+
+> i1,Mi
+
+, (12) 
+
+Lb 
+
+> D-rend
+
+= 1
+
+N ∑
+
+> i
+
+ˆDbi − D†  
+
+> i1,Mi
+
+. (13) Here, N is the number of supervised views in the current batch, and ∥X∥1,M = ∑ M·| X|  
+
+> ∑M
+
+denotes the masked ℓ1 norm. The total objective is 
+
+L = ∑
+
+λ1Lrec + λ2LD-rend + λ3Lconf 
+
+
+
++ λ4LD-est . (14) 
+
+C. Progressive Input-Invariant Feed-Forward 3DGS with Diffusion Models 
+
+As shown in Figure 1, we propose StereoSplat+ , a pro-gressive inference framework that alleviates the limited scene coverage of a single stereo pair. Starting from the input stereo pair, we estimate an initial 3D Gaussian representation 
+
+Gbase together with a confidence attribute C, which enables confidence-aware rendering. The rendered novel stereo views 
+
+Ibase are subsequently refined using a one-step diffusion enhancer [23] and fed back as pseudo multi-view inputs to re-estimate the 3D Gaussian representation Gplus and its confidence maps. The final predictions are obtained through confidence-guided fusion, which adaptively combines the renderings from the two stages according to their estimated confidence. During training, the pseudo views may exhibit appearance and geometric discrepancies with respect to the ground-truth views. To improve robustness against pseudo-view inputs, we randomly replace sampled ground-truth stereo pairs with pseudo-stereo pairs rendered by the current-stage StereoSplat model during training. This reduces the training–inference distribution gap and improves the stability of progressive inference. 
+
+D. Training a One-Step Diffusion Enhancer for Image Re-finement. 
+
+To further improve novel stereo rendering quality, we fine-tune the revised SD-Turbo–based one-step enhancer from DIFIX3D+ [6] using training pairs generated by our input-invariant StereoSplat. For each bin (Subsection IV-B), we select the first left image as the reference view, randomly 8 m      
+
+> ... ...
+> First Frame Center Frame Last Frame
+> Stereo Camera Input
+> Trajectory of the Vehicle Split Bin
+> Fig. 3. Bin partitioning on KITTI-360 [7] dataset. Each sequence is split into bins along the trajectory. In each bin, the first-frame stereo pair is taken as the reference and its LiDAR frame defines the world origin; all target camera poses are expressed relative to this origin. The first stereo pair is used as input, while the remaining frames in the bin provide target novel views for supervision and evaluation.
+
+sample the number of input stereo pairs K, estimate 3DGS with the pre-trained model, and render novel views. The rendered images and their corresponding ground-truth views form render → GT training pairs for fine-tuning. This enables the enhancer to robustly refine novel views across varying numbers of input stereo pairs K.IV. E XPERIMENTS 
+
+A. Datasets 
+
+We evaluate our method on KITTI-360 [7], an urban-driving benchmark that provides rectified stereo images and sparse LiDAR annotations. Camera poses are obtained from synchronized IMU/GPS, enabling geometry-consistent eval-uation. KITTI-360 contains 9 driving sequences; following common practice, we exclude sequences 0003, 0007, and 0010 due to strong scene dynamics that break geometric con-sistency for 3D Gaussian training, and use the remaining 6 sequences for training and evaluation. As illustrated in Fig. 3 and following the preprocessing protocol of OmniScene [2], we partition each sequence into trajectory bins, where the distance between the first and last stereo frames is fixed to 8.0 m. Since the stereo rig is forward-moving, we take the first stereo pair in each bin as input, while the remaining frames in the bin (center and last stereo pairs) serve as novel target views for supervision and evaluation. This results in 54,862 valid bins in total, which we split 9:1 into 49,377 training bins and 5,485 evaluation bins. Unless otherwise specified, we train for 1450000 iterations at a resolution of 112 × 544. 
+
+B. Implementation Details 1) Evaluation Metrics.: We evaluate novel-view RGB quality using Peak Signal-to-Noise Ratio (PSNR) and Struc-tural Similarity (SSIM), where higher values indicate better fidelity to the reference image. To also quantify geometric ac-curacy, we report depth errors using Absolute Relative Error (AbsRel) and Squared Relative Error (SqRel), where lower values indicate better depth estimation. Here, d∗ denotes the sparse LiDAR depth projected into the target camera, and Ω
+
+is the set of valid pixels with LiDAR measurements (after standard validity filtering). For our method, the evaluated depth d is the depth rendered from the final predicted 3DGS using the same camera intrinsics/extrinsics as RGB render-ing, ensuring consistency between appearance and geometry. For each bin, we report PSNR/SSIM and AbsRel/SqRel on TABLE I                                                      
+
+> ABLATION ON KITTI-360. IN-BIN PSNR/SSIM. B RANCH CV :COST -VOLUME ONLY ; B RANCH 3D :TRIPLANE /3D-ONLY .One-shot progressive :
+> PREDICT A PROVISIONAL 3DGS, RENDER NOVEL VIEWS ONCE ,OPTIONALLY ENHANCE WITH DIFFUSION ,THEN RE -PREDICT THE FINAL 3DGS FROM THE AUGMENTED VIEWS . A LL ABLATIONS USE A SINGLE REAL INPUT STEREO PAIR . B EST ARE REPORTED IN BOLD .
+> Method Cost Volume Branch 3D Volume Branch Stochastic View Subsampling Use Diffusion First Frame Center Frame Last Frame Bin Average PSNR/SSIM PSNR/SSIM PSNR/SSIM PSNR/SSIM
+> Branch CV ✓25.20/0.89 19.27/0.66 17.21/0.56 20.12/0.69 Branch 3D ✓19.83/0.59 18.31/0.53 17.15/0.49 18.43/0.54 Branch CV +Branch 3D
+> ✓✓24.24/0.87 20.03/0.67 18.32/0.57 20.53/0.70 StereoSplat ✓✓✓24.89/0.88 20.19/0.67 18.17/0.57 20.76/0.70 StereoSplat+ ✓✓✓✓26.08/0.89 20.48/0.70 18.40/0.59 21.21/0.72
+> Fig. 4. Ablation study on rendered forward views. For each bin, we use the first-frame stereo pair as input and render the last-frame right view. The red box indicates occluded regions caused by foreground objects, i.e., parts of vehicles/objects that are not visible in the stereo images due to occlusion. Visual differences are highlighted in the white bounding box.
+
+the first frame , center frame , and last frame , as well as the 
+
+average over all frames inside bin to comprehensively assess performance across the sequence. 
+
+2) Experimental Setup.: We train StereoSplat in PyTorch with 4 NVIDIA A6000 GPUs, using AdamW with be-tas (0.9, 0.99 ), an initial learning rate of 8 × 10 −5, and a constant-with-warmup schedule (1k warmup steps). Training is run for 30 epochs with a batch size of 4. The cost-volume branch operates at 1 /4 resolution (downscale factor 4) with a disparity search range of 192. The triplane branch adopts three axis-aligned feature planes with grid size H ×W × Z =
+
+192 ×192 ×16, embedding dimension 128, 8 attention heads, and 3 transformer layers (two cross-view hybrid/image cross-attention layers followed by one self-attention layer). We enable gradient checkpointing to reduce memory usage. In Eq. 14, we set λ1 = 1.0, λ2&λ3 = 0.01, and λ4 = 0.05. For image reconstruction, we combine an ℓ2 loss and LPIPS with weights λ1 = 1.0 and λ2 = 0.05, respectively. 
+
+C. Ablation Studies 
+
+To verify the effectiveness of each proposed component, training strategy, and the overall StereoSplat+ pipeline, we conduct ablations on the KITTI–360 dataset (seq. 0000). We use 9,207 bins for training and the remaining 1,023 bins for evaluation. We report all the results in Table I. 
+
+Branch Isolation and Fusion. As shown in Table I, using only the cost–volume branch (Branch CV ) peaks on the first 
+
+frame (closest to inputs) thanks to metric disparity cues, but drops on center/last frames where occlusion occurs. The triplane-only variant (Branch 3D ) is more balanced across frames yet lacks the pixel-accurate localization of Branch CV 
+
+near the input pose. The fusion version StereoSplat (both branches) improves average PSNR/SSIM over either single branch, showing that explicit 3D aggregation complements cost-volume cues in 3D reconstruction. As shown in Fig-ure. 4, the cost-volume–only and 3D-volume–only variants fail to model occlusions in the forward-facing novel view, whereas the fused model yields more accurate Gaussian parameters, producing cleaner geometry and texture. 
+
+Training Strategy. Furthermore, with the stochastic stereo view subsampling strategy (Subsection III-B.3), the model achieves more uniform improvements across all frames, in-creasing the average PSNR from 20.53 to 20.76. We attribute this gain to the resulting input-invariant view combinations, which encourage the triplane Transformer to learn more robust, view-agnostic features. In this way, stochastic view subsampling better exploits the capacity of the 3D Gaussian estimator under diverse input-view conditions. 
+
+Diffusion-Based Progressive Inference. Since StereoSplat 
+
+supports a variable number of input stereo pairs, we further Fig. 5. Qualitative comparison on KITTI-360 using only the first-frame stereo pair. From the left/right inputs (top left), each method reconstructs 3D Gaussians and renders a novel center view; GT is shown at top right. For each method, we show rendered RGB (row 1) and depth (row 2, jet). White dashed boxes mark challenging regions (thin structures, moving objects). TABLE II COMPARISON OF FEED -FORWARD 3D G AUSSIAN METHODS ON                                     
+
+> KITTI-360 USING A SINGLE STEREO PAIR (FIRST FRAME )AS INPUT . W ERENDER ALL FRAMES AND REPORT BIN -WISE AVERAGE RGB AND DEPTH METRICS . B EST IS IN RED ;SECOND -BEST IS IN BOLD .
+> Method Bin Average RGB Depth PSNR SSIM AbsRel SqRel
+> PixelSplat [4] 19.04 0.60 0.094 0.579 MVSplat [5] 18.69 0.53 0.098 0.619 OmniScene [2] 18.19 0.53 0.117 0.657 DepthSplat [3] 18.60 0.60 0.140 0.767
+> StereoSplat (Ours) 20.42 0.67 0.071 0.386 StereoSplat+ (Ours) 20.76 0.69 0.096 0.487
+
+investigate a one-shot progressive feed-forward schedule (Table I). Starting from a single stereo pair, we first estimate a 3DGS, render pseudo-novel stereo views, and re-inject these views to increase the effective number of inputs. However, directly re-injecting rendered views introduces a noticeable domain gap. Applying our pre-trained one-step diffusion enhancer before re-injection ( StereoSplat+ ) sub-stantially mitigates this gap, and we also perform confidence-guided fusion between the initial and refined 3DGS to further improve the quality, achieving the best performance in terms of PSNR of 21.21 and SSIM of 0.72. 
+
+D. Performance Evaluation 
+
+To verify the effectiveness of StereoSplat+ , we compare against recent top-performing feed-forward baselines, includ-ing PixelSplat [4], MVSplat [5], OmniScene [2], and Depth-Splat [3], on the full KITTI-360 validation set following the protocol in Subsection IV-B. We evaluate both appearance and geometry using PSNR/SSIM for novel-view RGB and AbsRel/SqRel for rendered depth. As shown in Table II, even without diffusion, StereoSplat 
+
+performs strongly on the metric of PSNR and SSIM, indi-cating high fidelity when rendering near the observed stereo pair. The predicted 3DGS also exhibits improved geometry, reflected by lower rendered-depth errors. After enabling pseudo-view enhancement with diffusion, our StereoSplat+   
+
+> Fig. 6. Bird’s-eye-view extrapolation from only the first-frame stereo pair on KITTI-360. Given the rectified stereo input (left), we reconstruct a 3D Gaussian scene and render a distant bird’s-eye view (bottom-left) using strong viewpoint extrapolation. Existing methods produce severe ripples and distorted road/building geometry under this large out-of-plane extrapolation, whereas our StereoSplat+ yields a much more stable BEV image with straighter lanes and cleaner fac ¸ades.
+
+further improves the average quality to 20.76/0.69, surpass-ing the strongest prior baseline PixelSplat (19.04/0.60) by +1.72 dB and +0.09 SSIM. Overall, these results suggest that (i) our feed-forward backbone preserves high-quality renderings near the input views, and (ii) a single diffusion-enhanced enables plug-and-play performance gains for input-invariant multi-view inference. As shown in Figure 5, existing feed-forward 3D Gaussian methods struggle to reconstruct a stable and geometrically consistent scene from only the first-frame stereo pair by exhibiting motion blur and ghosting around the moving cars and buildings, and showing over-smooth depth, distorting thin structures, and producing erroneous road boundaries, as highlighted by the dash boxes. In contrast, StereoSplat already produces sharper RGB renderings and more coher-ent depth, and the diffusion-enhanced StereoSplat+ further suppresses floaters and ringing artifacts. Besides, as shown in Figure 6, extrapolating from the first-frame stereo pair to a distant bird’s-eye-view is highly challenging. PixelSplat, MVSplat, and DepthSplat suffer from severe ripple artifacts and distorted road/facade geometry under large out-of-plane viewpoint changes. In contrast, our StereoSplat+ (one-shot prog.) reconstructs a more coherent 3D scene and there-fore produces a significantly cleaner BEV rendering, with straighter lane markings and more stable building structures StereoSplat+ 
+
+> Fusion
+
+Fig. 7. Incremental large-scale 3DGS reconstruction with known poses. 
+
+Given a long stereo sequence with camera poses, we partition frames into temporal bins and apply StereoSplat+ to each bin to estimate a bin-wise 3D Gaussian map Gt . We then fuse the resulting Gaussian sets {Gt } in the global coordinate frame to recover a consistent global 3DGS map, enabling incremental large-scale reconstruction along long trajectories. 
+
+under such strong extrapolation. Besides, in Figure 7, we further show one potential usage of StereoSplat+ by leveraging known camera poses to fuse the estimated bin-wise 3D Gaussian maps {Gt } into a single global map, enabling incremental large-scale 3D reconstruc-tion. Please refer to supplementary video for more details. V. L IMITATIONS 
+
+Since our proposed StereoSplat+ relies on a one-step dif-fusion enhancer, which may occasionally introduce artifacts and can accumulate errors over multiple progressive updates. Moreover, we do not explicitly model dynamic objects, which can cause temporal inconsistency when performing incremental bin-wise fusion for large-scale reconstruction. VI. C ONCLUSIONS 
+
+In this paper, we introduce StereoSplat+ , a progressive, input-invariant, feed-forward 3D Gaussian Splatting (3DGS) framework for stereo inputs. Our StereoSplat backbone com-bines a cost-volume branch with a 3D volume branch to jointly estimate depth and 3D Gaussians, while remain-ing robust to varying numbers and configurations of input stereo views. To enable progressive inference, we employ a pre-trained one-step diffusion enhancer that transforms noisy renders into reliable pseudo views, allowing self-augmentation that improves coverage and geometry without test-time optimization. Experiments on KITTI-360 demon-strate that StereoSplat+ consistently outperforms prior feed-forward 3DGS methods in both novel-view synthesis and depth estimation, with particularly strong gains in occluded regions and under large viewpoint extrapolation. REFERENCES [1] L. Jiang, Y. Mao, L. Xu, T. Lu, K. Ren, Y. Jin, X. Xu, M. Yu, J. Pang, F. Zhao, et al. , “Anysplat: Feed-forward 3d gaussian splatting from unconstrained views,” arXiv preprint arXiv:2505.23716 , 2025. [2] D. Wei, Z. Li, and P. Liu, “Omni-scene: Omni-gaussian representation for ego-centric sparse-view scene reconstruction,” in Proceedings of the Computer Vision and Pattern Recognition Conference , 2025, pp. 22 317–22 327. [3] H. Xu, S. Peng, F. Wang, H. Blum, D. Barath, A. Geiger, and M. Pollefeys, “Depthsplat: Connecting gaussian splatting and depth,” in Proceedings of the Computer Vision and Pattern Recognition Conference , 2025, pp. 16 453–16 463. [4] D. Charatan, S. L. Li, A. Tagliasacchi, and V. Sitzmann, “pixelsplat: 3d gaussian splats from image pairs for scalable generalizable 3d recon-struction,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 2024, pp. 19 457–19 467. [5] Y. Chen, H. Xu, C. Zheng, B. Zhuang, M. Pollefeys, A. Geiger, T.-J. Cham, and J. Cai, “Mvsplat: Efficient 3d gaussian splatting from sparse multi-view images,” in European Conference on Computer Vision .Springer, 2024, pp. 370–386. [6] J. Z. Wu, Y. Zhang, H. Turki, X. Ren, J. Gao, M. Z. Shou, S. Fidler, Z. Gojcic, and H. Ling, “Difix3d+: Improving 3d reconstructions with single-step diffusion models,” in Proceedings of the Computer Vision and Pattern Recognition Conference , 2025, pp. 26 024–26 035. [7] Y. Liao, J. Xie, and A. Geiger, “Kitti-360: A novel dataset and benchmarks for urban scene understanding in 2d and 3d,” IEEE Transactions on Pattern Analysis and Machine Intelligence , vol. 45, no. 3, pp. 3292–3310, 2022. [8] B. Kerbl et al. , “3d gaussian splatting for real-time radiance field rendering,” in SIGGRAPH , 2023. [9] Z. Liu, Y. Li, and M. Okutomi, “Global occlusion-aware transformer for robust stereo matching,” in Proceedings of the IEEE/CVF Winter Conference on Applications of Computer Vision , 2024, pp. 3535–3544. [10] Z. Liu, S. Zhang, Z. Wang, and M. Okutomi, “Digging into normal incorporated stereo matching,” in Proceedings of the 30th ACM International Conference on Multimedia , 2022, pp. 6050–6060. [11] C. Wewer, K. Raj, E. Ilg, B. Schiele, and J. E. Lenssen, “latentsplat: Autoencoding variational gaussians for fast generalizable 3d recon-struction,” in European conference on computer vision . Springer, 2024, pp. 456–473. [12] J. Tang, J. Ren, H. Zhou, Z. Liu, and G. Zeng, “Dreamgaussian: Generative gaussian splatting for efficient 3d content creation,” arXiv preprint arXiv:2309.16653 , 2023. [13] T. Yi, J. Fang, Z. Zhou, J. Wang, G. Wu, L. Xie, X. Zhang, W. Liu, X. Wang, and Q. Tian, “Gaussiandreamerpro: Text to ma-nipulable 3d gaussians with highly enhanced quality,” arXiv preprint arXiv:2406.18462 , 2024. [14] J. Wei, S. Leutenegger, and S. Schaefer, “Gsfix3d: Diffusion-guided repair of novel views in gaussian splatting,” arXiv preprint arXiv:2508.14717 , 2025. [15] A. Paliwal, X. Zhou, W. Ye, J. Xiong, R. Ranjan, and N. K. Kalantari, “Ri3d: Few-shot gaussian splatting with repair and inpainting diffusion priors,” arXiv preprint arXiv:2503.10860 , 2025. [16] Y. Chen, J. Fang, Y. Huang, T. Yi, X. Zhang, L. Xie, X. Wang, W. Dai, H. Xiong, and Q. Tian, “Cascade-zero123: One image to highly consistent 3d with self-prompted nearby views,” in European Conference on Computer Vision . Springer, 2024, pp. 311–330. [17] W. Yu, J. Xing, L. Yuan, W. Hu, X. Li, Z. Huang, X. Gao, T.-T. Wong, Y. Shan, and Y. Tian, “Viewcrafter: Taming video diffusion models for high-fidelity novel view synthesis,” arXiv preprint arXiv:2409.02048 ,2024. [18] L. Yang, B. Kang, Z. Huang, Z. Zhao, X. Xu, J. Feng, and H. Zhao, “Depth anything v2,” arXiv preprint arXiv:2406.09414 , 2024. [19] W. Yin, C. Zhang, H. Chen, Z. Cai, G. Yu, K. Wang, X. Chen, and C. Shen, “Metric3d: Towards zero-shot metric 3d prediction from a single image,” in Proceedings of the IEEE/CVF International Conference on Computer Vision , 2023, pp. 9043–9053. [20] Z. Liu, Y. Lin, Y. Cao, H. Hu, Y. Wei, Z. Zhang, S. Lin, and B. Guo, “Swin transformer: Hierarchical vision transformer using shifted windows,” in Proceedings of the IEEE/CVF international conference on computer vision , 2021, pp. 10 012–10 022. [21] Y. Hong, K. Zhang, J. Gu, S. Bi, Y. Zhou, D. Liu, F. Liu, K. Sunkavalli, T. Bui, and H. Tan, “Lrm: Large reconstruction model for single image to 3d,” arXiv preprint arXiv:2311.04400 , 2023. [22] T. Guan, C. Wang, and Y.-H. Liu, “Neural markov random field for stereo matching,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2024, pp. 5459–5469. [23] A. Sauer, D. Lorenz, A. Blattmann, and R. Rombach, “Adversarial diffusion distillation,” in European Conference on Computer Vision .Springer, 2024, pp. 87–103.

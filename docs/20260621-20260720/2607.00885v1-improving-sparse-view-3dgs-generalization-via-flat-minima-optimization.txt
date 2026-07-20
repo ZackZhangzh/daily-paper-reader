@@ -1,0 +1,364 @@
+Title: Improving Sparse-View 3DGS Generalization via Flat Minima Optimization
+
+URL Source: https://arxiv.org/pdf/2607.00885v1
+
+Published Time: Thu, 02 Jul 2026 01:01:32 GMT
+
+Number of Pages: 19
+
+Markdown Content:
+# Improving Sparse-View 3DGS Generalization via Flat Minima Optimization 
+
+Kangmin Seo , Sangeek Hyun , MinKyu Lee , and Jae-Pil Heo ⋆
+
+Sungkyunkwan University, South Korea 
+
+Abstract. Recent advances in neural rendering have established 3D Gaussian Splatting (3DGS) as a highly efficient representation for novel view synthesis, enabling fast training and real-time rendering with strong fidelity. However, when supervision is limited to sparse input views, 3DGS tends to overfit to the observed images and generalize poorly to unseen viewpoints. We address this challenge from the perspective of flat minima (FM) optimization, which seeks solutions that remain stable under small parameter perturbations. Viewing Gaussian parame-ters as trainable weights, we adapt FM principles to the geometric and dynamic nature of 3DGS with a lightweight training framework. Our method regularizes optimization with controlled Gaussian perturbations that account for each Gaussian’s anisotropy and the training progress, preserving fine details while improving robustness to sparse-view overfit-ting. To further stabilize this flat minima optimization process, we intro-duce periodic reinitialization, which temporarily returns non-positional parameters to their initial states for a short window. Together, these techniques integrate seamlessly into existing 3DGS pipelines without ar-chitectural changes. Experiments on LLFF and Mip-NeRF360 datasets demonstrate improved quantitative metrics and perceptual quality un-der sparse-view supervision, producing reconstructions that are sharper, more stable, and better generalized to novel viewpoints. 
+
+Keywords: 3D Gaussian Splatting · Sparse-View 3D Reconstruction ·
+
+Novel View Synthesis 
+
+# 1 Introduction 
+
+Recent advances in neural rendering have been driven by representative meth-ods such as Neural Radiance Fields (NeRF) [20] and, more recently, 3D Gaus-sian Splatting (3DGS) [12]. While these approaches have achieved remarkable progress in novel view synthesis (NVS), sparse-view scenarios, where only a few input images are available, remain highly challenging. In such settings, models are prone to overfitting to the input views, leading to poor generalization to novel viewpoints. In this paper, we aim to tackle this through the lens of flat minima (FM) optimization. Originally developed in the context of neural networks, FM opti-mization improves generalization by encouraging solutions that reside in flatter  
+
+> ⋆
+
+Corresponding author  
+
+> arXiv:2607.00885v1 [cs.CV] 1 Jul 2026 2K. Seo et al.
+
+regions of the loss landscape, where small parameter perturbations do not signif-icantly increase the loss [5,9,13]. Inspired by this principle, we reinterpret 3DGS as a supervised learning system where camera poses serve as inputs, rendered images as outputs, and Gaussian parameters play the role of learnable weights. Within this formulation, overfitting in 3DGS corresponds to sharp-minima solu-tions that are highly sensitive to parameter shifts; resembling the failure modes addressed by FM theory. Motivated by these insights, we propose to introduce flat minima optimiza-tion into the sparse-view 3DGS setting. Specifically, we apply stochastic pertur-bations to Gaussian parameters during training, following the spirit of prior FM techniques that encourage robustness through parameter noise injection [17,18]. At each iteration, random noise is added to Gaussian parameters, and the model is trained to minimize reconstruction loss under these perturbations, guiding it toward flatter minima and more generalizable solutions. Beyond this baseline application of flat minima optimization, we further tai-lor the approach to the specific characteristics of 3DGS. While directly adding perturbations can improve generalization, naïve strategies often suppress fine-grained geometry, leading to underfitting of local structures. To address this, we adapt FM optimization to better align with the geometric properties and training dynamics of 3DGS. First, we introduce a Scale-Adaptive Perturbation (SAP) strategy that takes into account the scale and anisotropic shape of each Gaussian. Perturbation noise is sampled in proportion to the Gaussian’s spatial extent, applying larger per-turbations along longer axes and smaller ones along shorter axes. This ensures that perturbations remain meaningful across primitives of varying sizes, prevent-ing destabilization for small Gaussians while still enforcing robustness for larger ones. In particular, this design helps preserve fine-grained scene details while maintaining the regularization benefits of flat minima optimization. We adopt a stochastic perturbation scheme inspired by prior FM studies [17], which combine losses from perturbed and unperturbed models to encourage convergence to flatter solutions. Building on this idea, we instead apply SAP in a stochastic manner. That is, for each iteration, each Gaussian is probabilistically perturbed or left unchanged. This avoids the need to render both perturbed and unperturbed models separately, while keeping the training objective simple and lightweight. In addition, we complement positional perturbations with periodic parameter reinitialization. Scale, rotation, and higher-order SH coefficients are periodically returned to their initial state, following the same initialization used when con-structing Gaussians from SfM points, and kept unchanged for a short window. Opacity is reset at each interval following the standard mechanism in 3DGS [12], while positions remain unaffected. This acts as an additional regularizer that mitigates overfitting and stabilizes training under sparse-view supervision. Overall, our framework is lightweight, requires no architectural modifications, and integrates seamlessly into existing pipelines. Experiments demonstrate that it consistently improves both quantitative metrics and perceptual quality, pro-Improving Sparse-View 3DGS Generalization via Flat Minima Optimization 3
+
+ducing reconstructions that are sharper, more stable, and better generalized to novel viewpoints. 
+
+# 2 Related Work 
+
+3D Gaussian Splatting has attracted substantial attention for novel view syn-thesis, but sparse-view settings remain challenging because limited input views make the optimization underconstrained, often leading to degraded novel view quality. A broad set of recent methods improve robustness by introducing addi-tional geometric cues, imposing constraints on geometric structure, or regular-izing primitive interactions. A common direction is to leverage geometric priors, especially depth-related supervision or normalization, to stabilize geometry under sparse observations. Representative examples include depth-aided training and normalization strate-gies that reduce geometric ambiguity and improve reconstruction and rendering in sparse-view settings [4, 8, 16, 25, 34, 36]. Related methods also refine geom-etry through additional constraints or alternative training schedules, such as co-regularization and alternating densification behaviors that affect how primi-tives are created, split, and pruned during training [22, 31]. Other works focus on sparse-view reconstruction with geometry-prioritized formulations, including approaches that emphasize surface consistency or surface reconstruction objec-tives [28, 29]. Another line of work improves sparse-view generalization through stochas-tic regularization of the primitive set. DropGaussian and DropoutGS randomly remove Gaussians during training to discourage brittle reliance on a small sub-set of primitives and to promote more distributed explanations [21, 30]. The co-adaptation analysis further formalizes this phenomenon by quantifying inter-primitive entanglement and alleviating it with Gaussian dropout and opacity noise injection [3]. These methods primarily regularize the representation struc-turally by changing which primitives contribute and how primitives interact. Self-ensembling and consistency-based approaches also improve robustness. SE-GS introduces uncertainty-aware perturbations and self-ensembling objec-tives to stabilize sparse-view optimization [33], while SCGaussian uses matching priors to enforce structure consistency [23]. A recent method leverages a video diffusion prior with scene-grounding guid-ance to synthesize additional observations for sparse inputs, which are then used to optimize 3DGS [35]. Difix3D+ enhances reconstruction and novel-view syn-thesis via single-step diffusion models as a learned prior that helps correct arti-facts under sparse-view conditions [27]. MAtCha Gaussians proposes an atlas-of-charts surface representation rendered with 2D Gaussian surfels, initialized with monocular depth and refined for photorealistic rendering from sparse views [7]. These pipelines can be highly effective, but they typically rely on external priors and additional components beyond standard 3DGS optimization. Finally, structural regularization has been studied to reduce degenerate Gaus-sian configurations. Prior methods regularize geometry, primitive structure, or 4 K. Seo et al. 
+
+inter-primitive interactions by introducing geometric cues or constraints, pe-nalizing undesirable covariance shapes, or changing how Gaussian primitives contribute and interact [3, 4, 8, 10, 16, 21, 25, 30, 33, 34, 36]. 
+
+# 3 Method 
+
+3.1 Preliminaries 3D Gaussian Splatting (3DGS) represents a scene using a set of anisotropic Gaussians, each defined by learnable parameters including position xi ∈ R3, scale 
+
+si, rotation ri, color ci, and opacity oi, where i indexes the i-th Gaussian. These Gaussians are projected and composited through differentiable rasterization to render photorealistic images from arbitrary viewpoints. Given a set of training images and corresponding camera parameters, the Gaussian parameters are optimized by minimizing a photometric reconstruction loss: 
+
+θ ← θ − η · ∇L (θ), (1) where θ encompasses all learnable parameters and L(θ) denotes the rendering loss, typically computed as a combination of L1 and SSIM losses between the rendered and corresponding ground-truth images, and η is the learning rate. 
+
+Flat Minima (FM) Optimization aims to improve generalization by en-couraging the model to converge to regions in the loss landscape where small per-turbations do not significantly increase the loss. Here, the representative frame-works are adversarial and stochastic perturbation-based optimization. Sharpness-Aware Minimization (SAM) [6] is a representative of the former method, raising the adversarial perturbation scheme. It minimizes the worst-case loss within a small neighborhood around the parameters as following: 
+
+LSAM (θ) = min  
+
+> θ
+
+max  
+
+> ∥ϵ∥2≤ρ
+
+L(θ + ϵ). (2) This min-max formulation aggressively biases optimization toward flatter re-gions of the loss landscape, but requires an additional gradient computation, which significantly increases the training cost. Meanwhile, Random Weight Per-turbation (RWP) [2, 18] provides a more efficient alternative by replacing the worst-case loss with an expected loss over random perturbations: 
+
+LRWP (θ) = Eϵ∼N (0 ,σ 2I) [L(θ + ϵ)] . (3) By averaging losses across randomly perturbed weight configurations, RWP effectively smooths the loss landscape without additional backpropagation. Later works [17] further refined this approach by mixing perturbed and unperturbed losses and adapting noise magnitudes, achieving stronger performance with min-imal cost. In this work, we build upon these insights and adapt flat minima optimization to the context of 3D Gaussian Splatting, as summarized in Fig. 1. Improving Sparse-View 3DGS Generalization via Flat Minima Optimization 5 
+
+> Fig. 1: Overview of our flat minima optimization framework for sparse-view 3D Gaus-sian Splatting (3DGS). Our approach enhances generalization by introducing pertur-bations to Gaussian positions during training. To account for the geometric structure, we scale perturbations according to the anisotropic extent of each Gaussian and ap-ply them stochastically at the level of individual Gaussians. In addition, we period-ically reinitialize non-positional parameters by temporarily returning scale, rotation, and higher-order SH coefficients to their initial state, following the same initialization method used when constructing Gaussians from SfM points. These parameters are kept unchanged for a short window, while opacity is reset following the standard mechanism in 3DGS.
+
+3.2 Flat Minima Optimization in 3DGS 
+
+We begin by formulating flat minima (FM) optimization in the context of 3D Gaussian Splatting (3DGS). While conventional FM approaches in feed-forward neural networks inject random perturbations into all weights to encourage flat-ter solutions, directly adopting this strategy in 3DGS may overlook its unique geometric structure. Instead, we reinterpret FM optimization by perturbing the 3D position coordinates xi of Gaussians during training. From a geometric per-spective, overfitting in sparse-view 3DGS manifests as sharp minima that are highly sensitive to positional shifts, which in turn causes vulnerability in novel view rendering. By introducing position-level perturbations, we guide the opti-mization toward flatter minima where Gaussian positions are more robust under spatial variation. Accordingly, we extend this idea with perturbation and reini-tialization techniques that account for the geometric properties and dynamic behavior of 3DGS. 
+
+Scale-Adaptive Perturbation (SAP). Prior works on random perturbation strate-gies [2,17] have demonstrated the effectiveness of stochastic perturbations in im-6 K. Seo et al.          
+
+> Fig. 2: Optimization procedure of our method. At iteration t, we temporarily perturb the Gaussian model to obtain ˆθt, render it, and compute the standard 3DGS recon-struction loss L(ˆθt)without introducing an additional loss term or auxiliary objective. The perturbation is then discarded, while ∇L (ˆθt)updates the original model from θt
+> to θt+1 .
+
+proving generalization. To adapt this principle to the geometric nature of 3DGS, we introduce a Scale-Adaptive Perturbation (SAP) scheme that tailors the per-turbation magnitude to the anisotropic scale of each Gaussian. By aligning per-turbations with the spatial extent of each primitive, SAP effectively balances robustness and detail preservation in 3D reconstruction. Formally, the perturbed parameters ˆθ are defined as 
+
+x′ 
+
+> i
+
+= xi + δi, δi ∼ N  0, γ 2Σi
+
+,
+
+Σi = Ri SiS⊤ 
+
+> i
+
+R⊤ 
+
+> i
+
+, ˆθ = {x′
+
+> i
+
+, s i, r i, c i, o i}, (4) where xi denotes the 3D position of the i-th Gaussian, si is its anisotropic scale, ri its rotation, ci its color, and oi its opacity. Here, Ri is the rotation matrix constructed from ri, and Si = diag( si) is the scaling matrix whose diagonal elements correspond to the per-axis scales of the Gaussian. As illustrated in Fig. 2, gradients are then computed at the perturbed parameters ˆθ, and the update at iteration t is performed accordingly: 
+
+θt+1 ← θt − η · ∇L (ˆθt). (5) Unlike 3DGS-MCMC [14], which injects noise into the parameter update (θt+1 = θt −η∇L (θt)+ ϵt) so that stochasticity accumulates along the trajectory, our method perturbs only the loss evaluation while keeping the parameters clean, locally smoothing the loss landscape toward flatter minima. By modulating perturbations according to the anisotropic scale of each Gaus-sian, SAP enforces stronger regularization on larger or elongated primitives while applying finer noise to smaller ones. This design preserves high-frequency details in compact Gaussians while still promoting robustness across the broader scene geometry. 
+
+Stochastic Application of SAP. To further adapt flat minima optimization to 3DGS, we introduce stochastic perturbations, where each Gaussian is probabilis-tically perturbed or left unchanged. This design is motivated by recent Random Improving Sparse-View 3DGS Generalization via Flat Minima Optimization 7
+
+Weight Perturbation strategies [17], where perturbed and unperturbed objec-tives are mixed to encourage flatter solutions. Instead of explicitly rendering two models and combining their losses, we achieve a similar effect more efficiently by perturbing each Gaussian with probability p at every iteration. In practice, this avoids the need to perform two forward passes, keeping the training objective simple and lightweight. Formally, for each Gaussian i, the perturbed position x′ 
+
+> i
+
+is defined as 
+
+x′ 
+
+> i
+
+=
+
+(
+
+xi + δi, with probability p, 
+
+xi, with probability 1 − p,  (6) Applying perturbations in this localized, probabilistic manner offers an addi-tional advantage over global perturbation strategies. In prior FM-inspired meth-ods, where perturbed losses are always incorporated into optimization, we em-pirically observe a tendency to suppress fine-grained geometry, leading to under-fitting of local structures. Similar observations can also be found in our ablation results (see Tab. 3), where the loss-mixing strategy shows degradation in ren-dering fidelity. By contrast, our per-Gaussian stochastic formulation limits the extent to which perturbations dominate the training signal, allowing the model to retain delicate scene details while still benefiting from the regularization effect. This not only reduces overfitting but also enhances the stability of optimization without incurring additional computational overhead. 
+
+Perturbation Magnitude Scheduling. We linearly scale the perturbation magni-tude from 0 at the beginning to a target value at the final iteration. This grad-ual increase avoids excessive noise in the early stage, while ensuring that the desired perturbation strength is applied once the model reaches a more stable regime. Empirically, we find that applying strong perturbations too early, be-fore Gaussians have sufficiently captured the scene structure, tends to degrade performance, motivating this progressive schedule. Formally, the stochastic perturbation is reformulated to incorporate this scheduling scheme, following the linear annealing strategy used in prior work such as [21]: 
+
+x′ 
+
+> i
+
+=
+
+(
+
+xi + α(t) δi, with probability p, 
+
+xi, with probability 1 − p, where α(t) = tT , (7) where t is the current iteration, T is the total number of iterations, and α(t)
+
+linearly increases the perturbation magnitude from 0 to 1 over training. 
+
+Periodic Gaussian Reinitialization. In addition to position-level perturbations, which serve as our main mechanism for flat minima optimization, we periodically reinitialize a subset of Gaussian parameters during training. Specifically, at fixed intervals we temporarily return scale, rotation, and higher-order SH coefficients to their initial state, following the same initialization procedure used when con-structing Gaussians from a Structure-from-Motion (SfM) [24] point cloud, and 8 K. Seo et al. 
+
+Table 1: Quantitative comparison on the LLFF dataset under 3-view, 6-view, and 9-view settings. Our method achieves consistently strong performance across all metrics, outperforming or matching prior baselines in PSNR, SSIM, and LPIPS. The results demonstrate the effectiveness of our flat-minima optimization framework in improving both photometric accuracy and perceptual quality. Method 3-view 6-view 9-view                                                                        
+
+> PSNR ↑SSIM ↑LPIPS ↓PSNR ↑SSIM ↑LPIPS ↓PSNR ↑SSIM ↑LPIPS ↓
+> 3DGS 19.22 0.649 0.229 23.80 0.814 0.125 25.44 0.860 0.096 DNGaussian 19.12 0.591 0.294 22.18 0.755 0.198 23.17 0.788 0.180 FSGS 20.43 0.682 0.248 24.09 0.823 0.145 25.31 0.860 0.122 CoR-GS 20.45 0.712 0.196 24.49 0.837 0.115 26.06 0.874 0.089 DropGaussian 20.76 0.713 0.200 24.74 0.837 0.117 26.21 0.874 0.088
+> Ours 20.88 0.731 0.184 24.76 0.840 0.114 26.23 0.875 0.088
+
+Table 2: Quantitative comparison on MipNeRF360 dataset under 12-view and 24-view settings. Method 12-view 24-view 
+
+PSNR ↑ SSIM ↑ LPIPS ↓ PSNR ↑ SSIM ↑ LPIPS ↓
+
+3DGS 18.52 0.523 0.415 22.80 0.708 0.276 FSGS 18.80 0.531 0.418 23.70 0.745 0.230 CoR-GS 19.52 0.558 0.418 23.39 0.727 0.271 DropGaussian 19.74 0.577 0.364 24.13 0.762 0.225 
+
+Ours 19.50 0.584 0.348 24.19 0.771 0.219 
+
+keep them unchanged for W iterations. Opacity is reset at each interval following the standard reset mechanism in 3DGS [12]. Positions and the total number of Gaussians remain unaffected. This design complements position perturbations by providing an additional regularization effect that mitigates overfitting under sparse-view supervision. In particular, this return-to-initialization step reduces the effective degrees of freedom of non-positional parameters during the window, which stabilizes optimization. By periodically applying this process during train-ing, we enhance stability and further guide optimization toward flatter minima. 
+
+# 4 Experiments 
+
+Experimental Setup. We base our implementation on the original 3DGS frame-work [12], while following most hyperparameters from DropGaussian [21]. We set the perturbation probability to pmax = 0 .3, perturbation coefficient γ = 2 ,and reinitialize scale, rotation, and higher-order SH coefficients every 1,000 iter-ations, returning them to their SfM-based initial state for W = 100 iterations; opacity follows the standard reset in [12] at each interval. To ensure stability, Improving Sparse-View 3DGS Generalization via Flat Minima Optimization 9      
+
+> GT full-view GT crop 3DGS CoR-GS DropGaussian Ours
+> Fig. 3: Qualitative comparison in LLFF and Mip-NeRF360 datasets. Compared to prior methods, our approach reconstructs sharper details and more geometrically con-sistent structures, especially in under-constrained regions such as planar surfaces and occlusion boundaries. While baselines often suffer from spatial misalignment or blur-ring, our method produces visually coherent and high-fidelity results, demonstrating improved generalization to novel viewpoints.
+
+perturbed positions are clamped so that the displacement does not exceed the corresponding Gaussian’s scale. Experiments were conducted on NVIDIA RTX TITAN and A6000 GPU. 
+
+Datasets and Evaluation Metrics. We evaluate our method on two widely used benchmarks for novel view synthesis: LLFF [19] and Mip-NeRF360 [1], both downsampled by a factor of 8. For LLFF, we use 3, 6, and 9 input views, and for Mip-NeRF360, we use 12 and 24 views, following prior works. The reconstruction performance is evaluated by three commonly adopted image quality metrics: peak signal-to-noise ratio (PSNR), structural similarity index (SSIM) [26], and learned perceptual image patch similarity (LPIPS) [32]. Together, these metrics provide a comprehensive evaluation of both photometric accuracy and perceptual quality of novel view synthesis. 
+
+Baselines. We compare our method with recent approaches for sparse-view novel view synthesis, including 3DGS [12], CoR-GS [31], and DropGaussian [21]. We also include DNGaussian [16] and FSGS [36], which incorporate additional geo-metric supervision using depth priors. 10 K. Seo et al. 0.0 0.2 0.4 0.6 0.8 1.0      
+
+> Perturbation Magnitude ( )
+> 18
+> 19
+> 20
+> 21
+> PSNR (Test View)
+> 3DGS
+> DropGaussian
+> Ours 0.0 0.2 0.4 0.6 0.8 1.0
+> Perturbation Magnitude ( )
+> 20
+> 25
+> 30
+> 35
+> PSNR (Train View)  3DGS
+> DropGaussian
+> Ours
+
+Fig. 4: Perturbation robustness analysis on LLFF dataset under 3-view setting. Our method shows smaller performance degradation across perturbation magnitudes com-pared to 3DGS [12] and DropGaussian [21]. 
+
+4.1 Quantitative Evaluation 
+
+Tab. 1 and Tab. 2 summarize the quantitative results across all sparse-view benchmarks. Our method outperforms the compared prior approaches across datasets and view settings. Notably, improvements are observed in PSNR, SSIM and perceptual quality as measured by LPIPS. These results demonstrate the effectiveness of our flat minima framework in enhancing both reconstruction fidelity and generalization under sparse-view supervision. 
+
+4.2 Qualitative Evaluation 
+
+Fig. 3 presents qualitative comparisons across various sparse-view scenarios. Compared to existing baselines, our method consistently generates sharper and more structurally coherent renderings, particularly under challenging geometric conditions. Baseline methods often suffer from noticeable blurring in background regions where supervision is scarce. These methods also tend to exhibit structural in-consistencies, such as spatial misalignment or distorted geometry. For instance, CoR-GS and DropGaussian occasionally fail to maintain consistent geometry, leading to spatial shifts in novel viewpoints, or inaccurately rendering planar surfaces and straight lines ( e.g ., second row). Such artifacts indicate insufficient regularization or overfitting to the limited input views. In contrast, our method produces clean and sharper reconstructions across all scenes. The recovered geometry remains consistent under significant viewpoint changes, preserving fine-grained details such as object boundaries and linear structures. These improvements highlight the effectiveness of our flat minima framework in promoting generalizable geometry, and its robustness under sparse-view supervision. 
+
+4.3 Perturbation Robustness Comparison 
+
+In line with prior works that evaluate the sharpness of minima through a model’s sensitivity to parameter perturbations [5,6, 13], we examine how the reconstruc-Improving Sparse-View 3DGS Generalization via Flat Minima Optimization 11                                                
+
+> Table 3: Ablation studies on the LLFF dataset under the 3-view setting. †indicates our default setting. Method PSNR SSIM LPIPS
+> Noise distribution
+> Anisotropic †20.88 0.731 0.184 Isotropic (max) 20.73 0.725 0.188 Isotropic (mean) 20.67 0.724 0.185 Isotropic (fixed) 20.54 0.714 0.188
+> Perturbed parameter
+> Position †20.88 0.731 0.184 Rotation 20.23 0.710 0.195 Scale 20.22 0.707 0.195 Opacity 20.21 0.709 0.194 Position + Scale 20.33 0.719 0.199
+> Training strategy
+> Full Method †20.88 0.731 0.184 Stochastic →Mixed Loss 20.84 0.714 0.212 w/o Scheduling 20.69 0.721 0.191 w/o Reinitialization 20.58 0.713 0.197
+
+tion quality of a trained 3DGS model changes when its Gaussian positions are perturbed after optimization. We apply position perturbations using our Scale-Adaptive Perturbation (SAP) with magnitudes γ ∈ { 0.0, 0.2, 0.4, 0.6, 0.8, 1.0}
+
+and evaluate the resulting models on both training and test views. As shown in Fig. 4, our method shows substantially smaller degradation than both 3DGS [12] and DropGaussian [21] across all perturbation magnitudes. On test views, DropGaussian nearly matches the degradation trend of vanilla 3DGS, while our method shows substantially smaller drops at every scale. The difference is more evident in training views as vanilla 3DGS and DropGaussian exhibit larger degradation, indicating a stronger tendency to overfit to training images compared to our method. This suggests that our optimization strategy leads to flatter and more robust minima than existing 3DGS baselines. 
+
+4.4 Ablation Studies 
+
+Perturbation Design. In Tab. 3, we evaluate different strategies for injecting per-turbations into Gaussian positions. Our default configuration leverages anisotropic noise that is proportional to the scale of Gaussian axes, promoting both detail preservation and robustness. For comparison, we test isotropic variants where perturbations are scaled by the longest axis of each Gaussian, by the mean axis length, or fixed uniformly across all Gaussians at half the size threshold for deter-mining clone/split targets. Among these, anisotropic perturbation achieves the best balance between fidelity and regularization, while isotropic variants either 12 K. Seo et al. 
+
+oversmooth fine structures or under-regularize large primitives. These results confirm the importance of accounting for the geometric shape of each Gaussian when designing perturbations. Neverthless, we find that any perturbation strat-egy yields better generalization than the vanilla 3DGS baseline, highlighting that introducing perturbation itself acts as a strong form of regularization, even when the design is not optimal. 
+
+Effect of Perturbing Different Parameters. To assess the sensitivity of different Gaussian attributes, we applied perturbations individually to position, scale, ro-tation, and opacity, as reported in Tab. 3. For scale, noise was added proportional to each axis length, following our SAP strategy. Rotation was perturbed by al-tering each Gaussian’s orientation with small random angular offsets around the three principal axes. Opacity was perturbed by adding Gaussian noise directly to its values. The results indicate that perturbing position is the most effective for im-proving generalization, consistently outperforming other parameter choices. In-terestingly, applying perturbations to both position and scale does not further enhance performance; instead, its performance degraded compared to perturbing position alone. These observations suggest that inducing flatness in the position space is particularly impactful for promoting stable and generalizable geometry in 3DGS, and that geometry-based perturbation plays an important role in our framework, while other parameter groups may still be beneficial under different schedules or formulations and thus remain worth exploring in future work. 
+
+Stochastic Perturbation Strategy. We further investigate the role of stochasticity in perturbation design. Prior flat minima studies [17] improve generalization by mixing losses from perturbed and unperturbed models, but this requires ren-dering twice per iteration. Instead, we realize a similar effect by applying per-turbations stochastically during training. Concretely, each Gaussian is randomly perturbed with some probability at every iteration, which introduces variability into the optimization while keeping the training objective simple and lightweight. We found that directly relying on perturbed losses at every step tends to over-smooth high-frequency details, whereas our stochastic scheme alleviates this is-sue and preserves fine structures. This can also be observed in our ablation results (Tab. 3). 
+
+Perturbation Magnitude Scheduling. We further validate the role of perturba-tion scheduling by comparing models trained with and without the progressive scaling of perturbation magnitude (Tab. 3). Without scheduling, strong pertur-bations are applied from the very beginning of training, when Gaussians have not yet captured the coarse scene structure. As a result, optimization is hin-dered, leading to unstable convergence and degraded reconstruction quality. In contrast, our scheduling strategy gradually increases perturbation strength as training progresses, allowing Gaussians to first establish a stable representation of the scene before stronger perturbations are introduced. This results in con-sistently better quantitative performance, supporting our intuition that early Improving Sparse-View 3DGS Generalization via Flat Minima Optimization 13 0 2000 4000 6000 8000 10000          
+
+> Iteration
+> 24
+> 26
+> 28
+> 30
+> 32
+> 34
+> PSNR
+> Train PSNR
+> w/ reinit train
+> w/o reinit train
+> 02000 4000 6000 8000 10000
+> Iteration
+> 21.0
+> 21.5
+> 22.0
+> 22.5
+> 23.0
+> PSNR
+> Test PSNR
+> w/ reinit test
+> w/o reinit test
+
+Fig. 5: Training and test PSNR trajectories with and without Gaussian reinitializa-tion on the LLFF fern scene under the 3-view setting. Without reinitialization, training PSNR keeps rising steadily while test PSNR plateaus, indicating overfitting. In con-trast, periodic reinitialization moderates the growth of training PSNR but enables continuous improvements in test PSNR, suggesting better generalization. The sharper drops observed at each reset interval are due to reinitializing more diverse parameters, but performance quickly recovers and ultimately surpasses the non-reinitialized base-line. This aligns with the role of periodic reinitialization as an additional regularizer that mitigates overfitting and improves generalization. 
+
+excessive noise is detrimental, while a progressive schedule provides a more ef-fective balance between regularization and fidelity. 
+
+Periodic Gaussian Reinitialization. To validate the effect of our reinitialization strategy, we conducted an ablation study on the LLFF dataset under the 3-view setting (Tab. 3, Fig. 5). When reinitialization is disabled, the additional peri-odic return-to-initialization of scale, rotation, and higher-order SH coefficients is deactivated, while opacity continues to follow the original reset mechanism in-troduced in [12]. Under this setting, performance drops across all metrics, with PSNR decreasing by 0.3. This indicates that augmenting the standard opacity re-set with periodic return-to-initialization provides a mild regularization effect dur-ing training. It serves as a complementary mechanism alongside Scale-Adaptive Perturbation, jointly mitigating overfitting and stabilizing optimization. 
+
+4.5 Plug-in Compatibility 
+
+Since our method acts on the optimization process rather than introducing architectural changes, it can be naturally integrated into existing sparse-view 3DGS pipelines as a plug-in module. To verify this, we apply our method to optimization-based methods (FSGS [36] and DropGaussian [21]), diffusion-based artifact correction framework (Difix3D+ [27]), and feedforward initialization fol-lowed by short post-optimization (AnySplat [11]), without modifying their origi-nal pipeline designs. As shown in Tab. 4, incorporating our optimization strategy 14 K. Seo et al.                                                   
+
+> Table 4: Plug-in compatibility across optimization-based, diffusion-enhanced, and feed-forward sparse-view 3DGS pipelines. Dataset Method PSNR SSIM LPIPS
+> Optimization-based
+> LLFF [19] 3-view FSGS [36] 20.43 0.682 0.248 FSGS + Ours 21.03 0.725 0.196
+> DropGaussian [21] 20.76 0.713 0.200 DropGaussian + Ours 21.05 0.734 0.192
+> Diffusion-enhanced correction
+> Mip-NeRF360 [1] 12-view Difix3D+ [27] 19.25 0.554 0.375
+> Difix3D+ + Ours 19.63 0.575 0.386 Tanks & Temples [15] 12-view Difix3D+ [27] 14.07 0.499 0.494
+> Difix3D+ + Ours 14.35 0.517 0.516
+> Feed-forward
+> Mip-NeRF360 [1] 12-view AnySplat [11] 15.76 0.307 0.481 AnySplat + 3DGS 3k 16.97 0.338 0.432 AnySplat + Ours 3k 17.36 0.384 0.427
+> Tanks & Temples [15] 12-view AnySplat [11] 12.67 0.308 0.506 AnySplat + 3DGS 3k 13.58 0.325 0.469 AnySplat + Ours 3k 14.07 0.394 0.445
+
+consistently improves FSGS, DropGaussian, and AnySplat, while also improv-ing PSNR and SSIM when combined with Difix3D+. This suggests that the flat minima regularization provided by our approach is complementary to existing techniques, and can be readily adopted to further improve their performance under sparse-view supervision. 
+
+# 5 Conclusion 
+
+We addressed the challenge of sparse-view generalization in 3D Gaussian Splat-ting (3DGS) from the perspective of flat minima optimization. Viewing overfit-ting as convergence to sharp solutions that are sensitive to positional pertur-bations, we proposed a lightweight training framework that adapts flat minima principles to 3DGS through scale-adaptive perturbation with stochastic appli-cation and magnitude scheduling, together with periodic reinitialization of non-positional parameters. These components regularize optimization while preserv-ing fine details, requiring no architectural changes or external priors. Experi-ments on LLFF and Mip-NeRF360 datasets demonstrate improved stability and generalization under sparse-view supervision, producing sharper and more ro-bust reconstructions. Our results also suggest that further exploring perturbation strategies for other Gaussian parameters may provide additional opportunities to improve 3DGS optimization. Improving Sparse-View 3DGS Generalization via Flat Minima Optimization 15 
+
+# Acknowledgements 
+
+This work was supported in part by MSIT/IITP (No. RS-2022-II220680, RS-2020-II201821, RS-2019-II190421, RS-2024-00459618, RS-2024-00360227, RS-2024-00437633, RS-2024-00437102, RS-2025-25442569), MSIT/NRF (No. RS-2024-00357729), and KNPA/KIPoT (No. RS-2025-25393280). 
+
+# References 
+
+1. Barron, J.T., Mildenhall, B., Verbin, D., Srinivasan, P.P., Hedman, P.: Mip-nerf 360: Unbounded anti-aliased neural radiance fields. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 5470–5479 (2022) 2. Bisla, D., Wang, J., Choromanska, A.: Low-pass filtering sgd for recovering flat optima in the deep learning optimization landscape. In: International Conference on Artificial Intelligence and Statistics. pp. 8299–8339. PMLR (2022) 3. Chen, K., Zhong, Y., Li, Z., Lin, J., Chen, Y., Qin, M., Wang, H.: Quantifying and alleviating co-adaptation in sparse-view 3d gaussian splatting. Advances in Neural Information Processing Systems 38 , 115939–115968 (2026) 4. Chung, J., Oh, J., Lee, K.M.: Depth-regularized optimization for 3d gaussian splat-ting in few-shot images. In: Proceedings of the IEEE/CVF Conference on Com-puter Vision and Pattern Recognition. pp. 811–820 (2024) 5. Dinh, L., Pascanu, R., Bengio, S., Bengio, Y.: Sharp minima can generalize for deep nets. In: International Conference on Machine Learning. pp. 1019–1028. PMLR (2017) 6. Foret, P., Kleiner, A., Mobahi, H., Neyshabur, B.: Sharpness-aware minimization for efficiently improving generalization. arXiv preprint arXiv:2010.01412 (2020) 7. Guédon, A., Ichikawa, T., Yamashita, K., Nishino, K.: Matcha gaussians: Atlas of charts for high-quality geometry and photorealism from sparse views. In: Proceed-ings of the Computer Vision and Pattern Recognition Conference. pp. 6001–6011 (2025) 8. Guo, Z., Wang, P., Chen, Z., Kong, X., Lyu, Y., Gao, G., Han, L.: Ugod: Uncertainty-guided differentiable opacity and soft dropout for enhanced sparse-view 3dgs. arXiv preprint arXiv:2508.04968 (2025) 9. Hochreiter, S., Schmidhuber, J.: Flat minima. Neural computation 9(1), 1–42 (1997) 10. Hyung, J., Hong, S., Hwang, S., Lee, J., Choo, J., Kim, J.H.: Effective rank anal-ysis and regularization for enhanced 3d gaussian splatting. Advances in Neural Information Processing Systems 37 , 110412–110435 (2024) 11. Jiang, L., Mao, Y., Xu, L., Lu, T., Ren, K., Jin, Y., Xu, X., Yu, M., Pang, J., Zhao, F., et al.: Anysplat: Feed-forward 3d gaussian splatting from unconstrained views. ACM Transactions on Graphics (TOG) 44 (6), 1–16 (2025) 12. Kerbl, B., Kopanas, G., Leimkühler, T., Drettakis, G., et al.: 3d gaussian splatting for real-time radiance field rendering. ACM Trans. Graph. 42 (4), 139–1 (2023) 13. Keskar, N.S., Mudigere, D., Nocedal, J., Smelyanskiy, M., Tang, P.T.P.: On large-batch training for deep learning: Generalization gap and sharp minima. arXiv preprint arXiv:1609.04836 (2016) 14. Kheradmand, S., Rebain, D., Sharma, G., Sun, W., Tseng, Y.C., Isack, H., Kar, A., Tagliasacchi, A., Yi, K.M.: 3d gaussian splatting as markov chain monte carlo. Advances in Neural Information Processing Systems 37 , 80965–80986 (2024) 16 K. Seo et al. 15. Knapitsch, A., Park, J., Zhou, Q.Y., Koltun, V.: Tanks and temples: Benchmarking large-scale scene reconstruction. ACM Transactions on Graphics (ToG) 36 (4), 1–13 (2017) 16. Li, J., Zhang, J., Bai, X., Zheng, J., Ning, X., Zhou, J., Gu, L.: Dngaussian: Opti-mizing sparse-view 3d gaussian radiance fields with global-local depth normaliza-tion. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 20775–20785 (2024) 17. Li, T., Tao, Q., Yan, W., Lei, Z., Wu, Y., Fang, K., He, M., Huang, X.: Revisiting random weight perturbation for efficiently improving generalization. arXiv preprint arXiv:2404.00357 (2024) 18. Li, T., Yan, W., Lei, Z., Wu, Y., Fang, K., Yang, M., Huang, X.: Efficient gen-eralization improvement guided by random weight perturbation. arXiv preprint arXiv:2211.11489 (2022) 19. Mildenhall, B., Srinivasan, P.P., Ortiz-Cayon, R., Kalantari, N.K., Ramamoorthi, R., Ng, R., Kar, A.: Local light field fusion: Practical view synthesis with pre-scriptive sampling guidelines. ACM Transactions on Graphics (ToG) 38 (4), 1–14 (2019) 20. Mildenhall, B., Srinivasan, P.P., Tancik, M., Barron, J.T., Ramamoorthi, R., Ng, R.: Nerf: Representing scenes as neural radiance fields for view synthesis. Commu-nications of the ACM 65 (1), 99–106 (2021) 21. Park, H., Ryu, G., Kim, W.: Dropgaussian: Structural regularization for sparse-view gaussian splatting. In: Proceedings of the computer vision and pattern recog-nition conference. pp. 21600–21609 (2025) 22. Patle, G., Girgaonkar, N., Somraj, N., Soundararajan, R.: Ad-gs: Alternating den-sification for sparse-input 3d gaussian splatting. In: Proceedings of the SIGGRAPH Asia 2025 Conference Papers. pp. 1–11 (2025) 23. Peng, R., Xu, W., Tang, L., Liao, L., Jiao, J., Wang, R.: Structure consistent gaussian splatting with matching prior for few-shot novel view synthesis. Advances in Neural Information Processing Systems 37 , 97328–97352 (2024) 24. Schonberger, J.L., Frahm, J.M.: Structure-from-motion revisited. In: Proceedings of the IEEE conference on computer vision and pattern recognition. pp. 4104–4113 (2016) 25. Song, M., Lin, X., Zhang, D., Li, H., Li, X., Du, B., Qi, L.: D 2gs: Depth-and-density guided gaussian splatting for stable and accurate sparse-view reconstruction. arXiv preprint arXiv:2510.08566 (2025) 26. Wang, Z., Bovik, A.C., Sheikh, H.R., Simoncelli, E.P.: Image quality assessment: from error visibility to structural similarity. IEEE transactions on image processing 
+
+13 (4), 600–612 (2004) 27. Wu, J.Z., Zhang, Y., Turki, H., Ren, X., Gao, J., Shou, M.Z., Fidler, S., Gojcic, Z., Ling, H.: Difix3d+: Improving 3d reconstructions with single-step diffusion models. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 26024–26035 (2025) 28. Wu, J., Li, R., Zhu, Y., Guo, R., Sun, J., Zhang, Y.: Sparse2dgs: Geometry-prioritized gaussian splatting for surface reconstruction from sparse views. In: Pro-ceedings of the Computer Vision and Pattern Recognition Conference. pp. 11307– 11316 (2025) 29. Xiong, H., Muttukuru, S., Xiao, H., Upadhyay, R., Chari, P., Zhao, Y., Kadambi, A.: Sparsegs: sparse view synthesis using 3d gaussian splatting. In: 2025 Interna-tional Conference on 3D Vision (3DV). pp. 1032–1041. IEEE (2025) Improving Sparse-View 3DGS Generalization via Flat Minima Optimization 17 30. Xu, Y., Wang, L., Chen, M., Ao, S., Li, L., Guo, Y.: Dropoutgs: Dropping out gaussians for better sparse-view rendering. In: Proceedings of the Computer Vision and Pattern Recognition Conference. pp. 701–710 (2025) 31. Zhang, J., Li, J., Yu, X., Huang, L., Gu, L., Zheng, J., Bai, X.: Cor-gs: sparse-view 3d gaussian splatting via co-regularization. In: European conference on computer vision. pp. 335–352. Springer (2024) 32. Zhang, R., Isola, P., Efros, A.A., Shechtman, E., Wang, O.: The unreasonable effectiveness of deep features as a perceptual metric. In: Proceedings of the IEEE conference on computer vision and pattern recognition. pp. 586–595 (2018) 33. Zhao, C., Wang, X., Zhang, T., Javed, S., Salzmann, M.: Self-ensembling gaussian splatting for few-shot novel view synthesis. In: Proceedings of the IEEE/CVF International Conference on Computer Vision. pp. 4940–4950 (2025) 34. Zheng, Y., Jiang, Z., He, S., Sun, Y., Dong, J., Zhang, H., Du, Y.: Nexusgs: Sparse view synthesis with epipolar depth priors in 3d gaussian splatting. In: Proceedings of the Computer Vision and Pattern Recognition Conference. pp. 26800–26809 (2025) 35. Zhong, Y., Li, Z., Chen, D.Z., Hong, L., Xu, D.: Taming video diffusion prior with scene-grounding guidance for 3d gaussian splatting from sparse inputs. In: Proceed-ings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 6133–6143 (2025) 36. Zhu, Z., Fan, Z., Jiang, Y., Wang, Z.: Fsgs: Real-time few-shot view synthesis using gaussian splatting. In: European conference on computer vision. pp. 145– 163. Springer (2024) 18 K. Seo et al. 
+
+# A Appendix 
+
+A.1 Additional Benchmark Results 
+
+We evaluate our method on additional real-world outdoor, synthetic, and object-centric benchmarks, including NeO 360 dataset for outdoor settings with limited viewpoint coverage. 
+
+Table 5: Additional benchmark results. 
+
+Dataset Method PSNR SSIM LPIPS 
+
+Tanks & Temples 12-view 
+
+3DGS 13.20 0.457 0.513 
+
+DropGaussian 12.94 0.478 0.522 
+
+Ours 13.90 0.503 0.499 
+
+Blender 8-view 
+
+3DGS 21.37 0.851 0.135 
+
+DropGaussian 21.66 0.858 0.131 
+
+Ours 22.73 0.875 0.113 
+
+DTU 3-view 
+
+3DGS 18.93 0.824 0.151 
+
+DropGaussian 19.54 0.846 0.136 
+
+Ours 19.84 0.855 0.129 
+
+NeO 360 12-view 
+
+3DGS 21.73 0.756 0.319 
+
+DropGaussian 22.01 0.774 0.315 
+
+Ours 22.47 0.777 0.324 
+
+Table 5 shows consistent gains over both baselines on Tanks & Temples, Blender, and DTU; on NeO 360, our method improves PSNR and SSIM. 
+
+A.2 Results under Increased View Counts 
+
+We further increase the number of input views to study behavior beyond the highly sparse regime and identify when our regularization remains useful. 
+
+Table 6: Results under increased view counts. 
+
+Dataset Method PSNR SSIM LPIPS 
+
+LLFF 15-view 3DGS 27.06 0.887 0.081 
+
+Ours 27.82 0.904 0.067 
+
+DTU 24-view 3DGS 23.21 0.891 0.127 
+
+Ours 24.10 0.910 0.130 
+
+Mip-NeRF360 24-view 3DGS 22.80 0.708 0.276 
+
+Ours 24.19 0.771 0.219 
+
+Mip-NeRF360 36-view 3DGS 25.15 0.797 0.187 
+
+Ours 25.01 0.774 0.241 Improving Sparse-View 3DGS Generalization via Flat Minima Optimization 19 
+
+Table 6 shows gains on LLFF 15-view, DTU 24-view, and Mip-NeRF360 24-view. The gain diminishes on Mip-NeRF360 36-view, where 3DGS is better constrained. 
+
+A.3 Robustness to SfM Quality 
+
+To assess the robustness of our method to the quality of the SfM initialization, we degrade the initial point cloud by downsampling the SfM points at different rates. We conduct this analysis on the LLFF 3-view setting, where the reconstruction is highly sensitive to the amount and quality of the initial geometric prior.              
+
+> Table 7: Robustness to SfM quality.
+> Init. SfM points 3DGS DropGaussian Ours 50% (avg: 7.1k) 19.55 20.25 20.58
+> 10% (avg: 1.4k) 19.00 19.59 19.93
+> 5% (avg: 0.7k) 18.53 19.13 19.45
+
+As shown in Table 7, our method consistently outperforms both 3DGS and DropGaussian across all downsampling rates. These results indicate that our optimization remains effective even when the initial SfM point cloud becomes substantially sparse, suggesting lower sensitivity to SfM quality.

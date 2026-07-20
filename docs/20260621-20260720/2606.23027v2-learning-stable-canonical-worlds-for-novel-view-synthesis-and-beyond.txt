@@ -1,0 +1,462 @@
+Title: Learning Stable Canonical Worlds for Novel View Synthesis and Beyond
+
+URL Source: https://arxiv.org/pdf/2606.23027v2
+
+Published Time: Fri, 26 Jun 2026 00:34:02 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+# Learning Stable Canonical Worlds for Novel View Synthesis and Beyond 
+
+Xiaoyu Xu 1, Jian Zou 1, Sheyang Tang 2, Zhihua Wang 1, Jing Liao 1, and Kede Ma 1∗
+
+> 1
+
+Department of Computer Science, City University of Hong Kong 
+
+> 2
+
+Department of Electrical and Computer Engineering, University of Waterloo Emails: xiaoyxu@cityu.edu.hk , jian.zou@my.cityu.edu.hk ,
+
+sheyang.tang@uwaterloo.ca , Zhihua.WANG@cityu.edu.hk ,
+
+jingliao@cityu.edu.hk , kede.ma@cityu.edu.hk 
+
+# Abstract 
+
+Feed-forward Gaussian splatting (FFGS) facilitates real-time novel view synthesis, yet current methods often remain tied to view-dependent predictions. As more input views are added, they may accumulate noisy or redundant evidence instead of converging to a stable scene representation. In this paper, we introduce Canoni-calGS, a feed-forward pipeline that maps cluttered multi-view observations into a stable, scene-centric representation. CanonicalGS first extracts view-centric evidence from depth, semantic features, and uncertainty estimates, and then aggre-gates this evidence in a canonical latent world using uncertainty-aware fusion. By emphasizing reliable observations while suppressing uncertain or redundant ones, CanonicalGS produces representations that scale more effectively for novel view synthesis and transfer to downstream visual perception tasks. Experiments show up to a 2.5 dB improvement in peak signal-to-noise ratio for synthesizing novel views and an 11% gain in semantic segmentation accuracy. 
+
+# 1 Introduction 
+
+Human vision does not treat a scene as a loose collection of independent views. Instead, it integrates partial, viewpoint-dependent observations into a stable internal model of the physical world (Marr and Nishihara, 1978). Marr’s theory of vision offers a useful computational account of this process: visual perception progresses from image measurements, to intrinsic 2.5D descriptions such as depth and surface orientation, and finally to canonical 3D scene representations (Marr, 2010; Barrow and Tenenbaum, 1978; Ullman, 1996). We refer to this transformation from cluttered, view-centric observations into a coherent scene-centric representation as canonization . Although this idea has shaped vision theory for decades, realizing it in learnable 3D computational systems has remained difficult, partly because earlier scene representations lacked the flexibility and expressiveness needed for end-to-end visual learning and understanding. Recent advances in 3D representation learning make this classical objective newly practical. Specifi-cally, 3D Gaussian splatting (3DGS) provides an explicit and efficient representation for high-quality scene rendering (Kerbl et al., 2023; Fu et al., 2024; Charatan et al., 2024). Building on it, feed-forward Gaussian splatting (FFGS) methods (Charatan et al., 2024; Chen et al., 2024; Xu et al., 2025; Liu et al., 2025) directly infer 3D Gaussian primitives (GPs) from sparse input images in a single forward pass. Viewed through Marr’s representational hierarchy, this computation has the ingredients for canonization: images are lifted through geometric cues and expressed as 3D primitives. The difficulty is that this promise is usually pursued through a rendering-first objective, where multi-view evidence is optimized to synthesize target views rather than to form a shared scene representation. 
+
+> ∗Corresponding author. Preprint.
+> arXiv:2606.23027v2 [cs.CV] 25 Jun 2026
+
+This rendering-first bias appears across existing FFGS methods. Pose-required approaches often build on view-dependent or pixel-aligned predictions (Charatan et al., 2024; Chen et al., 2024; Xu et al., 2025; Liu et al., 2025), while pose-free and aggregation-based variants improve input flexibility and cross-view fusion (Ye et al., 2024; Huang and Mikolajczyk, 2025; Ye et al., 2025; Kang et al., 2025; Zhang et al., 2025; Jiang et al., 2025; Fei et al., 2024; Li et al., 2026; Wang et al., 2025b; Itkin et al., 2026; Miao et al., 2025). However, these methods still optimize primarily for renderable reconstruction, so noisy or redundant observations can be passed to the resulting GPs rather than resolved in a shared scene representation as the input set grows. This motivates a computational pipeline that first consolidates multi-view evidence in (latent) scene space and then decodes the resulting scene representation into GPs for rendering. In this work, we propose CanonicalGS , a canonization-oriented FFGS method that reconnects Marr’s classical representational progression with modern 3D Gaussian representations. The core idea is to convert noisy and partial view-centric evidence into a canonical latent world that preserves reliable and stable scene information while suppressing uncertainty and redundancy. Concretely, CanonicalGS follows a 2D →2.5D →3D pipeline. Given a set of input images, our method first estimates 2.5D depth maps that provide both geometric structure and reliability cues. Next, it aggregates this evidence in scene space, constructing reliability and feature fields in world coordinates so that reliable observations are consolidated while uncertain or inconsistent ones are suppressed. A GP decoder then maps the latent scene representation into a renderable Gaussian field, encouraging each primitive’s contribution to increase or saturate with accumulated reliability rather than decrease as reliable evidence is added. CanonicalGS changes the role of FFGS from a computational pipeline for novel view synthesis into a representation learning algorithm for broader visual perception and understanding. Such downstream capability is not imposed through auxiliary perception heads or external semantic guidance. Instead, it emerges from the architectural pressure to consolidate reliable evidence into a shared scene space before decoding. Extensive experiments show that CanonicalGS improves rendering under increasing input views and yields more transferable scene representations: it achieves up to a 2.5 dB improvement in peak signal-to-noise ratio (PSNR) for novel view synthesis and an 
+
+11% gain in semantic segmentation accuracy. 
+
+# 2 Related Work 
+
+We position CanonicalGS within three related lines of work: FFGS, multi-view aggregation, and uncertainty-aware reconstruction. We focus on how each line handles scene representation, evidence consolidation, and reliability, which together motivate our canonization-oriented design. 
+
+FFGS. 3DGS represents scenes with explicit GPs and has become an efficient alternative to neural radiance-field rendering (Kerbl et al., 2023). Subsequent work has improved the flexibility and expressiveness of 3DGS through alternative primitive formulations and factorized appearance mod-els (Hamdi et al., 2024; Tang and Cham, 2024). FFGS builds on it by predicting GPs in a single forward pass, avoiding costly per-scene optimization (Charatan et al., 2024; Szymanowicz et al., 2024). Pose-required FFGS methods use known or estimated cameras together with geometric priors, cost volumes, monocular depth, or multi-view cues to infer GPs from sparse posed views (Charatan et al., 2024; Fei et al., 2024; Chen et al., 2024; Liu et al., 2025; Xu et al., 2025). Pose-free variants further remove the need for externally provided camera poses by jointly estimating camera relations, geometry, and GPs from unposed images (Ye et al., 2024; Huang and Mikolajczyk, 2025; Kang et al., 2025; Zhang et al., 2025; Ye et al., 2025). These methods have substantially advanced fast view synthesis, but they remain primarily optimized around renderable reconstruction. CanonicalGS instead treats FFGS as a representation learning problem: multi-view inputs are first organized into a shared scene space, and GPs are decoded only after scene-centric evidence has been consolidated. 
+
+Multi-view aggregation. As FFGS systems move beyond fixed two-view or sparse-view settings, cross-view aggregation becomes central to eliminating redundancy, resolving inconsistent obser-vations, and supporting larger input sets. Recent methods explore aggregation in several spaces, with an important distinction between aggregation before and after GP decoding. PixelGaussian and TokenSplat align or aggregate image-level evidence before GP prediction (Fei et al., 2024; Li et al., 2026); GlobalSplat summarizes scenes through compact global tokens (Itkin et al., 2026); and VolSplat and EvolSplat introduce voxel- or volume-aligned representations before decoding 2Scene -Centric Aggregation View -Centric Evidence Formation  GP Decoding         
+
+> Covariance
+> Spherical
+> harmonics
+> Position
+> offset
+> Opacity
+> Input posed
+> views
+> 𝐹 view
+> (𝑖 ),𝐷 (𝑖 ),𝑅 view
+> (𝑖 )
+> Lifted to
+> scene space Voxel lattice 𝐹 scene
+> 𝑅 scene
+> Rendered
+> views
+> Splatted
+> features
+> DINO -v2
+> +
+> Upsampler
+> Cost -volume
+> depth
+> Uncertainty
+> heads
+> Cost -volume
+> depth
+> Uncertainty
+> heads
+> 𝐹 view
+> (𝑗 ),𝐷 (𝑗 ),𝑅 view
+> (𝑗 )
+> DINO -v2
+> +
+> Upsampler
+
+Figure 1: Overview of CanonicalGS. CanonicalGS converts posed input views into view-centric evidence, aggregates reliable observations in a scene-centric latent representation, and decodes the resulting scene fields into GPs for novel view synthesis and downstream perception. Redder colors indicate higher reliability in Rscene .The illustration shows two views for clarity, but the formulation applies to an unordered set of N views. 
+
+GPs (Wang et al., 2025b; Miao et al., 2025). AnySplat instead merges or routes information in Gaussian space after primitive hypotheses are formed (Jiang et al., 2025). Together, these approaches show that FFGS benefits from separating evidence consolidation from direct primitive prediction. However, aggregation alone does not determine whether additional views shall refine the scene representation or simply inject more view-conditioned hypotheses. CanonicalGS is closest in spirit to methods that aggregate before decoding, especially voxel-aligned approaches, but differs by making evidence accumulation uncertainty-aware and by further conditioning the GP decoder to accumulated reliability, so that reliable observations are encouraged to strengthen rather than destabilize the representation. 
+
+Uncertainty-aware reconstruction. Classical multi-view reconstruction has long relied on photo-metric consistency, visibility reasoning, and confidence or filtering cues to reject ambiguous matches, suppress unreliable depth estimates, and fuse observations robustly under occlusion and noise (Curless and Levoy, 1996; Seitz et al., 2006; Furukawa and Ponce, 2010). Modern learning-based multi-view stereo derives uncertainty or confidence from depth distributions, matching costs, attention, or cross-view consistency, and uses it to refine or filter local geometry (Yao et al., 2018; Luo et al., 2020; Cheng et al., 2020; Yang et al., 2022). Related ideas also appear in dense reconstruction, where probabilistic or learned reliability measures guide the integration of multiple noisy measurements into a coherent 3D estimate (Weder et al., 2021; Rosinol et al., 2023). These studies establish an important principle: not all observations should contribute equally to scene construction. CanonicalGS brings this principle into FFGS by using uncertainty not merely as an auxiliary depth cue, but as a first-class aggregation signal that weights reliable geometric and appearance evidence before GP decoding. 
+
+# 3 Proposed Method: CanonicalGS 
+
+In this section, we present CanonicalGS, a representation-first FFGS method that constructs a canonical latent world before decoding GPs for rendering. 
+
+3.1 Problem Formulation 
+
+Let D = {(I(i), Π(i))}Ni=1 denote an unordered set of N posed input views, where I(i) ∈ RH×W ×3 is the RGB image of view i and Π(i) : R3 → R2 is its perspective projection. The goal of CanonicalGS is to convert these unordered observations into a stable latent world before GP decoding, so that reliable additional views consolidate scene evidence rather than introduce inconsistent or redundant primitives. At a high level, the set-to-scene mapping can be defined as 
+
+Z = Agg( E) , E =
+
+n
+
+Ext 
+
+
+
+I(i), Π(i)o Ni=1 
+
+, (1) where Ext( ·) extracts per-view visual evidence, and Agg( ·) reprojects and aggregates this evidence in a shared scene space. The resulting latent scene is then decoded into a renderable GP set: 
+
+G = Dec ( Z) . (2) 33.2 View-Centric Evidence Formation 
+
+In the first stage, for each input view, CanonicalGS estimates dense visual features, depth, and uncertainty before any scene-level aggregation is performed. 
+
+Per-view feature extraction. Given the i-th input view I(i), we use a pretrained DINO-v2 back-bone (Oquab et al., 2023) to extract patch-level visual features. A lightweight upsampling decoder then fuses multi-scale features and restores them to the input image resolution (Ranftl et al., 2021), yielding an L-dimensional dense feature map F (i)view ∈ RH×W ×L. The feature extractor is applied independently to each view, avoiding introducing view-order dependence before observations are lifted into the shared scene space. 
+
+Uncertainty-aware depth estimation. Depth provides the 2.5D bridge from images to scene space, while uncertainty determines which lifted observations should be trusted. We use a cost-volume depth module inspired by plane-sweep stereo (Chen et al., 2024; Xu et al., 2023, 2025). Given K
+
+sampled depth hypotheses {dk}Kk=1 and for each pixel location m in the reference view i, the k-th hypothesis is back-projected to the scene space and reprojected to the source view j:
+
+m(i,j ) 
+
+> k
+
+= Π (j)
+
+
+
+Π(i)−1
+
+(m, d k)
+
+
+
+. (3) The pairwise matching score is computed by feature correlation: 
+
+S(i,j ) 
+
+> k
+
+(m) = 
+
+D
+
+F (i)view (m), F (j)view (m(i,j ) 
+
+> k
+
+)
+
+E
+
+√L . (4) For an N -view input set, the reference-view score volume is computed by averaging across all source-view scores: 
+
+S(i) 
+
+> k
+
+(m) = 1
+
+N − 1
+
+X 
+
+> j̸=i
+
+S(i,j ) 
+
+> k
+
+(m), (5) Given F (i)view ∈ RH×W ×L and S(i) ∈ RH×W ×K , a UNet-like module (Ronneberger et al., 2015; Xu et al., 2025) outputs a discrete depth probability volume: 
+
+P (i) = softmax 
+
+
+
+UNet 
+
+
+
+F (i)view , S (i) 
+
+∈ RH×W ×K . (6) The depth map D(i) and positional uncertainty map U (i)pos are defined to have per-pixel values: 
+
+D(i)(m) = 
+
+> K
+
+X
+
+> k=1
+
+P (i) 
+
+> k
+
+(m) dk, U (i)pos (m) = 
+
+vuut KX
+
+> k=1
+
+P (i) 
+
+> k
+
+(m)  dk − D(i)(m)2, (7) where larger positional uncertainty indicates more ambiguous geometry, occlusion, or weaker multi-view agreement. In addition, we predict an appearance uncertainty map from semantic features: 
+
+U (i)app (m) = ReLU 
+
+
+
+MLP 
+
+
+
+F (i)view (m)
+
+ 
+
+, (8) where MLP( ·) denotes a multilayer perceptron (MLP), with the same parameters shared across all spatial locations m. The two uncertainty sources are converted into a reliability map: 
+
+R(i)view = exp 
+
+
+
+−U (i)pos 
+
+
+
+⊙ exp 
+
+
+
+−U (i)app 
+
+
+
+, (9) where ⊙ denotes element-wise multiplication. As a result, an observation is highly reliable only when it is geometrically well supported and visually certain. The resulting view-centric evidence is 
+
+E =
+
+n
+
+F (i)view , D (i), R (i)view 
+
+oNi=1 
+
+.
+
+3.3 Scene-Centric Evidence Aggregation 
+
+In the second stage, CanonicalGS turns unordered view-centric evidence into two voxel fields in scene space: a feature field for scene content and a reliability field for accumulated support. 4Scene-space rasterization. Lifted image observations form an irregular 3D point set whose sampling density varies with depth, viewpoint, and occlusion. Aggregating this set directly would make the representation depend on the incidental sampling pattern of the input views. We therefore rasterize the lifted observations onto a shared voxel lattice V with a fixed origin and a fixed grid resolution. For a pixel location m in view i, its lifted scene position is 
+
+x(i)(m) = 
+
+
+
+Π(i)−1
+
+m, D (i)(m)
+
+
+
+, (10) which is assigned to its containing voxel. 
+
+Reliability-guided aggregation. Observations inside the same voxel may include corroborating measurements, duplicates, and inconsistent estimates caused by occlusion or depth ambiguity. To favor reliable and mutually consistent evidence, we first select the most certain observation in each nonempty voxel v ∈ V as a local representative: 
+
+(i⋆, m ⋆) = arg max 
+
+> (i,m )∈Ω( v)
+
+R(i)view (m), (11) where Ω( v) = {(i, m ) | x(i)(m) ∈ v} denotes the set of view-location index pairs, with lifted scene positions assigned to voxel v. Each observation then receives a weight that combines its reliability with nonnegative feature agreement to this representative: 
+
+W (i)(m, v ) = R(i)view (m)
+
+D
+
+F (i)view (m), F (i⋆)view (m⋆)
+
+E
+
+∥F (i)view (m)∥ ∥ F (i⋆)view (m⋆)∥
+
+
+
+> +
+
+, (i, m ) ∈ Ω( v), (12) where [·]+ = max( ·, 0) and W (i)(m, v ) denotes the reliability-guided aggregation weight for location 
+
+m in view i assigned to voxel v. Thus, an observation contributes strongly only when it is both reliable and consistent with the local representative. The aggregated scene reliability and feature fields are 
+
+Rscene (v) = X
+
+> (i,m )∈Ω( v)
+
+W (i)(m, v ), Fscene (v) = 
+
+P 
+
+> (i,m )∈Ω( v)
+
+W (i)(m, v )F (i)view (m)
+
+Rscene (v) + ϵ , (13) where ϵ > 0 is a small constant to avoid potential division by zero. The scene reliability field records accumulated support, while the feature field stores the corresponding reliability-weighted scene descriptor. As more valid views observe the same scene region, Rscene (v) increases and Fscene (v)
+
+becomes dominated by mutually consistent evidence. This instantiates the scene representation in Eq. (1) as Z = {Fscene , R scene }. The same feature field can also support downstream perception by splatting latent features into a target view and applying a task-specific head (Wewer et al., 2024). 
+
+GP decoding. In the final stage, the decoder converts the scene fields into a renderable GP set. Let 
+
+G = {μ(v), Σ( v), α (v), h (v)}v∈V , (14) where each primitive consists of a mean μ(v), covariance Σ( v), opacity α(v), and spherical harmonic appearance coefficients h(v). We first compute the opacity by bounding the accumulated scene reliability and then apply an MLP head: 
+
+r(v) = 1 − exp( −Rscene (v)) , α(v) = ϕ(r(v)) = Sigmoid (MLP ( r(v))) , ∂ϕ (r)
+
+∂r ≥ 0.
+
+(15) The nondecreasing constraint, implemented with nonnegative weights in the MLP head, encourages opacity to increase or remain saturated as reliable support accumulates. The remaining primitive attributes are decoded from the scene feature field: 
+
+δ(v), Σ( v), h (v) = ψ(Fscene (v)) , (16) where δ(v) is a position offset. The mean is anchored at the representative lifted point selected in Eq. (11) and refined by this offset: 
+
+μ(v) = x(i⋆)(m⋆) + δ(v), (i⋆, m ⋆) ∈ Ω( v). (17) Thus, scene reliability controls opacity, and scene features determine geometry and appearance. 5Table 1: Quantitative novel view synthesis results on RE10K (Zhou et al., 2018). Dagger ( †) marks Gaussian-space merging variants that combine decoded primitives from the corresponding base model. Method 2 views 4 views 6 views 8 views PSNR ↑ SSIM ↑ LPIPS ↓ PSNR ↑ SSIM ↑ LPIPS ↓ PSNR ↑ SSIM ↑ LPIPS ↓ PSNR ↑ SSIM ↑ LPIPS ↓                                                                                    
+
+> MVSplat 22.52 0.801 0.187 20.94 0.790 0.211 20.58 0.774 0.231 19.68 0.749 0.255 DepthSplat 24.16 0.838 0.166 23.39 0.844 0.164 23.01 0.839 0.166 22.00 0.814 0.190 MVSplat †18.78 0.623 0.422 19.10 0.631 0.415 19.09 0.626 0.420 18.92 0.622 0.418 DepthSplat †23.37 0.805 0.202 23.26 0.803 0.208 23.01 0.795 0.213 22.35 0.774 0.230 FreeSplat 21.74 0.782 0.209 21.66 0.799 0.213 21.62 0.796 0.222 20.07 0.746 0.257 ZPressor 21.38 0.761 0.220 21.83 0.780 0.216 22.91 0.803 0.204 22.75 0.800 0.206 CanonicalGS (Ours) 24.22 0.840 0.164 24.70 0.853 0.154 24.82 0.857 0.149 25.22 0.861 0.145
+
+Table 2: Quantitative novel view synthesis results on DL3DV (Ling et al., 2024). Method 2 views 4 views 6 views 8 views PSNR ↑ SSIM ↑ LPIPS ↓ PSNR ↑ SSIM ↑ LPIPS ↓ PSNR ↑ SSIM ↑ LPIPS ↓ PSNR ↑ SSIM ↑ LPIPS ↓                                                                                    
+
+> MVSplat 17.35 0.507 0.416 17.20 0.535 0.385 17.57 0.532 0.395 17.12 0.506 0.426 DepthSplat 19.00 0.596 0.331 19.60 0.670 0.287 19.14 0.667 0.283 17.97 0.626 0.320 MVSplat †15.24 0.362 0.633 15.14 0.367 0.621 15.65 0.379 0.631 15.37 0.372 0.639 DepthSplat †18.45 0.562 0.385 18.83 0.614 0.359 18.52 0.603 0.366 17.71 0.570 0.396 FreeSplat 16.69 0.463 0.443 17.93 0.597 0.348 18.78 0.620 0.345 18.20 0.590 0.372 ZPressor 16.27 0.440 0.453 16.82 0.501 0.414 17.96 0.540 0.395 17.74 0.525 0.409 CanonicalGS (Ours) 19.26 0.592 0.331 19.78 0.665 0.284 20.05 0.667 0.278 20.21 0.676 0.269
+
+# 4 Experiments 
+
+In this section, we evaluate CanonicalGS from both rendering and representation perspectives, asking whether additional views become reliable scene evidence, whether the learned representation remains stable under changing input sets, and which design choices produce these effects. 
+
+4.1 Experimental Setups Datasets. We experiment on both indoor and outdoor scene collections. For indoor scenes, we train and evaluate on RealEstate10K (RE10K, Zhou et al., 2018), which provides video sequences with camera poses and diverse room-scale motion. For outdoor scenes, we fine-tune and evaluate on DL3DV (Ling et al., 2024), which contains larger camera baselines and more complex appearance variation. For representation stability, we use the RE10K test split and obtain semantic pseudo-labels with Mask2Former (Cheng et al., 2022), allowing us to probe whether the learned latent scene also supports downstream perception. 
+
+Implementation details. All input images are resized to 256 × 256 . We train CanonicalGS in two stages. First, we pretrain the depth-related modules, including the ViT backbone, upsampling head, and UNet, by distilling Depth Anything V2 predictions (Yang et al., 2024), using a learning rate of 
+
+10 −4. Because monocular teacher depths have arbitrary scale and shift, we follow the affine-invariant loss of Ranftl et al. (2022): teacher and prediction depth maps are robustly centered by their medians, scaled by their mean absolute deviations, and then compared with an absolute error. Second, we fine-tune the full model end-to-end with differentiable rendering supervision, using mean squared error and LPIPS with λLPIPS = 0 .05 , following DepthSplat and PixelSplat (Xu et al., 2025; Charatan et al., 2024). We train on RE10K for 300,000 steps with a batch size of 2 on four NVIDIA RTX A6000 GPUs, and fine-tune the RE10K model on DL3DV for 100,000 steps. We use AdamW (Loshchilov and Hutter, 2017), with an initial learning rate of 10 −6 for the ViT backbone, upsampling head, and UNet, and 10 −4 for the remaining parameters. The learning rate follows cosine annealing with 
+
+2, 000 warm-up steps and a minimum value of 10 −8. Unless otherwise stated, training uses two input views; this keeps the training protocol sparse and makes test-time view scalability a property of the architecture rather than a consequence of matching the test view count. We use default volume resolutions of [1024 , 1024 , 512] for RE10K and [768 , 768 , 384] for DL3DV. 6Ours  DepthSplat  2 views  Ground -truth 4 views  6 views  8 views 
+
+> MVSpla t† MVSplat FreeSplat ZPressor  DepthSpla t†
+
+Figure 2: Qualitative novel view synthesis results on DL3DV with increasing numbers of input views. Yellow boxes highlight regions where CanonicalGS benefits from additional context. Best viewed zoomed in. 
+
+4.2 Main Results Novel view synthesis. We first evaluate whether CanonicalGS can improve rendering quality as more input views are provided. During evaluation, we vary the number of input views from 2 to 8 and render 50 target views for each scene. To stress the expressiveness of the learned representation, we set the target-view span to be 20% larger than the input-view span. This protocol is substantially more challenging than those used in DepthSplat (Xu et al., 2025), FreeSplat (Wang et al., 2024), and ZPressor (Wang et al., 2025a), which typically evaluate 3 to 8 target views within the input span. We compare against three families of FFGS methods. DepthSplat (Xu et al., 2025) and MVSplat (Chen et al., 2024) are pixel-aligned baselines. FreeSplat (Wang et al., 2024) and ZPressor (Wang et al., 2025a) represent latent- or feature-space merging approaches. We also evaluate Gaussian-space merging variants by transplanting AnySplat-style merging (Jiang et al., 2025) onto DepthSplat and MVSplat; these variants, denoted by †, test whether post-decoding primitive merging alone can provide the scalability that CanonicalGS seeks before decoding. We report PSNR, structural similarity (SSIM, Wang et al., 2004), and learned perceptual image patch similarity (LPIPS, Zhang et al., 2018) values. Tables 1 and 2 show that CanonicalGS not only improves the overall rendering metrics, but also changes the way performance evolves with additional context. Pixel-aligned methods tend to peak early or degrade as more views are supplied, because each new view contributes another set of view-centric hypotheses that may overlap or conflict after decoding. Gaussian-space merging variants reduce primitive redundancy after GP prediction, but they still operate on already-decoded primitives, where it is difficult to distinguish corroborating evidence from inconsistent geometry and appearance estimates. Latent merging methods improve flexibility, yet their aggregation is not explicitly tied to per-observation reliability in a shared scene coordinate system. CanonicalGS instead aggregates uncertainty-weighted evidence before GP decoding, so extra views are more likely to refine the latent scene field rather than inject additional inconsistent primitives. Quantitative metrics alone do not fully reveal the failure modes. We therefore provide qualitative com-parisons in Fig. 2. As the number of input views increases, pixel-aligned methods often accumulate 7(a) Feature stability to the 12 -view reference (b) Semantic segmentation 
+
+Figure 3: Representation stability evaluation. Left: cosine similarity to the 12 -view reference under increasing input views, where higher curves indicate more stable features. Right: linear-probe semantic segmentation performance from splatted scene features. 
+
+inconsistent color and geometry, producing overlay artifacts in regions where multiple view-centric predictions disagree. Gaussian-space merging variants can reduce explicit primitive overlap, but their corrections occur after the ambiguous primitives have already been produced, so ghosting and local appearance shifts remain visible. Feature-space merging methods are less tied to individual pixels, but they remain sensitive to depth and pose noise because the fusion space is not explicitly organized as uncertainty-weighted scene evidence. In contrast, CanonicalGS maintains sharper, more stable renderings as input views increase because scene-centric aggregation consolidates rather than accumulates view-dependent evidence. 
+
+4.3 Representation Stability Evaluation 
+
+Rendering metrics measure image fidelity, but they do not directly reveal whether a feed-forward representation becomes more stable as the input set grows. We therefore evaluate CanonicalGS from two complementary perspectives. First, for each scene we splat feature maps from increasing input-view sets and compute cosine similarity to the feature map rendered from the largest input set ( i.e. , 12 views), which serves as the scene-specific reference. Second, we freeze the splatted features and train a linear semantic probe. We report pixel-wise accuracy over 150 classes and frequency-weighted intersection over union (FWIoU). Figure 3 shows that CanonicalGS is both more stable and more useful for downstream perception. In the left panel, its features move steadily toward the 12 -view reference as additional observations are added, whereas competing representations are more sensitive to view-set changes. This supports the role of scene-centric aggregation: new views are absorbed as reliable scene evidence rather than as independent view-conditioned hypotheses. The right panel further shows that these stabilized features carry stronger semantic information, yielding better linear-probe segmentation performance. Figure 4 visualizes the same trend qualitatively. Baseline features often inherit local inconsistencies from view-dependent reconstruction artifacts, leading to fragmented semantic regions. CanonicalGS yields cleaner masks because uncertain observations are down-weighted before decoding while mutually consistent evidence is consolidated in a shared scene representation. 
+
+4.4 Ablation Studies 
+
+We ablate CanonicalGS to separate the effects of scene-centric aggregation, reliability- and consistency-guided weighting, decoding constraints, training-view scale, and robustness to noisy depth estimates. The component and view-count ablations use DL3DV, while the noise robustness study uses RE10K. The reference model is the full CanonicalGS, and each variant changes one design choice while leaving the remaining pipeline unchanged. 
+
+Scene-centric aggregation and decoding. The first three variants in Table 3 modify how lifted observations are consolidated before GP decoding. The w/o reliability variant keeps feature-similarity weighting but removes the reliability factor in Eq. (12) , so uncertain observations are no longer ex-plicitly down-weighted. The w/o similarity variant keeps reliability weighting but removes agreement with the local representative, making duplicate or inconsistent observations easier to mix within a 82 views  4 views  6 views  8 views  Ground -truth RGB 
+
+> MVSplat FreeSplat Ours
+
+Figure 4: Qualitative semantic segmentation from splatted scene features. CanonicalGS yields cleaner and more spatially coherent predictions, indicating that reliability-guided scene-centric aggregation preserves semantic structure in the decoded representation. 
+
+Table 3: Scene-centric aggregation and decoding ablation. Variant PSNR ↑ SSIM ↑ LPIPS ↓               
+
+> Reference 19.78 0.665 0.284 w/o reliability 18.65 0.592 0.314 w/o similarity 19.20 0.623 0.298 Average merging 18.58 0.590 0.306 Plain decoding 18.70 0.594 0.311
+
+Table 4: Number of training views ablation. #Views PSNR ↑ SSIM ↑ LPIPS ↓               
+
+> 219.26 0.592 0.331 320.70 0.592 0.264 422.61 0.748 0.206 523.02 0.782 0.171 623.65 0.805 0.159
+
+voxel. Average merging is a stronger simplification: it replaces the entire weighted aggregation rule with simple averaging. Plain decoding tests a different part of the pipeline: it keeps the aggregated scene fields but removes the reliability-conditioned decoding constraint. Table 3 shows that each component contributes to the final model, with the largest degradation when weighted aggregation is replaced by average merging. These results suggest that CanonicalGS benefits not only from placing observations in a shared scene space, but also from controlling which observations dominate that space and how accumulated support is used during decoding. 
+
+Number of training views. The next ablation varies the number of input views used during training while keeping the full architecture and objective fixed. This experiment is complementary to Table 3: rather than removing model components, it tests whether CanonicalGS can exploit denser multi-view evidence when available during learning. Table 4 shows a consistent improvement as the training view count increases, indicating that the model is not tied to a fixed sparse-view regime. Exposure to larger input sets helps CanonicalGS learn how to consolidate additional observations into the scene representation, which supports its view-scalable behavior. 
+
+Noise robustness. Finally, we test whether the representation remains stable when the depth estimates used for lifting are corrupted. We perturb the estimated depth maps with zero-mean Gaussian noise at increasing normalized noise levels and evaluate on RE10K. Table 5 compares CanonicalGS with DepthSplat, a strong depth-based pixel-aligned baseline. Both models degrade as the perturbation increases, but CanonicalGS retains substantially higher PSNR and SSIM and incurs a smaller LPIPS increase. This gap suggests that reliability-guided scene-centric aggregation suppresses uncertain depth evidence before GP decoding, while direct depth-conditioned GP prediction is more exposed to local geometric perturbations. 9Table 5: Noise robustness on RE10K under Gaussian noise perturbations to the estimated depth maps. ∆
+
+reports the relative change from each model’s clean-depth baseline; for PSNR and SSIM, values closer to zero indicate smaller degradation, while for LPIPS, smaller positive increases indicate better robustness. Noise level DepthSplat CanonicalGS (Ours) PSNR ↑ ∆(%) SSIM ↑ ∆(%) LPIPS ↓ ∆(%) PSNR ↑ ∆(%) SSIM ↑ ∆(%) LPIPS ↓ ∆(%) Reference 23.40 – 0.841 – 0.165 – 24.91 – 0.853 – 0.151 –0.05 23.31 -0.4 0.832 -1.1 0.185 +12.1 24.88 -0.1 0.851 -0.2 0.155 +2.6                                     
+
+> 0.10 23.06 -1.5 0.818 -2.7 0.210 +27.2 24.81 -0.4 0.847 -0.7 0.162 +7.2
+> 0.25 22.22 -5.0 0.776 -7.7 0.273 +65.5 24.39 -2.1 0.831 -2.5 0.182 +20.5
+> 0.50 21.03 -10.1 0.720 -14.4 0.345 +99.1 23.50 -5.6 0.804 -5.7 0.209 +38.4
+
+# 5 Conclusion and Discussion 
+
+We have introduced CanonicalGS, a feed-forward Gaussian splatting pipeline that organizes multi-view observations into a stable scene-centric representation before GP decoding. Rather than decoding view-centric primitives and reconciling them afterward, CanonicalGS first lifts visual, geometric, and reliability cues into a shared scene space, consolidates mutually consistent evidence, and then decodes a renderable GP set. Experiments show that this design improves novel view synthesis, produces features that are more stable as the input set grows, and transfers more effectively to downstream semantic segmentation. These results support the central premise of this work: additional views should strengthen a shared scene representation. Despite these gains, CanonicalGS remains limited by the quality of its geometric inputs and by the structure of its scene representation. The current pipeline assumes reasonably accurate camera projections and depth estimates; pose error, depth-scale drift, heavy occlusion, and dynamic objects can place evidence in the wrong part of the canonical world before aggregation. A promising direction is joint canonicalization, where depth, pose, visibility, and scene evidence are refined together using the aggregated reliability field as feedback rather than treated as independent preprocessing cues. A second direction is richer uncertainty modeling. The current scalar reliability is effective, but calibrated occlusion likelihood and epistemic confidence could help distinguish unsupported regions from contradictory observations, and could further guide active view selection. More broadly, CanonicalGS points toward feed-forward scene representations that are useful beyond rendering. Replacing the fixed voxel lattice with adaptive sparse or hierarchical scene fields would make our method more practical for room-, building-, and outdoor-scale scenes by allocating capacity to occupied or uncertain regions. Coupling the canonical world with language-level supervision could also turn splatted features into open-vocabulary maps for segmentation, 3D reasoning, and embodied planning. These directions are nontrivial because they require changing how evidence is formed, stored, and supervised, but they preserve the core idea of CanonicalGS: additional observations should increase reliable scene support rather than introduce view-conditioned clutter. 
+
+# References 
+
+Harry G. Barrow and Jay M. Tenenbaum. Recovering intrinsic scene characteristics from images. In Computer Vision Systems , pages 3–26. 1978. David Charatan, Sizhe L. Li, Andrea Tagliasacchi, and Vincent Sitzmann. PixelSplat: 3D Gaussian splats from image pairs for scalable generalizable 3D reconstruction. In IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 19457–19467, 2024. Yuedong Chen, Haofei Xu, Chuanxia Zheng, Bohan Zhuang, Marc Pollefeys, Andreas Geiger, Tat-Jen Cham, and Jianfei Cai. MVSplat: Efficient 3D Gaussian splatting from sparse multi-view images. In European Conference on Computer Vision , pages 370–386, 2024. Bowen Cheng, Ishan Misra, Alexander G. Schwing, Alexander Kirillov, and Rohit Girdhar. Masked-attention mask Transformer for universal image segmentation. In IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 1280–1289, 2022. Shuo Cheng, Zexiang Xu, Shilin Zhu, Zhuwen Li, Li Erran Li, Ravi Ramamoorthi, and Hao Su. Deep stereo using adaptive thin volume representation with uncertainty awareness. In IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 2524–2534, 2020. 
+
+10 Brian Curless and Marc Levoy. A volumetric method for building complex models from range images. In 
+
+Annual Conference on Computer Graphics and Interactive Techniques , pages 303–312, 1996. Xin Fei, Wenzhao Zheng, Yueqi Duan, Wei Zhan, Masayoshi Tomizuka, Kurt Keutzer, and Jiwen Lu. Pixel-Gaussian: Generalizable 3D Gaussian reconstruction from arbitrary views. arXiv preprint arXiv:2410.18979 ,2024. Yang Fu, Sifei Liu, Amey Kulkarni, Jan Kautz, Alexei A. Efros, and Xiaolong Wang. COLMAP-free 3D Gaussian splatting. In IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 20796–20805, 2024. Yasutaka Furukawa and Jean Ponce. Accurate, dense, and robust multiview stereopsis. IEEE Transactions on Pattern Analysis and Machine Intelligence , 32(8):1362–1376, 2010. Abdullah Hamdi, Luke Melas-Kyriazi, Jinjie Mai, Guocheng Qian, Ruoshi Liu, Carl Vondrick, Bernard Ghanem, and Andrea Vedaldi. GES: Generalized exponential splatting for efficient radiance field rendering. In 
+
+IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 19812–19822, 2024. Ranran Huang and Krystian Mikolajczyk. No pose at all: Self-supervised pose-free 3D Gaussian splatting from sparse views. arXiv preprint arXiv:2508.01171 , 2025. Roni Itkin, Noam Issachar, Yehonatan Keypur, Anpei Chen, and Sagie Benaim. GlobalSplat: Efficient feed-forward 3D Gaussian splatting via global scene tokens. arXiv preprint arXiv:2604.15284 , 2026. Lihan Jiang, Yucheng Mao, Linning Xu, Tao Lu, Kerui Ren, Yichen Jin, Xudong Xu, Mulin Yu, Jiangmiao Pang, Feng Zhao, et al. AnySplat: Feed-forward 3D Gaussian splatting from unconstrained views. arXiv preprint arXiv:2505.23716 , 2025. Gyeongjin Kang, Jisang Yoo, Jihyeon Park, Seungtae Nam, Hyeonsoo Im, Sangheon Shin, Sangpil Kim, and Eunbyung Park. SelfSplat: Pose-free and 3D prior-free generalizable 3D Gaussian splatting. In IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 22012–22022, 2025. Bernhard Kerbl, Georgios Kopanas, Thomas Leimkühler, and George Drettakis. 3D Gaussian splatting for real-time radiance field rendering. ACM Transactions on Graphics , 42(4):139:1–139:14, 2023. Yihui Li, Chengxin Lv, Zichen Tang, Hongyu Yang, and Di Huang. TokenSplat: Token-aligned 3D Gaussian splatting for feed-forward pose-free reconstruction. arXiv preprint arXiv:2603.00697 , 2026. Lu Ling, Yichen Sheng, Zhi Tu, Wentian Zhao, Cheng Xin, Kun Wan, Lantao Yu, Qianyu Guo, Zixun Yu, Yawen Lu, et al. DL3DV-10K: A large-scale scene dataset for deep learning-based 3D vision. In IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 22160–22169, 2024. Andrew Liu, Richard Tucker, Varun Jampani, Ameesh Makadia, Noah Snavely, and Angjoo Kanazawa. Infinite nature: Perpetual view generation of natural scenes from a single image. In IEEE/CVF International Conference on Computer Vision , pages 14438–14447, 2021. Yifan Liu, Keyu Fan, Weihao Yu, Chenxin Li, Hao Lu, and Yixuan Yuan. MonoSplat: Generalizable 3D Gaussian splatting from monocular depth foundation models. In IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 21570–21579, 2025. Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization. In International Conference on Learning Representations , 2017. Keyang Luo, Tao Guan, Lili Ju, Yuesong Wang, Zhuo Chen, and Yawei Luo. Attention-aware multi-view stereo. In IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 1590–1599, 2020. David Marr. Vision: A Computational Investigation into the Human Representation and Processing of Visual Information . MIT Press, 2010. David Marr and H. Keith Nishihara. Representation and recognition of the spatial organization of three-dimensional shapes. Proceedings of the Royal Society of London. Series B, Biological Sciences , 200(1140): 269–294, 1978. Sheng Miao, Jiaxin Huang, Dongfeng Bai, Xu Yan, Hongyu Zhou, Yue Wang, Bingbing Liu, Andreas Geiger, and Yiyi Liao. EVolSplat: Efficient volume-based Gaussian splatting for urban view synthesis. In IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 11286–11296, 2025. Maxime Oquab, Timothée Darcet, Théo Moutakanni, Huy Vo, Marc Szafraniec, Vasil Khalidov, Pierre Fernandez, Daniel Haziza, Francisco Massa, Alaaeldin El-Nouby, et al. DINOv2: Learning robust visual features without supervision. arXiv preprint arXiv:2304.07193 , 2023. 
+
+11 René Ranftl, Alexey Bochkovskiy, and Vladlen Koltun. Vision transformer for dense prediction. In IEEE/CVF International Conference on Computer Vision , pages 12179–12188, 2021. René Ranftl, Katrin Lasinger, David Hafner, Konrad Schindler, and Vladlen Koltun. Towards robust monocular depth estimation: Mixing datasets for zero-shot cross-dataset transfer. IEEE Transactions on Pattern Analysis and Machine Intelligence , 44(3):1623–1637, 2022. Olaf Ronneberger, Philipp Fischer, and Thomas Brox. U-Net: Convolutional networks for biomedical image segmentation. In International Conference on Medical Image Computing and Computer-Assisted Intervention ,pages 234–241, 2015. Antoni Rosinol, John J. Leonard, and Luca Carlone. Probabilistic volumetric fusion for dense monocular SLAM. In IEEE/CVF Winter Conference on Applications of Computer Vision , pages 3097–3105, 2023. Steven M. Seitz, Brian Curless, James Diebel, Daniel Scharstein, and Richard Szeliski. A comparison and evaluation of multi-view stereo reconstruction algorithms. In IEEE Conference on Computer Vision and Pattern Recognition , pages 519–528, 2006. Stanislaw Szymanowicz, Christian Rupprecht, and Andrea Vedaldi. Splatter Image: Ultra-fast single-view 3D reconstruction. In IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 10208–10217, 2024. Zhe Jun Tang and Tat-Jen Cham. 3iGS: Factorised tensorial illumination for 3D Gaussian splatting. In European Conference on Computer Vision , pages 143–159, 2024. Shimon Ullman. High-Level Vision: Object Recognition and Visual Cognition . MIT Press, 1996. Weijie Wang, Donny Y. Chen, Zeyu Zhang, Duochao Shi, Akide Liu, and Bohan Zhuang. ZPressor: Bottleneck-aware compression for scalable feed-forward 3DGS. arXiv preprint arXiv:2505.23734 , 2025a. Weijie Wang, Yeqing Chen, Zeyu Zhang, Hengyu Liu, Haoxiao Wang, Zhiyuan Feng, Wenkang Qin, Feng Chen, Zheng Zhu, Donny Y. Chen, et al. VolSplat: Rethinking feed-forward 3D Gaussian splatting with voxel-aligned prediction. arXiv preprint arXiv:2509.19297 , 2025b. Yunsong Wang, Tianxin Huang, Hanlin Chen, and Gim Hee Lee. FreeSplat: Generalizable 3D Gaussian splatting towards free-view synthesis of indoor scenes. arXiv preprint arXiv:2405.17958 , 2024. Zhou Wang, Alan C. Bovik, Hamid R. Sheikh, and Eero P. Simoncelli. Image quality assessment: From error visibility to structural similarity. IEEE Transactions on Image Processing , 13(4):600–612, 2004. Silvan Weder, Johannes L. Schönberger, Marc Pollefeys, and Martin R. Oswald. NeuralFusion: Online depth fusion in latent space. In IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 3162–3172, 2021. Christopher Wewer, Kevin Raj, Eddy Ilg, Bernt Schiele, and Jan E. Lenssen. LatentSplat: Autoencoding variational Gaussians for fast generalizable 3D reconstruction. In European Conference on Computer Vision ,pages 456–473, 2024. Haofei Xu, Jing Zhang, Jianfei Cai, Hamid Rezatofighi, Fisher Yu, Dacheng Tao, and Andreas Geiger. Unifying flow, stereo, and depth estimation. IEEE Transactions on Pattern Analysis and Machine Intelligence , 45(11): 13941–13958, 2023. Haofei Xu, Songyou Peng, Fangjinhua Wang, Hermann Blum, Daniel Barath, Andreas Geiger, and Marc Pollefeys. DepthSplat: Connecting Gaussian splatting and depth. In IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 16453–16463, 2025. Jiayu Yang, Jose M. Alvarez, and Miaomiao Liu. Non-parametric depth distribution modelling based depth inference for multi-view stereo. In IEEE/CVF Conference on Computer Vision and Pattern Recognition ,pages 8626–8634, 2022. Lihe Yang, Bingyi Kang, Zilong Huang, Zhen Zhao, Xiaogang Xu, Jiashi Feng, and Hengshuang Zhao. Depth Anything V2. In Advances in Neural Information Processing Systems , pages 21875–21911, 2024. Yao Yao, Zixin Luo, Shiwei Li, Tian Fang, and Long Quan. MVSNet: Depth inference for unstructured multi-view stereo. In European Conference on Computer Vision , pages 767–783, 2018. Botao Ye, Sifei Liu, Haofei Xu, Xueting Li, Marc Pollefeys, Ming-Hsuan Yang, and Songyou Peng. No pose, no problem: Surprisingly simple 3D Gaussian splats from sparse unposed images. arXiv preprint arXiv:2410.24207 , 2024. 
+
+12 Botao Ye, Boqi Chen, Haofei Xu, Daniel Barath, and Marc Pollefeys. YoNoSplat: You only need one model for feedforward 3D Gaussian splatting. arXiv preprint arXiv:2511.07321 , 2025. Richard Zhang, Phillip Isola, Alexei A. Efros, Eli Shechtman, and Oliver Wang. The unreasonable effectiveness of deep features as a perceptual metric. In IEEE/CVF Conference on Computer Vision and Pattern Recognition ,pages 586–595, 2018. Shangzhan Zhang, Jianyuan Wang, Yinghao Xu, Nan Xue, Christian Rupprecht, Xiaowei Zhou, Yujun Shen, and Gordon Wetzstein. FLARE: Feed-forward geometry, appearance, and camera estimation from uncalibrated sparse views. In IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 21936–21947, 2025. Tinghui Zhou, Richard Tucker, John Flynn, Graham Fyffe, and Noah Snavely. Stereo magnification: Learning view synthesis using multiplane images. ACM Transactions on Graphics , 37(4):65:1–65:12, 2018. 
+
+13 Table 6: Novel view synthesis results on RE10K (Zhou et al., 2018) in the bounded-view setting. Dagger ( †)marks Gaussian-space merging variants. Method PSNR ↑ SSIM ↑ LPIPS ↓                     
+
+> MVSplat 26.39 0.869 0.128 DepthSplat 26.84 0.878 0.122 MVSplat †24.50 0.701 0.188 DepthSplat †25.22 0.840 0.166 FreeSplat 26.41 0.871 0.132 ZPressor 24.70 0.827 0.176 CanonicalGS (Ours) 27.36 0.886 0.114
+
+Table 7: Zero-shot transfer to ACID (Liu et al., 2021). All models are trained on RE10K with two input views and tested on ACID with four target views. Method PSNR ↑ SSIM ↑ LPIPS ↓ #Params (M) MVSplat 22 .75 0.834 0.178 12.0                         
+
+> DepthSplat 25 .27 0.853 0.148 38.3 MVSplat †23 .06 0.654 0.371 12.1 DepthSplat †24 .98 0.748 0.261 38.3 FreeSplat 24 .48 0.850 0.175 50.54 ZPressor 26 .27 0.801 0.188 114.6 CanonicalGS (Ours) 28.47 0.859 0.140 46.5
+
+# Appendix 
+
+This appendix provides experiments and visualizations that complement Secs. 4.1–4.4. We first evaluate bounded-view rendering and zero-shot transfer, then analyze runtime and memory, and finally provide additional qualitative results for rendering, segmentation, and level-of-detail control. 
+
+# A Bounded-View Evaluation 
+
+We additionally evaluate the bounded-view protocol used by PixelSplat (Charatan et al., 2024), where target views lie within the input-view span. This setting is less extrapolative than the main evaluation in Sec. 4, but it provides a useful comparison to prior sparse-view protocols. Table 6 shows that CanonicalGS remains competitive in this easier setting, indicating that scene-centric aggregation improves rendering quality without relying on extrapolative target views. 
+
+# B Zero-Shot Evaluation 
+
+To test cross-dataset generalization, we train all models on RE10K with two input views and evaluate them on ACID (Liu et al., 2021) with four target views, following the DepthSplat split (Xu et al., 2025). Table 7 shows that CanonicalGS transfers best across datasets while using fewer parameters than FreeSplat (Wang et al., 2024) and ZPressor (Wang et al., 2025a). This result suggests that aggregating reliable evidence in scene space improves generalization, rather than merely increasing model capacity. 
+
+# C Runtime Analysis 
+
+We report inference efficiency on DL3DV with 256 × 256 images, four input views, 50 target views, and batch size one. Table 8 compares rendering speed in frames per second (fps), peak GPU memory, average GP count, and rendering quality. CanonicalGS matches the highest fps, uses substantially less memory than pixel-aligned baselines, and keeps the decoded GP set compact while preserving the best PSNR. Compared with Gaussian-space merging, its efficiency comes from consolidating evidence before GP decoding rather than afterward pruning redundant primitives. 14 Table 8: Runtime and memory analysis on DL3DV (Ling et al., 2024). FPS reports rendered frames per second. Method FPS ↑ GPU (GB) ↓ #GPs (K) ↓ PSNR ↑                        
+
+> MVSplat 344.8 14.89 458.7 17.20 DepthSplat 303.0 14.83 262.1 19.60 DepthSplat †500.0 8.61 131.3 18.83 FreeSplat 555.6 8.85 187.9 17.93 ZPressor 400.0 9.00 393.2 16.82 CanonicalGS (Ours) 555.6 9.98 172.3 19.78
+
+# D Additional Qualitative Results 
+
+Figs 5, 6, and 7 provide additional novel view synthesis comparisons on RE10K (Zhou et al., 2018) and DL3DV (Ling et al., 2024). Across increasing input views, CanonicalGS more consistently preserves geometry and appearance, supporting the quantitative trend that additional observations are consolidated rather than accumulated as independent view-centric predictions. Figs 8–10 show additional semantic segmentation visualizations on RE10K. Each figure presents input images, linear-probe predictions from splatted CanonicalGS features, and ground-truth segmentation. The results show that scene-centric aggregation produces semantically coherent rendered features. 
+
+# E Level-of-Detail Control 
+
+Fig. 11 illustrates level-of-detail control by subsampling the scene-derived GP set. Because Canoni-calGS decodes GPs from a scene-centric representation, reducing the number of primitives leads to a gradual quality change rather than the hollow artifacts often produced by removing view-aligned predictions. When more than roughly 70 K GPs are retained, the representation can be compressed with only modest quality degradation, suggesting a practical feed-forward compression route. 15 Input  2 views  4 views  6 views  8 views  Ground -truth 
+
+> Ours  DepthSplat MVSpla t† MVSplat FreeSplat ZPressor  DepthSpla t†
+
+Figure 5: Additional qualitative novel view synthesis comparisons on RE10K. 
+
+16 Ours  DepthSplat MVSpla t† MVSplat FreeSplat ZPressor  DepthSpla t†
+
+Input  2 views  4 views  6 views  8 views  Ground -truth Figure 6: Additional qualitative novel view synthesis comparisons on RE10K. 
+
+17 Input  2 views  4 views  6 views  8 views  Ground -truth 
+
+> Ours  DepthSplat MVSpla t† MVSplat FreeSplat ZPressor  DepthSpla t†
+
+Figure 7: Additional qualitative novel view synthesis comparisons on DL3DV. 
+
+18 Figure 8: Additional semantic segmentation visualization on RE10K. Rows show input images, linear-probe predictions from splatted CanonicalGS features, and ground-truth segmentation. 
+
+Figure 9: Additional semantic segmentation visualization on RE10K. 
+
+19 Figure 10: Additional semantic segmentation visualization on RE10K. Ground -truth                          
+
+> 29.5 dB /106K 29.2 dB /101K 28.9 dB /95.1K 28.4 dB /88.3K
+> 27.7 dB / 80.8K 26.7 dB /72.5K 24.0 dB /61.8K
+
+Figure 11: Level-of-detail control by subsampling the scene-derived GP set. Each rendered example reports PSNR and the remaining number of GPs. CanonicalGS degrades smoothly under GP subsampling, showing a practical quality-compactness tradeoff without introducing hollow regions. 
+
+20

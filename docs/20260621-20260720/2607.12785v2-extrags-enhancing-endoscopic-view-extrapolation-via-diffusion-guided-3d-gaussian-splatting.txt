@@ -1,0 +1,453 @@
+Title: ExtraGS: Enhancing Endoscopic View Extrapolation via Diffusion-Guided 3D Gaussian Splatting
+
+URL Source: https://arxiv.org/pdf/2607.12785v2
+
+Published Time: Thu, 16 Jul 2026 00:47:27 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+# ExtraGS: Enhancing Endoscopic View Extrapolation via Diffusion-Guided 3D Gaussian Splatting 
+
+Cheng-Tai Hsieh 1, Jiwei Shan 2, Han Fang 3, Jianshu Hu 3, Tao Ni 4,Lijun Han 1, Yutong Ban 3, Shing Shin Cheng 2, and Hesheng Wang 1,†
+
+Abstract — Robot-assisted minimally invasive surgery (MIS) critically depends on reliable endoscopic perception for naviga-tion and safety. However, conventional endoscopes provide only a limited field of view, leaving large portions of surrounding anatomy unobserved. Recent neural rendering approaches, such as Neural Radiance Fields and 3D Gaussian Splatting, enable novel view synthesis from endoscopic videos, but their reliance on sparse observations often leads to severe artifacts when extrapolating beyond the training trajectory. In this work, we propose ExtraGS, a framework for enhancing endoscopic view extrapolation via diffusion-guided 3D Gaussian Splatting. Start-ing from an initial reconstruction, we introduce an uncertainty-guided virtual camera sampling strategy to actively explore blind spots and maximize information gain. The rendered views from these sampled locations are refined using a diffusion model to recover plausible anatomical structures, producing pseudo observations that guide further optimization. To prevent the generated content from degrading reliable regions, we adopt a confidence-weighted fine-tuning strategy when incorporating these pseudo observations. Extensive experiments on multiple public endoscopic datasets demonstrate that ExtraGS signifi-cantly reduces extrapolation artifacts and achieves state-of-the-art performance in endoscopic novel view synthesis. Code is available at https://github.com/IRMVLab/ExtraGS. 
+
+I. INTRODUCTION Endoscopy is the gold standard for screening and diag-nosing diseases, such as polyps and early-stage cancers, in luminal organs like the gastrointestinal tract [1]. However, traditional endoscopes have a restricted field of view (FOV) due to hardware constraints and the narrow anatomical space. This limitation poses significant clinical challenges. For example, during a procedure, physicians can only observe the local tissue directly in front of the camera. This restricted view often creates visual blind spots, potentially leading to missed diagnoses [2]. Additionally, it forces surgeons to rely heavily on their spatial memory to mentally reconstruct the 
+
+† This work was supported by the Fundamental and Interdisciplinary Disciplines Breakthrough Plan of the Ministry of Education of China (JYB2025XDXM117), the National Natural Science Foundation of China (62225309, U24A20278, 62361166632, 62403311, and 62503322), and the AI for Science Seed Program of Shanghai Jiao Tong University (2025AI4SQY06). (Corresponding author: Hesheng Wang.) 
+
+> 1
+
+Cheng-Tai Hsieh, Lijun Han, and Hesheng Wang are with the School of Automation and Intelligent Sensing, Shanghai Jiao Tong University, and the Shanghai Key Laboratory of Navigation and Location-Based Services, Shanghai, China. (E-mail: wanghesheng@sjtu.edu.cn) 
+
+> 2
+
+Jiwei Shan and Shing Shin Cheng are with the Department of Mechan-ical and Automation Engineering and the T Stone Robotics Institute, The Chinese University of Hong Kong, Hong Kong. 
+
+> 3
+
+Han Fang, Jianshu Hu, and Yutong Ban are with the Global College, Shanghai Jiao Tong University, Shanghai, China. 
+
+> 4
+
+Tao Ni is with Shanghai Ninth People’s Hospital, Shanghai Jiao Tong University School of Medicine, Shanghai, China. 
+
+Fig. 1. Extra-GS enables exploration-driven reconstruction. Top: Cross-sectional view of the dataset mesh illustrating training (red) and testing (blue) camera trajectories. Bottom: Representative renderings from off-trajectory viewpoints. While standard 3DGS suffers from severe artifacts when deviating from the training path, our method maintains structural completeness and high fidelity under large viewpoint shifts. 
+
+3D anatomy of the examined region. Therefore, generating novel views from endoscopic videos and providing perspec-tives beyond the physical camera’s limits may have potential value for preoperative planning, intraoperative navigation, and retrospective diagnosis. Recently, differentiable rendering techniques, including Neural Radiance Fields (NeRF) [3] and 3D Gaussian Splat-ting (3DGS) [4], have achieved success in novel view syn-thesis. These techniques have been adapted to endoscopic videos for 3D/4D reconstruction [5]–[11], SLAM [12]–[15], and novel view synthesis [16]. To compensate for insufficient multi-view constraints under the narrow FOV, existing meth-ods introduce geometric priors such as depth [5], normals [7], or 2D pixel trajectories [11], [14]. These methods perform well in view interpolation, rendering views with minor offsets from the input viewpoints. However, as shown in Fig. 1, their performance degrades significantly during view extrapolation, where the virtual camera moves far from these reference views. This failure stems from the training phase: the limited physical viewpoint coverage leaves many anatomical regions unobserved. Without actual image inputs, neither basic photometric losses nor auxiliary geometric priors can provide effective supervision to optimize the 3D representation (e.g., 3D Gaussian attributes) in these blind spots. Consequently, when the virtual camera moves far from the reference views to expose these unoptimized regions, the rendered images exhibit severe geometric distortions and chaotic artifacts, rendering them clinically unreliable. arXiv:2607.12785v2 [cs.CV] 15 Jul 2026 To address the aforementioned challenges, we propose 
+
+ExtraGS , a novel framework for Enhancing Endoscopic View Extra polation via Diffusion-Guided 3D Gaussian 
+
+Splatting. Our core insight is that to overcome the lack of supervision in unobserved areas, a generative prior is essential to synthesize plausible content. Leveraging the strong inpainting capabilities and rich anatomical knowledge captured by diffusion model [17], we integrate a 2D diffusion prior into the endoscopic 3DGS optimization process to effectively resolve view extrapolation failures. Specifically, our technical pipeline begins with training a base 3DGS model on the sparse input views. We then introduce an uncertainty estimation mechanism to quantify and locate under-observed regions. Guided by this uncertainty, a novel virtual camera sampling strategy actively targets these blind spots to maximize information gain. Next, we render initial, artifact-prone images from these sampled viewpoints and process them through the diffusion model to restore high-fidelity anatomical structures. Finally, these enhanced images serve as pseudo-ground truth to update the 3DGS model. To prevent the generated content from degrading accurately reconstructed areas, we employ a confidence-weighted fine-tuning strategy. Extensive evaluations on multiple open-source endoscopic datasets demonstrate that ExtraGS signif-icantly reduces artifacts and holes during view extrapolation. Our contributions are summarized as follows:  
+
+> •
+
+We propose ExtraGS, a novel framework integrating 2D diffusion priors into endoscopic 3DGS to solve severe artifact issues during large-baseline view extrapolation.  
+
+> •
+
+We introduce an uncertainty-guided virtual camera sam-pling mechanism to actively target blind spots and maximize information gain.  
+
+> •
+
+We design a confidence-weighted fine-tuning strategy to incorporate diffusion-generated content, filling unob-served areas while preserving accurate 3D structures.  
+
+> •
+
+Evaluation on multiple open-source endoscopic datasets demonstrates state-of-the-art performance on both novel view synthesis and large-baseline view extrapolation tasks, supported by comprehensive ablations. II. R ELATED WORKS 
+
+A. Differentiable Rendering in Endoscopy 
+
+Differentiable rendering techniques, notably Neural Radi-ance Fields (NeRF) [3] and 3D Gaussian Splatting (3DGS) [4], revolutionize 3D reconstruction and novel view synthesis in endoscopy. Initially, researchers widely adapt NeRF for deformable soft tissue reconstruction [5], [6], [9], high-fidelity static 3D reconstruction [10] novel view synthesis (NVS), [16] and dense visual SLAM. Despite impressive synthesis quality, NeRF’s heavy reliance on dense MLP eval-uations via volumetric ray marching leads to prohibitively slow training and rendering speeds, which hinders real-time intraoperative applications. To overcome these computational bottlenecks, 3D Gaussian Splatting (3DGS) emerges as a powerful alternative. By representing scenes with explicit 3D Gaussians and employing an efficient tile-based rasterizer, 3DGS bypasses expensive ray-marching. Consequently, researchers rapidly adopt 3DGS in endoscopy for similar tasks spanning from deformable soft tissue modeling [8], [11], [18] to real-time endoscopy SLAM [12]–[15] , which achieves state-of-the-art rendering quality at real-time frame rates. Furthermore, to compensate for the narrow endoscopic field of view inherent in these tasks, current methods often incorporate geometric priors, such as depth or normals. Despite these promising advancements, existing methods fundamentally fail during large-baseline view extrapolation, producing severe geometric distortions and artifacts. To ad-dress this limitation, we propose ExtraGS, a novel framework that integrates 2D diffusion priors into endoscopic 3DGS to ensure robust and artifact-free rendering, even during large-baseline view extrapolation. 
+
+B. Diffusion Priors for Novel View Synthesis 
+
+Since traditional optimization-based methods cannot hal-lucinate unobserved regions, recent works increasingly lever-age 2D diffusion priors for novel view synthesis (NVS). Methods like DreamFusion [19] and ReconFusion [20] em-ploy Score Distillation Sampling (SDS) or fine-tuned diffu-sion models to recover 3D representations from sparse views. More closely related to our task, several methods leverage diffusion priors for large-baseline view extrapolation. For instance, ExtraNeRF [21] and ExploreGS [22] utilize image inpainting and video diffusion priors to synthesize unseen areas. However, these methods are primarily tailored for natural scenes and overlook the unique characteristics of endoscopic environments. Directly applying them to surgical videos often yields suboptimal results. III. METHOD 
+
+A. Overview 
+
+Given a set of posed endoscopic RGB images and their corresponding depth maps, we aim to achieve robust large-baseline view extrapolation in surgical scenes. Our method builds upon 3D Gaussian Splatting (3DGS) and leverages dif-fusion priors. Therefore, we first review these key techniques in Sec. III-B. The overall pipeline of ExtraGS is illustrated in Fig. 2. The process consists of four main steps. First, we optimize a coarse 3D Gaussian representation Gc using the input data. From this representation, we extract a surface mesh to determine the feasible region for virtual camera exploration (Sec. III-C). Then, we sample virtual camera tra-jectories within this feasible region using a strategy tailored to surgical scenes, enabling more comprehensive coverage of the entire scene (Sec. III-D). Along these trajectories, we sample virtual viewpoints, render corresponding images using the coarse Gc, and refine them using a video diffusion model to produce high-quality pseudo-observations (Sec. III-E). Finally, we fine-tune the coarse 3D Gaussians using both the original inputs and the pseudo-observations via a confidence-weighted optimization strategy (Sec. III-F). Fig. 2. Overview of the Extra-GS framework. Our proposed pipeline consists of three primary stages: (a) Scene Initialization: A baseline 3D Gaussian Splatting (3DGS) representation is constructed utilizing available endoscopic RGB and depth images, alongside camera poses estimated via COLMAP. (b)    
+
+> Pseudo-Observation Generation: Novel viewpoints are synthesized through strategic virtual camera sampling and subsequently enhanced using diffusion-prior refinement. (c) Uncertainty-Aware Fine-Tuning: The 3D Gaussian scene is jointly optimized using both the real and generated pseudo-observations. Uncertainty information is incorporated during this optimization to effectively guide the learning process, ultimately improving the structural completeness and rendering robustness of the model.
+
+B. Preliminaries 1) 3D Gaussian Splatting: 3D Gaussian Splatting (3DGS) [4] represents a scene explicitly as a set of anisotropic 3D Gaussians, denoted as G = {gj }NG
+
+> j=1
+
+. Each Gaussian 
+
+gj is parameterized by its center μj ∈ R3, opacity αj ,view-dependent color coefficients cj (typically represented with spherical harmonics), and a covariance matrix Σj . The covariance is commonly decomposed into a scaling matrix 
+
+Sj and a rotation matrix Rj . The spatial distribution of a Gaussian is defined as 
+
+gj (x) = exp 
+
+
+
+− 12 (x − μj )T Σ−1 
+
+> j
+
+(x − μj )
+
+
+
+. (1) To render an image, each 3D Gaussian is projected onto the image plane via splatting [23]. Under the camera transfor-mation, the projected mean and covariance are computed as 
+
+μ′ 
+
+> j
+
+= JW μj and Σ′ 
+
+> j
+
+= JWΣ j WT JT , where W denotes the world-to-camera transformation and J represents the Jacobian of the local affine approximation of the perspective projection. The rendered color at pixel p is obtained by front-to-back alpha compositing over the depth-ordered set N (p)
+
+of projected Gaussians: 
+
+ˆI(p) = X 
+
+> j∈N (p)
+
+cj αj (p)
+
+> j−1
+
+Y
+
+> k=1
+
+ 1 − αk(p), (2) where αj (p) denotes the opacity contribution of the j-th Gaussian at pixel p. During training, the Gaussian parameters are optimized by minimizing the discrepancy between the rendered image ˆI and the ground-truth image I:
+
+Lpho = (1 − λ) ∥ ˆI − I∥1 + λ LD-SSIM , (3) where ∥ · ∥ 1 denotes the L1 loss, SSIM is the Structural Similarity Index Measure, and λ is a balancing weight. 
+
+2) Diffusion Prior: Renderings from virtual viewpoints typically preserve reliable content in well-observed regions, but exhibit severe degradations (e.g., holes, floaters, and inconsistent textures) under large viewpoint changes. A con-ditional video diffusion prior can be used to transform a degraded rendering IV into a realistic pseudo-observation 
+
+IP while preserving trustworthy cues. Let z0 = E(IP ) denote the clean latent code of the target frame (or a short video clip), where E(·) is a VAE encoder. Given a diffusion timestep t ∈ {1, . . . , T }, the forward process gradually perturbs z0 with Gaussian noise according to a variance schedule {αt}Tt=1 , where αt ∈ (0 , 1) 
+
+and ¯αt = Qts=1 αs:
+
+q(zt | z0) = N  √¯αt z0, (1 − ¯αt)I , (4) where zt is the noisy latent at step t and I is the identity matrix. The reverse process then predicts the injected noise and iteratively removes it using a conditional denoiser ϵψ
+
+parameterized by ψ:
+
+zt−1 = 1
+
+√αt
+
+
+
+zt − 1 − αt
+
+√1 − ¯αt
+
+ϵψ (zt, t, C)
+
+
+
++σtn, n ∼ N (0 , I),
+
+(5) where σt controls the sampling variance and C denotes the conditioning inputs. Concretely, the conditional diffusion model Φψ performs iterative denoising in latent space and decodes the result into an enhanced pseudo-observation: 
+
+IP = Φ ψ
+
+ IV , I ref , condition  , (6) where Iref denotes the nearest real observation serving as the visual anchor, and condition denotes optional conditioning context. For video diffusion, the same formulation applies to spatiotemporal latent tensors, enabling temporally coherent enhancement across frames. 
+
+C. Scene Initialization and Feasible Region Estimation 
+
+We first optimize a coarse 3D Gaussian representation Gc
+
+using the training set, following the 3DGS optimization by minimizing Eq. (3). Based on this initial reconstruction, we estimate a feasible spatial region of the surgical scene to constrain subsequent virtual viewpoint exploration. Specifically, we extract a surface mesh from Gc and com-bine it with the input RGB images to compute a bounding volume that approximates the reconstructable workspace. This boundary restricts viewpoint exploration to regions supported by the input evidence and prevents sampling from drifting into areas beyond the observed scene. Within this boundary, we further identify occupied anatomy and retain only free-space locations for virtual camera placement via rasterization-based occupancy estimation. We construct an occupancy grid O ∈ RS×S×S , where S denotes the grid resolution along each axis, and estimate the visibility of each 3D Gaussian from the training views using transmittance values computed by the Gaussian rasterizer. As in ExploreGS [22], the top-3 visibility scores are averaged to estimate visibility at each location. A voxel is classified as occupied if its visibility is below a threshold τ (set to 0.5 in our experiments), and otherwise regarded as free space. The feasible region Ω is defined as the free-space subset inside the bounding volume, and all subsequent virtual viewpoint sampling is restricted to Ω.
+
+D. Virtual Exploration View Sampling 
+
+To improve scene coverage and complement regions not observed in the input views, we actively sample virtual camera trajectories within the feasible region Ω. Building on the search strategy of ExploreGS [22], we progressively con-struct virtual trajectories while incorporating illumination-derived uncertainty, direction-aware coverage, and pose-smoothness control tailored to endoscopic scenes. 
+
+1) Search initialization and candidate generation: Let 
+
+Tn = {vn, 1, . . . , v n,L } denote the n-th virtual trajectory of length L, where vn,t represents the camera state at step 
+
+t, and the current state corresponds to the most recently appended viewpoint. We initialize NTr trajectories from input viewpoints selected at spatially uniform intervals. At each step, the current state is expanded into a set of candidate views defined by camera motion primitives in SE (3) :
+
+Ct = {v(a) 
+
+> t
+
+}Aa=1 , A = 14 , (7) including six translational moves, four pure camera rotations, and four orbiting rotations around the look-at point. A candi-date v(a) 
+
+> t
+
+is discarded if it (i) lies outside the feasible region 
+
+Ω, (ii) falls into an occupied voxel of the occupancy grid O,or (iii) is closer than a safety margin to the reconstructed Gaussians. These constraints prevent the trajectory from drifting away from the tubular anatomy or producing invalid pseudo-observations from anatomically occupied regions. 
+
+2) Coverage gain with illumination-derived uncertainty: 
+
+To evaluate candidate views, we measure information gain based on view coverage. We maintain a binary coverage map 
+
+M ∈ { 0, 1}NG×D , (8) where NG denotes the number of Gaussians and D is the number of discretized viewing directions. Each entry 
+
+M[j, k ] = 1 indicates that Gaussian gj has been observed from the k-th direction bin, and the map is initialized using the input viewpoints. For a candidate view v(a) 
+
+> t
+
+, let J (v(a) 
+
+> t
+
+)
+
+denote the set of visible Gaussians and k(v(a) 
+
+> t
+
+) its viewing-direction index. The map update is 
+
+Mt[j, k ] = 1 , ∀j ∈ J (v(a) 
+
+> t
+
+), k = k(v(a) 
+
+> t
+
+), (9) and the newly acquired coverage is 
+
+∆Mt = Mt − Mt−1. (10) The direction-aware coverage gain is the number of newly covered Gaussian–direction pairs: 
+
+IG c(v(a) 
+
+> t
+
+) = 
+
+> NG
+
+X
+
+> j=1
+> D
+
+X
+
+> k=1
+
+∆Mt[j, k ], (11) where IG c measures the number of newly observed Gaussian–direction pairs. This coverage term is subsequently modulated by illumination-derived uncertainty for candidate ranking. 
+
+3) Illumination-aware exploration reweighting: Endo-scopic images often contain severely dark regions caused by distance-dependent attenuation and directional lighting. Such regions are typically less constrained by the input views and thus more likely to be insufficiently reconstructed. To encourage exploration toward these areas, we modulate the coverage gain with an illumination-aware weight derived from the darkest region in the current image. Let ddark  
+
+> t
+
+∈ S2
+
+denote the world-space unit ray obtained by back-projecting the darkest image location (or the center of the darkest local patch) of the current image through the camera at vt. For each candidate v(a) 
+
+> t
+
+with camera center c(a) 
+
+> t
+
+, the exploration direction relative to the current state ct is defined as 
+
+d(a) 
+
+> t
+
+= c(a) 
+
+> t
+
+− ct
+
+∥c(a) 
+
+> t
+
+− ct∥2
+
+. (12) The illumination-aware weight is computed using their co-sine similarity: 
+
+will (v(a) 
+
+> t
+
+) = 1 + λl max 
+
+
+
+0, ⟨ddark  
+
+> t
+
+, d(a) 
+
+> t
+
+⟩
+
+
+
+. (13) This weighting favors motions aligned with the darkest direction, encouraging exploration toward darker and po-tentially under-reconstructed regions. The illumination-aware information gain is therefore 
+
+IG( v(a) 
+
+> t
+
+) = will (v(a) 
+
+> t
+
+) · IG c(v(a) 
+
+> t
+
+). (14) 4) Fold-aware pose variation control: Endoscopic scenes often contain complex folds and concave structures, where abrupt viewpoint changes may lead to unstable rendering. To encourage smooth camera motion during trajectory ex-pansion, we measure the inter-step pose variation as 
+
+∆R(a) 
+
+> t
+
+= ∠
+
+
+
+R−1 
+
+> t
+
+R(a)
+
+> t
+
+
+
+, (15) where Rt and R(a) 
+
+> t
+
+denote the rotations of the current and candidate views. Candidates with ∆R(a) 
+
+> t
+
+> τ R are treated as warning states and penalized by 
+
+IG( v(a) 
+
+> t
+
+) ← η IG( v(a) 
+
+> t
+
+), 0 < η < 1. (16) This discourages abrupt viewpoint changes and stabilizes trajectory expansion. 
+
+5) Trajectory construction and termination: At each step, all valid candidates in Ct are evaluated and ranked according to IG( ·). The candidate with the highest score is appended to the current trajectory as the next state, while the remaining candidates are stored in a priority queue for future branch expansion. The global coverage map M is shared across all trajectories to avoid redundant exploration across different paths. The search terminates in either of the following cases: (1) no valid candidate can be expanded before the trajectory reaches length L, in which case the current branch is pruned and the search resumes from the next-best candidate in the queue; or (2) the current trajectory reaches the predefined length L. This process repeats until NTr virtual trajectories are constructed. The resulting viewpoints are then used to render images for the subsequent diffusion-based refinement stage. 
+
+E. View Enhancing with Diffusion Prior 
+
+Given the sampled virtual trajectories, we convert the rendered virtual views into supervision for reconstruction refinement. For each virtual viewpoint v ∈ T n, we first render a coarse image 
+
+IV (v) = R(Gc, v ) , (17) where R(·) denotes Gaussian rendering from the initialized scene Gc. Since these viewpoints may lie beyond the support of the input views, the rendered images IV (v) may contain blur, floaters, missing structures, or illumination artifacts. To address this issue, we employ the diffusion prior as a virtual-view enhancement module . Instead of interpolating between neighboring input frames, the enhancement is conditioned on the input view closest to the queried virtual camera to guide view completion under large viewpoint changes. The pseudo-observation at v is generated as 
+
+IP (v) = Φ ψ
+
+ IV (v), I T (vnn (v)) , c(v) , (18) where vnn (v) denotes the nearest input viewpoint to v,and c(v) represents auxiliary conditioning associated with the virtual query, such as relative pose encoding. This formulation preserves reliable structures in the rendered view while correcting degraded or unsupported regions using the nearest input view as reference. Applying this procedure to all sampled viewpoints produces the pseudo-observation set 
+
+VP = IP (v), v , (19) which is used for the subsequent joint fine-tuning stage. 
+
+F. Joint Fine-tuning 
+
+We fine-tune the coarse Gaussian scene representation 
+
+G0 using both the input views VT = {(IT , V T )} and the pseudo-observations VP = {(IP , V V )}. A key chal-lenge is that diffusion-enhanced pseudo images may in-troduce subtle inconsistencies, which can degrade already well-reconstructed regions. Inspired by confidence-weighted refinement [24], we mitigate this issue at two levels: an image-level weight measures complementary view coverage, whereas a pixel-level weight localizes content corrected by diffusion. Together, they emphasize new virtual-view in-formation while real observations anchor well-reconstructed regions. 
+
+1) Image-level confidence via Gaussian IoU (G-IOU): 
+
+Let V V be a virtual viewpoint and V ref its nearest input viewpoint. IoU, short for intersection over union, generally quantifies the overlap between two sets. We adopt the G-IOU definition of ExploreGS [22] to measure the normalized overlap of the Gaussians visible from these two viewpoints. Using the rasterizer, we extract the visible Gaussian index set Gvis (·) and define the co-visible set 
+
+Gcovis (V V , V ref ) = Gvis (V V ) ∩ G vis (V ref ). (20) The Gaussian IoU is defined as 
+
+GIOU( V V , V ref ) = Gcovis (V V , V ref )
+
+|G vis (V ref )| , (21) where normalization by the reference-view set gives the fraction of its visible Gaussians that remain visible from the virtual viewpoint. The image-level confidence is then computed as 
+
+Uimg (V V ) = 1 − GIOU( V V , V ref ). (22) Here, Uimg ∈ [0 , 1] is an image-wise scalar; lower overlap yields a larger weight because the virtual view provides more complementary coverage. 
+
+2) Pixel-level confidence via perceptual difference: We compute a spatial LPIPS feature-distance map between the coarse rendering IV and its diffusion-enhanced pseudo-observation IP , and upsample it to the image resolution: 
+
+Upixel (x, y ) = U LPIPS( IV , I P ) (x, y ), (23) where U(·) denotes upsampling. Thus, Upixel ∈ RH×W
+
+emphasizes pixels changed most by diffusion, focusing re-finement on degraded or missing content. 
+
+3) Training-view loss: For training viewpoints, we use the standard 3DGS reconstruction objective: 
+
+LVT = ∥IT − ˆI(V T ; G)∥1 + LD-SSIM 
+
+
+
+IT , ˆI(V T ; G)
+
+
+
+. (24) Here, ˆI(V ; G) = R(G, V ) is the current 3DGS rendering; this loss anchors content supported by real observations. 
+
+4) Virtual-view loss with two-level confidence: For pseudo observations, we apply confidence-weighted supervision: 
+
+LVP = Uimg ·
+
+
+
+∥IP − ˆI∥1 ⊙ Upixel + LD-SSIM 
+
+
+
+IP , ˆI
+
+  
+
+, (25) where ⊙ is pixel-wise multiplication, Uimg is broadcast over the image, IP is the target, and ˆI = ˆI(V V ; G) is the current rendering. Jointly optimizing the real- and virtual-view objectives transfers diffusion-restored information into 
+
+G without discarding observed content. GT 3DGS UCNeRF GaussianPancakes Ours   
+
+> Fig. 3. Qualitative comparison of novel view synthesis on the C3VD dataset. Rendered novel views from baseline methods (3DGS, UCNeRF, GaussianPancakes) and our proposed ExtraGS are shown alongside the Ground Truth. The visualizations illustrate the rendering performance of each approach in reconstructing challenging endoscopic environments characterized by complex tissue topologies, fine vascular networks, and specular highlights.
+
+IV. E XPERIMENTS 
+
+A. Experimental Setup 1) Datasets: We evaluate our method on C3VDv2 dataset [25]. C3VDv2 contains colonoscopic sequences with calibrated poses and depth information, characterized by narrow tubular structures, repetitive folds, and severe self-occlusions. 
+
+2) Baselines and Metrics: We evaluate our method against a series of representative reconstruction approaches for endoscopic scenes, including 3DGS [4], UC-NeRF [16], and GaussianPancakes [7]. In all experiments, we follow the original protocols of the compared methods as closely as possible. This includes adapting the dataset organization and input data format when required by different imple-mentations, while preserving the same underlying scenes, observations, and evaluation settings to ensure fair compari-son. For quantitative comparison, we use the peak signal-to-noise ratio (PSNR), structural similarity index (SSIM) and learning-based perceptual image patch similarity (LPIPS) as metrics to evaluate reconstruction performance. 
+
+3) Implementation details: For virtual exploration, we sample NTr = 20 virtual trajectories and restrict candidate viewpoints to free space using a rasterization-based occu-pancy grid with resolution S = 64 . At each expansion step, we select the top-3 candidate views with the highest information gain. We discretize viewing directions into D =32 bins to compute direction-aware coverage gains. For diffusion-based pseudo-observation generation, we adopt DynamiCrafter [26] as the video diffusion backbone and use GPT-4o to generate the text captions for condition-ing. In joint fine tuning stage, we jointly fine-tune the 3DGS model for 15 K iterations using the rendered images, and apply densification during the first 9K iterations.                                          
+
+> TABLE I VIEW SYNTHESIS RESULTS ON C3VD V2UNDER TWO CHALLENGING SETTINGS . G.P. DENOTES GAUSSIAN PANCAKES .
+> Method Sparse: Cecum t1 Distanced: Ascending t2 PSNR ↑SSIM ↑LPIPS ↓PSNR ↑SSIM ↑LPIPS ↓
+> 3DGS 18.74 0.673 0.457 18.66 0.816 0.431 G.P. 18.48 0.699 0.503 10.39 0.575 0.625 UCNeRF 19.22 0.541 0.244 20.15 0.797 0.214
+> Ours 20.23 0.769 0.483 18.75 0.857 0.443
+
+B. Results 1) Quantitative Comparison: In Table I, we present the quantitative evaluation of our proposed method, ExtraGS, against state-of-the-art (SOTA) baseline methods, including 3DGS, GaussianPancakes, and UCNeRF. The view synthesis performance is rigorously assessed on the C3VD dataset across two distinctly challenging settings: Scenario 1 (Sparse cecum t1) and Scenario 2 (Distanced ascending t2). To measure the rendering quality and perceptual fidelity, we employ three standard metrics: Peak Signal-to-Noise Ratio (PSNR), Structural Similarity Index (SSIM), and Learned Perceptual Image Patch Similarity (LPIPS). In Scenario 1, which is characterized by sparse view availability, ExtraGS demonstrates a remarkable advantage in recovering high-fidelity details. Our method achieves the highest PSNR of 20.23 dB and an SSIM of 0.7690, substantially outperforming the closest radiance field base-line, UCNeRF (PSNR 19.22 dB, SSIM 0.5406), especially in preserving structural integrity. Standard Gaussian-based methods such as 3DGS and GaussianPancakes struggle under this sparse setting, yielding lower PSNRs (18.74 dB and 18.48 dB, respectively). This highlights that ExtraGS is markedly more robust when optimizing and rendering scenes from limited observational data. Under Scenario 2, which tests the methods on distanced and complex trajectories, ExtraGS continues to deliver su-perior performance. It successfully attains the highest SSIM of 0.8566, easily surpassing standard 3DGS (0.8161) and UCNeRF (0.7972). Notably, GaussianPancakes suffers a se-vere performance degradation in this scenario, with its PSNR dropping to 10.39 dB, illustrating a fundamental inability to generalize across varied viewing distances. Conversely, ExtraGS maintains a highly robust PSNR of 18.75 dB and competitive perceptual quality, validating its stable and con-sistent view synthesis capabilities regardless of the camera’s spatial distribution. In conclusion, the quantitative results clearly validate our claims. By securing the best structural similarity (SSIM) and top-tier peak signal-to-noise ratios (PSNR) across both sparse and distanced scenarios, our proposed ExtraGS com-prehensively outperforms the SOTA baseline methods. The consistent gains over both standard GS frameworks and modern NeRF variants prove that ExtraGS is a highly effective, versatile, and robust solution for complex novel view synthesis. 
+
+2) Qualitative Comparison: Figure 3 presents a qualita-tive evaluation of our proposed method, ExtraGS, against state-of-the-art baseline methods (3DGS, UCNeRF, and GaussianPancakes) on the curated C3VD dataset. The ground truth (GT) endoscopic images reveal highly challenging rendering conditions characterized by complex tubular ge-ometries, intricate tissue folds, fine vascular networks, and dynamic specular highlights. A visual inspection of the baselines reveals significant limitations in their ability to accurately synthesize these com-plex biological scenes. Standard 3DGS struggles to maintain smooth textural fidelity, introducing noticeable noisy and grainy artifacts, which are particularly evident in the tissue walls of the bottom row. UCNeRF, while attempting to cap-ture the overall structure, suffers from severe over-smoothing and localized geometric warping (visible in the top row), leading to a washed-out appearance that loses critical high-frequency details. GaussianPancakes demonstrates the most severe instability in this domain; it fails catastrophically in the first row, producing a massive blurring artifact that completely obscures the lumen, and yields overly smoothed, low-fidelity renderings in the subsequent rows. In contrast, our proposed ExtraGS consistently produces high-fidelity novel views that closely approximate the ground truth. ExtraGS successfully captures the deep topological structures of the tissue folds without the warping or severe blurring exhibited by UCNeRF and GaussianPancakes. Fur-thermore, our method excels at preserving intricate textural details, accurately reconstructing the fine blood vessels and realistic specular reflections while effectively suppressing the noisy artifacts that plague the standard 3DGS representations. Overall, by preserving global geometry and fine texture, ExtraGS outperforms the SOTA baselines, proving its ro-bustness and superiority for novel view synthesis in complex environments.                
+
+> TABLE II ABLATION STUDY ON DATASET C3VD V2CECUM T 1.
+> Variant PSNR ↑SSIM ↑LPIPS ↓
+> ExtraGS 20.38 0.770 0.482
+> w/o Illum & Fold aware 20.23 0.769 0.483
+
+C. Ablation Studies 
+
+To evaluate the contribution of each design component, we conduct ablation experiments on the C3VD cecum T1 scene. We take the full model ExtraGS as the reference and compare it with variants where specific modules are removed while keeping all other settings unchanged, including the data split, initialization, optimization schedule, and evaluation protocol. In Table II, we mainly investigate the effect of the illumination- and fold-aware design by removing this component from the full pipeline. Quantitative results are reported using PSNR, SSIM, and LPIPS. The full model con-sistently achieves the best performance ( 20.38 PSNR, 0.770 
+
+SSIM, and 0.482 LPIPS), outperforming the variant without illumination & fold awareness (20.23 / 0.769 / 0.483). These results suggest that explicitly modeling illumination variation and fold-aware structural cues is beneficial for improving reconstruction quality in challenging endoscopic scenes. V. C ONCLUSION 
+
+In this paper, we introduced ExtraGS, a framework de-signed to address the severe degradation that occurs in endoscopic novel view synthesis under large-baseline camera extrapolation. Instead of relying solely on sparse physical observations, our method integrates 3D Gaussian Splatting with generative diffusion priors to provide additional super-vision in poorly observed regions. By identifying anatomi-cal blind spots through uncertainty estimation and refining them via confidence-aware optimization, ExtraGS is able to recover plausible and structurally consistent geometry in areas lacking direct observations. This capability effectively expands the usable field of view and improves reconstruction reliability, suggesting potential benefits for spatial awareness in robot-assisted minimally invasive surgery and preoperative assessment. Despite these promising results, the current framework as-sumes relatively static scenes, whereas real surgery involves tissue deformation and dynamic interactions. Our evalua-tion on offline public datasets does not yet cover dynamic lighting, instrument occlusion, pose estimation errors, unseen tissue types, or real-time execution. Thus, the present results demonstrate potential rather than validated intraoperative reliability. Addressing these limitations, improving computa-tional efficiency, and explicitly modeling tissue deformation will be important for robust 4D reconstruction and future clinical applications. REFERENCES [1] D. A. Lieberman, D. K. Rex, S. J. Winawer, F. M. Giardiello, D. A. Johnson, and T. R. Levin, “Guidelines for colonoscopy surveillance after screening and polypectomy: a consensus update by the us multi-society task force on colorectal cancer,” Gastroenterology , vol. 143, no. 3, pp. 844–857, 2012. [2] S. Menon and N. Trudgill, “How commonly is upper gastrointestinal cancer missed at endoscopy? a meta-analysis,” Endoscopy interna-tional open , vol. 2, no. 02, pp. E46–E50, 2014. [3] B. Mildenhall, P. P. Srinivasan, M. Tancik, J. T. Barron, R. Ramamoor-thi, and R. Ng, “NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis,” in Computer Vision – ECCV 2020 , A. Vedaldi, H. Bischof, T. Brox, and J.-M. Frahm, Eds. Cham: Springer International Publishing, 2020, pp. 405–421. [4] B. Kerbl, G. Kopanas, T. Leimkuehler, and G. Drettakis, “3d gaussian splatting for real-time radiance field rendering,” ACM Trans. Graph. , vol. 42, no. 4, July 2023. [Online]. Available: https://doi.org/10.1145/3592433 [5] Y. Wang, Y. Long, S. H. Fan, and Q. Dou, “Neural rendering for stereo 3d reconstruction of deformable tissues in robotic surgery,” in 
+
+International conference on medical image computing and computer-assisted intervention . Springer, 2022, pp. 431–441. [6] R. Zha, X. Cheng, H. Li, M. Harandi, and Z. Ge, “Endosurf: Neural surface reconstruction of deformable tissues with stereo endoscope videos,” in International conference on medical image computing and computer-assisted intervention . Springer, 2023, pp. 13–23. [7] S. Bonilla, S. Zhang, D. Psychogyios, D. Stoyanov, F. Vasconcelos, and S. Bano, “Gaussian pancakes: geometrically-regularized 3d gaus-sian splatting for realistic endoscopic reconstruction,” in International Conference on Medical Image Computing and Computer-Assisted Intervention . Springer, 2024, pp. 274–283. [8] J. Shan, Z. Cai, C.-T. Hsieh, L. Han, S. S. Cheng, and H. Wang, “Deformable gaussian splatting for efficient and high-fidelity recon-struction of surgical scenes,” in 2025 IEEE International Conference on Robotics and Automation (ICRA) . IEEE, 2025, pp. 10 545–10 551. [9] J. Shan, Z. Zhang, H. Li, C.-T. Hsieh, Y. Li, W. Wu, and H. Wang, “Uw-dnerf: Deformable soft tissue reconstruction with uncertainty-guided depth supervision and local information integration,” IEEE Transactions on Medical Imaging , 2025. [10] V. M. Batlle, J. M. Montiel, P. Fua, and J. D. Tard´ os, “Lightneus: Neural surface reconstruction in endoscopy using illumination de-cline,” in International Conference on Medical Image Computing and Computer-Assisted Intervention . Springer, 2023, pp. 502–512. [11] J. Shan, Z. Cai, C.-T. Hsieh, Y. Li, H. Liu, L. Han, H. Wang, and S. S. Cheng, “4d monocular surgical reconstruction under arbitrary camera motions,” Medical Image Analysis , p. 103989, 2026. [12] J. Shan, Y. Li, T. Xie, and H. Wang, “Enerf-slam: A dense endo-scopic slam with neural implicit representation,” IEEE Transactions on Medical Robotics and Bionics , vol. 6, no. 3, pp. 1030–1041, 2024. [13] J. Shan, Y. Li, L. Yang, Q. Feng, L. Han, and H. Wang, “Dds-slam: Dense semantic neural slam for deformable endoscopic scenes,” in 
+
+2024 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) . IEEE, 2024, pp. 10 837–10 842. [14] T. Wu, Y. Miao, Z. Li, H. Zhao, K. Dang, J. Su, L. Yu, and H. Li, “Endoflow-slam: Real-time endoscopic slam with flow-constrained gaussian splatting,” in International Conference on Medical Image Computing and Computer-Assisted Intervention . Springer, 2025, pp. 202–212. [15] J. Shan, Z. Cai, Y. Li, Y. Chen, L. Han, Y.-h. Liu, H. Wang, and S. S. Cheng, “Nrgs-slam: Monocular non-rigid slam for en-doscopy via deformation-aware 3d gaussian splatting,” arXiv preprint arXiv:2602.17182 , 2026. [16] J. Guo, J. Wang, R. Wei, D. Kang, Q. Dou, and Y.-H. Liu, “Uc-nerf: Uncertainty-aware conditional neural radiance fields from endoscopic sparse views,” IEEE Transactions on Medical Imaging , vol. 44, no. 3, pp. 1284–1296, 2024. [17] R. Rombach, A. Blattmann, D. Lorenz, P. Esser, and B. Ommer, “High-resolution image synthesis with latent diffusion models,” in 
+
+Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 2022, pp. 10 684–10 695. [18] Y. Huang, B. Cui, L. Bai, Z. Guo, M. Xu, M. Islam, and H. Ren, “Endo-4dgs: Endoscopic monocular scene reconstruction with 4d gaussian splatting,” in International Conference on Medical Image Computing and Computer-Assisted Intervention . Springer, 2024, pp. 197–207. [19] B. Poole, A. Jain, J. T. Barron, and B. Mildenhall, “Dreamfusion: Text-to-3d using 2d diffusion,” in The Eleventh International Conference on Learning Representations .[20] R. Wu, B. Mildenhall, P. Henzler, K. Park, R. Gao, D. Watson, P. P. Srinivasan, D. Verbin, J. T. Barron, B. Poole, et al. , “Reconfusion: 3d reconstruction with diffusion priors,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 2024, pp. 21 551–21 561. [21] M.-L. Shih, W.-C. Ma, L. Boyice, A. Holynski, F. Cole, B. Curless, and J. Kontkanen, “Extranerf: Visibility-aware view extrapolation of neural radiance fields with diffusion models,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,2024, pp. 20 385–20 395. [22] M. Kim, S. Jeon, I. Cho, M. Yoo, and S. J. Kim, “Exploregs: Explorable 3d scene reconstruction with virtual camera samplings and diffusion priors,” in Proceedings of the IEEE/CVF International Conference on Computer Vision , 2025, pp. 27 042–27 051. [23] M. Zwicker, H. Pfister, J. Van Baar, and M. Gross, “Ewa splatting,” 
+
+IEEE Transactions on Visualization and Computer Graphics , vol. 8, no. 3, pp. 223–238, 2002. [24] X. Liu, C. Zhou, and S. Huang, “3dgs-enhancer: Enhancing unbounded 3d gaussian splatting with view-consistent 2d diffusion priors,” in Advances in Neural Information Processing Systems , vol. 37, 2024, pp. 133 305–133 327. [Online]. Available: https://proceedings.neurips.cc/paper files/paper/2024/hash/ f0b42291ddab77dcb2ef8a3488301b62-Abstract-Conference.html [25] M. V. Golhar, L. S. G. Fretes, L. Ayers, V. S. Akshintala, T. L. Bobrow, and N. J. Durr, “C3vdv2–colonoscopy 3d video dataset with enhanced realism,” arXiv preprint arXiv:2506.24074 , 2025. [26] J. Xing, M. Xia, Y. Zhang, H. Chen, W. Yu, H. Liu, G. Liu, X. Wang, Y. Shan, and T.-T. Wong, “Dynamicrafter: Animating open-domain images with video diffusion priors,” in European Conference on Computer Vision . Springer, 2024, pp. 399–417.

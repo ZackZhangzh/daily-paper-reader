@@ -1,0 +1,363 @@
+Title: AugSplat: Radiance Field-Informed Gaussian Splatting for Sparse-View Settings
+
+URL Source: https://arxiv.org/pdf/2606.31556v1
+
+Published Time: Wed, 01 Jul 2026 01:15:50 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# AugSplat: Radiance Field-Informed Gaussian Splatting for Sparse-View Settings 
+
+## Lorenzo Lazzaroni 2 Riccardo Bollati 2 Daniel Barath 1,2
+
+## Michael Niemeyer 1 Keisuke Tateno 11Google 2ETH Zurich 
+
+> github.com/llazzaroni/AugSplat
+
+## Abstract 
+
+Generating high-quality novel views at real-time frame rates remains a central challenge in 3D vision, particu-larly in sparse-view scenarios. Neural radiance fields have demonstrated robust reconstruction from limited observa-tions, but their reliance on volumetric rendering leads to high computational cost and slow inference. In contrast, Gaussian Splatting methods achieve real-time rendering through rasterization, but their optimization is highly sen-sitive to the quality of the initial geometry. This sensi-tivity becomes especially problematic in sparse-view set-tings, where limited observations often lead to incomplete or noisy point-cloud reconstructions. In this work, we present AugSplat, a simple framework for improving Gaus-sian Splatting in sparse-view regimes using radiance-field-based view augmentation. We first train a radiance field on the sparse input views and use it to synthesize additional im-ages from nearby novel viewpoints, increasing the effective view-space coverage available for supervision. These syn-thetic views are then used as auxiliary supervision during Gaussian Splatting optimization. We study two variants: Staged AugSplat, which uses synthetic views for an initial optimization phase before switching to real images, and Dual AugSplat, which jointly trains on real and synthetic views with a decaying synthetic loss weight. Experiments on sparse-view mip-NeRF 360 scenes show that AugSplat improves reconstruction quality over standard Gaussian Splatting. Staged AugSplat achieves the strongest average performance, while Dual AugSplat provides a closely per-forming formulation that keeps real-image supervision ac-tive throughout training, and both variants preserve real-time rendering at inference. 
+
+## 1. Introduction 
+
+High-quality novel view synthesis at real-time frame rates is a central objective in 3D vision, with applications rang-ing from virtual reality to robotics. Neural radiance fields (NeRFs) [17] and related neural field representations [4, 15, 22, 34] have driven substantial progress in this area by representing scenes as continuous functions and rendering images through volumetric integration. Due to their con-tinuous formulation and robust optimization behavior, neu-ral field methods have demonstrated strong performance in challenging real-world settings [13]. However, their re-liance on volumetric rendering often leads to high compu-tational cost, limiting their applicability when real-time in-ference is required. Recently, 3D Gaussian Splatting (3DGS) [8] has emerged as an alternative paradigm, providing an efficient alternative thanks to its rasterization-based nature. By representing scenes as collections of anisotropic Gaussian primitives, 3DGS achieves high-quality rendering at real-time frame rates. Despite this advantage, its optimization is highly dependent on the quality of the initial geome-try. This limitation is particularly pronounced in sparse-view settings, where limited image observations often lead to incomplete or noisy point-cloud reconstructions. In such cases, Gaussian primitives may be poorly placed or missing in under-observed regions, making it difficult for optimiza-tion to recover accurate geometry and appearance. Sparse-view reconstruction [7, 20, 40] remains espe-cially challenging in this context. With only a small number of input views, traditional structure-from-motion pipelines [26, 31] may fail to recover sufficient scene struc-ture, which directly affects downstream Gaussian Splat-ting optimization. While neural radiance fields can often produce plausible reconstructions from sparse observations due to their continuous volumetric representation, Gaussian Splatting typically lacks an equally flexible mechanism for reasoning about regions that are weakly supported by the initial point cloud. In this work, we propose AugSplat , a simple framework for improving Gaussian Splatting in sparse-view regimes using radiance-field-based view augmentation. Our key idea is to use a radiance field not as the final rendering representation, but as a source of additional supervision for Gaussian Splatting. Given sparse input views, we first train a radiance field and use it to synthesize images from nearby 
+
+> arXiv:2606.31556v1 [cs.CV] 30 Jun 2026
+
+novel viewpoints. These synthetic views increase the effec-tive supervisory coverage of the sparse input set and provide additional constraints during Gaussian optimization. RadSplat [21] is closely related to our work, as it also leverages radiance fields to improve Gaussian Splatting. However, while RadSplat uses radiance-field information to improve Gaussian initialization, AugSplat uses radiance-field renderings as auxiliary training views. This makes our method complementary to initialization-based approaches. We explore two variants of this strategy. Staged AugSplat 
+
+first optimizes Gaussian Splatting using synthetic radiance-field views before switching to real images, while Dual AugSplat jointly trains on real and synthetic views with a decaying weight on the synthetic supervision. By using ra-diance fields to augment sparse supervision and Gaussian Splatting for efficient inference, AugSplat combines the ro-bustness of implicit representations with the real-time ren-dering speed of explicit Gaussian primitives. In summary, our contributions are as follows: • We introduce AugSplat , a radiance-field-guided augmen-tation framework for improving Gaussian Splatting in sparse-view settings. • We propose two training strategies, Staged AugSplat and 
+
+Dual AugSplat , for incorporating synthetic radiance-field views into Gaussian Splatting optimization. • We show that radiance-field-based view augmenta-tion improves sparse-view Gaussian Splatting on Mip-NeRF360 [2] scenes. Staged AugSplat achieves the strongest average reconstruction quality, while Dual AugSplat provides a closely performing formulation that keeps real-image supervision active throughout training. • We analyze training dynamics and show that AugSplat improves early-stage optimization rather than merely benefiting from longer training. 
+
+## 2. Related Work 
+
+Neural Radiance Fields. Neural radiance fields (NeRFs) [17] represent scenes as continuous volumetric functions, enabling high-quality novel view synthesis by modeling both geometry and appearance. Subsequent work has improved reconstruction quality, scalability, and anti-aliasing for complex scenes [2, 3], while efficient neural representations such as Instant-NGP [19] have substantially reduced training and rendering costs. Nevertheless, many NeRF-based methods still rely on volumetric rendering and therefore do not generally provide the same real-time in-ference performance as rasterization-based Gaussian Splat-ting. In AugSplat, we use this robustness not for final render-ing, but to synthesize additional supervision for a real-time Gaussian representation. 
+
+Sparse-View Novel View Synthesis. Novel view synthesis from sparse observations is highly under-constrained, since large portions of the scene may be weakly observed or en-tirely unseen. NeRF-based methods address this problem using regularization, learned priors, or auxiliary geometric constraints. For example, RegNeRF [20] regularizes geom-etry and appearance in unobserved views, while SparseN-eRF [30] leverages depth-ranking constraints to improve few-shot reconstruction. More recently, sparse-view settings have also been stud-ied for Gaussian Splatting. Methods such as SparseGS [35] and DNGaussian [9] introduce additional constraints, depth priors, or regularization strategies to improve Gaussian op-timization from limited views. Our work is complementary to these approaches: rather than directly regularizing the Gaussian representation, we use a radiance field to generate additional synthetic training views that increase the effec-tive coverage of the sparse input set. 
+
+Gaussian Splatting and Extensions. 3D Gaussian Splat-ting (3DGS) [8] represents scenes using anisotropic Gaus-sian primitives and renders them efficiently through ras-terization. This formulation enables high-quality real-time novel view synthesis, but also makes optimization sensitive to the quality of the initial point cloud and the distribution of training views. This sensitivity becomes particularly prob-lematic in sparse-view settings, where incomplete geometry can lead to missing or poorly placed Gaussian primitives. A large body of work has extended Gaussian Splat-ting to applications such as human and avatar reconstruc-tion [6, 18, 23, 41], 3D generation [5, 29, 39], SLAM [10, 14, 25, 37], dynamic scene reconstruction [33, 36], and open-vocabulary scene understanding [24, 27]. These works demonstrate the flexibility of Gaussian representa-tions, while our focus is specifically on improving their ro-bustness under sparse-view supervision. 
+
+Combining Neural Fields and Gaussian Splatting. Sev-eral recent methods combine neural field and Gaussian Splatting representations to exploit their complementary strengths. RadSplat [21] is closest to our work, as it also uses a radiance field to improve the robustness of Gaussian Splatting. Rather than deriving Gaussian primi-tives or representation-level priors from the radiance field, AugSplat treats the radiance field as a data generator: it ren-ders nearby synthetic views and uses ensemble uncertainty to weight their contribution during optimization. Other approaches integrate neural components more di-rectly into Gaussian representations [12, 16], or use learned structures to predict Gaussian attributes in a view-adaptive manner [11]. In contrast, AugSplat keeps the Gaussian rep-resentation unchanged and instead uses radiance-field ren-derings as additional training views. 3. Method 
+
+Given a sparse set of calibrated input images, AugSplat first trains a radiance-field ensemble to obtain a continu-ous scene representation and uncertainty estimates. We then render nearby synthetic views from this ensemble and use the resulting images and confidence maps as auxiliary su-pervision for Gaussian Splatting. We consider two ways of incorporating this supervision: a staged strategy that uses synthetic views only during an initial warm-up phase, and a dual strategy that jointly optimizes real and synthetic super-vision with a decaying synthetic loss weight. 
+
+3.1. Neural Radiance Fields for Improved Supervi-sory Coverage 
+
+A Neural Radiance Field (NeRF) represents a function 
+
+fϕ : R3 × S2 → R+ × R3,
+
+mapping a 3D point x and viewing direction d to a volume density σ and color c. Given a camera ray, pixel colors are obtained by alpha compositing samples along the ray: 
+
+cNeRF =
+
+> K
+
+X
+
+> k=1
+
+τkαkck, (1) where 
+
+τk =
+
+> k−1
+
+Y
+
+> j=1
+
+(1 − αj ), αk = 1 − e−σk δk . (2) The radiance field parameters ϕ are optimized by min-imizing the photometric reconstruction loss over sampled training rays: 
+
+LNeRF (ϕ) = X
+
+> r∈R batch
+
+∥cϕ
+
+> NeRF
+
+(r) − cimage (r)∥22. (3) 
+
+Synthetic View Augmentation. We leverage neural ra-diance fields to increase the effective geometric coverage available during Gaussian Splatting optimization. Given a sparse set of input views, we train an ensemble of M radi-ance fields. The ensemble provides both synthetic color pre-dictions and an uncertainty estimate, allowing us to down-weight synthetic supervision in regions where the radiance field predictions disagree. We use this confidence weighting as a practical heuristic to reduce the influence of uncertain synthetic pixels. We then sample a set of nearby novel camera poses 
+
+Csyn = {Ti}Nsyn  
+
+> i=1
+
+by interpolating between existing training poses and applying small pose perturbations. We restrict these poses to remain close to the observed camera distri-bution, which helps maintain reliable radiance-field render-ings while expanding scene coverage. For each synthetic pose, we render one image from each ensemble member and aggregate the predictions using the per-pixel median: 
+
+Inerf  
+
+> i
+
+(p) = median Mm=1 Inerf 
+
+> i,m
+
+(p), (4) where p indexes image pixels. This yields a set of synthetic images Inerf = {Inerf  
+
+> i
+
+}Nsyn  
+
+> i=1
+
+.To estimate per-pixel confidence, we compute the vari-ance of the ensemble color predictions at each pixel. Let 
+
+Vi(p) denote the average RGB variance across ensemble members for synthetic view i. We normalize this variance using per-image robust lower and upper bounds, computed from the ensemble variance map: 
+
+vlo ,i = P5(Vi), vhi ,i = P95 (Vi), (5) where P5 and P95 denote the 5th and 95th percentiles, re-spectively. The normalized variance is then given by 
+
+Vnorm ,i (p) = clip 
+
+ Vi(p) − vlo ,i 
+
+vhi ,i − vlo ,i 
+
+, 0, 1
+
+
+
+. (6) The normalized variance is converted into a confidence weight: 
+
+wi(p) = (1 − Vnorm ,i (p)) γ . (7) This yields a weighted synthetic dataset Dnerf =
+
+{(Inerf  
+
+> i
+
+, w i)}Nsyn  
+
+> i=1
+
+.Intuitively, the confidence weights encourage the Gaus-sian model to focus on stable, low-frequency structures in the synthetic views rather than overfitting uncertain high-frequency details produced by the radiance field. This is particularly useful during the early stages of Gaussian opti-mization, when the primitives are still coarse and the main objective is to recover a reliable geometric layout. As train-ing progresses, supervision from real images can then refine high-frequency appearance details. 
+
+> Figure 2. Example NeRF-rendered synthetic view and correspond-ing confidence map used for weighted supervision.
+
+3.2. Radiance Field-Guided Gaussian Splatting 
+
+3D Gaussian Splatting. 3D Gaussian Splatting (3DGS) represents a scene as a set of G anisotropic Gaussian prim-itives parameterized by position, opacity, color, scale, and 1.Train NeRF Ensemble on Sparse Input Views 
+
+2. Synthesize Novel Views & Estimate Confidence 
+
+3. Radiance Field Guided Gaussian Splatting      
+
+> Input Views
+> NeRF Ensemble
+> NeRF 1
+> NeRF 2
+> NeRF M
+> Novel Views
+> Render with Ensemble Variance
+> Synthetic Image IiWeight Map wi
+> Low variance
+> (V)
+> High confidence ( w)
+> Synthetic Weighted Dataset
+> Real Images (Sparse Views)
+> Synthetic Weighted Views
+> Staged AugSplat Dual AugSplat
+> Stage 1: Optimize with synthetic weighted data
+> Stage 2: Train on real images
+> Jointly optimize with synthetic and real data
+> time
+> 0
+> 1
+> λ( t)
+> λ( t) decays over time
+> Real observations refine details; NeRF guidance improves early geometry and stability
+
+f : R3 × S2 → R+ × R3
+
+cNeRF =
+
+> N
+
+X
+
+> i=1
+
+τiαici
+
+τi =
+
+> i−1
+
+Y
+
+> j=1
+
+(1 − αj ), αi = 1 − e−σiδi
+
+L(ϕ) = X
+
+> r∈R batch
+
+cϕ
+
+> NeRF
+
+(r) − cimage (r) 22                             
+
+> Ii=median Mj=1 Inerf
+> j(Ti)
+> Vnorm (x, y ) = clip
+> V(x, y )−lo hi −lo ,0,1
+> 
+> w(x, y ) = (1 −Vnorm (x, y )) γ
+> Dnerf ={(Ii, w i)}Ni=1
+> cGS =
+> NX
+> i=1
+> ciαiτi
+> DNeRF
+> DNeRF
+> Lnerf =Xwi∥IGS
+> i−Inerf
+> i∥22L=λ(t)Lnerf +(1 −λ(t)) Lreal
+
+Figure 1. Overview of the AugSplat pipeline. 
+
+rotation. Rendering is performed by rasterizing and alpha-compositing visible Gaussians: 
+
+cGS =
+
+GX
+
+g=1 
+
+cg αg τg , (8) with transmittance defined analogously to NeRF. While enabling efficient real-time rendering, 3DGS re-lies on an explicit set of primitives initialized from re-constructed geometry. Although densification can add new primitives during training, the optimization remains strongly influenced by the initial point cloud and the camera views that provide gradient signal. In sparse-view settings, missing or inaccurate initial geometry can therefore lead to poor local optima. 
+
+AugSplat. We propose AugSplat , a framework that lever-ages radiance-field-generated views to improve the early stages of Gaussian Splatting optimization. Our key insight is that nearby synthetic views provide additional geometric and photometric constraints when Gaussian primitives are still coarse and highly deformable. AugSplat uses two sources of supervision: synthetic views rendered from the radiance-field ensemble and real sparse input images. For synthetic supervision, we sam-ple a minibatch Bsyn uniformly from the weighted synthetic dataset Dnerf and minimize the per-pixel weighted photo-metric loss 
+
+Lnerf = X
+
+i∈B syn 
+
+X
+
+p
+
+wi(p) IGS 
+
+i (p) − Inerf 
+
+i (p) 22 . (9) The synthetic images are sampled randomly during training, and the confidence weights reduce the influence of pixels where the radiance-field ensemble is uncertain. For real-image supervision, each optimization step sam-ples a single real training image Ii uniformly ( i ∼ U ) from the sparse training set. We use the photometric loss 
+
+Lreal = (1 − λ) ∥IGS 
+
+i − Ii∥22 + λ LSSIM (IGS 
+
+i , I i), (10) where LSSIM denotes the SSIM-based dissimilarity term. We use the default value of λ = 0 .2.We consider two strategies for combining these supervi-sion sources. 
+
+Staged AugSplat. Staged AugSplat first optimizes Gaussian Splatting using only the synthetic loss Lnerf for a fixed warm-up period. After this phase, the synthetic super-vision is removed and training continues using only the real-image loss Lreal . This schedule uses radiance-field views to stabilize the early geometry, while relying on real images for the final appearance refinement. 
+
+Dual AugSplat. Dual AugSplat optimizes Gaussian Splatting using real and synthetic supervision in parallel: 
+
+L(t) = λnerf (t)Lnerf + λreal (t)Lreal . (11) We use an exponentially decaying raw weight for the syn-thetic NeRF supervision: 
+
+˜λnerf (t) = wnerf ,0 exp 
+
+
+
+− ln 4 
+
+D t
+
+
+
+= wnerf ,04−t/D , (12) where D is the quarter-decay period, i.e., the raw NeRF weight is reduced by a factor of four every D steps. The real-image loss uses a constant raw weight ˜λreal = wreal .The final loss weights are normalized as 
+
+λnerf (t) = ˜λnerf (t)˜λnerf (t) + ˜λreal 
+
+, λreal (t) = ˜λreal 
+
+˜λnerf (t) + ˜λreal 
+
+.
+
+(13) This schedule gives synthetic views greater influence early in training, when Gaussian primitives are still coarse, and gradually shifts the optimization toward real-image super-vision for appearance refinement. 
+
+3.3. Implementation Details 
+
+We implement our pipeline using Nerfstudio [28] and gsplat [38]. For the radiance-field prior, we use depth-nerfacto, which incorporates depth supervision to improve geometric consistency. 
+
+NeRF Training. We train an ensemble of NeRF models using depth-nerfacto, leveraging the estimated poses and depth supervision. The ensemble is used to render synthetic views and compute per-pixel uncertainty estimates. 
+
+Gaussian Splatting Training. All Gaussian Splatting vari-ants use the same initialization and base gsplat hyperparam-eters. For Staged AugSplat, the initial synthetic warm-up phase uses batches of 20 NeRF-rendered images per step, ren-dered at 8× lower resolution. After Tstage = 300 synthetic warm-up steps, training switches to standard real-image su-pervision with one real image per step. For Dual AugSplat, each optimization step uses both su-pervision sources in parallel: one real image at the standard training resolution and a batch of 20 NeRF-rendered im-ages at 8× lower resolution. The synthetic loss is weighted by the exponentially decaying coefficient described above, while the real-image loss uses a constant raw weight. 
+
+Hyperparameters. Unless otherwise specified, we use 30 sparse input images per scene, with 26 images used for training and 4 for validation. We train an ensemble of 
+
+M = 5 depth-nerfacto models and render Nsyn = 200 syn-thetic views per scene. For confidence normalization, we use the 5th and 95th percentiles of each synthetic view’s variance map as robust lower and upper bounds, and set the confidence exponent to γ = 1 .5. For Dual AugSplat, we use raw loss weights wnerf ,0 = 2 and wreal = 1 , with the NeRF weight decaying by a factor of four every D = 300 
+
+steps. The AugSplat hyperparameters were selected prag-matically based on small-scale pilot experiments, dataset size, and training cost. We primarily tuned the relative loss weights and the synthetic warm-up duration, while using fixed values for the number of synthetic views and confi-dence exponent. We use a short synthetic warm-up period because NeRF-rendered views are most useful early in op-timization, when Gaussian primitives are still coarse, while longer synthetic-only training can overfit to artifacts in the radiance-field prior. Similarly, in Dual AugSplat, the NeRF loss is initialized with a larger weight than the real-image loss but is decayed rapidly, encouraging synthetic views to stabilize early geometry without dominating later appear-ance refinement. The confidence-weighting parameters are chosen to robustly normalize per-image ensemble variance and suppress uncertain synthetic pixels while preserving stable low-frequency structure. 
+
+## 4. Experiments 
+
+Dataset. We evaluate our method on the mip-NeRF 360 dataset [2], which consists of nine unbounded indoor and outdoor scenes. To simulate sparse-view settings, we sub-sample 30 images per scene. Of these, 26 images are used for training and 4 images are held out for evaluation. To ensure that all methods operate under the same sparse-view reconstruction setting, camera poses, depth es-timates, and the sparse point cloud are computed from the same selected 30 views. We obtain COLMAP-compatible reconstructions using VGGT [32]. The resulting poses and depth maps are used to train the depth-supervised radiance-field prior, and the same reconstruction is used consistently across all Gaussian Splatting variants. 
+
+Baselines. We compare against standard 3D Gaussian Splatting implemented in the gsplat library. 
+
+Metrics and Evaluation. We report PSNR, SSIM, and LPIPS on the held-out evaluation views. Since sparse-view Gaussian Splatting can overfit after reaching its best recon-struction quality, we evaluate models throughout training and report the checkpoint that achieves the lowest average error on the held-out evaluation views. Following [1], we use the combined average error met-ric, defined as the geometric mean of MSE, √1 − SSIM, and LPIPS: avg. error =
+
+
+
+10 −PSNR /10 · √1 − SSIM · LPIPS 
+
+1/3
+
+.
+
+(14) To further analyze training dynamics, we additionally report all methods at the iteration where standard GSplat achieves its lowest average error. This allows us to compare reconstruction quality at an equivalent optimization stage. 
+
+Per-Scene Analysis. The effectiveness of AugSplat de-pends on scene characteristics. AugSplat yields its largest improvements on challenging scenes such as Bicycle and Flowers, where sparse-view initialization is more likely to miss or misplace geometry. On moderately complex scenes such as Kitchen and Stump, the dual formulation provides consistent gains in average error. On simpler scenes such Staged AugSplat Standard GSplat Figure 3. Visual comparison between Staged AugSplat and standard GSplat on the kitchen and garden scenes. In the kitchen scene, standard GSplat creates a dark dot in the first detailed crop, while Staged AugSplat is more precise and less blurry in reproducing the placemats in the second crop. In the garden scene, standard GSplat is unable to reproduce the white dots in the first detailed crop, while in the second crop Staged AugSplat is more precise in the window and bush, and standard GSplat fails to reproduce the ball at the feet of the parasol. 
+
+as Room and Counter, performance remains comparable to the baseline, suggesting that standard Gaussian Splatting is already well constrained in these cases. Average results are shown in Table 2a, and per-scene re-sults are reported in Table 1. 
+
+Training Dynamics. 
+
+To analyze optimization behavior, we compare all meth-ods at the iteration where standard GSplat achieves its lowest validation average error. As shown in Table 2b, both AugSplat variants achieve lower average error than the baseline at this equivalent training stage, with Dual AugSplat obtaining the best overall result. This suggests that the improvements are not simply due to longer training or checkpoint selection, but are already present during early optimization. Figure 4 shows representative training curves for sparse-view scenes. We observe a recurring pattern: PSNR and SSIM often reach their highest values early in training and then gradually decrease, whereas LPIPS continues to im-prove over later iterations. As a result, the combined aver-age error is minimized at an intermediate point that balances pixel-level fidelity, structural similarity, and perceptual sim-ilarity. This behavior is consistent with sparse-view overfitting. After the initial optimization stage, the model can continue adapting to the limited training views, improving percep-tual similarity according to LPIPS, while losing test-view fidelity as measured by PSNR and SSIM. AugSplat follows the same general trend, but it typically reaches better PSNR and SSIM during the early optimization phase. This ex-plains the difference between Table 2b and Table 2a: stan-dard 3DGS may obtain its best average error at a later point where LPIPS is lower, but PSNR and SSIM have already degraded, whereas AugSplat often reaches its best average error earlier, when image fidelity is still higher. AugSplat GSplat Staged AugSplat Dual AugSplat Scene SSIM ↑ PSNR ↑ LPIPS ↓ Avg ↓ SSIM ↑ PSNR ↑ LPIPS ↓ Avg ↓ SSIM ↑ PSNR ↑ LPIPS ↓ Avg ↓
+
+Bicycle 0.584 14.21 0.831 0.273 0.597 15.32 0.820 0.252 0.594 15.03 0.816 0.253 Bonsai 0.735 19.84 0.532 0.142 0.738 19.95 0.521 0.139 0.737 19.88 0.523 0.141 Counter 0.753 20.31 0.509 0.133 0.752 20.46 0.519 0.132 0.758 20.66 0.541 0.132 Flowers 0.445 14.36 0.909 0.292 0.454 15.23 0.906 0.272 0.453 14.81 0.906 0.281 Garden 0.483 17.70 0.612 0.195 0.482 17.57 0.611 0.197 0.487 17.82 0.618 0.194 Kitchen 0.609 19.11 0.328 0.136 0.608 19.51 0.317 0.131 0.609 19.73 0.318 0.128 Room 0.761 24.14 0.421 0.093 0.756 23.90 0.420 0.095 0.763 24.28 0.433 0.092 Stump 0.678 17.30 0.785 0.202 0.692 18.35 0.793 0.186 0.689 18.15 0.786 0.189 Treehill 0.547 13.98 0.701 0.266 0.593 15.19 0.777 0.247 0.577 14.96 0.735 0.248 Average 0.622 17.88 0.625 0.192 0.630 18.39 0.632 0.183 0.630 18.37 0.631 0.184 
+
+> Table 1. Per-scene results on mip-NeRF 360. Best results are highlighted in red, second best in orange.
+
+SSIM ↑ PSNR ↑ LPIPS ↓ Avg ↓
+
+GSplat 0.622 17.88 0.625 0.192 Staged AugSplat 0.630 18.39 0.632 0.183 
+
+Dual AugSplat 0.630 18.37 0.631 0.184 
+
+> (a) Average performance across all scenes.
+
+SSIM ↑ PSNR ↑ LPIPS ↓ Avg ↓
+
+GSplat 0.622 17.88 0.625 0.192 Staged AugSplat 0.624 18.23 0.626 0.185 
+
+Dual AugSplat 0.625 18.25 0.621 0.185 
+
+> (b) Performance at GSplat’s best iteration.
+> Table 2. Quantitative results.
+
+generally maintains better PSNR and SSIM during the early optimization phase and achieves lower average error at the selected checkpoints. 
+
+> Figure 4. Training dynamics on the stump scene. The combined average error reaches its optimum at a compromise point between image-fidelity and perceptual metrics.
+
+Summary. Overall, our results demonstrate that NeRF-based augmentation improves Gaussian Splatting in sparse-view settings. The dual formulation provides a stable alter-native that keeps real-image supervision active throughout training, while Staged AugSplat achieves the best average reconstruction quality. 
+
+Limitations. While AugSplat improves Gaussian Splatting in many sparse-view scenarios, its effectiveness depends on the quality of the NeRF prior used for augmentation. In highly complex scenes, where the radiance field is less reli-able, synthetic views might introduce inaccuracies that neg-atively affect optimization. Furthermore, the staged formulation exhibits higher vari-ance across scenes, occasionally leading to degraded perfor-mance when synthetic supervision dominates early training. Although the dual formulation mitigates this issue, it still relies on a careful balance between synthetic and real su-pervision. Finally, AugSplat requires training a radiance-field prior in addition to Gaussian Splatting, increasing the overall training complexity. 
+
+## 5. Conclusion and Future Work 
+
+In this work, we introduced AugSplat, a framework that leverages neural radiance fields to improve Gaussian Splat-ting in sparse-view settings. By augmenting the training data with NeRF-generated views, we increase the effective supervisory coverage available during training and provide a stronger signal for early-stage optimization. We proposed two training strategies, Staged AugSplat and Dual AugSplat. In our experiments, Staged AugSplat achieves the best average reconstruction quality, while Dual AugSplat provides a closely performing alternative that combines real and synthetic supervision throughout train-ing. These results suggest that radiance-field-generated views are most useful during the early stages of Gaussian optimization, where they can provide additional geometric and photometric constraints. Our experiments on the mip-NeRF 360 dataset show that AugSplat improves reconstruction quality in chal-lenging sparse-view scenarios, while remaining compet-itive in better-constrained scenes. These results indi-cate that radiance fields can serve as useful auxiliary su-Figure 5. Detailed training dynamics for PSNR, SSIM, and LPIPS on a representative sparse-view scene. PSNR and SSIM peak early and then gradually decrease, while LPIPS continues to improve over later iterations. This illustrates the trade-off captured by the average-error metric. 
+
+pervision for explicit Gaussian representations, helping mitigate some limitations of sparse-view Gaussian Splat-ting. 
+
+## References 
+
+[1] Jonathan T. Barron, Ben Mildenhall, Matthew Tancik, Peter Hedman, Ricardo Martin-Brualla, and Pratul P. Srinivasan. Mip-nerf: A multiscale representation for anti-aliasing neu-ral radiance fields. In Proceedings of the IEEE/CVF Interna-tional Conference on Computer Vision , 2021. 5 [2] Jonathan T Barron, Ben Mildenhall, Dor Verbin, Pratul P Srinivasan, and Peter Hedman. Mip-nerf 360: Unbounded anti-aliased neural radiance fields. In CVPR , 2022. 2, 5 [3] Jonathan T. Barron, Ben Mildenhall, Dor Verbin, Pratul P. Srinivasan, and Peter Hedman. Zip-nerf: Anti-aliased grid-based neural radiance fields. In ICCV , 2023. 2 [4] Zhiqin Chen and Hao Zhang. Learning implicit fields for generative shape modeling. In CVPR , 2019. 1 [5] Jaeyoung Chung, Suyoung Lee, Hyeongjin Nam, Lee Jaerin, and Kyoung Mu Lee. Luciddreamer: Domain-free genera-tion of 3d gaussian splatting scenes. IEEE transactions on visualization and computer graphics , PP, 2025. 2 [6] Helisa Dhamo, Yinyu Nie, Arthur Moreau, Jifei Song, Richard Shaw, Yiren Zhou, and Eduardo P´ erez-Pellitero. Headgas: Real-time animatable head avatars via 3d gaussian splatting. In Computer Vision – ECCV 2024 , pages 459–476. Springer Nature Switzerland, 2024. 2 [7] Ajay Jain, Matthew Tancik, and Pieter Abbeel. Putting nerf on a diet: Semantically consistent few-shot view synthesis. In Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) , pages 5885–5894, 2021. 1 [8] Bernhard Kerbl, Georgios Kopanas, Thomas Leimk¨ uhler, and George Drettakis. 3d gaussian splatting for real-time radiance field rendering. SIGGRAPH , 2023. 1, 2 [9] Jiahe Li, Jiawei Zhang, Xiao Bai, Jin Zheng, Xin Ning, Jun Zhou, and Lin Gu. Dngaussian: Optimizing sparse-view 3d gaussian radiance fields with global-local depth normaliza-tion. In Proceedings of the IEEE/CVF Conference on Com-puter Vision and Pattern Recognition (CVPR) , pages 20775– 20785, 2024. 2 [10] Mingrui Li, Shuhong Liu, Heng Zhou, Guohao Zhu, Na Cheng, Tianchen Deng, and Hongyu Wang. Sgs-slam: Se-mantic gaussian splatting for neural dense slam. In European Conference on Computer Vision , pages 163–179. Springer, 2024. 2 [11] Tao Lu, Mulin Yu, Linning Xu, Yuanbo Xiangli, Limin Wang, Dahua Lin, and Bo Dai. Scaffold-gs: Structured 3d gaussians for view-adaptive rendering. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 20654–20664, 2024. 2 [12] Dawid Malarz, Weronika Smolak-Dy˙ zewska, Jacek Tabor, Sławomir Tadeja, and Przemysław Spurek. Gaussian splat-ting with nerf-based color and opacity. Computer Vision and Image Understanding , 251, 2025. 2 [13] Ricardo Martin-Brualla, Noha Radwan, Mehdi S. M. Sajjadi, Jonathan T. Barron, Alexey Dosovitskiy, and Daniel Duck-worth. Nerf in the wild: Neural radiance fields for uncon-strained photo collections. In CVPR , 2021. 1 [14] Hidenobu Matsuki, Riku Murai, Paul HJ Kelly, and Andrew J Davison. Gaussian splatting slam. In CVPR , 2024. 2 [15] Lars Mescheder, Michael Oechsle, Michael Niemeyer, Se-bastian Nowozin, and Andreas Geiger. Occupancy networks: Learning 3d reconstruction in function space. In CVPR ,2019. 1 [16] Marko Mihajlovic, Sergey Prokudin, Siyu Tang, Robert Maier, Federica Bogo, Tony Tung, and Edmond Boyer. Splatfields: Neural gaussian splats for sparse 3d and 4d re-construction. In European Conference on Computer Vision (ECCV) . Springer, 2024. 2 [17] Ben Mildenhall, Pratul P. Srinivasan, Matthew Tancik, Jonathan T. Barron, Ravi Ramamoorthi, and Ren Ng. Nerf: Representing scenes as neural radiance fields for view syn-thesis. In ECCV , 2020. 1, 2 [18] Arthur Moreau, Jifei Song, Helisa Dhamo, Richard Shaw, Yiren Zhou, and Eduardo P´ erez-Pellitero. Human gaussian splatting: Real-time rendering of animatable avatars. In 
+
+CVPR , 2024. 2 [19] Thomas M¨ uller, Alex Evans, Christoph Schied, and Alexan-der Keller. Instant neural graphics primitives with a multires-olution hash encoding. ACM Trans. Graph. , 41(4):102:1– 102:15, 2022. 2 [20] Michael Niemeyer, Jonathan T. Barron, Ben Mildenhall, Mehdi S. M. Sajjadi, Andreas Geiger, and Noha Radwan. Regnerf: Regularizing neural radiance fields for view syn-thesis from sparse inputs. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 5480–5490, 2022. 1, 2 [21] Michael Niemeyer, Fabian Manhardt, Marie-Julie Rakoto-saona, Michael Oechsle, Daniel Duckworth, Rama Gosula, Keisuke Tateno, John Bates, Dominik Kaeser, and Federico Tombari. Radsplat: Radiance field-informed gaussian splat-ting for robust real-time rendering with 900+ fps. In 2025 International Conference on 3D Vision (3DV) , pages 134– 144, 2025. 2 [22] Jeong Joon Park, Peter Florence, Julian Straub, Richard Newcombe, and Steven Lovegrove. Deepsdf: Learning con-tinuous signed distance functions for shape representation. In CVPR , 2019. 1 [23] Shenhan Qian, Tobias Kirschstein, Liam Schoneveld, Davide Davoli, Simon Giebenhain, and Matthias Nießner. Gaus-sianavatars: Photorealistic head avatars with rigged 3d gaus-sians. In CVPR , 2024. 2 [24] Minghan Qin, Wanhua Li, Jiawei Zhou, Haoqian Wang, and Hanspeter Pfister. Langsplat: 3d language gaussian splatting. In CVPR , 2024. 2 [25] Erik Sandstr¨ om, Ganlin Zhang, Keisuke Tateno, Michael Oechsle, Michael Niemeyer, Youmin Zhang, Manthan Patel, Luc Van Gool, Martin Oswald, and Federico Tombari. Splat-slam: Globally optimized rgb-only slam with 3d gaussians. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) Workshops , pages 1686–1697, 2025. 2 [26] Johannes L. Schonberger and Jan-Michael Frahm. Structure-from-motion revisited. In Proceedings of the IEEE Confer-ence on Computer Vision and Pattern Recognition (CVPR) ,2016. 1 [27] Jin-Chuan Shi, Miao Wang, Hao-Bin Duan, and Shao-Hua Guan. Language embedded 3d gaussians for open-vocabulary scene understanding. In CVPR , 2024. 2 [28] Matthew Tancik, Ethan Weber, Evonne Ng, Ruilong Li, Brent Yi, Justin Kerr, Terrance Wang, Alexander Kristof-fersen, Jake Austin, Kamyar Salahi, Abhik Ahuja, David McAllister, and Angjoo Kanazawa. Nerfstudio: A modular framework for neural radiance field development. In ACM SIGGRAPH 2023 Conference Proceedings , 2023. 5 [29] Jiaxiang Tang, Jiawei Ren, Hang Zhou, Ziwei Liu, and Gang Zeng. Dreamgaussian: Generative gaussian splatting for ef-ficient 3d content creation. In ICLR , 2024. 2 [30] Guangcong Wang, Zhaoxi Chen, Chen Change Loy, and Zi-wei Liu. Sparsenerf: Distilling depth ranking for few-shot novel view synthesis. IEEE/CVF International Conference on Computer Vision (ICCV) , 2023. 2 [31] Jianyuan Wang, Nikita Karaev, Christian Rupprecht, and David Novotny. Vggsfm: Visual geometry grounded deep structure from motion. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 21686–21697, 2024. 1 [32] Jianyuan Wang, Minghao Chen, Nikita Karaev, Andrea Vedaldi, Christian Rupprecht, and David Novotny. Vggt: Visual geometry grounded transformer. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2025. 5 [33] Guanjun Wu, Taoran Yi, Jiemin Fang, Lingxi Xie, Xiaopeng Zhang, Wei Wei, Wenyu Liu, Qi Tian, and Xinggang Wang. 4d gaussian splatting for real-time dynamic scene rendering. In CVPR , 2024. 2 [34] Yiheng Xie, Towaki Takikawa, Shunsuke Saito, Or Litany, Shiqin Yan, Numair Khan, Federico Tombari, James Tomp-kin, Vincent Sitzmann, and Srinath Sridhar. Neural fields in visual computing and beyond. Computer Graphics Forum ,41(2):641–676, 2022. 1 [35] Haolin Xiong, Sairisheek Muttukuru, Hanyuan Xiao, Rishi Upadhyay, Pradyumna Chari, Yajie Zhao, and Achuta Kadambi. Sparsegs: Sparse view synthesis using 3d gaussian splatting. In Proceedings of the International Conference on 3D Vision (3DV) , 2025. 2 [36] Zhen Xu, Sida Peng, Haotong Lin, Guangzhao He, Jiaming Sun, Yujun Shen, Hujun Bao, and Xiaowei Zhou. 4k4d: Real-time 4d view synthesis at 4k resolution. In CVPR , 2024. 2[37] Chi Yan, Delin Qu, Dan Xu, Bin Zhao, Zhigang Wang, Dong Wang, and Xuelong Li. Gs-slam: Dense visual slam with 3d gaussian splatting. In CVPR , 2024. 2 [38] Vickie Ye, Ruilong Li, Justin Kerr, Matias Turkulainen, Brent Yi, Zhuoyang Pan, Otto Seiskari, Jianbo Ye, Jeffrey Hu, Matthew Tancik, and Angjoo Kanazawa. gsplat: An open-source library for gaussian splatting. Journal of Ma-chine Learning Research , 26(34):1–17, 2025. 5 [39] Taoran Yi, Jiemin Fang, Junjie Wang, Guanjun Wu, Lingxi Xie, Xiaopeng Zhang, Wenyu Liu, Qi Tian, and Xinggang Wang. Gaussiandreamer: Fast generation from text to 3d gaussians by bridging 2d and 3d diffusion models. In CVPR ,2024. 2 [40] Alex Yu, Vickie Ye, Matthew Tancik, and Angjoo Kanazawa. pixelnerf: Neural radiance fields from one or few images. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 4578–4587, 2021. 1 [41] Shunyuan Zheng, Boyao Zhou, Ruizhi Shao, Boning Liu, Shengping Zhang, Liqiang Nie, and Yebin Liu. Gps-gaussian: Generalizable pixel-wise 3d gaussian splatting for real-time human novel view synthesis. In CVPR , 2024. 2

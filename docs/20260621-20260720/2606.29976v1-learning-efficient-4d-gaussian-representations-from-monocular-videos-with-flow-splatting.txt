@@ -1,0 +1,439 @@
+Title: Learning Efficient 4D Gaussian Representations from Monocular Videos with Flow Splatting
+
+URL Source: https://arxiv.org/pdf/2606.29976v1
+
+Published Time: Tue, 30 Jun 2026 01:57:26 GMT
+
+Number of Pages: 16
+
+Markdown Content:
+# Learning Efficient 4D Gaussian Representations from Monocular Videos with Flow Splatting 
+
+Shengjun Zhang 1,∗, Jinzhao Li 1,∗, Xin Fei 2, Yueqi Duan 1,†
+
+> 1
+
+Tsinghua University, 2National University of Singapore 
+
+{zhangsj23,lijinzha22}@mails.tsinghua.edu.cn, duanyueqi@tsinghua.edu.cn 
+
+# Abstract 
+
+Reconstructing dynamic 3D scenes from monocular videos is challenging due to scene complexity and temporal dynamics. With the advancement of 3D Gaussian Splatting in novel view synthesis, existing methods extend 3D Gaussians to 4D domain with deformation fields, trajectories or spatiotemporal 4D volumes to model scene element deformation. However, these methods suffer from long training time, low rendering speed or high memory consumption for per-frame reconstruction of 4D volumes, without fully exploiting dense dynamic information. To address this issue, we propose Flow Splatting, which constructs the velocity field and enables the conventional splatting technique to render optical flow from the velocity field to supervise dynamics learning process from monocular videos. Specifically, we extend 4D volumes with time varying means and covariance to represent complex dynamics. Then, we construct and approximate the velocity field naturally based on this representations. While conventional volume rendering techniques support to render color fields, we extend the volume rendering strategy to splat the velocity field by considering the influence of camera motions. We conduct experiments on various benchmarks to demonstrate the efficiency and effectiveness of our method. Compared to the state-of-the-art methods, our model achieves better image quality with less time consumption and higher rendering speed. 
+
+# 1 Introduction 
+
+Reconstructing scenes from 2D images has been a long-standing goal in computer vision due to its widespread applications, such as virtual reality [ 18 ], robotics [ 1 ], autonomous driving [ 70 ] and so on. Remarkable progress has been made using neural implicit representations [ 48 , 35 , 47 ], but these methods suffer from expensive time consumption in training and rendering [ 17 , 14 , 36 , 46 , 2, 30 , 67 ,10 ]. Recent advancements in this area are largely driven by 3D Gaussian Splatting (3DGS) [ 21 ] for explicit Gaussian representations and real-time rendering performance. Benefiting from rasterization-based rendering, 3DGS avoids dense points querying in scene space, so that it can maintain high efficiency and quality. Yet, these methods mainly focus on static scene reconstruction. To model dynamic scenes, some methods learn a deformation field [ 64 , 56 , 27 , 45 ] to deform 3D Gaussians via neural networks, while other methods explicitly model the moving of Gaussians by optimizing the trajectories [ 33 , 55 , 23 ]. These methods mostly require long training time to optimize complex motions, or likely to overfit especially under monocular settings. Recently, some researchers [ 8 , 63 ] consider the spacetime as an entirety and directly modeling Gaussians in 4D. Such representations can better deal with sudden appearance and disappearance. However, due to the lack of dense supervision of dynamics, they are prone to local optimum, where temporal consistency of 
+
+> ∗
+
+Equal contribution. †Corresponding author. Preprint.  
+
+> arXiv:2606.29976v1 [cs.CV] 29 Jun 2026 Input Ours 4DGS (a) Rendering optical flow (b) Quantitative results
+
+Figure 1: Comparison of previous methods and ours. (a) We visualize the rendering results of color and optical flow for our baseline [ 63 ] and Flow Splatting. (b) We report PSNR and the rendering speed on the NVIDIA dataset [ 66 ] for multiple methods. The size of circle represents training time. Gaussians is not maintained as in physical world with insufficient viewpoints [ 16 ], leading to visual overfitting, performance degradation, and redundant modeling in practice. To tackle these challenges, we propose Flow Splatting, a new framework to model the dynamic information by velocity field naturally from 4D representations. We first extend 4D Gaussians [ 8 , 63 ]with time varying means and covariance to represent complex dynamics. Based on this representations, we define the velocity field from the derivative of 4D Gaussians to construct continuous dynamics field in 4D space. Then, we enable the conventional volume rendering technique to splat velocity field to image space and introduce optical flow for dense supervision. Furthermore, we enhance the training strategies [ 8, 63 ] with two new optimization terms to stabilize and improve the dynamic reconstruction, including the initialization of our 4D representations according to sampling theorem and a novel velocity consistency loss to regularize the motion of Gaussians for more consistent dynamics reconstruction. In this manner, we integrally model the appearance information and dynamic information together via analyzing the conditional probability and derivative of 4D Gaussian representations. Therefore, we avoid the degeneration to per-frame reconstruction and reduce the number of 4D primitives, while accelerate the optimization process and reduce visual overfitting with thoroughly leveraging the prior knowledge from optical flow. We have conducted extensive experiments to demonstrate the effectiveness and efficiency of our method. As shown in Figure 1a, Flow Splatting can reconstruct scene appearance and dynamic motions compared to the previous method [ 63 ]. Quantitative results in Figure 1b also illustrate the superiority of our method over state-of-the-art methods in terms of speed and quality. Our main contributions can be summarized as follows: • We propose Flow Splatting to construct the velocity field and extend the conventional splatting technique to render flow information from velocity field for dynamics learning process. • We extend 3D Gaussians to 4D space with time varying means and covariance, and introduce initialization and regularization strategies to stabilize and improve the dynamic reconstruction. • Extensive experiments on DAVIS [ 42 ] and NVIDIA [ 66 ] Dynamic Scenes datasets, demonstrate that our method outperforms previous methods in terms of visual quality and efficiency. 
+
+# 2 Related Works 
+
+2.1 Static Novel View Synthesis 
+
+Early researches focus on capturing dense views to reconstruct scenes, while neural implicit repre-sentations [ 39 , 48 , 65 , 34 ] have significantly advanced neural processing for 3D data and multi-view images. Neural Radiance Field (NeRF) [ 35 ] is the pioneering work that introduces a fully con-nected neural network to synthesize images for any viewpoint. Following works have emerged to 2Traj. 
+
+> Depth
+> Mask
+> Flow
+> Initialization
+> Foreground Background
+> Velocity Field Color Field
+> ℒ𝐀 𝐀 𝐀 𝐀
+> ℒ𝐀 𝐀 𝐀
+> ℒ𝐀 𝐀 𝐀 𝐀 𝐀
+> Gradient
+
+Figure 2: Overview of our framework. We first leverage off-the-shelf models to predict optical flow, depth maps, masks and trajectories for the input monocular video. Then, we initialize the foreground and background respectively from the data-driven priors. Apart from the color field, we construct velocity field and propose the flow splatting strategy to render optical flow from velocity field. We introduce both color and velocity loss for supervision. address its limitations and enhance the performance by improving the efficiency of training and inference [ 17 , 14 , 36 , 46 , 30 , 67 , 10 ]., recovering large urban scenes [ 54 , 51 , 61 , 59 ], or reconstructing with sparse input views [38, 53, 57, 60]. More recently, 3D Gaussian Splatting (3DGS) [ 21 ] has drawn significant attention in the realm of novel view synthesis. Different from the expensive volume sampling strategy in NeRF, 3DGS utilizes a much more efficient rasterization-based splatting approach to render novel views from a set of 3D Gaussian primitives. Subsequent works have been proposed to enhance the quality and realness of rendered novel views [ 62 , 13 , 19 , 28 ], reduce the memory usage [ 32 , 37 , 15 , 9 , 20 ] or improve the generalization ability in a feed-forward way [4, 5, 50, 68]. 
+
+2.2 Dynamic Novel View Synthesis 
+
+Dynamic scene reconstruction and novel view synthesis have been long-standing problems. One line of researches [ 7 , 11 , 25 , 31 , 58 ] extends NeRF by treating time as an extended input dimension and achieves qualified image-based 4D scene rendering. Following works [ 40 , 43 ] construct a canonical space and transfer it to each time with scene flow or motion fields to improve reconstruction quality via prior knowledge of motions and structures. For example, DyNeRF [ 24 ] proposes a novel continuous space-time neural radiance field representation controlled by a series of temporal latent embeddings, while Nerfies [ 40 ] and HyperNeRF [ 41 ] model the scene dynamics as a deformation field mapping to a canonical space. Another line of works models dynamic scenes with 3DGS. Some works [ 64 , 56 , 27 , 45 ] leverage time-conditioned deformation networks. For example, Deformable 3DGS [ 64 ] proposes a deformable version of 3DGS by introducing a deformation MLP network to model the 3D flows, while 4D Gaussians [ 56 ] uses a more efficient Hexplane representations [ 3]. Other works [ 33 , 55 , 23 ] explicitly learn 3D Gaussian trajectories over time by sequentially optimizing offsets over frames. However, these methods always suffer from long training time or low inference speed. Meanwhile, there are also methods [ 8 , 63 ] that extend 3D Gaussians to 4D space directly with time dimension. Yet, each 4D volume can only represent linear movement, which is likely to degenerate to per-frame reconstruction with heavy memory load. 33 Methods 
+
+3.1 Preliminary Representation of 3D Gaussians. 3DGS [ 21 ] represents a scene as a set of 3D Gaussian primitives, including a center position μ ∈ R3, a covariance matrix Σ ∈ R3×3, an opacity o ∈ [0 , 1) and spherical harmonics coefficient c ∈ Rk. The Gaussian function can be formulated as: 
+
+G(x) = e− 12 (x−μ)⊤Σ−1(x−μ), (1) where Σ = RSS ⊤R⊤, S is the scaling matrix and R is the rotation matrix. For every pixel, the color is rendered by a set of Gaussians sorted in depth order: 
+
+C = X
+
+> i∈N
+
+ciαii−1Y
+
+> j=1
+
+(1 − αi). (2) 
+
+Representation of 4D Gaussians. Analogous to 3D Gaussians, a 4D Gaussian [ 8, 63 ] can be expressed with a 4D center position μ4D = ( μx, μ y , μ z , μ t)⊤ and a 4D covariance matrix Σ4D as: 
+
+G4D (x) = e− 12 (x−μ4D )T Σ−1 
+
+> 4D (x−μ4D )
+
+, (3) where Σ4D can be further factorized into the 4D scaling S4D and the 4D rotation R4D as Σ4D =
+
+R4D S4D S⊤
+
+> 4D
+
+R⊤
+
+> 4D
+
+. Given that Σ4D is a symmetric matrix, we set 
+
+Σ4D =
+
+ U VV ⊤ W
+
+
+
+, (4) where U is a 3 × 3 matrix. The projected 3D Gaussian at time t is obtained as: 
+
+G(x, t ) = p(t)p(x|t) = e− 12 λ(t−μt)2
+
+e− 12 (x−μ(t)) ⊤Σ−13D (x−μ(t)) , (5) where λ = W −1, Σ3D = U − V V ⊤/W , and μ(t) = ( μx, μ y , μ z )⊤ + ( t − μt)V /W . The marginal 
+
+p(t) is also a Gaussian p(t) = N (μt, W ).
+
+3.2 Flow Splatting Extension of 4D Gaussians. Conventional 4D Gaussians [ 8, 63 ] fail to fit complex dynamics, where each Gaussian can only represent a linear movement μ(t) = ( μx, μ y , μ z )⊤ + ( t − μt)V /W in space. Thus, they are likely to degenerate to per-frame reconstruction for each observed moment with redundant modeling in practice. To address this issue, we enable each Gaussian to fit a more complex trajectory via extending the definition of μ(t) in Eq. (5) from a linear function to a combination of Polynomials and Fourier series: 
+
+μ(t) = ( μx, μ y , μ z )⊤ +
+
+> N
+
+X
+
+> n=1
+
+aμn(t − μt)n +
+
+> L
+
+X
+
+> l=1
+
+(bμl cos( l(t − μt) + cμl sin( l(t − μt)) , (6) where aμn, bμl , cμl ∈ R3 are learnable parameters. Polynomials yield a good fit with smooth motions, while the Fourier series excel at dealing with violent motions. Since the marginal distribution p(t)
+
+is also a Gaussian with the center of μt, each component of our Polynomials and Fourier series is based on t − μt to ensure μ(μt) = ( μx, μ y , μ z )⊤. Similarly, for Σ3D = RSS ⊤R⊤, we replace the constant matrix by the time varying quaternion: 
+
+q(t) = q0 +
+
+> N
+
+X
+
+> n=0
+
+aqn(t − μt)n +
+
+> L
+
+X
+
+> l=1
+
+(bql cos( l(t − μt) + cql sin( l(t − μt)) , (7) where aqn, bql , cql ∈ R4 are learnable parameters. The scale matrix S is still constant. 
+
+Velocity Field. We first consider a 3D Gaussian probability density function with time-dependent parameters: 
+
+f (x, t ) = 1(2 π) 32 |Σ( t)| 12
+
+e− 12 (x−μ(t)) ⊤Σ−13D (t)( x−μ(t)) , (8) 4where μ(t) is defined in Eq. (6) and Σ−13D (t) = R(t)SS ⊤R(t)⊤ has time varying quaternion q(t) for 
+
+R(t). According to the chain rule, the time derivative of f is: 
+
+∂f ∂t = f ·
+
+
+
+(x − μ)⊤Σ−1 ˙μ + 12 (x − μ)⊤Σ−1 ˙ΣΣ −1(x − μ) − 12 Tr 
+
+
+
+Σ−1 ˙Σ
+
+
+
+, (9) where ˙μ = ∂μ 
+
+> ∂t
+
+and ˙Σ = ∂Σ 
+
+> ∂t
+
+. The continuity equation for probability conservation is: 
+
+∂f ∂t + ∇ · (f v) = 0 . (10) We assume the velocity field comprises translational and diffusive components: 
+
+v = ˙ μ + A(t)( x − μ), (11) where A(t) is a matrix to be determined. We obtain A(t) = 12 Σ−1 ˙Σ by matching terms in Eq. (10). Thus, the final velocity field is: 
+
+v(x, t ) = ∂μ
+
+∂t + 12 Σ−1 ∂Σ
+
+∂t (x − μ(t)) . (12) Since the scale matrix S is constant, the velocity field comprises translational and rotational compo-nents: 
+
+v(x, t ) = ∂μ
+
+∂t + ω(t) × (x − μ(t)) , (13) where ω(t) is the angular velocity. However, the gaussian splatting technique is unable to render the rotational component which is not identical in the same Gaussian primitives. Therefore, we approximate v(x, t ) by the average velocity: 
+
+v(t) = 
+
+R v(x, t )f (x, t )dx
+
+R f (x, t )dx = ∂μ
+
+∂t . (14) Substituting the result into Eq. (6) yields the following expression: 
+
+v(t) = 
+
+> N
+
+X
+
+> n=1
+
+aμnn(t − μt)n−1 +
+
+> L
+
+X
+
+> l=1
+
+(−bμl l sin( l(t − μt) + cμl l cos( l(t − μt)) . (15) 
+
+Flow Splatting. In rendering, the color of a pixel can be computed by blending visible 3D Gaussians that have been sorted according to their depth, as formulated in Eq. (2). Similar strategies are employed for depth rendering and feature rendering [ 44 , 69 ]. Inspired by these methods, we can directly splat the velocity field of each Gaussian via volume rendering technique: 
+
+V (t) = X
+
+> i∈N
+
+vi(t)αii−1Y
+
+> j=1
+
+(1 − αi), (16) where vi(t) is the velocity of the i-th Gaussian at time t. However, this rendering results cannot be supervised properly by optical flow, which is also influenced by the movement of cameras. Therefore, we take the camera parameters into consider to eliminate the projection differences caused by changes of camera poses. Given the camera parameters kt, kt+1 of the monocular video at time t and t + 1 ,the velocity field on 2D image plane is represented as: 
+
+ˆv(t) = ( ψproj (μ(t), kt+1 ) − ψproj (μ(t), kt)) /∆t + ψproj (v(t), kt+1 ), (17) where ψproj is the projection operation and ˆv(t) ∈ R2. Then, we splat optical flow via differentiable rasterization: 
+
+ˆV = X
+
+> i∈N
+
+ˆvi(t)αii−1Y
+
+> j=1
+
+(1 − αi). (18) Such rendering results is equivalent to optical flow of videos, which can be naturally supervised by off-the-shelf models. 53.3 Training 
+
+We leverage a set of data-driven priors in our training scheme via off-the-shelf models, including depth and camera estimation [ 26 ], mask prediction [ 22 ], point tracking [ 6 ] and optical flow prediction [ 52 ]. 
+
+Initialization. Given a monocular video {Ii}Ti=1 , we first estimate the depth {Di}Ti=1 , the corre-sponding camera parameters {ki}Ti=1 and masks for foreground moving objects {Mt}Ti=1 . We adopt different initialization strategies for moving foreground and static background. For static background, we initialize λ = 10 −6 and μt = T 
+
+> 2
+
+to maintain similar density in all time. Their 3D locations are initialized by unprojecting them into the 3D space using the aligned depth maps, while the learnable parameters aμn, bμl , cμl , aqn, bql , cql is initialized as 0. For moving foreground, we treat the lifted 2D tracks with the aligned depth maps as initial 3D track observations for the moving objects. We first uniformly sample ˆT frames {Isi } ˆTi=1 from the video and initialize ˆT Gaussians for each trajectory. We initialize λ by following the Nyquist–Shannon Sampling Theorem. Since the sampling frequency in time space is vs = ˆT , the highest frequency that can be recovered is vr = vs/2 = ˆT / 2. The Fourier transform of p(t) is formulated as: 
+
+p(t) = 1
+
+√2πσ e− 12σ2 t2
+
+−→ F (f ) = e− 12(1 /2πσ )2 f 2
+
+, (19) where σ = 1 /√λ. If we want to fully recover no less than 68.4% components of F (f ), we can set 
+
+vr > 1/2πσ . Thus, λ is initialized as ˆT 2π2. Besides, we choose the contiguous location along the trajectory to initialize the low order coefficients for μ(t).
+
+Optimization. We introduce two terms of loss to supervise the learning of color field and velocity field. For timestamp t0, we compute the conditional distribution p(x|t) which determines the location and shape of 3D primitives, as well as the marginal distribution p(t) which plays a role in density control. Following the conventional splatting scheme in Eq. (2), we render all the frames { ˜Ii}Ti=1 .The color loss is formulated as: 
+
+Lcolor = 1
+
+T
+
+> T
+
+X
+
+> i=1
+
+
+
+(1 − γ1)L1(Ii, ˜Ii) + γ1LSSIM (Ii, ˜Ii)
+
+
+
+, (20) where L1, LSSIM denote the L1 and SSIM loss respectively, and γ1 is a hyper-parameter. To supervise the learning of dynamic information, we first predict the optical flow {Vi}T −1 
+
+> i=1
+
+from the input videos via off-the-shelf models. Based on our flow splatting strategy, we can also render optical flow images 
+
+{ ˜Vi}T −1 
+
+> i=1
+
+with Eq. (18). The rendering loss for velocity field is: 
+
+Lflow = 1
+
+T − 1 
+
+> T−1
+
+X
+
+> i=1
+
+L1(Vi, ˜Vi), (21) where γ2 is a hyper-parameter. Besides, since Gaussians are optimized individually, losing con-nections with their spatial neighbors, which do not align with the real-world scenario [ 29 ], we also propose a rigid regularization based on the velocity field for robust optimization of motions. This regularization term indicates that local motion is approximated as rigid motion, where nearby Gaussians exhibit similar motion trends during the optimization process. Assuming that the dynamic scene comprises N primitives G = {Gi}Ni=1 , we first determine the active Gaussian set Ga ⊂ G at the specific timestep t0 by the marginal p(t) > τ , where τ is a threshold. Then, we utilize kNN algorithm to compute the k nearest neighbors Ni for Gi ∈ G a. Thus, the rigid loss is defined as: 
+
+Lrigid = 1
+
+k|G| 
+
+X
+
+> Gi∈G
+
+X 
+
+> Gj∈N i
+
+wi,j ∥vi − vj ∥, (22) where wi,j = exp( −β∥μi − μj ∥) is a weighting factor for the Gaussian pair based on spatial distance. The total velocity loss is: 
+
+Lvelocity = γ2Lflow + γ3Lrigid (23) where γ2 and γ3 are also hyper-parameters. The optimization target is to minimize the total loss 
+
+L = Lcolor + Lvelocity .6Table 1: Quantitative comparison on the NVIDIA dataset. We report the number of Gaussians (k) for Gaussian-based methods. For 4DGS [ 63 ] and our method, we report the active 4D Gaussians of each frame, and also record the total number of 4D Gaussians in brackets. Methods PSNR SSIM LPIPS Training FPS Gaussians T-NeRF [12] 20.76 0.59 0.17 >20h <1 HyperNeRF [12] 20.05 0.57 0.18 >20h <1 Deformable 3DGS [33] 16.64 0.48 0.31 2.2h 12.4 694 4D Gaussians [56] 17.69 0.48 0.38 1.7h 80.1 204 DG Marbles [49] 22.36 0.66 0.15 3.1h 175.0 120 Shape of Motion [55] 22.07 0.63 0.15 2.3h 40.3 648 4DGS [63] 16.91 0.37 0.35 1.2h 259.6 119(1088) Ours 22.72 +5 .81 0.72 +0 .35 0.16 −0.19 1.0h 330.6 91(196) Table 2: Quantitative comparison on the Davis dataset. We report PSNR on each test scenes, and the average results of PSNR, SSIM, and LPIPS on all scenes. Methods bear flare camel elephant train PSNR SSIM LPIPS Deformable 3DGS [64] 28.74 24.65 25.79 31.02 21.52 26.34 0.81 0.15 4D Gaussians [56] 29.49 24.68 26.62 31.66 23.60 27.21 0.82 0.22 DG Marbles [49] 28.15 25.26 28.14 28.48 23.90 26.79 0.86 0.07 Shape of Motion [55] 23.05 23.90 23.77 26.81 20.10 23.53 0.70 0.21 Ours 31.88 28.48 29.27 33.45 29.51 30.52 0.92 0.10 
+
+# 4 Experiments 
+
+4.1 Experimental Settings Implementation Details. All the experiments are conducted on NVIDIA RTX A6000 GPU. While the 4D Gaussian theoretically extends infinitely, we applied a Gaussian filter with marginal p(t) < 0.05 
+
+when rendering the view at time t. We train our method with Adam optimizer for a total of 1,500 iterations, and densify 4D Gaussians every 100 iterations. For optimization, we set γ1 = 0 .2,
+
+γ2 = 0 .03 , γ3 = 0 .5 and β = 100 for the total loss, and we choose k = 20 for the velocity rigid loss. We uniformly sample 7 frames for foreground initialization. The order of Polynomials and Fourier series is set to 6 for μ(t) and 3 for q(t).
+
+Datasets. The Davis dataset [ 42 ] contains real-world videos of 30 to 100 frames with various scenarios and motion dynamics. We uniformly sample one frame out of ten as the testing sets to introduce a challenging setting, where the testing timestamps and viewpoints are both novel for dynamic scene reconstruction. We report per-scene reconstruction quality on Bear, Breakdance-flare, Camel, Train, and Elephant. The NVIDIA Dynamic Scenes dataset [ 66 ] consists of seven videos, including Balloon1, Balloon2, Jumping, Playground, Skating, Truck and Umbrella. Each scene comprises sequences of 90 to 200 frames captured with a rig of 12 calibrated cameras. Following the settings of Gaussian Marbles [ 49 ], we use the video stream from camera 4 for training and video streams from camera 3, 5, and 6 for evaluation. 
+
+Baseline. We compare with both NeRF-based [ 12 , 41 ] and concurrent Gaussian-based methods. T-NeRF [ 12 ] presents a time-varying neural radiance field conditioned on time, and HyperNeRF [ 41 ]models the scene dynamics as a deformation field mapping to a canonical space. Deformable 3DGS [ 64 ] and 4D Gaussians [ 56 ] introduce a deformation field represented by a MLP and Hexplane. DG Marbles [ 49 ] uses Gaussian marbles and a hierarchical learning strategy to optimize representa-tions, while Shape of Motion [ 55 ] relies on explicit motion representation. 4DGS [ 63 ] is our baseline, which proposes a dynamic representation with a collection of 4D Gaussian primitives. In our method, we extend the representations in 4DGS [63], and introduce the novel Flow Splatting technique. 7Shape of motion  Deformable 3DGS DG Marbles Ours  4D Gaussians  GT Figure 3: Qualitative Comparison on the Davis dataset. We present the qualitative comparison between our method and previous methods for novel view and novel time synthesis. 
+
+4.2 Main Results Quantitative and Qualitative Results. We conduct experiments for novel view synthesis on the NVIDIA dataset [ 66 ] and report the quantitative results in Table 1. Our method outperforms our baseline [ 63 ] by 5.81 on PSNR, 0.35 on SSIM and 0.16 on LPIPS with less training time and higher inference speed. Our method also surpasses state-of-the-art methods [ 49 , 55 ] on NVIDIA datasets by 0.36 on PSNR and 0.06 on SSIM, with a 3× speed-up in training time. We also validate our methods on DAVIS for more comparison. Our method shows the superiority of PSNR over other methods on all test scenes. More precisely, our method surpasses the deformation-based method [ 56 ] by 3.31 on PSNR, 0.10 on SSIM and 0.12 on LPIPS, and also outperforms the trajectory-based method [ 49 ] by 3.73 on PSNR and 0.06 on SSIM. Qualitative results are shown in Figure 3. Our method can preserve more details, while other methods suffer from local missing, floaters, or wrong dynamics. 
+
+Efficiency analysis. Our method shows superiority over both NeRF-based methods and Gaussian-based methods. Although NeRF-based methods [ 12 , 41 ] achieve qualified images, they require long converge time to train an implicit neural representations with low rendering speed. Since deformation-based methods [ 64 , 56 ] require additional inference before rendering at novel timestamp, our method significantly outperforms these methods with a 4 × speed up on FPS. While trajectory-based methods consume long training time to optimize complex trajectories along the videos, our method shows superiority on training time and converges more quickly. Benefiting from our extended 4D representations, our method reconstructs dynamic scenes with less Gaussians compared to our baseline [63], avoiding visual overfitting and redundant modeling in practice. 8Table 3: Ablation study results of Flow Splatting. μ(t) and q(t) represent our extended 4D representations. Init. refers to our initialization strategy. For ablation study on 4D representations, we preserve all training strategies, while for ablation study on training, we employ our 4D Gaussians. 
+
+> (a) 4D Gaussian Representation
+
+μ(t) q(t) PSNR SSIM LPIPS 
+
+% % 27.17 0.893 0.091 
+
+" % 27.31 0.893 0.090 
+
+% " 27.24 0.893 0.092 
+
+" " 28.02 0.910 0.082 
+
+> (b) Training strategy
+
+Init. Lflow Lrigid PSNR SSIM LPIPS 
+
+% " " 25.97 0.829 0.150 
+
+" % % 24.89 0.776 0.191 
+
+" " % 26.87 0.861 0.115 
+
+" " " 28.02 0.910 0.082 Ours Baseline w/o 4D Gaussians w/o velocity loss w/o initialization 
+
+Figure 4: Qualitative Comparison of optical flow. We render the optical flow of all methods with flow splatting. The baseline stands for 4DGS [63] which presents the 4D volume. w/o 4D Gaussian indicates the absence of Polynomials and Fourier series. w/o velocity loss represents that the method is trained without supervision on the velocity field. w/o initialization means that the initialization is replaced by random sampling as used in our baseline. 
+
+4.3 Ablation Study and Analysis 
+
+To investigate the design of our Flow Splatting, we conduct ablation studies of the representations and training scheme. 
+
+4D Gaussian Representation. We first introduce a vanilla representation, which is employed in our baseline [ 63 ], without Polynomials and Fourier series. Then, we extend the formulation of μ(t)
+
+or q(t) with the time varying components. Finally, we validate complete 4D representations in our method. As shown in Table 3a, the absence of μ(t) or q(t) leads to a drop of 0.78 or 0.71 on PSNR, respectively. We visualize the rendering optical flow in Figure 4. Our baseline fails to learn proper dynamic information on both static and dynamic areas. The introduction of extended 4D Gaussians reconstructs the motions of foreground more completely compared to the method w/o 4D Gaussians. 
+
+Training Strategy. We preserve the rendering loss and ablate the velocity loss including Lflow and 
+
+Lrigid . The absence of initialization results in a decrease of 2.05 on PSNR. The velocity loss is essential for dynamics learning, which improves the image quality by 3.13 on PSNR. The visualization results in Figure 4 also demonstrate the importance of our training scheme. 
+
+# 5 Conclusion 
+
+In this paper, we propose Flow Splatting to learn efficient 4D Gaussian representations from monoc-ular videos. We extend the representation of 4D volume with time varying means and covariance to represent complex motions. Our key idea is to construct the velocity field naturally from our 4D representations and enable the splatting technique to render optical flow. In this manner, we can 9densely supervise the learning of dynamics. Experiments demonstrate that our method achieves better rendering quality with higher rendering speed and less training time. 
+
+Limitations and future works. Although Flow Splatting produces compelling results and outper-forms prior works, it has limitations. Compared to feed-forward methods, our optimization-based strategy still requires several minutes for training. Besides, the reconstruction pipeline does not introduce any generative prior, which is unable to recover unseen regions in the video. Furthermore, Flow Splatting focuses on the color and velocity field, which does not fully capture the geometry structures of scenes. Thus, a few directions would be focused in future works towards more efficient feed-forward methods, dynamic scene generation and geometry reconstruction. 10 A Theory Analysis 
+
+Determination of A(t). The divergence term in the continuity equation is: 
+
+∇ · (f v) = f ∇ · v + v · ∇ f. (24) The gradient of Gaussian distribution f :
+
+∇f = −Σ−1(x − μ)f. (25) Therefore, we have: 
+
+∇ · (f v) = f Tr (A) − (x − μ)⊤Σ−1( ˙ μ + A(x − μ))  . (26) Substituting the results into the continuity equation yields the following expression: Tr (A) − (x − μ)⊤Σ−1( ˙ μ + A(x − μ)) = − 12 Tr (Σ −1 ˙Σ) − (x − μ)⊤Σ−1 ˙ΣΣ −1(x − μ)) . (27) By matching terms, we obtain: 
+
+A = − 12 Σ−1 ˙Σ. (28) 
+
+Unprojection and projection. The camera parameter ci includes the extrinsic matrix ME, the intrinsic matrix MI ∈ R3×3 and camera origin o. Assuming that uI ∈ R2 is pixel coordinates from 
+
+Ii and ddepth ∈ R is the estimated depth, the mean μ ∈ R3 of pixel-aligned Gaussian is: 
+
+μ = o + ddepth uw, [uw, 1] ⊤ = ME[uc, 1] ⊤, [uc, 1] ⊤ = M −1 
+
+> I
+
+[u, 1] ⊤. (29) The projection function ψproj can be considered as the inverse process of unprojection, which projects 3D coordinates to pixel coordinates. 
+
+# B Additional Experiments 
+
+B.1 Implementation Details 
+
+The comprehensive configuration for Gaussian optimization is shown in Table 4. Table 4: Implementation details of Gaussian Optimization. Config Parameter initial polynomial learning rate 0.001 initial Fourier learning rate 0.001 feature learning rate 0.0025 opacity learning rate 0.05 scaling learning rate 0.005 opacity prune threshold 0.005 densification interval 100 opacity reset interval 600 densify gradient threshold 0.0002 
+
+B.2 Additional Results 
+
+We report more quantitative results in Table 5. Our method shows superiority over state-of-the-art methods on PSNR and SSIM. 
+
+B.3 Additional Ablation Study 
+
+Apart from the ablation study on the 4D Gaussian representations and training strategies in our main paper, we also conduct analysis on the order of Polynomial and Fourier series for both μ(t) and q(t).The results are reported in Table 6. The order of Polynomials and Fourier series is set to 6 for μ(t)
+
+and 3 for q(t). Actually, different choices of the order lead to similar results. 11 Table 5: Quantitative comparison on Davis dataset. We report SSIM and LPIPS on each test scene. Mehtods Matrix bear flare camel elephant train Average Deformable 3DGS [64] SSIM 0.825 0.837 0.836 0.901 0.673 0.814 4D Gaussians [56] 0.851 0.771 0.843 0.898 0.754 0.823 DG Marbles [49] 0.902 0.865 0.909 0.907 0.743 0.865 Shape of Motion [55] 0.684 0.623 0.784 0.854 0.568 0.703 Ours 0.941 0.897 0.922 0.928 0.917 0.921 Deformable 3DGS [64] LPIPS 0.122 0.130 0.127 0.096 0.256 0.146 4D Gaussians [56] 0.196 0.307 0.193 0.152 0.252 0.220 DG Marbles [49] 0.054 0.072 0.049 0.053 0.108 0.067 Shape of Motion [55] 0.230 0.274 0.122 0.112 0.329 0.213 Ours 0.078 0.119 0.117 0.106 0.087 0.101 Table 6: Ablation study on the order of Polynomial and Fourier series. We report the number of Gaussians (All) as well as active Gaussians of single frame (Active). 
+
+μ(t) q(t) Matrix Gaussians (k) Polynomial Fourier Polynomial Fourier PSNR SSIM LPIPS All Active 1 1 3 3 27.68 0.883 0.097 354 161 3 3 3 3 27.96 0.885 0.095 353 161 6 6 3 3 27.96 0.886 0.094 352 160 3 3 6 6 27.80 0.884 0.096 353 161 6 6 1 1 27.72 0.885 0.096 353 160 6 6 6 6 27.80 0.885 0.094 351 160 8 8 6 6 27.64 0.883 0.098 353 161 
+
+# C Societal Impact 
+
+Our method focuses on dynamic scene reconstruction, which can be used for applications ranging from virtual reality to robotics. However, it can also have potential negative societal impact. Besides, accurate rendering of a scene may raise privacy concerns that need to be addressed carefully. 
+
+# References 
+
+[1] Michal Adamkiewicz, Timothy Chen, Adam Caccavale, Rachel Gardner, Preston Culbertson, Jeannette Bohg, and Mac Schwager. Vision-only robot navigation in a neural radiance world. IEEE Robotics and Automation Letters , 7(2):4606–4613, 2022. [2] Jonathan T Barron, Ben Mildenhall, Matthew Tancik, Peter Hedman, Ricardo Martin-Brualla, and Pratul P Srinivasan. Mip-nerf: A multiscale representation for anti-aliasing neural radiance fields. In ICCV , pages 5855–5864, 2021. [3] Ang Cao and Justin Johnson. Hexplane: A fast representation for dynamic scenes. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 130–141, 2023. [4] David Charatan, Sizhe Li, Andrea Tagliasacchi, and Vincent Sitzmann. pixelsplat: 3d gaussian splats from image pairs for scalable generalizable 3d reconstruction. arXiv preprint arXiv:2312.12337 , 2023. [5] Yuedong Chen, Haofei Xu, Chuanxia Zheng, Bohan Zhuang, Marc Pollefeys, Andreas Geiger, Tat-Jen Cham, and Jianfei Cai. Mvsplat: Efficient 3d gaussian splatting from sparse multi-view images. arXiv preprint arXiv:2403.14627 , 2024. [6] Carl Doersch, Yi Yang, Mel Vecerik, Dilara Gokay, Ankush Gupta, Yusuf Aytar, Joao Carreira, and Andrew Zisserman. Tapir: Tracking any point with per-frame initialization and temporal refinement. In Proceedings of the IEEE/CVF International Conference on Computer Vision , pages 10061–10072, 2023. [7] Yilun Du, Yinan Zhang, Hong-Xing Yu, Joshua B Tenenbaum, and Jiajun Wu. Neural radiance flow for 4d view synthesis and video processing. In ICCV , pages 14304–14314. IEEE Computer Society, 2021. 
+
+12 [8] Yuanxing Duan, Fangyin Wei, Qiyu Dai, Yuhang He, Wenzheng Chen, and Baoquan Chen. 4d-rotor gaussian splatting: towards efficient novel view synthesis for dynamic scenes. In ACM SIGGRAPH 2024 Conference Papers , pages 1–11, 2024. [9] Zhiwen Fan, Kevin Wang, Kairun Wen, Zehao Zhu, Dejia Xu, and Zhangyang Wang. Lightgaussian: Unbounded 3d gaussian compression with 15x reduction and 200+ fps. arXiv preprint arXiv:2311.17245 ,2023. [10] Sara Fridovich-Keil, Alex Yu, Matthew Tancik, Qinhong Chen, Benjamin Recht, and Angjoo Kanazawa. Plenoxels: Radiance fields without neural networks. In CVPR , pages 5501–5510, 2022. [11] Chen Gao, Ayush Saraf, Johannes Kopf, and Jia-Bin Huang. Dynamic view synthesis from dynamic monocular video. In ICCV , 2021. [12] Hang Gao, Ruilong Li, Shubham Tulsiani, Bryan Russell, and Angjoo Kanazawa. Monocular dynamic view synthesis: A reality check. Advances in Neural Information Processing Systems , 35:33768–33780, 2022. [13] Jian Gao, Chun Gu, Youtian Lin, Hao Zhu, Xun Cao, Li Zhang, and Yao Yao. Relightable 3d gaussian: Real-time point cloud relighting with brdf decomposition and ray tracing. arXiv preprint arXiv:2311.16043 ,2023. [14] Stephan J Garbin, Marek Kowalski, Matthew Johnson, Jamie Shotton, and Julien Valentin. Fastnerf: High-fidelity neural rendering at 200fps. In ICCV , pages 14346–14355, 2021. [15] Sharath Girish, Kamal Gupta, and Abhinav Shrivastava. Eagles: Efficient accelerated 3d gaussians with lightweight encodings. arXiv preprint arXiv:2312.04564 , 2023. [16] Zhiyang Guo, Wengang Zhou, Li Li, Min Wang, and Houqiang Li. Motion-aware 3d gaussian splatting for efficient dynamic scene reconstruction. IEEE Transactions on Circuits and Systems for Video Technology ,2024. [17] Tao Hu, Shu Liu, Yilun Chen, Tiancheng Shen, and Jiaya Jia. Efficientnerf efficient neural radiance fields. In CVPR , pages 12902–12911, 2022. [18] Ying Jiang, Chang Yu, Tianyi Xie, Xuan Li, Yutao Feng, Huamin Wang, Minchen Li, Henry Lau, Feng Gao, Yin Yang, et al. Vr-gs: A physical dynamics-aware interactive gaussian splatting system in virtual reality. In ACM SIGGRAPH 2024 Conference Papers , pages 1–1, 2024. [19] Yingwenqi Jiang, Jiadong Tu, Yuan Liu, Xifeng Gao, Xiaoxiao Long, Wenping Wang, and Yuexin Ma. Gaussianshader: 3d gaussian splatting with shading functions for reflective surfaces. arXiv preprint arXiv:2311.17977 , 2023. [20] Kai Katsumata, Duc Minh Vo, and Hideki Nakayama. An efficient 3d gaussian representation for monocular/multi-view dynamic scenes. arXiv preprint arXiv:2311.12897 , 2023. [21] Bernhard Kerbl, Georgios Kopanas, Thomas Leimkühler, and George Drettakis. 3d gaussian splatting for real-time radiance field rendering. ACM Trans. Graph. , 42(4):139–1, 2023. [22] Alexander Kirillov, Eric Mintun, Nikhila Ravi, Hanzi Mao, Chloe Rolland, Laura Gustafson, Tete Xiao, Spencer Whitehead, Alexander C Berg, Wan-Yen Lo, et al. Segment anything. In Proceedings of the IEEE/CVF international conference on computer vision , pages 4015–4026, 2023. [23] Jiahui Lei, Yijia Weng, Adam Harley, Leonidas Guibas, and Kostas Daniilidis. Mosca: Dynamic gaussian fusion from casual videos via 4d motion scaffolds. arXiv preprint arXiv:2405.17421 , 2024. [24] Tianye Li, Mira Slavcheva, Michael Zollhoefer, Simon Green, Christoph Lassner, Changil Kim, Tanner Schmidt, Steven Lovegrove, Michael Goesele, Richard Newcombe, et al. Neural 3d video synthesis from multi-view video. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition ,pages 5521–5531, 2022. [25] Zhengqi Li, Simon Niklaus, Noah Snavely, and Oliver Wang. Neural scene flow fields for space-time view synthesis of dynamic scenes. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 6498–6508, 2021. [26] Zhengqi Li, Richard Tucker, Forrester Cole, Qianqian Wang, Linyi Jin, Vickie Ye, Angjoo Kanazawa, Aleksander Holynski, and Noah Snavely. Megasam: Accurate, fast, and robust structure and motion from casual dynamic videos. arXiv preprint arXiv:2412.04463 , 2024. 
+
+13 [27] Yiqing Liang, Numair Khan, Zhengqin Li, Thu Nguyen-Phuoc, Douglas Lanman, James Tompkin, and Lei Xiao. Gaufre: Gaussian deformation fields for real-time dynamic novel view synthesis. In 2025 IEEE/CVF Winter Conference on Applications of Computer Vision (WACV) , pages 2642–2652. IEEE, 2025. [28] Zhihao Liang, Qi Zhang, Ying Feng, Ying Shan, and Kui Jia. Gs-ir: 3d gaussian splatting for inverse rendering. arXiv preprint arXiv:2311.16473 , 2023. [29] Youtian Lin, Zuozhuo Dai, Siyu Zhu, and Yao Yao. Gaussian-flow: 4d reconstruction with dynamic 3d gaussian particle. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 21136–21145, 2024. [30] Lingjie Liu, Jiatao Gu, Kyaw Zaw Lin, Tat-Seng Chua, and Christian Theobalt. Neural sparse voxel fields. 
+
+NeurIPS , 33:15651–15663, 2020. [31] Stephen Lombardi, Tomas Simon, Jason Saragih, Gabriel Schwartz, Andreas Lehrmann, and Yaser Sheikh. Neural volumes: Learning dynamic renderable volumes from images. arXiv preprint arXiv:1906.07751 ,2019. [32] Tao Lu, Mulin Yu, Linning Xu, Yuanbo Xiangli, Limin Wang, Dahua Lin, and Bo Dai. Scaffold-gs: Structured 3d gaussians for view-adaptive rendering. arXiv preprint arXiv:2312.00109 , 2023. [33] Jonathon Luiten, Georgios Kopanas, Bastian Leibe, and Deva Ramanan. Dynamic 3d gaussians: Tracking by persistent dynamic view synthesis. In 2024 International Conference on 3D Vision (3DV) , pages 800–809. IEEE, 2024. [34] Lars Mescheder, Michael Oechsle, Michael Niemeyer, Sebastian Nowozin, and Andreas Geiger. Occupancy networks: Learning 3d reconstruction in function space. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 4460–4470, 2019. [35] Ben Mildenhall, Pratul P Srinivasan, Matthew Tancik, Jonathan T Barron, Ravi Ramamoorthi, and Ren Ng. Nerf: Representing scenes as neural radiance fields for view synthesis. ECCV , 2020. [36] Thomas Müller, Alex Evans, Christoph Schied, and Alexander Keller. Instant neural graphics primitives with a multiresolution hash encoding. ToG , 41(4):1–15, 2022. [37] KL Navaneet, Kossar Pourahmadi Meibodi, Soroush Abbasi Koohpayegani, and Hamed Pirsiavash. Compact3d: Compressing gaussian splat radiance field models with vector quantization. arXiv preprint arXiv:2311.18159 , 2023. [38] Michael Niemeyer, Jonathan T Barron, Ben Mildenhall, Mehdi SM Sajjadi, Andreas Geiger, and Noha Radwan. Regnerf: Regularizing neural radiance fields for view synthesis from sparse inputs. In CVPR ,pages 5480–5490, 2022. [39] Jeong Joon Park, Peter Florence, Julian Straub, Richard Newcombe, and Steven Lovegrove. Deepsdf: Learning continuous signed distance functions for shape representation. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 165–174, 2019. [40] Keunhong Park, Utkarsh Sinha, Jonathan T Barron, Sofien Bouaziz, Dan B Goldman, Steven M Seitz, and Ricardo Martin-Brualla. Nerfies: Deformable neural radiance fields. In Proceedings of the IEEE/CVF international conference on computer vision , pages 5865–5874, 2021. [41] Keunhong Park, Utkarsh Sinha, Peter Hedman, Jonathan T Barron, Sofien Bouaziz, Dan B Goldman, Ricardo Martin-Brualla, and Steven M Seitz. Hypernerf: A higher-dimensional representation for topologi-cally varying neural radiance fields. arXiv preprint arXiv:2106.13228 , 2021. [42] Jordi Pont-Tuset, Federico Perazzi, Sergi Caelles, Pablo Arbeláez, Alex Sorkine-Hornung, and Luc Van Gool. The 2017 davis challenge on video object segmentation. arXiv preprint arXiv:1704.00675 ,2017. [43] Albert Pumarola, Enric Corona, Gerard Pons-Moll, and Francesc Moreno-Noguer. D-nerf: Neural radiance fields for dynamic scenes. In CVPR , pages 10318–10327, 2021. [44] Minghan Qin, Wanhua Li, Jiawei Zhou, Haoqian Wang, and Hanspeter Pfister. Langsplat: 3d language gaus-sian splatting. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,pages 20051–20060, 2024. [45] LIU Qingming, Yuan Liu, Jiepeng Wang, Xianqiang Lyu, Peng Wang, Wenping Wang, and Junhui Hou. Modgs: Dynamic gaussian splatting from casually-captured monocular videos with depth priors. In The Thirteenth International Conference on Learning Representations , 2025. 
+
+14 [46] Christian Reiser, Songyou Peng, Yiyi Liao, and Andreas Geiger. Kilonerf: Speeding up neural radiance fields with thousands of tiny mlps. In ICCV , pages 14335–14345, 2021. [47] Vincent Sitzmann, Semon Rezchikov, William T. Freeman, Joshua B. Tenenbaum, and Frédo Durand. Light field networks: Neural scene representations with single-evaluation rendering. In NeurIPS , 2021. [48] Vincent Sitzmann, Michael Zollhofer, and Gordon Wetzstein. Scene representation networks: Continuous 3d-structure-aware neural scene representations. NeurIPS , 32, 2019. [49] Colton Stearns, Adam Harley, Mikaela Uy, Florian Dubost, Federico Tombari, Gordon Wetzstein, and Leonidas Guibas. Dynamic gaussian marbles for novel view synthesis of casual monocular videos. In 
+
+SIGGRAPH Asia 2024 Conference Papers , pages 1–11, 2024. [50] Stanislaw Szymanowicz, Christian Rupprecht, and Andrea Vedaldi. Splatter image: Ultra-fast single-view 3d reconstruction. arXiv preprint arXiv:2312.13150 , 2023. [51] Matthew Tancik, Vincent Casser, Xinchen Yan, Sabeek Pradhan, Ben Mildenhall, Pratul P Srinivasan, Jonathan T Barron, and Henrik Kretzschmar. Block-nerf: Scalable large scene neural view synthesis. In 
+
+CVPR , pages 8248–8258, 2022. [52] Zachary Teed and Jia Deng. Raft: Recurrent all-pairs field transforms for optical flow. In Computer Vision–ECCV 2020: 16th European Conference, Glasgow, UK, August 23–28, 2020, Proceedings, Part II 16 , pages 402–419. Springer, 2020. [53] Prune Truong, Marie-Julie Rakotosaona, Fabian Manhardt, and Federico Tombari. Sparf: Neural radiance fields from sparse and noisy poses. ieee. In CVPR , volume 1, 2023. [54] Haithem Turki, Deva Ramanan, and Mahadev Satyanarayanan. Mega-nerf: Scalable construction of large-scale nerfs for virtual fly-throughs. In CVPR , pages 12922–12931, 2022. [55] Qianqian Wang, Vickie Ye, Hang Gao, Jake Austin, Zhengqi Li, and Angjoo Kanazawa. Shape of motion: 4d reconstruction from a single video. arXiv preprint arXiv:2407.13764 , 2024. [56] Guanjun Wu, Taoran Yi, Jiemin Fang, Lingxi Xie, Xiaopeng Zhang, Wei Wei, Wenyu Liu, Qi Tian, and Xinggang Wang. 4d gaussian splatting for real-time dynamic scene rendering. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 20310–20320, 2024. [57] Jamie Wynn and Daniyar Turmukhambetov. Diffusionerf: Regularizing neural radiance fields with denoising diffusion models. In CVPR , pages 4180–4189, 2023. [58] Wenqi Xian, Jia-Bin Huang, Johannes Kopf, and Changil Kim. Space-time neural irradiance fields for free-viewpoint video. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition ,pages 9421–9431, 2021. [59] Yuanbo Xiangli, Linning Xu, Xingang Pan, Nanxuan Zhao, Anyi Rao, Christian Theobalt, Bo Dai, and Dahua Lin. Bungeenerf: Progressive neural radiance field for extreme multi-scale scene rendering. In 
+
+ECCV , pages 106–122. Springer, 2022. [60] Haofei Xu, Anpei Chen, Yuedong Chen, Christos Sakaridis, Yulun Zhang, Marc Pollefeys, Andreas Geiger, and Fisher Yu. Murf: Multi-baseline radiance fields. arXiv preprint arXiv:2312.04565 , 2023. [61] Linning Xu, Yuanbo Xiangli, Sida Peng, Xingang Pan, Nanxuan Zhao, Christian Theobalt, Bo Dai, and Dahua Lin. Grid-guided neural radiance fields for large urban scenes. In CVPR , pages 8296–8306, 2023. [62] Zhiwen Yan, Weng Fei Low, Yu Chen, and Gim Hee Lee. Multi-scale 3d gaussian splatting for anti-aliased rendering. arXiv preprint arXiv:2311.17089 , 2023. [63] Zeyu Yang, Hongye Yang, Zijie Pan, and Li Zhang. Real-time photorealistic dynamic scene representation and rendering with 4d gaussian splatting. ICLR , 2024. [64] Ziyi Yang, Xinyu Gao, Wen Zhou, Shaohui Jiao, Yuqing Zhang, and Xiaogang Jin. Deformable 3d gaussians for high-fidelity monocular dynamic scene reconstruction. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 20331–20341, 2024. [65] Lior Yariv, Yoni Kasten, Dror Moran, Meirav Galun, Matan Atzmon, Basri Ronen, and Yaron Lipman. Multiview neural surface reconstruction by disentangling geometry and appearance. Advances in Neural Information Processing Systems , 33:2492–2502, 2020. 
+
+15 [66] Jae Shin Yoon, Kihwan Kim, Orazio Gallo, Hyun Soo Park, and Jan Kautz. Novel view synthesis of dynamic scenes with globally coherent depths from a monocular camera. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 5336–5345, 2020. [67] Alex Yu, Ruilong Li, Matthew Tancik, Hao Li, Ren Ng, and Angjoo Kanazawa. Plenoctrees for real-time rendering of neural radiance fields. In ICCV , pages 5752–5761, 2021. [68] Shengjun Zhang, Xin Fei, Fangfu Liu, Haixu Song, and Yueqi Duan. Gaussian graph network: Learn-ing efficient and generalizable gaussian representations from multi-view images. Advances in Neural Information Processing Systems , 37:50361–50380, 2024. [69] Shijie Zhou, Haoran Chang, Sicheng Jiang, Zhiwen Fan, Zehao Zhu, Dejia Xu, Pradyumna Chari, Suya You, Zhangyang Wang, and Achuta Kadambi. Feature 3dgs: Supercharging 3d gaussian splatting to enable distilled feature fields. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 21676–21685, 2024. [70] Xiaoyu Zhou, Zhiwei Lin, Xiaojun Shan, Yongtao Wang, Deqing Sun, and Ming-Hsuan Yang. Drivinggaus-sian: Composite gaussian splatting for surrounding dynamic autonomous driving scenes. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 21634–21643, 2024. 
+
+16

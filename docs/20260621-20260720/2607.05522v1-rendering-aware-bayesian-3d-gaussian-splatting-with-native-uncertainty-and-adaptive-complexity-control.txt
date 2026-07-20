@@ -1,0 +1,782 @@
+Title: Rendering-Aware Bayesian 3D Gaussian Splatting with Native Uncertainty and Adaptive Complexity Control
+
+URL Source: https://arxiv.org/pdf/2607.05522v1
+
+Published Time: Wed, 08 Jul 2026 00:04:09 GMT
+
+Number of Pages: 26
+
+Markdown Content:
+# Rendering-Aware Bayesian 3D Gaussian Splatting with Native Uncertainty and Adaptive Complexity Control 
+
+Gaoxiang Jia ∗
+
+Advanced Micro Devices, Inc. 
+
+jiagaoxiang@gmail.com 
+
+Vikram Appia 
+
+Advanced Micro Devices, Inc. 
+
+Junzhou Huang 
+
+Dept. of Computer Science and Engineering University of Texas at Arlington 
+
+Xinlei Wang ∗
+
+Dept. of Mathematics & Division of Data Science University of Texas at Arlington 
+
+xinlei.wang@uta.edu 
+
+Abstract 
+
+3D Gaussian splatting (3DGS) is a strong representation for real-time, high-fidelity novel-view synthesis, yet its standard training pipeline relies on point estimates and hand-tuned heuristics that do not natively provide uncertainty or principled complexity control. This limitation is most apparent under limited view support or fixed acquisition budgets, where a point estimate cannot identify weakly supported geometry or rank informative candidate views. We introduce a rendering-aware Bayesian framework that tracks 3DGS geometry with a Normal-Inverse-Wishart (NIW) posterior over Gaussian means and covariances using renderer-derived surrogate summaries; an optional Dirichlet-process extension turns component usage into a probabilistic complexity signal, and the training schedule makes the closed-form-versus-approximate inference boundary explicit. Re-rendering poste-rior geometry samples produces native predictive uncertainty for interval calibration and active view selection. In a fixed-budget 16-to-32 active-view-selection task, native NIW acquisition improves PSNR by +0 .453 dB and LPIPS by −0.0146 
+
+over a scoring-only 3-member standard-ensemble acquisition baseline, winning 29/39 scene-seed pairs and 10/13 scene means on PSNR, with PSNR gains also over PPU-style ( +0 .355 dB) and NIW proxy ( +0 .401 dB) acquisition. NIW na-tive intervals reduce 95% coverage error by about 17 × relative to a shared proxy (|Cov@95 − 0.95 |: 0.046 versus 0.796 ) and are about 10 × closer to nominal cov-erage than a 3-member deep ensemble ( 0.047 versus 0.454 ) at roughly one-third the training cost. As a reconstruction compatibility check, paired NIW-vs-standard analysis over 39 scene-seed runs yields +0 .030 dB PSNR (95% cluster bootstrap CI [+0 .004 , +0 .059] dB) for 1.6% additional training time. Together, these re-sults position Bayesian 3DGS as a practical probabilistic scene representation for decision-facing tasks such as active view selection. 
+
+1 Introduction 
+
+3D Gaussian splatting (3DGS) has become a central representation for novel-view synthesis, com-bining strong reconstruction quality with real-time rendering (Kerbl et al., 2023). Yet the standard 
+
+> ∗Co-corresponding authors. Preprint. arXiv:2607.05522v1 [cs.CV] 6 Jul 2026
+
+a Standard 3DGS 
+
+{μk, Σ k} fixed 
+
+point-estimate Gaussians 
+
+b Bayesian NIW 
+
+q(μk, Σ k) = NIW(⋅) 
+
+posterior over geometry 
+
+scene 
+
+c View 
+
+Views Likelihood NIW Pixel UQ           
+
+> Ncalibrated views
+> RGB images
+> + camera poses
+> Ij,p∼(Cj,p,σ2I3)
+> alpha-composited
+> Gaussian renderer
+> q(μk, Σ k) = NIW(⋅)
+> conjugate update from
+> surrogate stats
+> up= Var s[̂ I(s)
+> p]
+> bright = high pixel
+> posterior uncertainty
+> Renderer-derived surrogates →NIW geometry posterior →native pixel uncertainty
+
+d Method overview        
+
+> 19.8 20.0 20.2 20.4 20.6 20.8 21.0 21.2
+
+Standard uniform 
+
+Standard ensemble 
+
+Standard PPU 
+
+NIW uniform 
+
+NIW proxy 
+
+NIW native (ours) 
+
+19.94 dB 
+
+20.39 dB 
+
+20.49 dB 
+
+20.01 dB 
+
+20.44 dB 
+
+20.84 dB 
+
+e Final PSNR after acquisition ( ↑ ) Figure 1: Rendering-aware Bayesian 3DGS. (a) Standard 3DGS keeps {μk, Σk} as point estimates. (b) Bayesian 3DGS-NIW attaches a posterior q(μk, Σk); translucent clouds show posterior geometry draws, with tighter clouds for better-supported components. (c) In fixed-budget 16 → 32 active-view selection, native uncertainty selects views near high-variance regions. (d) Camera-calibrated views define a rendering likelihood, renderer-derived surrogate statistics feed the NIW update, and posterior re-rendering yields pixel uncertainty. (e) Final PSNR reaches 20 .84 dB, +0 .453 dB over a scoring-only standard-ensemble baseline. Error bars show ±1 standard error of the mean (SEM) across three seeds, averaged over 13 scenes. pipeline provides no posterior characterization of scene geometry: the representation is a point estimate, Gaussian birth and death are governed by hand-tuned gradient and opacity thresholds, and the final model offers no native uncertainty characterization. This absence is least visible in the fully trained canonical benchmark, where a strong point-estimate 3DGS model is already difficult to surpass by large margins. It becomes a clear failure mode when 3DGS must act under limited support or fixed budgets: a point estimate cannot natively rank informative candidate views or identify weakly supported geometry. We therefore ask which parts 2of the geometry carry high posterior variance, how that uncertainty propagates to rendered pixels, and whether it improves a downstream decision such as fixed-budget view acquisition. Recent work has advanced probabilistic optimization, uncertainty estimation, and pruning for Gaussian splatting (Kheradmand et al., 2024; Li and Cheung, 2024; Savant et al., 2024; Van de Maele et al., 2025; Hanson et al., 2025; Wu et al., 2026; Galappaththige et al., 2026); our focus is the less-explored combination of closed-form geometry updates from renderer-derived surrogate summaries, native geometry-induced predictive uncertainty, and a Dirichlet-process (DP) complexity prior in one auditable 3DGS runtime. Appendix A provides an extended discussion. We address these questions by embedding the 3DGS renderer inside a probabilistic observation model. Our primary formulation places a normal-inverse-Wishart (NIW) posterior over each Gaussian’s mean and covariance, updated online via renderer-derived surrogate summaries that play the role of Gaussian complete-data statistics (Figure 1a,b,d). The same alpha-compositing renderer that produces colors at training time also propagates this geometry posterior to per-pixel predictive variance, supplying an interval-calibration signal and, when averaged over a candidate camera, an acquisition heuristic for fixed-budget view selection. An optional DP layer models component usage probabilistically, providing complexity signals that complement standard densification. A precise caveat: “rendering-aware” means that the observation model and surrogate summaries are derived from the alpha-composited renderer; it does not mean exact end-to-end Bayesian inference through the full nonlinear rendering pipeline. The inference schedule therefore combines closed-form updates within stated submodels with explicitly approximate steps, and Table 1 makes the boundary visible. The clearest practical signal appears in a fixed-budget 16-to-32 active-view-selection task: native NIW acquisition uses posterior uncertainty to choose cameras near high-variance geometry (Figure 1c) and improves final quality by +0 .453 dB and −0.0146 LPIPS over a scoring-only standard-ensemble acquisition baseline (Figure 1e), winning 29/39 scene-seed runs and 10/13 scene means on PSNR. The native NIW posterior also provides substantially improved interval calibration, achieving a 17 ×
+
+reduction in coverage error relative to the shared proxy ( 0.046 versus 0.796 ). Against a 3-member deep ensemble, NIW is not the strongest ranking-style uncertainty baseline, but it is about 10 ×
+
+closer to nominal interval coverage ( 0.047 versus 0.454 ) while avoiding the ensemble’s roughly 
+
+3× training cost (2413 s versus 815 s). On the canonical 13-scene benchmark, Bayesian 3DGS-NIW shows a small paired PSNR gain of +0 .030 dB over Standard 3DGS (95% cluster bootstrap CI [+0 .004 , +0 .059] dB) with 1.6% training-time overhead, indicating compatibility rather than a primary source of improvement. The DP extension similarly provides a secondary compactness operating point rather than competing with dedicated compression systems (Hanson et al., 2025; Fan et al., 2024b; Lee et al., 2024). Overall, the contribution is a probabilistic scene representation with native predictive uncertainty, transparent approximation boundaries, and data-driven complexity control over a strong rendering backbone. 
+
+Relation to existing work. The closest probabilistic 3DGS methods take either a stochastic-optimization view or a detached variational view: 3DGS-MCMC (Kheradmand et al., 2024) uses stochastic-gradient Langevin dynamics, and VBGS (Van de Maele et al., 2025) maintains conjugate posteriors on a density model detached from the renderer. Uncertainty-aware methods add predictive heads or sample-based surrogates (Savant et al., 2024; Li and Cheung, 2024; Galappaththige et al., 2026), while pruning methods pursue post-hoc sparsity (Hanson et al., 2025; Wu et al., 2026). Our formulation differs by updating an NIW posterior from renderer-derived surrogate summaries in a single training trajectory and coupling it to an explicit nonparametric complexity prior. Deep ensembles (Lakshminarayanan et al., 2017) capture a different posterior object at higher cost, so we report both regimes side by side. Our contributions are organized around why Bayesian structure should help, and where our evidence is new. The general premise is not new: Bayesian experimental design and active learning motivate uncertainty-guided measurement selection (MacKay, 1992; Settles, 2009), while conjugate Bayesian updates and Bayesian nonparametric priors are standard tools for probabilistic updating and adaptive model complexity (Murphy, 2012; Ferguson, 1973; Sethuraman, 1994; Blei and Jordan, 2006). Our contribution is to make those ideas rendering-aware, computationally practical for 3DGS, and empirically verified under matched 3DGS protocols: 1. Rendering-aware Bayesian 3DGS. We introduce an NIW geometry posterior whose dispersion adapts to renderer-derived support, together with a DP extension that provides a probabilistic usage 3signal. We explicitly delineate the boundary between closed-form and approximate inference, clarifying which components support Bayesian interpretation. 2. Decision-facing validation. We show that geometry-induced predictive uncertainty can drive an acquisition score for fixed-budget active view selection, and evaluate it directly against ensemble and predictive photometric uncertainty (PPU)-style acquisition baselines (Galappaththige et al., 2026) rather than claiming optimal Bayesian experimental design. 3. Component-level empirical analysis. We isolate the contribution of each module: NIW preserves the rendering backbone, native posterior sampling improves interval calibration and acquisition, and the DP layer provides a compactness operating point, while reconstruction, compression, and out-of-distribution (OOD) detection remain explicitly bounded claims. 
+
+2 Method 
+
+2.1 Rendering-aware Bayesian 3DGS 
+
+Our starting point is a probabilistic reinterpretation of 3DGS in which posterior structure is placed on the same Gaussian geometry that the renderer projects to pixels. Let Θ = {(μk, Σk, o k, c k)}Kk=1 
+
+be the per-Gaussian parameters and a ∈ { 0, 1}K the component activities. The standard 3DGS splat renderer produces color Cj,p (Θ , a ) at pixel p in camera j by depth-ordered alpha compositing of visible Gaussians, and we model the observation as Ij,p ∼ N (Cj,p (Θ , a ), σ 2I3). We place a normal-inverse-Wishart (NIW) prior on each (μk, Σk) pair (Eq. 1) and an optional truncated Dirichlet process activity prior (Eq. 5). The factors are familiar Bayesian objects—a Gaussian pixel likelihood, the canonical conjugate prior for a Gaussian likelihood with unknown mean and covariance, and a standard nonparametric prior for adaptive component count (Ferguson, 1973; Sethuraman, 1994; Blei and Jordan, 2006)—arranged so that the renderer mediates between geometry and image (Figure 1d). We call the formulation rendering-aware in the specific sense that the NIW posterior is updated from sufficient-statistic surrogates ( ˆNk, ¯xk, C k) computed from the alpha-compositing renderer’s own state, rather than from photometric residuals or a detached density model. Operationally, the renderer induces for each component an auxiliary spatial data set represented only by these summaries; under the surrogate model zk,i ∼ N (μk, Σk), the NIW update is closed-form. The pseudo-observations 
+
+zk,i are not observed 3D points, so the approximation is concentrated in how rendering state is summarized, not in the conjugate algebra. We therefore make no claim of exact end-to-end Bayes through the full nonlinear renderer, and Table 1 marks which factors are closed-form and which remain approximate. The live trainer still optimizes the standard photometric / SSIM rendering loss, with this likelihood supplying the probabilistic block used for posterior tracking. The NIW prior on each Gaussian is 
+
+(μk, Σk) ∼ NIW( m0, κ 0, ν 0, S 0), (1) which yields a natural Bayesian object for online geometric uncertainty (Murphy, 2012). We denote posterior factors by q(·) throughout, including factors with closed-form updates under the stated surrogate model. We use a weakly informative prior centred on the initial point cloud: ν0 = D+2 = 5 
+
+is the minimally informative degrees-of-freedom that keeps the inverse-Wishart proper (Murphy, 2012), and κ0 = 0 .01 leaves the mean nearly flat, so rendering evidence quickly dominates. The conjugate update requires an effective count ˆNk, weighted mean ¯xk, and scatter Ck. In a classical mixture model these come from responsibilities; here they are derived from renderer state. In the benchmarked NIW rows, ˆNk is an exponential moving average (EMA)-smoothed opacity-times-diagonal-volume proxy, ˆNk ∝ ok
+
+pQ 
+
+> d
+
+[E[Σ k]] dd , normalized to the effective pixel count, while the pseudo-observation is the current Gaussian center and the online update sets Ck = 0 .
+
+κn = κ0 + ˆNk, mn = κ0m0 + ˆNk ¯xk
+
+κn
+
+, (2) 
+
+νn = ν0 + ˆNk, Sn = S0 + Ck + κ0 ˆNk
+
+κn
+
+(¯ xk − m0)(¯ xk − m0)⊤. (3) The posterior expected covariance is E[Σ k] = Sn/(νn − D − 1) and the posterior mean variance is Var[ μk] = E[Σ k]/κ n, where D = 3 . Because ˆNk grows with rendering support, well-observed 4components concentrate while occluded or under-observed components retain high posterior variance, giving an auditable rendering-aware geometry posterior with the approximation boundary stated in Table 1. 
+
+2.2 Native posterior uncertainty 
+
+The NIW posterior enables a native source of geometry-induced predictive uncertainty not provided by the matched point-estimate control. Given the learned posterior q(μk, Σk), we draw S posterior samples and re-render the scene: 
+
+ˆI(s) 
+
+> j,p
+
+= Cj,p (Θ (s), a ), Θ(s) ∼ q(Θ) , up = 1
+
+S
+
+> S
+
+X
+
+> s=1
+
+ˆI(s) 
+
+> j,p
+
+− ¯Ij,p 
+
+> 2
+
+, (4) where ¯Ij,p is the sample mean and up is the per-pixel uncertainty. In the NIW-only headline native uncertainty quantification (UQ) rows, Θ(s) samples only the geometry posterior; opacity and color remain fixed, and aleatoric variance enters through a plug-in residual mean squared error (MSE) estimate ˆσ2. The fuller Dirichlet process mixture model (DPMM) predictive path also samples the inverse-gamma noise posterior and approximate activity, opacity, and color posterior draws; Table 1 marks this split. The publication benchmark uses S=50 samples for both shared proxy-UQ and Bayesian native-posterior-UQ estimates, counted as evaluation rather than training cost. We distinguish this native geometry uncertainty from the shared proxy protocol used for fair cross-method comparison. The proxy protocol applies identical position-jitter Monte Carlo to all methods— including deterministic baselines—so that ranking-style calibration metrics, including area under the sparsification error (AUSE) and expected calibration error (ECE), remain comparable; it answers the 
+
+fairness question. Native posterior uncertainty answers the capability question: whether the Bayesian model can express meaningful uncertainty from its own learned posterior, without external perturba-tion. For active view selection, a candidate camera receives the mean pixel score 1
+
+> |P|
+
+P 
+
+> p∈P
+
+up and we add the top 16. This is a variance-based acquisition heuristic: large geometry-induced dispersion at a candidate view is a proxy for where the model is unsure (MacKay, 1992; Settles, 2009), not a claim to optimize mutual information under nonlinear splatting. 
+
+2.3 Dirichlet process complexity extension 
+
+To model component usage probabilistically, we add a truncated stick-breaking construction, 
+
+vk ∼ Beta(1 , α ), πk = vk
+
+Y
+
+> ℓ<k
+
+(1 − vℓ), (5) and optimize its variational form with coordinate-ascent variational inference (Ferguson, 1973; Sethuraman, 1994; Blei and Jordan, 2006). Gaussians whose posterior mixing weight E[πk] falls below a threshold are pruned, while α controls consolidation. We set α = 5 by default; with K ∼ 10 6,the prior expected active count is approximately α log K ≈ 69 (Blei and Jordan, 2006), encouraging consolidation without extreme sparsity. In the current trainer, this DP machinery augments rather than replaces standard 3DGS densification and housekeeping. This DPMM extension creates a second operating point with fewer retained Gaussians, faster ren-dering, and posterior summaries reusable for fixed-budget compression. It complements rather than replaces NIW: the main quality story is carried by the NIW posterior, while the DP layer provides adaptive complexity control. 
+
+2.4 Hybrid inference and approximation transparency 
+
+Our live GPU trainer is a staged hybrid Bayesian runtime rather than a literal end-to-end evidence lower bound (ELBO) optimizer. It combines closed-form submodel updates and explicitly approxi-mate updates around the standard 3DGS optimization path, staged for stability. The corresponding staged training procedure is given in Algorithm 1 in Appendix C. Table 1 delineates the boundary: geometry ( μk, Σk), stick-breaking ( vk), and noise ( σ2) carry the clearest explicit posterior struc-ture, while opacity and color receive slower approximate posterior refinements around the standard optimizer. 5Table 1: Closed-form-versus-approximate boundary for the main update blocks. The NIW spatial pos-terior and stick-breaking weights have closed-form updates within the stated surrogate or variational submodel, while opacity and color remain approximate refinements around the standard optimizer.                           
+
+> Block Status Role Stick-breaking q(vk)Closed-form coordinate-ascent variational inference (CAVI) Beta update for DP complexity given factoriza-tion NIW spatial q(μk,Σk)Conjugate given summaries Core Bayesian geometry block Effective counts ˆNkApproximate Rendering-derived proxy for component support Activity q(ak)Approximate Fast usage gate for complexity control Opacity okApproximate posterior re-finement Opacity block refined around the standard opti-mizer Color ckApproximate posterior re-finement Appearance block refined around the standard optimizer Noise variance q(σ2)Closed-form inverse-gamma (IG) step Given minibatch residual statistics in the fuller DPMM path
+
+Training is staged around the standard 3DGS optimizer so the point-estimate rendering state re-mains stable while posterior blocks accumulate evidence. In the 30k canonical DPMM row, NIW geometry tracking is active from the start, stick-breaking CAVI runs every 50 iterations, activity and residual-noise updates begin after 5k iterations, and slower opacity/color refinements begin after 15k; Appendix D.3 records the full schedule. The native-posterior calibration results in Section 3.3 are driven by the closed-form NIW geometry block; the fuller DPMM predictive path also uses closed-form inverse-gamma noise updates, while activity, opacity, and color remain explicitly approximate. The resulting system provides a rendering-aware posterior over geometry and complexity with the boundary stated in Table 1. 
+
+3 Experiments 
+
+3.1 Protocol and baselines 
+
+We evaluate on the standard 13-scene suite spanning Mip-NeRF 360 (Barron et al., 2022), Tanks and Temples (Knapitsch et al., 2017), and Deep Blending (Hedman et al., 2018). The canonical table contains methods rerun end-to-end under one held-out protocol: Standard 3DGS (matched deterministic control), Bayesian 3DGS-NIW (primary Bayesian model), DPMM-3DGS (compactness extension), Official 3DGS Reproduction (external 3DGS anchor), and 3DGS-MCMC (Kheradmand et al., 2024). Stronger uncertainty and pruning comparators enter as focused follow-ups when their native objective matches the study, so deep ensembles and predictive photometric uncertainty (PPU) are used for uncertainty quantification (UQ)/acquisition while principled uncertainty pruning (PUP) is scoped to compression. Because the primary claim is representation capability rather than a large reconstruction gain, the canonical benchmark is a compatibility check, complemented by a paired NIW-vs-standard analysis over matched scene-seed runs. We report peak signal-to-noise ratio (PSNR), structural similarity index measure (SSIM), and learned perceptual image patch similarity (LPIPS) (Zhang et al., 2018) for quality; retained Gaussian count, frames per second (FPS), and train time for compactness–efficiency; and uncertainty metrics under two regimes. The fair all-method comparison uses a shared position-jitter Monte Carlo proxy with area under the sparsification error (AUSE) and expected calibration error (ECE). Bayesian rows additionally expose native geometry-induced predictive uncertainty, where we emphasize likelihood-based calibration and |Cov@95 − 0.95 |. Thus the active-view study tests decision value, native-UQ tests interval calibration, the canonical benchmark tests compatibility, and compression remains a bounded matched-checkpoint follow-up. 
+
+3.2 Downstream task: active view selection 
+
+The most concrete failure mode studied in this paper is decision-making under limited view support. When only 16 train views are initially available and the budget permits 16 more, a point-estimate 3DGS model must still answer “which view should we acquire next?” using deterministic surrogates 6Table 2: Active view selection (13 scenes, 3 seeds). Each policy starts from the same 16-view seed subset, selects 16 additional views, and trains to the same 30k-iteration budget. The ensemble row uses three standard phase-1 models for scoring only; the PPU row is a frozen-checkpoint follow-up. Native NIW acquisition gives the strongest final quality.                             
+
+> Policy PSNR ↑SSIM ↑LPIPS ↓Time (s) ↓
+> Standard + uniform add 19.940 0.6307 0.3485 873.9
+> Standard + ensemble-UQ add 20.389 0.6367 0.3428 1531.2 Standard + PPU-style add 20.487 0.6457 0.3376 960.9 NIW + uniform add 20.011 0.6305 0.3486 1009.2 NIW + proxy-UQ add 20.441 0.6519 0.3341 888.7 NIW + native-UQ add 20.842 0.6577 0.3282 1233.1
+
+such as uniform spacing, disagreement heuristics, or post-hoc uncertainty scores rather than a native posterior over unsupported geometry. We therefore evaluate a fixed-budget active-view task that converts uncertainty quality into a rendering outcome: under the same acquisition and training budget, a useful uncertainty signal should choose views that improve the final held-out reconstruction, not merely score pixels after the fact. For each scene, we begin from the same deterministic 16-view seed subset, train a seed model, rank remaining train views by the policy score, add the top 16 views, and continue training to the same 30k-iteration budget. Scored policies use mean candidate-view uncertainty: cross-member red-green-blue (RGB) variance for the scoring-only ensemble, residual-head uncertainty for the PPU-style follow-up (Galappaththige et al., 2026), shared proxy uncertainty for NIW proxy, and Eq. 4 for NIW native. The comparison family is fixed rather than chosen scene-by-scene: every scene and seed in the five-policy core uses the same 16-to-32 acquisition ladder, and Table 2 adds the protocol-matched PPU follow-up on frozen standard checkpoints. The downstream conclusion remains positive under stronger baselines. The scoring-only ensemble rule is nontrivial, improving over uniform standard acquisition by +0 .449 dB, and the protocol-matched PPU-style row improves by a further +0 .0979 dB. Even so, native NIW acquisition remains strongest: relative to the ensemble row, it improves PSNR by +0 .453 dB and LPIPS by −0.0146 ,with 29/39 PSNR wins and 10/13 winning scene means; relative to the PPU-style row, it improves PSNR by +0 .355 dB. The selected views are also genuinely different (mean Jaccard overlap 0.056 versus NIW proxy and 0.059 versus standard ensemble). Native NIW is not uniformly best—the Deep Blending indoor scenes favor ensemble acquisition—and it costs 39% more than NIW proxy acquisition, but it is still 19% faster than scoring-only standard ensembles. This is the clearest practical result: native Bayesian uncertainty changes which cameras are acquired and improves final reconstruction against generic and 3DGS-specific selectors. Appendix Table 6 provides a component-level summary that separates the intended role of each block. We keep the main text focused on the direct active-view, calibration, and compatibility evidence rather than treating all metrics as one leaderboard. 
+
+3.3 Native posterior uncertainty 
+
+The central Bayesian contribution is the native geometry-induced predictive uncertainty, which the matched deterministic control does not natively provide. We therefore compare two uncertainty regimes within each Bayesian row: the shared proxy for fair cross-method ranking and the learned posterior for Bayesian capability. Here Cov@95 is the empirical fraction of held-out pixel residuals inside nominal Gaussian 95% intervals constructed from each uncertainty recipe. Within this Bayesian-only comparison, the NIW native posterior is slightly conservative but about 17 × closer to nominal coverage than the shared proxy ( |Cov@95 − 0.95 |: 0.046 versus 0.796 ), and the same shift is even larger for DPMM ( 0.026 versus 0.782 ). In plain terms, nominal 95% NIW intervals contain ≈ 99 .6% of held-out pixels (modestly conservative), whereas shared-proxy intervals contain only ≈ 15 .4% (heavily under-covering); a calibrated interval is what a downstream consumer needs when asking which rendered-pixel error bar to trust. Under the likelihood scoring convention for each Bayesian row, native posterior NLL is lower than the proxy on every scene; because proxy and native variances are constructed differently, we use NLL as supporting evidence rather than as a cross-method ranking. The tradeoff is that the shared proxy remains stronger on ranking-style metrics: native posterior AUSE is worse on 13/13 scenes for both NIW and DPMM, and native ECE is worse 7Table 3: Finished UQ comparison on the same 13-scene suite, evaluated through the internal-checkpoint replay path used for the ensemble baseline. Shared proxy, native posterior, and deep-ensemble uncertainty are different predictive regimes; the table separates ranking-style uncertainty from interval calibration. Ensemble time sums all three members; NIW rows report one trajectory.                               
+
+> Row PSNR ↑LPIPS ↓AUSE ↓ECE ↓|Cov@95 −0.95 |↓ Time (s) ↓
+> Standard 3DGS (shared proxy) 27.322 0.2113 0.0214 0.0457 0.795 804
+> Bayesian 3DGS-NIW (shared proxy) 27.332 0.2111 0.0213 0.0450 0.795 815 Bayesian 3DGS-NIW (native posterior) 27.332 0.2111 0.0288 0.5991 0.047 815 Deep ensemble (3 members) 27.895 0.2070 0.0191 0.0277 0.454 2413
+
+Table 4: Canonical 13-scene compatibility benchmark (3-seed macro averages). All methods use shared proxy-UQ for AUSE and ECE. NIW has the highest macro PSNR and lowest LPIPS; DPMM trades quality for 36% fewer Gaussians and 44% faster rendering.                                                 
+
+> Method PSNR ↑SSIM ↑LPIPS ↓AUSE ↓ECE ↓Gauss. FPS ↑Time (s) ↓
+> Standard 3DGS 27.303 0.8358 0.2113 0.0213 0.0452 2.532M 267.3 802.3
+> Bayesian 3DGS-NIW 27.333 0.8359 0.2111 0.0213 0.0452 2.547M 267.2 815.1 Official 3DGS Reproduction 27.304 0.8359 0.2113 0.0241 0.0591 2.519M 279.4 815.0 3DGS-MCMC 26.931 0.8165 0.2317 0.0424 0.1492 2.419M 315.2 3179.1 DPMM-3DGS 26.643 0.8144 0.2431 0.0231 0.0505 1.620M 384.1 836.2
+
+on all 13 NIW scenes and all but 2 DPMM scenes. The mechanism is intuitive: position-jitter Monte Carlo orders pixels by local rendering sensitivity (helpful for AUSE/ECE) but produces intervals far too narrow for absolute coverage, while native posterior intervals are calibrated for coverage but less aligned with per-pixel residual magnitude. We therefore use the proxy protocol for fair all-method ranking and the native posterior for the interval-calibration claim. As a posterior-behavior diagnostic, per-scene mean pixel uncertainty correlates with reconstruction difficulty ( −PSNR), with Spearman ρ = 0 .73 for NIW and ρ = 0 .90 for DPMM over the 13 scenes. The supplement reports the per-scene tables, uncertainty magnitudes, and an outlier-transparent sensitivity analysis for the NIW–LPIPS trend. 
+
+External UQ baseline: deep ensembles. A natural concern is whether the native-posterior story only beats a weak proxy baseline. We therefore also evaluate a 3-member deep ensemble from independently trained Standard 3DGS runs on the same scene suite. Table 3 should be read as a trade: the ensemble is stronger on reconstruction and ranking-style uncertainty, whereas NIW native is about 
+
+10 × closer to nominal interval coverage ( 0.047 versus 0.454 ) while costing 815 s rather than 2413 s. The matched Standard 3DGS and Bayesian 3DGS-NIW rows come from the internal-checkpoint replay path used for the ensemble, so their third-decimal values differ slightly from Table 4. The rows quantify different posterior objects—cross-member predictive disagreement versus explicit geometry uncertainty inside one trained representation—so NIW is a single-trajectory Bayesian representation with strong interval calibration, not a universal winner on every uncertainty metric. We report negative log-likelihood (NLL) only within a fixed uncertainty construction rather than as a cross-regime ranking. 
+
+3.4 Canonical benchmark results 
+
+Table 4 presents the canonical compatibility benchmark, not the paper’s sole practical-value evidence. Bayesian 3DGS-NIW reaches 27.333 PSNR versus 27.303 for the matched deterministic control and 27.304 for Official 3DGS Reproduction, with the lowest LPIPS among the five rows. The table shows that Bayesian structure preserves competitive rendering quality. Training time is reported in the last column. The posterior-tracking overhead is small: Bayesian 3DGS-NIW adds 12.8 s (1.6%) over Standard 3DGS, while DPMM-3DGS adds 33.9 s (4.2%) and 3DGS-MCMC requires roughly 4× the training time. We report the formal paired NIW-vs-standard comparison in the supplement. Across 39 matched scene-seed runs, the mean PSNR delta is +0 .0303 dB with a 95% scene-level cluster bootstrap CI of [+0 .0043 , +0 .0589] dB. A sign-flip permutation test on 13 scene-level means gives one-sided p = 0 .0327 and two-sided p = 0 .0654 , so we interpret the result as compatibility evidence 8rather than as a headline rendering gain. The paired LPIPS delta is −0.00018 with a 95% CI of 
+
+[−0.00038 , +0 .00004] , inside a ±0.001 practical-equivalence band. Secondary studies in the supplement bound the scope: matched PUP compression, additional active-view ladders, support-hole stress tests, the full PPU-style ranking bundle, and sparse-view or out-of-distribution (OOD)-style negative results. 
+
+4 Limitations 
+
+The paired reconstruction effect is small. The mean PSNR delta of +0 .030 dB has a 95% cluster bootstrap CI that excludes zero, but the scene-level permutation test gives one-sided p = 0 .0327 
+
+and two-sided p = 0 .0654 with only 13 exchangeable scene units. The correct framing is therefore a small compatibility shift accompanied by useful Bayesian capability, not a large reconstruction advance. The inference procedure is only partially closed-form. The NIW spatial update is conjugate given renderer-derived surrogate summaries, but those summaries and several secondary blocks remain optimization-driven approximations. Opacity and color receive approximate posterior-style refine-ments, yet hard periodic opacity reset still outperforms our Bayesian opacity alternative in all tested configurations. Tightening those approximate blocks remains open. The uncertainty and compactness claims are intentionally scoped. Shared proxy and native geometry-induced uncertainty are different statistical objects, so the main uncertainty claim rests on native-posterior interval calibration rather than on proxy ranking metrics. The DPMM extension is a compact operating point: matched PUP remains stronger on dedicated compression and the finished OOD follow-up does not make NIW native the strongest detector, so we keep ranking-style UQ, OOD detection, and compression out of the main superiority claim set. The evidence is also bounded in scale: 13 static scenes, 30k-iteration runs, and a single 16-to-32 active-view task family. The reported follow-ups required roughly 350 serial single-GPU hours on the hardware class described in Appendix D.4. Larger scenes, longer horizons, dynamic settings, and planner-in-the-loop experiments may expose different approximation failures or tradeoffs. 
+
+Broader impacts. Uncertainty-aware 3D scene representations can improve the transparency and safety of confidence-aware mapping, active perception, and compact deployment. Potential negative applications include privacy-invasive reconstruction or surveillance. We use only public research benchmarks and do not introduce new person-synthesis models; any downstream release should respect the licenses and privacy expectations of upstream assets. 
+
+5 Conclusion 
+
+This paper presents a rendering-aware probabilistic reformulation of 3D Gaussian splatting whose native posterior improves a concrete decision task while preserving competitive quality. Three lines of evidence support this scoped claim: 1. Actionable native posterior: in a fixed-budget 16-to-32 active-view task, native NIW acquisition improves PSNR by +0 .453 dB over a scoring-only standard-ensemble baseline (29/39 scene-seed runs, 10/13 scene means) and by +0 .355 dB over a protocol-matched PPU-style follow-up. 2. Empirically calibrated intervals: within each method’s interval construction, NIW native is about 17 × closer to nominal 95% coverage than the shared proxy, and about 10 × closer than a 3-member deep ensemble at roughly one-third the training cost. 3. Reconstruction as a compatibility check: a paired analysis over 39 scene-seed runs gives 
+
++0 .030 dB PSNR (95% CI [+0 .004 , +0 .059] dB) at only 1.6% training overhead, supporting compatibility rather than a large leaderboard claim. The closed-form-versus-approximate inference boundary is part of the contribution because it makes the Bayesian claims auditable and identifies which blocks future work should tighten. The main story is deliberately narrow: active-view selection and interval calibration are positive claims, while dedicated compression and OOD-style detection remain boundary results. Taken together, the result is a 3DGS variant that is principled enough to expose explicit posterior structure over geometry and a 9renderer-derived inference boundary, yet practical enough to plug into the standard 3DGS rendering loop at 1.6% training overhead and supply calibrated uncertainty for downstream view-acquisition decisions. Future work should test dynamic or sparse-view regimes (Luiten et al., 2024; Fan et al., 2024a) and connect the posterior more directly to planner-in-the-loop tasks. 
+
+References 
+
+Jonathan T. Barron, Ben Mildenhall, Matthew Tancik, Peter Hedman, Ricardo Martin-Brualla, and Pratul P. Srinivasan. Mip-nerf: A multiscale representation for anti-aliasing neural radiance fields. In Proceedings of the IEEE/CVF International Conference on Computer Vision , 2021. Jonathan T. Barron, Ben Mildenhall, Dor Verbin, Pratul P. Srinivasan, and Peter Hedman. Mip-nerf 360: Unbounded anti-aliased neural radiance fields. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2022. David M. Blei and Michael I. Jordan. Variational inference for dirichlet process mixtures. Bayesian Analysis , 1(1):121–143, 2006. David M. Blei, Alp Kucukelbir, and Jon D. McAuliffe. Variational inference: A review for statisticians. 
+
+Journal of the American Statistical Association , 112(518):859–877, 2017. Zhiwen Fan, Wenyan Cong, Kairun Wen, Kevin Wang, Jian Zhang, Xinghao Ding, Danfei Xu, Boris Ivanovic, Marco Pavone, Georgios Pavlakos, Zhangyang Wang, and Yue Wang. In-stantsplat: Unbounded sparse-view pose-free gaussian splatting in 40 seconds. In arXiv preprint arXiv:2403.20309 , 2024a. Zhiwen Fan, Kevin Wang, Kairun Wen, Ziyue Zhu, Danfei Xu, and Zhangyang Wang. Lightgaussian: Unbounded 3d gaussian compression with 15x reduction and 200+ fps. In Advances in Neural Information Processing Systems , 2024b. Thomas S. Ferguson. A bayesian analysis of some nonparametric problems. The Annals of Statistics ,1(2):209–230, 1973. Yarin Gal and Zoubin Ghahramani. Dropout as a bayesian approximation: Representing model uncertainty in deep learning. In International Conference on Machine Learning , 2016. Chamuditha Jayanga Galappaththige, Thomas Gottwald, Peter Stehr, Edgar Heinert, Niko Suen-derhauf, Dimity Miller, and Matthias Rottmann. Predictive photometric uncertainty in gaussian splatting for novel view synthesis. arXiv preprint arXiv:2603.22786 , 2026. Alex Hanson, Allen Tu, Vasu Singla, Mayuka Jayawardhana, Matthias Zwicker, and Tom Goldstein. Pup 3d-gs: Principled uncertainty pruning for 3d gaussian splatting. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2025. Peter Hedman, Julien Philip, True Price, Jan-Michael Frahm, George Drettakis, and Gabriel Brostow. Deep blending for free-viewpoint image-based rendering. In ACM Transactions on Graphics (SIGGRAPH Asia) , volume 37, 2018. Michael I. Jordan, Zoubin Ghahramani, Tommi S. Jaakkola, and Lawrence K. Saul. An introduction to variational methods for graphical models. Machine Learning , 37(2):183–233, 1999. Bernhard Kerbl, Georgios Kopanas, Thomas Leimkuhler, and George Drettakis. 3d gaussian splatting for real-time radiance field rendering. ACM Transactions on Graphics , 42(4), 2023. Shakiba Kheradmand, Daniel Rebain, Gopal Sharma, Weiwei Sun, Yang-Che Tseng, Hossam Isack, Abhishek Kar, Andrea Tagliasacchi, and Kwang Moo Yi. 3d gaussian splatting as markov chain monte carlo. In Advances in Neural Information Processing Systems , 2024. Arno Knapitsch, Jaesik Park, Qian-Yi Zhou, and Vladlen Koltun. Tanks and temples: Benchmarking large-scale scene reconstruction. ACM Transactions on Graphics , 36(4), 2017. Balaji Lakshminarayanan, Alexander Pritzel, and Charles Blundell. Simple and scalable predictive uncertainty estimation using deep ensembles. In Advances in Neural Information Processing Systems , 2017. 10 Jeong Chan Lee, Daniel Rho, Xuan Sun, Jae Hoon Ko, and Eunbyung Park. Compact 3d gaussian representation for radiance field. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2024. Ruiqi Li and Yiu-ming Cheung. Variational multi-scale representation for estimating uncertainty in 3d gaussian splatting. In Advances in Neural Information Processing Systems , 2024. Jonathon Luiten, Georgios Kopanas, Bastian Leibe, and Deva Ramanan. Dynamic 3d gaussians: Tracking by persistent dynamic view synthesis. In International Conference on 3D Vision , 2024. David J. C. MacKay. Information-based objective functions for active data selection. Neural Computation , 4(4):590–604, 1992. Ben Mildenhall, Pratul P. Srinivasan, Matthew Tancik, Jonathan T. Barron, Ravi Ramamoorthi, and Ren Ng. Nerf: Representing scenes as neural radiance fields for view synthesis. In European Conference on Computer Vision , 2020. Thomas Müller, Alex Evans, Christoph Schied, and Alexander Keller. Instant neural graphics primitives with a multiresolution hash encoding. In ACM Transactions on Graphics (SIGGRAPH) ,volume 41, 2022. Kevin P. Murphy. Machine Learning: A Probabilistic Perspective . MIT Press, 2012. Luca Savant, Diego Valsesia, and Enrico Magli. Modeling uncertainty for gaussian splatting. arXiv preprint arXiv:2403.18476 , 2024. Jayaram Sethuraman. A constructive definition of dirichlet priors. Statistica Sinica , 4(2):639–650, 1994. Burr Settles. Active learning literature survey. Technical Report 1648, University of Wisconsin– Madison, 2009. Toon Van de Maele, Ozan Catal, Alexander Tschantz, Christopher L. Buckley, and Tim Verbelen. Variational bayes gaussian splatting. In International Conference on Learning Representations ,2025. Andrew Gordon Wilson and Pavel Izmailov. Bayesian deep learning and a probabilistic perspective of generalization. Advances in Neural Information Processing Systems , 33, 2020. Feng Wu, Tsai Hor Chan, Yihang Chen, Lingting Zhu, Guosheng Yin, and Lequan Yu. Horseshoe splatting: Handling structural sparsity for uncertainty-aware gaussian-splatting radiance field rendering. In International Conference on Learning Representations , 2026. Richard Zhang, Phillip Isola, Alexei A. Efros, Eli Shechtman, and Oliver Wang. The unreasonable effectiveness of deep features as a perceptual metric. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2018. Matthias Zwicker, Hanspeter Pfister, Jeroen van Baar, and Markus Gross. Ewa splatting. IEEE Transactions on Visualization and Computer Graphics , 8(3):223–238, 2002. 11 A Extended Related Work 
+
+Neural scene representations. Neural radiance fields (NeRF) established volumetric neural render-ing as a viable paradigm for novel-view synthesis (Mildenhall et al., 2020), with subsequent work improving quality and speed (Barron et al., 2021, 2022; Müller et al., 2022). 3DGS replaced the implicit volume with an explicit set of anisotropic Gaussians and a differentiable splatting renderer (Kerbl et al., 2023; Zwicker et al., 2002), achieving real-time rendering with competitive quality. Our work builds on the 3DGS representation and rendering pipeline, adding Bayesian posterior structure without changing the underlying image-formation model. 
+
+Probabilistic reformulations of 3DGS. Several recent methods introduce probabilistic elements into the 3DGS pipeline. 3DGS-MCMC reframes training as stochastic-gradient Langevin dynamics with stochastic state transitions, emphasizing robustness and fixed-budget behavior (Kheradmand et al., 2024). Variational Bayes Gaussian splatting (VBGS) maintains conjugate Bayesian posteriors over Gaussian parameters for continual-learning settings (Van de Maele et al., 2025); however, VBGS operates on a detached density model rather than conditioning its posterior updates on renderer-derived surrogate summaries. Our approach differs from both: we keep the rendering observation model central to the posterior, track an NIW posterior over Gaussian geometry under renderer- and state-derived summaries, and couple it with a nonparametric complexity prior in a hybrid runtime whose closed-form-versus-approximate boundary is explicit. 
+
+Uncertainty-aware Gaussian splatting. Stochastic Gaussian splatting and variational multi-scale 3DGS learn probabilistic or sample-based uncertainty signals over Gaussian parameters (Savant et al., 2024; Li and Cheung, 2024). Predictive photometric uncertainty adds a lightweight uncertainty head tied to photometric residuals (Galappaththige et al., 2026). These methods establish the value of uncertainty quantification for 3DGS; our distinction is to couple renderer-derived NIW geometry updates and a nonparametric complexity prior in one rendering-first probabilistic runtime, with an explicit closed-form-versus-approximate inference boundary. Unlike ensemble- or dropout-style uncertainty surrogates (Lakshminarayanan et al., 2017; Gal and Ghahramani, 2016; Wilson and Izmailov, 2020), the NIW posterior is maintained within a single training trajectory rather than requiring multiple retrains or stochastic test-time layers. 
+
+Pruning, sparsity, and complexity control. Principled uncertainty pruning (PUP) 3D-GS shows that principled pruning preserves quality better than heuristic opacity pruning under aggressive budgets (Hanson et al., 2025). Horseshoe splatting induces structural sparsity through a hierarchical shrinkage prior on Gaussian parameters (Wu et al., 2026). Dedicated compression systems such as Compact-3DGS and LightGaussian pursue a different objective altogether: stronger end-to-end count and throughput reductions through deterministic compression and deployment-specific redesign (Lee et al., 2024; Fan et al., 2024b). Our formulation instead tracks an explicit geometry posterior and couples it with a separate nonparametric complexity model via DP stick-breaking. We therefore view the DP layer as complementary to sparsity- or codec-oriented methods: our compression follow-up asks whether posterior summaries improve fixed-budget ranking on a matched checkpoint, not whether the current method is the strongest deployment codec. Our live comparison tables prioritize methods we reran end-to-end under one shared held-out protocol, so we keep Horseshoe splatting, predictive photometric uncertainty, and dedicated compression systems as scoped related-work references rather than direct leaderboard rows in this paper. Broader connections to Bayesian deep learning (Lakshminarayanan et al., 2017; Gal and Ghahramani, 2016; Wilson and Izmailov, 2020) and variational inference (Jordan et al., 1999; Blei et al., 2017) inform our hybrid inference design. 
+
+B Probabilistic Formulation 
+
+This supplement distinguishes between the probabilistic reference model and the current GPU trainer .The reference model is the fully Bayesian object used to state priors, posteriors, and predictive uncertainty. The GPU trainer is the practical hybrid implementation used in the experiments. 12 B.1 Reference renderer and generative model 
+
+Standard 3D Gaussian splatting (3DGS) represents a scene as anisotropic Gaussians G =
+
+{(μk, Σk, o k, c k)}Kk=1 . Given a camera pose, each Gaussian is projected onto the image plane and the rendered color at pixel p is obtained by alpha compositing in depth order: 
+
+Cp = X
+
+> k∈N p
+
+ck αk
+
+Y
+
+> j<k
+
+(1 − αj ), (6) where αk = ok G2D(xp | μ2D 
+
+> k
+
+, Σ2D 
+
+> k
+
+) is the effective contribution of Gaussian k at pixel p after projection, and Np is the depth-sorted set of Gaussians overlapping p.For Gaussian k, the reference model includes a normal-inverse-Wishart (NIW) geometry prior: 
+
+(μk, Σk) ∼ NIW( m0, κ 0, ν 0, S 0), (7) 
+
+ok ∼ Beta( a0, b 0), (8) 
+
+ck ∼ N (η0, τ −10 I), (9) 
+
+vk ∼ Beta(1 , α ), πk = vk
+
+Y
+
+> ℓ<k
+
+(1 − vℓ), (10) 
+
+ak ∼ Bernoulli( πk), (11) 
+
+Ij,p ∼ N  Cj,p (Θ , a ), σ 2I3
+
+ , (12) where Cj,p (Θ , a ) is the rendering equation under alpha-composited Gaussian splats. The NIW block gives conjugate Bayesian updates for Gaussian geometry (Murphy, 2012); the stick-breaking construction gives a Bayesian nonparametric prior over effective component usage (Ferguson, 1973; Sethuraman, 1994; Blei and Jordan, 2006). 
+
+B.2 NIW posterior updates 
+
+Given weighted pseudo-observations summarized by count n, mean ¯x, and scatter C, the conjugate NIW update is 
+
+κn = κ0 + n, (13) 
+
+mn = κ0m0 + n¯xκn
+
+, (14) 
+
+νn = ν0 + n, (15) 
+
+Sn = S0 + C + κ0nκn
+
+(¯ x − m0)(¯ x − m0)⊤. (16) The expected covariance and mean variance are then 
+
+E[Σ k] = Sn
+
+νn − D − 1 , (17) 
+
+Var[ μk] = E[Σ k]
+
+κn
+
+. (18) In the GPU trainer, these updates are applied to rendering-derived surrogate summaries rather than exact per-pixel responsibilities. This is the main approximation that keeps million-Gaussian training tractable. 
+
+B.3 What the current GPU trainer updates in closed form 
+
+The live GPU trainer is a hybrid Bayesian runtime, not a literal end-to-end evidence lower bound (ELBO) optimizer. It performs explicit Bayesian posterior tracking for the spatial NIW block and the Dirichlet process (DP) stick-breaking block, while opacity and spherical-harmonic (SH) color remain anchored to the standard optimization path and receive only approximate posterior-style refinements in the default training loop even though they are part of the reference probabilistic model. The outer training render also stays on the standard 3DGS rasterizer rather than inserting activity-gated per-pixel rendering into that path; activity enters through structural control and posterior-predictive bookkeeping. This is a computational compromise: opacity and color require dense responsibility-weighted attribution under depth-ordered alpha compositing, whereas the renderer already provides efficient gradients for these parameters inside the standard 3DGS optimization path. 13 Algorithm 1 Staged Bayesian 3DGS training. Symbolic thresholds tNIW , t DP , t post describe the family of staged runs; the canonical 30k Dirichlet process mixture model (DPMM) row instantiates them as 
+
+tNIW =0 (NIW geometry tracking active from the first Bayesian iteration), tDP =5000 with coordinate-ascent variational inference (CAVI) every 50 iterations, and tpost =15000 (Table 8). The NIW-only row uses the same schedule with the DPMM block disabled. 
+
+Require: Scene images {Ij }, initial point cloud, NIW prior (m0, κ 0, ν 0, S 0), stage thresholds 
+
+(tNIW , t DP , t post ) 
+
+> 1:
+
+Initialize Θ = {(μk, Σk, o k, c k)}Kk=1 from the point cloud  
+
+> 2:
+
+for t = 1 , . . . , T do  
+
+> 3:
+
+Render ˆIj = Cj (Θ) via the standard differentiable splatting path  
+
+> 4:
+
+Compute loss L = ∥Ij − ˆIj ∥2 + λLSSIM  
+
+> 5:
+
+Update the Gaussian state via the standard 3DGS optimizer  
+
+> 6:
+
+if t > t NIW then  
+
+> 7:
+
+Extract surrogate statistics ( ˆNk, ¯xk, C k) from the renderer  
+
+> 8:
+
+NIW update: q(μk, Σk) ← NIW( mn, κ n, ν n, S n) 
+
+> 9:
+
+Noise update: q(σ2) ← IG( αn, β n) 
+
+> 10:
+
+end if  
+
+> 11:
+
+if t > t DP and DPMM enabled then  
+
+> 12:
+
+Stick-breaking: q(vk) ← Beta( γk, 1, γ k, 2) 
+
+> 13:
+
+Update activity gates q(ak); prune where E[ak] < ϵ  
+
+> 14:
+
+end if  
+
+> 15:
+
+if t > t post then  
+
+> 16:
+
+Apply approximate opacity-posterior refinement on a slower schedule  
+
+> 17:
+
+Apply local linearized color-posterior refinement  
+
+> 18:
+
+end if  
+
+> 19:
+
+Apply standard densification and housekeeping; posterior summaries and DP activity modulate pruning decisions  
+
+> 20:
+
+end for  
+
+> 21:
+
+return Posterior-tracked geometry with approximate auxiliary posterior refinements 
+
+C Expanded Inference Boundary 
+
+The main paper contains the compact boundary table. The fuller interpretation is: • Closed-form in the stated submodel: the stick-breaking update q(vk) and the residual-noise update q(σ2).• Conjugate under surrogate summaries: the NIW spatial update q(μk, Σk), which is closed form once rendering-derived pseudo-counts and pseudo-scatter are accepted as auxiliary Gaussian statistics. • Approximate or optimization-driven: effective component counts ˆNk, activity gates, and the point-estimate opacity and local color refinement blocks used by the current GPU trainer. This separation is important for claim scope. The paper does not claim exact end-to-end variational Bayes over every block at every iteration, nor does it claim activity-gated training renders in the live GPU path. It claims a rendering-aware probabilistic system whose closed-form and approximate parts are visible to the reader. The publication-facing canonical schedule values are summarized in Table 8. 14 Table 5: Claim-scope summary for this paper. The goal is to make explicit which statements the evidence supports, and which statements we intentionally do not make. 
+
+Claim Strongest evidence in this paper Status Practical decision value Fixed-budget active-view study: niw_native_add beats 
+
+standard_ensemble_add by +0 .453 dB over 39 runs Yes Calibrated native posterior NIW native coverage error 0.046 versus 0.796 for the shared proxy and 0.454 for deep ensembles Yes Near-parity reconstruction compati-bility 39-run paired NIW-vs-standard analysis with cluster bootstrap confidence interval (CI) [+0 .004 , +0 .059] dB Yes Stronger generic uncertainty quan-tification (UQ) than deep ensembles Deep ensemble area under the sparsification error (AUSE) / expected calibration error (ECE) remain better than NIW on the shared ranking-style metrics No Stronger compression than dedi-cated systems Not claimed; a matched principled uncertainty pruning (PUP) comparison shows dedicated compression stronger than our continuation runs No Strongest out-of-distribution (OOD) detector Full13 support-deficit OOD follow-up keeps NIW native be-low the proxy detector rows No 
+
+Table 6: Component-level evidence for the main claims. Each row isolates the intended function of one part of the approach rather than treating all metrics as one leaderboard. 
+
+Component Main comparison What the result shows NIW geometry posterior Bayesian 3DGS-NIW vs. Standard 3DGS: +0 .030 dB, +1 .6% time Posterior tracking can be added without disrupting the renderer. Native posterior samples NIW native vs. NIW proxy / uniform acquisition: +0 .401 / +0 .831 dB The learned posterior, not just NIW training, drives better view choices. Shared proxy UQ NIW proxy vs. NIW uniform acquisition: 
+
++0 .430 dB Generic uncertainty helps, but native posterior uncer-tainty helps more. DP complexity layer DPMM-3DGS vs. Standard 3DGS: 36% 
+
+fewer Gaussians, 44% faster frames per second (FPS), −0.66 dB DP provides a compactness operating point, not the main quality claim. 
+
+D Protocol and Reproducibility Details 
+
+D.1 Claim Scope Summary D.2 Component-level evidence D.3 Canonical benchmark setup 
+
+The canonical benchmark is the reported 20260405 rerun on 13 scenes from Mip-NeRF 360, Tanks and Temples, and Deep Blending, using three seeds ( 6, 66 , 666 ) and five method families. The main paper uses: • Standard 3DGS as the matched-codebase deterministic control, • Bayesian 3DGS-NIW as the primary Bayesian row, • DPMM-3DGS as the compactness extension, • Official 3DGS Reproduction as the external deterministic anchor, • 3DGS-MCMC as the external probabilistic baseline. Across all methods, the benchmark follows a matched evaluation policy: • one common held-out split and final-checkpoint evaluation protocol, • publication-safe learned perceptual image patch similarity (LPIPS) from the vendored GraphDECO backend, • common post-hoc proxy uncertainty metrics for cross-method fairness, with area under the sparsification error (AUSE) and expected calibration error (ECE) as the main fair-comparison uncertainty metrics, • native posterior uncertainty reported separately for Bayesian rows, with likelihood-based calibration and coverage-error interpretation. 15 Table 7: Uncertainty evaluation design for the reported benchmark. The shared proxy and native posterior regimes answer different questions and should not be numerically mixed into one ranking.              
+
+> Regime Applies to Source of variation Sample count Primary use in the paper Shared proxy UQ All methods Position-jitter Monte Carlo around the final checkpoint 50 Fair all-method comparison via AUSE / ECE (with raw proxy coverage reported only as con-text) Native posterior UQ Bayesian rows only Posterior samples from the learned NIW / DPMM geom-etry posterior 50 Bayesian-only calibration and uncertainty-capability analysis via native negative log-likelihood (NLL), coverage error, and mean pixel / position uncertainty
+
+Table 8: Canonical staged posterior schedule used by the 30k DPMM benchmark row. The NIW-only row keeps the geometry posterior tracking path without the DP-specific activity and pruning controls.          
+
+> Block Canonical setting Total training budget 30k iterations NIW geometry tracking Active from the first Bayesian training iteration DP stick-breaking CAVI Every 50 iterations when DPMM is enabled Stage A 0–5k: dense-count geometry / NIW / DP bookkeeping Stage B 5k–15k: activity and residual-noise updates; count blending Stage C 15k–30k: slower opacity and color posterior refinements Posterior-guided densification Starts at 5k iterations Late compaction Disabled in the canonical DPMM row
+
+For qualitative inspection, the analysis pipeline records the candidate render triplets, scene labels, and selection category for each inspected row before distilling the paper-facing panel. The exploratory bundle contains 11 aligned rows (4 niw_similar , 4 niw_better , 3 niw_worse ). We keep these qualitative examples as supplementary audit material rather than using them as the main paper’s primary evidence. 
+
+D.4 Dataset handling and hardware 
+
+The benchmark uses the following official-resolution image-folder policy: Mip-NeRF 360 outdoor scenes use images_4 , Mip-NeRF 360 indoor scenes use images_2 , and Tanks and Temples / Deep Blending use native images . The compression studies were run on a single high-memory datacenter-class GPU; the benchmark suite and follow-up studies retain the same evaluation path used for the main-paper table. All experiments reuse existing public research assets rather than introducing a new dataset. The paper cites the original 3DGS, Mip-NeRF 360, Tanks and Temples, and Deep Blending sources, and any release package for this project should preserve the licenses and terms of use of those upstream assets as well as the external GraphDECO and 3DGS-MCMC codebases used for reported comparisons. Descriptively, the NIW-minus-standard macro peak signal-to-noise ratio (PSNR) delta remains positive on all three benchmark families: approximately +0.023 dB on Mip-NeRF 360, +0.067 dB on Tanks and Temples, and +0.024 dB on Deep Blending. The effect is small, but it is not concentrated in only one dataset. 
+
+D.5 Deep-ensemble baseline implementation 
+
+The deep-ensemble baseline is implemented as a post-hoc replay study on top of the canonical internal-standard benchmark family rather than as a separate training code path. The goal is to compare NIW against a real uncertainty baseline without changing the held-out protocol. 
+
+Workflow. For each canonical scene, we: 1. train three independent standard_3dgs runs under the same 13-scene benchmark protocol using seeds 6, 66 , and 666 ;2. export a reloadable internal checkpoint for each member from the benchmark run itself; 16 Table 9: Canonical benchmark macro summaries by dataset. These rows use the same publication-ready canonical benchmark family as the main paper table and preserve the fair shared proxy-UQ comparison through AUSE and ECE.                                                                                                 
+
+> Dataset Method PSNR SSIM LPIPS AUSE ECE Mip-NeRF 360 Standard 3DGS 27.528 0.8160 0.2148 0.0212 0.0427 Mip-NeRF 360 Bayesian 3DGS-NIW 27.551 0.8161 0.2146 0.0213 0.0425 Mip-NeRF 360 Official 3DGS Repro 27.540 0.8162 0.2149 0.0241 0.0562 Mip-NeRF 360 3DGS-MCMC 27.077 0.7905 0.2467 0.0407 0.1348 Mip-NeRF 360 DPMM-3DGS 26.871 0.7925 0.2481 0.0230 0.0468 Tanks and Temples Standard 3DGS 23.837 0.8536 0.1685 0.0289 0.0918 Tanks and Temples Bayesian 3DGS-NIW 23.904 0.8541 0.1682 0.0287 0.0925 Tanks and Temples Official 3DGS Repro 23.757 0.8533 0.1687 0.0336 0.1186 Tanks and Temples 3DGS-MCMC 23.848 0.8558 0.1546 0.0722 0.3179 Tanks and Temples DPMM-3DGS 23.238 0.8299 0.2037 0.0312 0.1053 Deep Blending Standard 3DGS 29.758 0.9069 0.2384 0.0141 0.0099 Deep Blending Bayesian 3DGS-NIW 29.782 0.9068 0.2384 0.0140 0.0099 Deep Blending Official 3DGS Repro 29.788 0.9076 0.2379 0.0145 0.0130 Deep Blending 3DGS-MCMC 29.355 0.8944 0.2414 0.0201 0.0458 Deep Blending DPMM-3DGS 29.021 0.8977 0.2603 0.0150 0.0121
+
+Table 10: Per-scene PSNR on the canonical benchmark. The table is included to make the scene-level ranking visible without reproducing every main-table metric for every scene.                                                                                     
+
+> Dataset Scene Std. NIW Official MCMC DPMM Mip-NeRF 360 bicycle 25.26 25.29 25.26 25.27 24.56 Mip-NeRF 360 bonsai 32.14 32.24 32.36 32.09 31.45 Mip-NeRF 360 counter 29.13 29.13 29.10 29.10 28.50 Mip-NeRF 360 flowers 21.61 21.60 21.54 19.41 20.93 Mip-NeRF 360 garden 27.45 27.45 27.47 27.42 26.95 Mip-NeRF 360 kitchen 31.34 31.47 31.36 31.13 30.43 Mip-NeRF 360 room 31.66 31.68 31.59 31.15 31.09 Mip-NeRF 360 stump 26.62 26.57 26.62 26.45 25.58 Mip-NeRF 360 treehill 22.54 22.53 22.56 21.67 22.35 Tanks and Temples train 22.24 22.27 22.12 22.09 21.35 Tanks and Temples truck 25.44 25.54 25.40 25.60 25.13 Deep Blending drjohnson 29.33 29.35 29.41 28.75 28.47 Deep Blending playroom 30.19 30.22 30.17 29.96 29.58
+
+3. reload the three checkpoints and render every held-out test camera; 4. form the ensemble prediction by averaging the three red-green-blue (RGB) renders pixel-wise; 5. form the ensemble uncertainty map by taking the pixelwise standard deviation across ensemble members and then averaging over RGB channels to obtain the scalar per-pixel uncertainty consumed by the shared evaluation metrics; 6. evaluate PSNR / structural similarity index measure (SSIM) / LPIPS on the ensemble mean render, and evaluate AUSE / ECE / negative log-likelihood (NLL) / Cov@95 on the ensemble uncertainty map. This baseline is therefore expensive in the standard way deep ensembles are expensive: it reuses the same final evaluation protocol, but pays roughly 3× the training cost of one standard run. 
+
+Predictive photometric uncertainty (PPU)-style post-hoc comparator. To add a 3DGS-specific uncertainty comparator without changing the training backbone, we also ran a full13 PPU-style residual-head reimplementation on frozen standard_3dgs checkpoints. The completed ranking run covers all 39 scene-seed outputs and yields macro AUSE_L1 = 0.0130 , AUSE_DSSIM = 0.0549 ,
+
+Pearson_L1 = 0.1460 , and Pearson_DSSIM = 0.2300 , while leaving RGB quality unchanged because the backbone is frozen. We also evaluated a downstream standard_ppu_add policy un-der the same 16-to-32 active-view protocol used in the main paper. That policy improves over 
+
+standard_uniform_add by +0 .547 dB and over standard_ensemble_add by +0 .098 dB, but still trails niw_native_add by 0.355 dB. The main paper reports this policy as a protocol-matched sixth row in the active-view table, but it remains a separate follow-up study rather than part of the original five-policy core study. Because this study is an in-repo reimplementation and models photo-17 Table 11: Paired NIW-vs-standard analysis over 39 matched scene-seed runs (13 scenes × 3 seeds). CIs use a cluster bootstrap that resamples scenes (not individual runs) to account for within-scene correlation. The exact permutation p-value sign-flips the 13 scene-level means. Negative LPIPS deltas favor NIW. 
+
+Metric Mean ∆ (NIW −Std.) 95% cluster bootstrap CI Scene wins / losses Perm. p (2-sided) PSNR +0.0303 dB [+0.0043, +0.0589] dB 8 / 5 0.065 SSIM +0.00011 [-0.00018, +0.00035] 8 / 5 0.484 LPIPS -0.00018 [-0.00038, +0.00004] 10 / 3 0.131 Mip-NeRF 360 / flowers                                                 
+
+> Tanks and Temples / train
+> Mip-NeRF 360 / treehill
+> Mip-NeRF 360 / bicycle
+> Tanks and Temples / truck
+> Mip-NeRF 360 / stump
+> Mip-NeRF 360 / garden
+> Mip-NeRF 360 / counter
+> Deep Blending / drjohnson
+> Deep Blending / playroom
+> Mip-NeRF 360 / kitchen
+> Mip-NeRF 360 / room
+> Mip-NeRF 360 / bonsai
+> Scenes (sorted by Standard 3DGS PSNR, hard to easy)
+> Bayesian 3DGS-NIW
+> DPMM-3DGS
+> Official 3DGS Repro
+> 3DGS-MCMC
+> Method
+> -0.01 +0.03 -0.01 +0.02 +0.10 -0.05 -0.00 -0.00 +0.02 +0.03 +0.14 +0.02 +0.10
+> -0.68 -0.89 -0.19 -0.70 -0.31 -1.05 -0.51 -0.63 -0.86 -0.61 -0.91 -0.56 -0.69
+> -0.07 -0.12 +0.03 -0.00 -0.04 -0.00 +0.02 -0.03 +0.08 -0.02 +0.02 -0.06 +0.22
+> -2.20 -0.14 -0.87 +0.01 +0.16 -0.17 -0.03 -0.03 -0.58 -0.23 -0.21 -0.51 -0.05
+
+Per-scene ΔPSNR vs Standard 3DGS 
+
+> −2
+> −1
+> 0
+> 1
+> 2
+> ΔPSNR versus Standard 3DGS (dB)
+
+Figure 2: Per-scene ∆PSNR relative to Standard 3DGS on the canonical benchmark. Columns are ordered by Standard-3DGS PSNR from hard to easy; positive values favor the row method. NIW shows small gains on several hard-to-mid difficulty scenes, while DPMM’s quality cost is broad but structured. metric ranking rather than a calibrated predictive posterior, we keep its ranking metrics supplementary and do not mix it into the native-calibration table. 
+
+D.6 Active-view selection implementation 
+
+The active-view selection study is the main downstream-task experiment. It tests whether native NIW uncertainty helps decide which new training views to acquire next, under a fixed final view budget and a fixed final training budget. 
+
+Workflow. For each scene-seed pair, scripts/active_view_selection_study.py performs the following sequence: 1. build the canonical train/test split using the same benchmark dataset loader and the same held-out policy ( test_every=8 ); 2. construct a deterministic 16-view seed subset from the train pool by evenly spacing indices over the original train-view order; 3. train a phase-1 seed model on those 16 views for 10k iterations; 4. score the remaining candidate train views according to the chosen policy; 5. add 16 new views to reach a 32-view train set; 6. continue training from the same model state for the remaining 20k iterations, so that every policy reaches the same final 30k-iteration budget; 7. evaluate final PSNR / SSIM / LPIPS on the fixed held-out test split. 18 Table 12: Deep-ensemble implementation details used for the reported UQ baseline.             
+
+> Item Setting Backbone family standard_3dgs only Ensemble size 3 members Member seeds 6,66 ,666
+> Data / held-out split same canonical 13-scene benchmark split as the paper table Predictor pixelwise mean of member RGB renders Uncertainty map pixelwise std across members, averaged over RGB channels Quality metrics PSNR / SSIM / LPIPS on the ensemble mean render UQ metrics AUSE / ECE / NLL / Cov@95 on the ensemble uncertainty map
+
+Table 13: Active-view selection implementation details.            
+
+> Item Setting Initial train-view budget 16 views Added views at acquisition step 16 views Final train-view budget 32 views Phase-1 training budget 10k iterations Continuation budget 20k iterations Final total budget 30k iterations Compared policies standard uniform, standard ensemble-UQ, standard PPU-style follow-up, NIW uniform, NIW proxy-UQ, NIW native-UQ Ensemble acquisition fairness 3 phase-1 Standard models for scoring only; final predictor is a single continua-tion model Shared control same deterministic 16-view seed subset per scene / seed Final metrics PSNR / SSIM / LPIPS on the canonical held-out split
+
+Policy definitions. The core study compares five policies, and the main table additionally reports the protocol-matched PPU-style follow-up: • Standard + uniform add : Standard 3DGS with deterministic uniform spacing over the remaining candidate views. • Standard + ensemble-UQ add : train three Standard 3DGS phase-1 models on the same 16-view seed subset, score candidate views by cross-member RGB variance, then continue only the first member’s model for the remaining 20k iterations. This is a scoring-only ensemble acquisition rule rather than an ensemble-mean final predictor. • Standard + PPU-style add : frozen-checkpoint PPU-style residual-head scoring on Standard 3DGS, evaluated under the same 16-to-32 acquisition protocol as a follow-up comparator. • NIW + uniform add : NIW control with the same deterministic uniform-spacing rule. • NIW + proxy-UQ add : NIW model, but rank candidate views by the shared proxy uncer-tainty score (mean proxy uncertainty over the candidate view). • NIW + native-UQ add : NIW model, but rank candidate views by native NIW predictive uncertainty (mean native uncertainty over the candidate view). The implementation stores the selected view indices and a preview of the highest-scoring candidate views inside every result JavaScript object notation (JSON) file so that the acquisition decisions are auditable rather than implicit. 
+
+Support-hole stress variant. We also ran a harder acquisition variant that removes a contiguous angular sector from the initial 16-view seed subset using the deterministic principal component analy-sis (PCA)-angle ordering already implemented in scripts/active_view_selection_study.py .This variant keeps the same 16-to-32 acquisition budget and the same final 30k training budget as the main downstream study, but only on flowers , truck , and playroom across three seeds. The aim is to probe a cleaner missing-support failure mode rather than to replace the broader 13-scene result. In the raw 9-run aggregate, niw_native_add remains the strongest policy on final quality (18.7667 PSNR, 0.3631 LPIPS) versus standard_ensemble_add (18.0495, 0.3839) and niw_proxy_add 
+
+(18.4826, 0.3634). However, the proxy policy averages more support-hole hits (7.89 versus 6.89 for native NIW). We therefore keep this variant as supplementary evidence for a harder downstream 19 Table 14: Constrained-initialization benchmark ( 10 k initial Gaussians, 13 scenes, 3 seeds, full 30 ktraining). NIW shows a small positive aggregate quality shift under limited initialization support.             
+
+> Method PSNR LPIPS Cov@95 Standard 3DGS 26.9276 0.2323 0.1684 Bayesian NIW 26.9394 0.2316 0.1677
+> ∆(NIW −Std.) +0.0118 -0.0007 -0.0007
+> PSNR wins: 19/39 scene-seed runs; positive scene-mean deltas on 8/13 scenes.
+
+Table 15: Per-scene mean deltas for the constrained-initialization study. Positive PSNR and negative LPIPS favor NIW.                                                         
+
+> Dataset Scene ∆PSNR ∆LPIPS ∆Cov@95 Mip360 bicycle -0.0100 -0.0009 +0.0014 Mip360 flowers +0.0338 -0.0015 -0.0021 Mip360 garden +0.0428 -0.0005 +0.0014 Mip360 stump +0.0325 -0.0007 +0.0001 Mip360 treehill -0.0364 -0.0027 -0.0007 Mip360 room -0.0964 -0.0005 -0.0020 Mip360 counter -0.0066 -0.0006 -0.0014 Mip360 kitchen +0.0024 -0.0004 -0.0043 Mip360 bonsai -0.0663 -0.0001 -0.0060 T&T truck +0.0974 -0.0006 +0.0019 T&T train +0.0113 +0.0002 +0.0004 DB drjohnson +0.0591 -0.0003 +0.0019 DB playroom +0.0900 -0.0004 +0.0005
+
+setting where native NIW still ends up best, but not as clean proof that the native policy most directly targets the missing sector. 
+
+Budget-ladder follow-ups. We also completed two additional active-view ladders to bound how stable the downstream advantage is away from the main 16-to-32 setting. At 24-to-48 views, 
+
+niw_native_add still improves over standard_ensemble_add by +0 .2453 dB and −0.01194 
+
+LPIPS, with 27/39 PSNR wins, so the positive result survives when the seed set is already larger. At 8-to-24 views, niw_native_add still beats standard_ensemble_add by +0 .7417 dB, but no longer beats the uniform controls. We therefore cite 24-to-48 as supporting evidence and 8-to-24 as an explicit boundary-condition result rather than as a second primary downstream win. 
+
+E Constrained-Initialization Ablation 
+
+We also tested a constrained-initialization variant in which both Standard 3DGS and Bayesian 3DGS-NIW start from the same capped COLMAP seed cloud ( 10 000 initial Gaussians) but otherwise follow the standard full 30 k training pipeline. This cap affects only the initial geometry; both methods still densify normally during training. We treat this as supporting evidence rather than a new primary claim: the effect is modest, but it survives the full 13-scene, 3-seed confirmation at the scene-mean level. The calibration story is mixed rather than uniformly positive, so this ablation supports robustness to weaker initialization more than it supports a separate uncertainty claim. 
+
+F Sparse-View Confirmation 
+
+The sparse-view follow-up is a full 13-scene quick-6k stress test over train-image budgets 
+
+{16 , 32 , 64 , 96 , 128 } with three seeds per budget. Each benchmark JSON stores matched 
+
+standard_3dgs , bayesian_3dgs , and dpmm_3dgs rows for the same scene-seed-budget tuple, so the macro means below are computed over 39 matched rows per budget. This study is intentionally a fast ambiguity stress test rather than a replacement for the main 30k canonical benchmark. The raw recomputation confirms the intended narrow reading. NIW remains tightly clustered with Standard on PSNR across the entire budget range (macro deltas from −0.016 to +0 .023 dB), but it improves LPIPS at every budget and wins more scene means on LPIPS than on PSNR. DPMM 20 Table 16: Full13 sparse-view quick-6k macro means. NIW stays within [−0.016 , +0 .023] dB of Standard 3DGS on macro PSNR and improves LPIPS at every budget; the scene-win columns use scene means over the three seeds.                                               
+
+> Budget Std PSNR NIW PSNR DPMM PSNR ∆PSNR Std LPIPS NIW LPIPS DPMM LPIPS NIW PSNR wins NIW LPIPS wins 16 19.151 19.135 19.029 -0.016 0.3852 0.3851 0.3886 5 / 13 7 / 13 32 22.173 22.167 22.116 -0.005 0.3350 0.3347 0.3398 6 / 13 9 / 13 64 24.396 24.419 24.321 +0.023 0.3088 0.3084 0.3151 9 / 13 11 / 13 96 24.972 24.970 24.840 -0.002 0.3042 0.3038 0.3109 7 / 13 10 / 13 128 25.320 25.316 25.139 -0.004 0.3017 0.3013 0.3086 8 / 13 12 / 13
+
+Table 17: Full13 sparse-view compactness / throughput tradeoff. DPMM remains the compactness-oriented row across all five budgets.                                     
+
+> Budget Std Gauss. NIW Gauss. DPMM Gauss. Std FPS NIW FPS DPMM FPS 16 924,602 928,660 756,489 485.1 482.2 595.3
+> 32 1,218,598 1,220,306 971,242 433.5 433.5 558.3
+> 64 1,384,595 1,382,625 1,058,950 426.6 429.3 566.4
+> 96 1,435,696 1,438,569 1,083,100 361.5 352.0 472.0
+> 128 1,436,396 1,438,946 1,074,669 302.4 295.6 387.0
+
+preserves its compactness-throughput operating point, using roughly 18–25% fewer Gaussians than Standard while rendering about 23–28% faster. 
+
+G Support-Deficit OOD Follow-Up 
+
+We also completed a bounded support-deficit OOD study. The evaluator rescans the raw 
+
+benchmark_*.json outputs, computes a geometric support score for each held-out test view using the normalized nearest-train-camera distance, labels the lowest-distance / best-supported quantile as in-distribution (ID) and the highest-distance / weakest-supported quantile as OOD, ignores the middle band, and then reports area under the receiver operating characteristic curve (AUROC), area under the precision-recall curve (AUPRC), and the mean uncertainty gap between OOD and ID views. This study probes geometric support deficit only; it is not semantic novelty or corruption robustness. The table below reports the stable full13 and hard-tail confirmations rather than the earlier exploratory run. The native mean uncertainty gap is positive but small in the full13 baseline settings, and it turns slightly negative under the stricter hard-tail split ( −5.2 × 10 −5 for the NIW native row at q15 /85 ). We therefore keep this study as a bounded result: it improves the empirical transparency of the paper, but it does not belong in the main claim set. 
+
+H Compression and DPMM Follow-Up Studies 
+
+Posterior-aware compression is the clearest DPMM-specific positive result. All strategies prune the same trained standard-3DGS checkpoints; the posterior strategies differ only in how the fitted DPMM posterior ranks Gaussians for retention. The reported aggregation uses all three seeds ( 6, 66 , 666 )across 39 scene-seed rows. 
+
+How the compaction study is implemented. The implementation is intentionally staged so that the comparison isolates the ranking signal rather than conflating ranking with different training runs. For each scene-seed pair, scripts/dp_compression_experiment.py does the following: 1. Train one Standard 3DGS base model for 30k iterations and snapshot the full Gaussian state. 2. Load that frozen Gaussian set into a fixed-structure DPMM posterior fit . In the reported run we use dp_fit_mode=staged_fixed_structure 
+
+with dp_inference_steps=20000 , so the code repeatedly calls 
+
+GPUDPMMTrainer.train_step() but never runs the usual densify/prune loop. The 21 Table 18: Support-deficit OOD follow-up recomputed from raw benchmark JSONs. Each score cell reports AUROC / AUPRC. We report only the stable full13 and hard-tail confirmations. NIW native is not the strongest detector in any evaluated setting, and the stricter hard-tail split reduces the native AUROC further.                          
+
+> Setting Budget Scope Standard proxy Bayesian proxy NIW native Full13 baseline 6k 13 scenes, 3 seeds 0.570 / 0.633 0.567 / 0.633 0.557 / 0.632 Full13 baseline 30k 13 scenes, 3 seeds 0.632 / 0.681 0.613 / 0.660 0.549 / 0.630 Hard-tail rerun ( q25 /75 )30k 13 scenes, 3 seeds 0.604 / 0.655 0.634 / 0.694 0.545 / 0.623 Hard-tail rerun ( q15 /85 )30k 13 scenes, 3 seeds 0.644 / 0.724 0.688 / 0.763 0.510 / 0.621
+
+Table 19: Compression implementation settings used in the reported run. Every pruning strategy starts from the same Standard 3DGS base checkpoint for a given scene and seed.                 
+
+> Item Reported setting Base model Standard 3DGS trained for 30k iterations Posterior fit DPMM posterior on fixed Gaussian structure Posterior fit mode staged_fixed_structure
+> DP posterior-fit steps 20k Fine-tune after pruning 2k iterations per strategy / ratio / round Keep ratios 10%, 20%, 35%, 55% Reported strategies opacity ,gradient ,dp ,dp_posterior_importance
+> Primary comparison dp_posterior_importance minus opacity
+> Prune rounds 2 for opacity / dp / posterior-aware, 1 for gradient Between-round posterior refit Enabled
+
+Gaussian count is therefore fixed during posterior fitting; what changes are the posterior variables and the continuous Gaussian parameters updated inside train_step() .3. Build one score map from that same base state and fitted posterior. The key ranking scores in the reported study are: • opacity : keep high-opacity Gaussians according to the base checkpoint’s sigmoid opacity values, • gradient : keep Gaussians with large position-gradient norm on a representative training-view mean squared error (MSE) probe, • dp : keep Gaussians with large DPMM expected mixing weights E[πk],• dp_posterior_importance : keep Gaussians with large posterior importance score 
+
+E[πk] × E[ak] × E[ok] × bnk, where E[ak] is expected activity, E[ok] is expected opacity, and bnk is the normalized effective-count support term from the fitted posterior. 4. For each keep ratio in {10 , 20 , 35 , 55 } and each strategy, clone the same base state , prune the top-K Gaussians under that score map, and then fine-tune the pruned model for 2k iterations with the standard 3DGS trainer. 5. In the reported run, gradient stays single-round, but opacity , dp , and 
+
+dp_posterior_importance use a two-round prune ladder ( rounds=2 ). The requested total keep ratio is converted into an equal per-round keep factor. After the first prune, the code fine-tunes the pruned model, refits the DPMM posterior on that post-finetune state (dp_refit_between_rounds=true ), rebuilds the score map, and only then performs the second prune round. 6. Finally, evaluate PSNR, SSIM, LPIPS, retained Gaussian count, and post-prune fine-tune time for every strategy-ratio pair. The reported deltas compare the primary posterior-aware strategy ( dp_posterior_importance ) against the opacity baseline. The full three-seed recomputation changes the scene-level reading slightly relative to the earlier one-seed analysis. Posterior-aware compaction now wins on 9/13 scene means at both 10% and 20% keep, and on 8/13 scene means at both 35% and 55% keep. The largest positive scene-mean gain is on train at 20% keep (+0.5084 dB), while the strongest failure is stump at 10% keep (-1.4078 dB). bonsai remains strongly negative at the more aggressive budgets but turns positive again at 55% keep, so the failure pattern is concentrated rather than uniformly persistent. This is why we frame the study as a meaningful but bounded Bayesian value-add for compaction with clear failure 22 Table 20: Posterior-aware compression on the 13-scene, 3-seed continuation. The posterior-aware row is strongest at 20% keep, slightly positive again at 55%, effectively neutral at 10%, and slightly negative at 35%. 
+
+Keep % Opacity Gradient DP mass Posterior Posterior − opacity 55 26.049 25.702 26.124 26.092 +0.042 35 25.898 24.789 25.793 25.856 -0.042 20 25.403 22.120 25.373 25.477 +0.074 
+
+10 24.951 19.549 24.779 24.956 +0.004 Tanks and Temples / truck                                                 
+
+> Mip-NeRF 360 / treehill
+> Deep Blending / drjohnson
+> Tanks and Temples / train
+> Mip-NeRF 360 / room
+> Mip-NeRF 360 / garden
+> Mip-NeRF 360 / bicycle
+> Mip-NeRF 360 / flowers
+> Deep Blending / playroom
+> Mip-NeRF 360 / counter
+> Mip-NeRF 360 / kitchen
+> Mip-NeRF 360 / bonsai
+> Mip-NeRF 360 / stump
+> Scenes (sorted by 10% keep ΔPSNR, largest gain to largest loss)
+> 55%
+> 35%
+> 20%
+> 10%
+> Keep ratio
+> +0.18 -0.05 +0.00 +0.02 +0.20 +0.13 -0.01 +0.06 +0.03 -0.00 -0.14 +0.22 -0.10
+> +0.15 +0.21 +0.12 +0.04 +0.07 +0.07 +0.05 +0.15 -0.07 -0.06 -0.11 -1.03 -0.15
+> +0.31 +0.29 +0.22 +0.51 -0.18 +0.13 +0.20 +0.17 +0.07 -0.06 +0.22 -0.44 -0.47
+> +0.60 +0.57 +0.32 +0.21 +0.21 +0.17 +0.12 +0.08 +0.03 -0.11 -0.21 -0.53 -1.41
+
+Per-scene ΔPSNR of posterior-aware compaction vs opacity 
+
+> −1.0
+> −0.5
+> 0.0
+> 0.5
+> 1.0
+> ΔPSNR versus opacity baseline (dB)
+
+Figure 3: Per-scene ∆PSNR of posterior-aware compaction ( dp_posterior_importance ) versus the opacity baseline across the reported 10–55% keep ladder. Columns are sorted by the 10% keep row from largest gain to largest loss so the aggressive-compression ranking is visually stable across the remaining ratios; positive values favor the posterior-aware ranking. The strongest positive scene means appear on truck , treehill , and train , while stump remains the clearest aggressive-budget failure case. cases that still need investigation, rather than as a uniform improvement over opacity pruning. The aggregate posterior-minus-opacity deltas are +0.004 ± 0.093 at 10% keep, +0.074 ± 0.104 at 20%, 
+
+−0.042 ± 0.062 at 35%, and +0.042 ± 0.029 at 55%, where ± denotes the sample standard deviation across the three seed-level macro deltas. 
+
+Dedicated compression comparator: matched PUP. To bound the compression claim against a dedicated baseline, we also completed a matched two-seed PUP comparison on the same 13-scene suite. In the matched-checkpoint comparison, PUP beats the best continuation strategy at every fully covered nominal keep ratio (10/20/35/55). The clearest contrast is at nominal 20% keep: the best continuation strategy is dp_posterior_importance , but it ends at 61.3% of the base Gaussian count on average, whereas matched PUP ends at 20.0% and still improves PSNR by +1 .297 dB and LPIPS by −0.0257 with 26/26 PSNR wins. The separate official-checkpoint PUP macro table points in the same direction (26.693 PSNR, 0.2452 LPIPS at 20% keep). We therefore treat the continuation study as bounded ranking evidence rather than as a claim against dedicated compression systems. 
+
+Default-selection follow-up. A full13 default-selection sweep identified niw_D as the best NIW candidate by PSNR and dpmm_default / dpmm_alpha1 as effectively tied for the best DPMM can-didate within that sweep. A subsequent canonical-style confirmation rerun did not justify promoting either family: the best NIW candidate remained 0.0298 dB below the canonical NIW row, and the best DPMM candidate remained 0.6167 dB below the canonical DPMM row. We therefore keep the canonical defaults in the main paper tables. 23 Table 21: Phase 3a compression-mechanism ablation. Multi-round prune-refine helps reliably only when the DPMM posterior is refit after finetune.                         
+
+> Condition Wall time 80% 60% 40% 20% 10% 1round ∼54 min -0.024 +0.003 +0.204 +0.214 -0.054 2round_refit ∼5.9 h +0.026 -0.042 +0.087 +0.177 +0.108 2round_norefit ∼91 min +0.047 -0.035 +0.032 -0.014 +0.018
+
+Table 22: Phase 3b factorized structural-control sweep. Late compaction is the safest single knob, but the gains are modest and remain appendix-level evidence.                 
+
+> Train images Late compaction Split mask Sensitivity counts Spread 16 17.0598 16.9221 16.9603 0.1377 32 20.2217 20.0757 20.0240 0.1977 64 22.6640 22.6152 22.6533 0.0488
+
+Earlier Phase 3a and 3b mechanism studies provide appendix-level context on when posterior-aware compression is most effective: 
+
+I Calibration Sensitivity and Native Posterior Evidence 
+
+The calibration appendix serves two purposes: it records the shared proxy-UQ results used for fair comparison, and it shows why those metrics should not be conflated with native posterior uncertainty. 
+
+I.1 drjohnson sensitivity 
+
+The strongest proxy-UQ caveat is the drjohnson outlier from the Phase-2 contribution-isolation family: • the Phase-2 NIW proxy AUSE on drjohnson reached 0.2481 versus 0.0134 for standard, • excluding drjohnson moves NIW macro AUSE from 0.0394 to 0.0221, nearly identical to standard’s 0.0220, • the canonical NIW drjohnson runs all remain in the normal 0.01357–0.01366 proxy-AUSE range. This is why the main paper treats the outlier as a seed-sensitive proxy artifact rather than evidence that the native posterior itself is miscalibrated. 
+
+I.2 Expanded native posterior evidence 
+
+The next table expands the native posterior diagnostics to scene level. It is not a fair all-method ranking because deterministic 3DGS has no native posterior counterpart. Its purpose is to show the scale and scene dependence of the Bayesian posterior outputs. We therefore treat the quantitative calibration and likelihood diagnostics in this appendix as supporting evidence for the native posterior story, with coverage error as the main comparable calibration statistic. 
+
+I.3 Native uncertainty and NIW perceptual gains 
+
+We also tested whether NIW’s native posterior uncertainty is informative about where NIW gains perceptual quality over the matched deterministic control. The target quantity is the scene-level LPIPS delta 
+
+∆LPIPS = LPIPS NIW − LPIPS Std ,
+
+so more negative values mean NIW is better. Figure 4 presents an outlier-transparent sensitivity analysis rather than a new primary claim. The all-scene fit is not convincing on its own: stump has both high native pixel uncertainty and a worse NIW LPIPS value than Standard, so it behaves as the dominant influence point. After excluding 
+
+stump , the relationship becomes much clearer: higher NIW native pixel uncertainty is associated 24 Table 23: Per-scene native posterior uncertainty diagnostics from the native-UQ evaluation path. Lower native uncertainty is not automatically better in isolation; the table is meant to show the scale and scene dependence of the native posterior outputs that deterministic 3DGS does not provide. 
+
+NIW DPMM Scene Pix. unc. Pos. unc. PSNR Pix. unc. Pos. unc. PSNR bicycle 0.2335 12.69 25.29 0.0692 64.55 24.57 flowers 0.2228 14.59 21.60 0.0763 33.05 20.93 garden 0.1169 11.21 27.45 0.0371 25.02 26.95 stump 0.1969 21.43 26.57 0.0435 263.32 25.58 treehill 0.2381 13.31 22.53 0.0835 126.01 22.35 room 0.1352 9.60 31.69 0.0237 9.96 31.10 counter 0.1112 4.94 29.13 0.0357 6.47 28.51 kitchen 0.1200 7.86 31.48 0.0339 14.49 30.43 bonsai 0.1111 10.39 32.25 0.0297 14.37 31.46 truck 0.1808 32.68 25.54 0.0713 75.05 25.13 train 0.1737 29.73 22.27 0.0787 118.20 21.35 drjohnson 0.0889 9.81 29.35 0.0254 9.14 28.47 playroom 0.1076 13.81 30.22 0.0306 12.15 29.58 0.10 0.12 0.14 0.16 0.18 0.20 0.22 0.24                
+
+> NIW native mean pixel uncertainty
+> −0.00075
+> −0.00050
+> −0.00025
+> 0.00000
+> 0.00025
+> 0.00050
+> 0.00075
+> ΔLPIPS (NIW - Standard)
+> drjohnson
+> playroom
+> bicycle
+> bonsai
+> counter
+> flowers
+> garden
+> kitchen
+> room
+> stump
+> treehill
+> train
+> truck
+> n = 13
+> Spearman ρ = -0.467 (p=0.108)
+> Pearson r = -0.316 (p=0.293)
+> All scenes
+> 0.10 0.12 0.14 0.16 0.18 0.20 0.22 0.24
+> NIW native mean pixel uncertainty
+> −0.0008
+> −0.0006
+> −0.0004
+> −0.0002
+> 0.0000
+> ΔLPIPS (NIW - Standard)
+> drjohnson
+> playroom
+> bicycle
+> bonsai
+> counter
+> flowers
+> garden
+> kitchen
+> room
+> treehill
+> train
+> truck
+> n = 12
+> Spearman ρ = -0.650 (p=0.022)
+> Pearson r = -0.738 (p=0.006)
+> Excluding stump
+> −0.8 −0.6 −0.4 −0.2 0.0
+> Leave-one-out correlation coefficient
+> bonsai
+> flowers
+> kitchen
+> room
+> truck
+> train
+> garden
+> playroom
+> counter
+> drjohnson
+> bicycle
+> treehill Pearson negative in 12/12
+> Spearman negative in 12/12
+> Leave-one-out robustness
+> Pearson r
+> Spearman ρ
+> NIW native uncertainty vs perceptual gain sensitivity
+> mipnerf360 tandt db outlier: stump
+
+Figure 4: Scene-level sensitivity analysis for the relationship between NIW native mean pixel uncertainty and NIW LPIPS gain over Standard 3DGS. Left: all 13 canonical scenes, with stump 
+
+highlighted as the main influence point. Middle: the same relationship after excluding stump . Right: leave-one-out robustness over the remaining 12 scenes, showing Pearson r and Spearman ρ for each omitted-scene fit. with more negative ∆LPIPS, i.e., larger NIW perceptual gains. In that filtered analysis, Spearman reaches ρ = −0.650 with p = 0 .022 (permutation p = 0 .026 ), and Pearson reaches r = −0.738 
+
+with p = 0 .006 (permutation p = 0 .005 ). We still treat this as supplementary evidence rather than a primary result because the exclusion is post hoc. The rightmost leave-one-out panel is included to make that caveat explicit. Even after removing stump , the effect is not carried by a single remaining scene: Pearson stays negative in 12/12 leave-one-out fits and remains below p < 0.05 in all 12, while Spearman stays negative in 12/12 and remains below p < 0.05 in 9/12. This supports the narrower claim that NIW’s native pixel uncertainty is informative about where NIW improves perceptual quality, but only as an exploratory, outlier-robust sensitivity analysis. 
+
+J Reproducibility Notes 
+
+This preprint does not assume access to the authors’ working repository. Instead, the main paper and supplement include the protocol details needed to evaluate the reported claims: dataset resolution policy, train/test scene coverage, seed policy, baseline definitions, uncertainty protocols, active-view budgets, compression keep ratios, hardware class, timing summaries, and the statistical procedures used for paired confidence intervals and sensitivity analyses. The reported tables and figures were generated from structured run summaries for the following audit families: 25 Table 24: Statistical summary for the NIW native-uncertainty vs. LPIPS-gain sensitivity analysis. More negative ∆LPIPS means a larger NIW perceptual advantage over Standard 3DGS.                       
+
+> Subset nSpearman ρSpearman pSpearman 95% CI Pearson rPearson 95% CI All scenes 13 -0.467 0.108 [-0.938, 0.207] -0.316 [-0.889, 0.402] Excluding stump 12 -0.650 0.022 [-0.979, -0.029] -0.738 [-0.928, -0.239]
+
+• canonical 13-scene, three-seed reconstruction results for Standard 3DGS, NIW, DPMM, 3DGS-MCMC, and the official implementation reference; • proxy-versus-native uncertainty summaries, including per-scene interval coverage, AUSE, ECE, PSNR, SSIM, LPIPS, Gaussian count, and runtime fields; • fixed-budget active-view-selection summaries for the 16-to-32 headline setting and the 8-to-24 / 24-to-48 ladder checks; • compression-family summaries, including the matched-PUP comparison and scene-level delta heatmaps; • qualitative render-selection metadata for the supplement panels; • NIW-native uncertainty versus perceptual-gain sensitivity summaries, including the leave-one-out fits. If the paper is accepted, the authors plan to release the scripts and structured summaries needed to regenerate the paper-facing tables and figures, subject to preserving the licenses and terms of use of the upstream public datasets and codebases. 26
