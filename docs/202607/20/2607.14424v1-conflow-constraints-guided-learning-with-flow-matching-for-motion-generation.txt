@@ -1,0 +1,307 @@
+Title: ConFlow: Constraints-Guided Learning with Flow Matching for Motion Generation
+
+URL Source: https://arxiv.org/pdf/2607.14424v1
+
+Published Time: Fri, 17 Jul 2026 01:11:24 GMT
+
+Number of Pages: 7
+
+Markdown Content:
+# ConFlow: Constraints-Guided Learning with Flow Matching for Motion Generation 
+
+Nutan Chen 1,∗, Jianxiang Feng 2,∗, Marvin Alles 3, Botond Cseke 41LS Wiiri Robot Innovation Center, 2Independent Researcher, 
+
+> 3
+
+Technical University of Munich, 4Volkswagen Group 
+
+Abstract —In recent years Flow Matching has become a promi-nent method for generative modeling robot motion generation. In its generic form Flow Matching is an ODE-based neural sampler that is trained by regressing empirical flow fields associated with motion samples as data. However, in robot motion generation we often have additional constraints that might not be present in the collected data. The majority of current approaches train the flow on the available data and use inference-time guidance to enforce task-specific constraints. To address this mismatch, we propose ConFlow, a constraint-guided flow matching framework that incorporates constraint information directly into the training objective via differentiable barrier or cost functions. To address design specifications such as smoothness and boundary conditions, we propose replacing the standard Gaussian source distribution used in flow matching training with a conditional Gaussian Process. Our approach also uses infeasible demonstrations as negative supervision, improving constraint satisfaction without requiring additional expert data. Experiments on a two-robot navigation task demonstrate that ConFlow achieves lower collision rates and higher trajectory quality than standard flow matching baselines, with or without inference-time guidance. These results validate training-time constraint integration as an effective approach to closing the training–inference gap in generative motion models. 
+
+I. I NTRODUCTION 
+
+Recent advances in generative modeling, particularly dif-fusion models and flow matching, have driven interest in learning-based robot motion generation. Beyond their ability to model complex motion distributions, these methods also support inference-time guidance, which allows the policy to adapt to new tasks without retraining. This property is especially attractive for robotic deployment in complex and unstructured environments, where guidance can dynamically enforce constraints such as obstacle avoidance [9] while pre-serving the expressiveness of the learned motion generator. A key limitation of current guidance-based motion gener-ation frameworks is the misalignment between the objective optimized during training and the constraints enforced at de-ployment. While guidance can steer generated motions toward desired behaviors, it effectively modifies the sampling process without altering the underlying learned distribution, resulting in infeasible or physically implausible out-of-distribution be-haviors [5, 6, 7]. Furthermore, modern generative models typically require large amounts of training data. In robotics, such models are 
+
+> *Equal contribution.
+
+commonly trained solely on expert demonstrations, whose collection is costly and labor-intensive. This dependence on expert data not only limits scalability but also overlooks abundant non-expert interactions that could provide valuable supervision. In particular, negative demonstrations provide contrastive information about constraint violations, helping the model distinguish feasible motions from infeasible ones. Current approaches, including improved inference procedures [13] and post-hoc fine-tuning, only partially address these shortcomings. Inference-time guidance cannot fundamentally eliminate the aforementioned discrepancy, whereas fine-tuning often converges to suboptimal solutions and incurs additional training overhead [7]. To address these limitations, we propose ConFlow , aconstraint-guided flow matching framework for robot mo-tion generation. Rather than enforcing constraints through inference-time guidance, ConFlow combines (i) a constraint-guided training objective that encourages the learned flow to satisfy task and environmental requirements such as collision avoidance and (ii) a conditional Gaussian Process (GP)-based source distribution that can enforce smoothness and various boundary or via-point constraints. Together, these components enable the model to learn motion distributions that better align with deployment-time requirements, thereby mitigating the training–inference mismatch. The framework can additionally incorporate infeasible demonstrations as negative supervision, improving constraint satisfaction without requiring additional expert data. Experiments show that ConFlow consistently im-proves motion generation quality and robustness to distribution shift. Our main contributions are as follows: (1) We introduce a constraint-guided learning paradigm that transfers inference-time guidance into the training objective, mitigating the training–inference mismatch. (2) We instantiate this paradigm in a flow matching framework, combining a constraint-aware training objective with a GP-based source distribution. (3) We extend the framework to use non-expert demonstrations, im-proving data efficiency and generalization without additional expert collection. (4) We validate the approach on a multi-robot obstacle avoidance task, showing improved constraint satisfaction and motion quality. 
+
+> RSS 2026 Workshop on Diffusion for Robot Learning arXiv:2607.14424v1 [cs.RO] 15 Jul 2026
+
+II. R ELATED WORK 
+
+Generative Motion Generation. Diffusion-based methods have shown strong performance in generating robot motions and planning trajectories in high-dimensional spaces. Exam-ples include learning smooth cost functions for joint grasp and motion optimization through diffusion models [12], motion planning with diffusion-based trajectory generators [3], and physics-guided diffusion models for human motion synthesis [15]. These methods demonstrate the ability of generative models to represent complex motion distributions, but they typically rely on either expert demonstrations or inference-time correction mechanisms to enforce constraints. 
+
+Non-expert Demonstrations. Collecting large-scale expert robot demonstrations is often expensive and difficult to scale. Recent discussions in robotics have emphasized the impor-tance of leveraging broader sources of data, including non-expert demonstrations and human-generated behaviors, to im-prove scalability and accessibility of robot learning [2]. Knaust and Koert [8] address this challenge by using Probabilistic Movement Primitives (ProMPs) to capture natural variability in non-expert demonstrations, avoiding the need for carefully crafted expert data. 
+
+Inference-time Guidance and Constraint Satisfaction. 
+
+Inference-time guidance has emerged as an effective way to incorporate constraints and preferences into generative models without retraining. In robot motion generation, guided decoding has been used to adapt robot trajectories online to obstacles and user-specified waypoints [4]. Similar ideas have been applied to diffusion policies for collision-aware ma-nipulation [9], human-intent alignment [13]. While effective, these approaches introduce a mismatch between the training objective and the constraint satisfaction during sampling, and often require repeated constraint evaluations and gradient computations during inference [5, 7]. 
+
+Training-time Guidance. Close to our work, a constraint-aware training framework [5] employs sequential quadratic programming to project samples into a feasible set, which imposes additional compute consumption during training. Similarly in reinforcement learning, FlowQ [1] introduces energy guidance into flow-matching training by learning a flow that matches an energy-reweighted policy distribution, guiding actions with higher expected return. Additionally, we also share a similar idea of enhancing the expressivity and structural properties of the source distribution with another work in training normalizing flows (NFs) [6]. Our method focuses on robot motion generation and is able to incorporate more constraints. III. P RELIMINARIES 
+
+Flow Matching (FM) [10] is a recently proposed generative modeling framework that learns a continuous-time vector field (flow) to transport samples from a simple source distribution to a target data distribution. Compared with diffusion models, FM directly regresses the target velocity field and therefore avoids the need to simulate and invert a stochastic diffusion process. This formulation often leads to simpler training objectives and faster inference. Let x0 ∼ p0 denote a sample from a source distribution, typically a standard Gaussian, and x1 ∼ pdata denotes a motion trajectory from the dataset. FM defines a probability path connecting p0 and p1. An intermediate state on this path is given by xt = αtx1 + σtx0, where t ∈ [0 , 1] , αt = t, and 
+
+σt = 1 −t. The corresponding ground-truth velocity along this probability path ψt(xt) is ut(xt|x0, x 1) = dx t 
+
+> dt
+
+= ˙ αtx1 + ˙ σtx0.
+
+A neural network uθ (x, t ) is trained to approximate this velocity field by minimizing 
+
+LFM (θ) = Et∼U [0 ,1] ,x 0,x 1
+
+h
+
+|uθ (xt, t ) − ut(xt|x0, x 1)|2i
+
+. (1) After training, new trajectories can be generated by integrating the learned ordinary differential equation (ODE) ddt ψ(xt) = 
+
+uθ (xt, t ) starting from a random sample x0 ∼ p0. Numeri-cal solvers such as Euler integration can then transport the sample toward the target motion manifold. FM is particularly attractive for robot motion generation because trajectories are naturally continuous and can be represented as points in a high-dimensional trajectory space. 
+
+Gaussian Processes (GPs) [14], as one of the popular methods in Bayesian non-parametric modeling, provide aprincipled probabilistic framework for performing inference in function space and are thus widely used in motion /trajectory modelling. Formally, a GP is defined as a collection of random variables {fs}s∈S , f s ∈ Rd indexed by an index set S. Any finite combination of these random variables 
+
+{fsi }i=1 ,...,n indexed by a finite set {s1, . . . , s n} follows a joint Gaussian distribution, specified by a mean function 
+
+mϕ(·) and covariance function kϕ(·, ·), that is, {xti }t=1 ,...,n ∼N ({mϕ(ti)}i=1 ,...,n , {kϕ(ti, t i′ )}i,i ′=1 ,...,n ).Usually, time S = [0 , T ] is used as index set. The trajectory values fs can be Cartesian coordinates or joint angles. Note that we use s as the time coordinate of the trajectory and t as the time parameter of the flow. For example, xst is the t stage intermediate value of the trajectory at time s.Due to the fact that the Gaussian family of distributions is closed under marginalisation and conditioning Bayesian inference and conditioning in these models is analytically tractable. Given an observation process xs ∼ N (fs, σ 2) and observations {xsi }i=1 ,...,M at S = {si}i=1 ,...,M , the posterior Gaussian process is defined by the mean and covariance functions 
+
+mϕ(s; {xsi }) = mϕ(s) + X
+
+> i
+
+kϕ(s, s i)αi, (2) 
+
+kϕ(s, s ′; {xsi }) = kϕ(s, s ′) − X
+
+> i,i ′
+
+kϕ(s, s i)Λ i,i ′ kϕ(si′ , s ′),
+
+with K = {kϕ(ti, t i′ )}i,i ′=1 ,...,n , Λ = ( K + σ2I)−1, α =Λ{xsi }i=1 ,...,M . For conditioning we can set σ2 = 0 . This allows is to generate posterior or conditioned trajectories given some data such as boundary values xs=0 , x s=T or via-points. The parameter ϕ can be fitted via max-likelihood to pre-tune the smoothness. In the following we use posterior or condi-tioned Gaussian process samples as the source distribution p0.IV. M ETHOD 
+
+A. Problem Statement 
+
+We consider constraint-aware motion generation between pre-scribed start and goal states. A trajectory is represented as 
+
+[q(s0), q (s1), . . . , q (sT −1)] ∈ RT ×D, where q(si) ∈ RD
+
+denotes the robot state at normalized trajectory parameter si.The temporal parameterization is defined as si = iT −1 , i ∈{0, . . . , T − 1}, such that si ∈ [0 , 1] . For notational con-venience, we write qi := q(si), yielding the equivalent representation ξ = [ q0, q 1, . . . , q T −1]. Given a start state qstart 
+
+and a goal state qgoal , our objective is to learn a conditional tra-jectory distribution pθ (ξ|qstart , q goal ), that generates smooth, diverse, and feasible trajectories satisfying the prescribed task and motion constraints. Additionally, we assume access to a dataset consisting of positive demonstrations D+ and negative demonstrations D−.Positive trajectories satisfy all constraints, including colli-sion avoidance, smoothness, and successful task completion, whereas negative trajectories violate one or more of these requirements. Following the flow-matching formulation, we denote a demonstration trajectory by x1 ≡ ξdata , x1 ∼
+
+pdata , where pdata is the empirical trajectory distribution induced by the training dataset. By using both positive and negative demonstrations, we seek to learn a flow-matching model that assigns high probability to feasible motions while suppressing constraint-violating behaviors, thereby improving constraint satisfaction without sacrificing trajectory diversity. 
+
+B. Constraint-Guided Flow Matching 
+
+To align training with deployment-time requirements, we introduce two complementary modifications to standard condi-tional flow matching: (i) a constraint-guided training objective 
+
+that incorporates task constraints directly into the learned velocity field, and (ii) a constraint-injected source distribution 
+
+that injects structural motion priors into the generative pro-cess. Together, these components encourage the learned flow to generate trajectories that satisfy motion constraints while preserving trajectory diversity. 
+
+1) Constraint-Guided Objective: A key limitation of exist-ing guidance-based motion generation methods is that con-straints are enforced only during inference, creating a mis-match between the training objective and deployment-time behavior. To mitigate this issue, we incorporate constraint guidance directly into the flow-matching training objective. Given the standard conditional flow-matching loss in Eq. (1), we define the constraint-guided objective as 
+
+LCG = MSE  uθt − ut − λcM (x1)uct
+
+ , (3) where uθt denotes the predicted velocity field, ut is the stan-dard flow-matching target velocity, M SE denotes the mean squared error function and 
+
+uct = ∇xt C(xt) (4) is a constraint-induced correction derived from a differen-tiable constraint function C(·). The coefficient λc controls the strength of the constraint guidance. To use both expert and non-expert demonstrations, we train on a dataset D = D+ ∪ D −, where D+ contains feasible trajectories and D− contains trajectories that violate one or more constraints. For each target trajectory x1, we define a binary violation indicator 
+
+M (x1) = 
+
+(
+
+1, if x1 violates the constraint ,
+
+0, otherwise . (5) The correction term is therefore activated only for constraint-violating demonstrations. This design prevents over-regularization of feasible trajectories while enabling negative demonstrations to provide informative supervision about un-desirable behaviors. Specifically, we instantiate the framework using a collision-avoidance constraint. While prior work com-monly employs ReLU-based collision penalties, we instead adopt a SoftPlus formulation to obtain smoother gradients: 
+
+Cγ (xt) = − 1
+
+γ log  1 + exp  −γ d(xt) − r . (6) where d(xt) denotes the minimum distance between two robots (or robot links) and r is the corresponding safety radius. 
+
+γ > 0 is the softplus sharpness parameter. A larger γ yields a sharper transition around the safety boundary d(xt) = r,whereas a smaller γ provides a smoother gradient over a wider neighborhood of the boundary. The resulting gradient 
+
+uct pushes trajectories away from collision configurations and serves as the constraint-guided correction during training. 
+
+2) Constraint-Injected Source Distribution: In addition to the proposed training objective, we incorporate motion con-straints directly into the source distribution of flow matching. A key observation is that the standard Gaussian source distri-bution assumes independent noise across trajectory waypoints, potentially leading to arbitrarily varying neighboring states. To address this limitation, we inject trajectory smoothness into the source distribution by replacing the standard Gaussian prior with a GP. This design follows a similar intuition to the multimodal source distributions used to alleviate topology mismatch in generative transport models [6]. Rather than learning smoothness solely through the flow, we encode it directly into the initial trajectory distribution. Specifically, instead of sampling x0 ∼ p0, we draw source trajectories from a GP x0 ∼ pGP . Let si denote the normalized trajectory parameters introduced in Sec.IV-A. Each trajectory dimension d is modeled independently as 
+
+fd(s) ∼ GP (0 , k (s, s ′)) , where k(·, ·) is an RBF kernel. Discretizing the process at the trajectory waypoints yields 
+
+x0,d = [ fd(s0), . . . , f d(sT −1)] T ∼ N (0 , K ), with covariance matrix Kij = σ2 exp 
+
+
+
+− (si−sj )2
+
+> 2ℓ2
+
+
+
++ ϵδ ij , where ℓ is the kernel length scale and ϵ = 10 −6 is added for numerical stability. GP samples exhibit strong temporal correlations between neighboring waypoints. Consequently, the learned Algorithm 1 Guided Flow-Matching Training 
+
+Require: q(x1), p0(x0), vθ , λ
+
+Ensure: Trained vθ 
+
+> 1:
+
+repeat  
+
+> 2:
+
+x1 ∼ q(x1) 
+
+> 3:
+
+x0 ∼ p0(x0) ▷ GP or Gaussian source  
+
+> 4:
+
+t ∼ U (0 , 1)  
+
+> 5:
+
+xt = (1 − t)x0 + tx 1, ˙xt = x1 − x0 
+
+> 6:
+
+gt = ∇xt C(xt) ▷ constraint guidance, Eq. (6)  
+
+> 7:
+
+M (x1) ∈ { 0, 1} ▷ feasibility mask  
+
+> 8:
+
+ut = ˙ xt + λ M (x1) gt ▷ guided target velocity  
+
+> 9:
+
+Update θ: L(θ) = vθ (xt, t ) − ut 
+
+> 22
+> 10:
+
+until convergence  
+
+> 11:
+
+return vθ
+
+flow is encouraged to focus on modeling meaningful trajec-tory variations rather than correcting high-frequency artifacts introduced by an unstructured Gaussian source distribution. Furthermore, we optionally condition the GP on the tra-jectory endpoints. Given a target trajectory x1, we extract its start and goal states, ystart = x1(s0), ygoal = x1(sT −1),and construct a conditional GP source distribution 
+
+x0 ∼ pCGP 
+
+
+
+x | x(s0) = ystart , x (sT −1) = ygoal 
+
+
+
+. (7) To enforce boundary conditions, we condition the GP on the start and goal states of the target trajectory. Let O =
+
+{0, T −1} denote the endpoint indices and I = {1, . . . , T −2}
+
+the interior indices. Partitioning the covariance matrix as 
+
+K =
+
+KOO KOI 
+
+KIO KII 
+
+
+
+, Given the start endpoint observations of dimension d: yO,d =
+
+ystart ,d 
+
+ygoal ,d 
+
+
+
+. According to Eq.2, the conditional distribution of the interior trajectory values follows the standard GP posterior 
+
+x0,I,d | x0,O,d = yO,d ∼ N  μI|O ,d , ΣI|O 
+
+ , (8) with μI|O ,d = KIO K−1
+
+> OO
+
+yO,d , ΣI|O = KII −
+
+KIO K−1 
+
+> OO
+
+KOI . The full source trajectory is obtained by fixing the endpoints: x0(s0) = ystart , x0(sT −1) = ygoal , and sampling only the interior states from the conditional GP in Eq.8. The resulting flow-matching path remains unchanged: 
+
+xt = (1 − t)x0 + tx 1, but now x0 and x1 share identical start and goal states. The learned flow therefore focuses on refining the intermediate trajectory while preserving smoothness and endpoint consistency, substantially simplifying the transport problem. 
+
+C. Inference 
+
+Unlike conventional guidance-based approaches that rely heavily on deployment-time corrections, ConFlow learns constraint-aware velocity fields during training. As a result, inference follows the standard flow-matching sampling proce-dure and requires little or no additional guidance to generate feasible trajectories. Optional guidance can nevertheless be in-corporated to further improve safety in challenging scenarios. 
+
+a) Boundary-conditioned initialization: Consistent with training, sampling is initialized from a conditional Gaussian Process (GP) prior. Given prescribed start and goal states, the source trajectory x0 is sampled from the conditional GP distribution, ensuring that the generated trajectory satisfies the desired boundary conditions from the outset. The learned flow then transports this smooth prior trajectory toward the target motion distribution. 
+
+b) Collision-avoidance guidance: To further improve safety during deployment, collision avoidance can be incor-porated as an inference-time guidance term. Given the learned velocity field vθ (xt, t ), we modify the sampling dynamics as vθ (xt, t ) + λ∇xt C(xt), For robot–robot avoidance, the barrier function C(·) is defined using the minimum distance between the two robots. For obstacle avoidance, the barrier is computed from the minimum distance between each robot and the obstacle. During sampling, the barrier gradient contin-uously modifies the velocity field, encouraging collision-free trajectories while preserving the motion prior learned during training. In our setup, obstacle avoidance and robot–robot collision avoidance are formulated in essentially the same way. The main difference is the fixed obstacles position with different size to the robots. V. E XPERIMENTS 
+
+A. Task Description 
+
+Following the setup of [11], we consider a two-robot trajectory generation task in which two robots exchange positions in a two-dimensional workspace. Each robot starts from one side of the workspace and moves toward the other’s initial position, as illustrated in Fig. 1. To generate diverse interaction patterns, we perturb the nominal straight-line motions with randomized sinusoidal deviations orthogonal to the direction of travel, producing smooth trajectories with varying levels of interaction and collision risk. Trajectories are represented as fixed-length sequences of Cartesian positions and normalized to the range [−1, 1] along each dimension. Each trajectory contains l = 32 waypoints and n = 4 state dimensions corresponding to the planar coordinates of both robots. Importantly, approximately 30% of the demonstrations contain robot–robot collisions, providing a mixture of feasible and infeasible trajectories for evaluating the proposed constraint-guided learning framework. 
+
+B. Evaluation Setup and Metrics a) Evaluation Setup: For each trained model, we gen-erate 256 trajectories under three inference settings in a sin-gle run: (i) robot-avoidance guidance, (ii) obstacle-avoidance guidance, and (iii) no guidance. All ConFlow variants are initialized from the same conditional GP source distribution, conditioned on the start and goal states of evaluation trajecto-ries. Fig. 1. Two robots exchanging positions in the synthetic navigation task. The dataset contains both collision-free and collision-inducing trajectories, enabling the evaluation of constraint-guided learning with positive and negative demonstrations. 
+
+b) Baselines: We compare ConFlow against two ablated variants that isolate the contributions of constraint-guided learning and negative demonstrations.  
+
+> •
+
+ConFlow w/o Neg. Data : identical to ConFlow but trained on feasible demonstrations only. This ablation isolates the contribution of infeasible demonstrations as negative supervision.  
+
+> •
+
+FM : standard conditional flow matching trained without constraint-guided learning and with a Gaussian source distribution. This baseline evaluates whether vanilla gen-erative modeling, augmented with inference-time guid-ance, is sufficient for safe motion generation. Together, these ablations disentangle the effects of (i) the constraint-guided training objective and GP source distribution and (ii) negative demonstrations. 
+
+c) Metrics: We report two safety-oriented metrics. The 
+
+robot-collision rate measures the fraction of generated trajec-tories in which the two robots violate a predefined collision threshold. The object-collision rate measures the fraction of trajectories in which either robot intersects a circular obstacle introduced during evaluation. Obstacle avoidance is not en-forced during sampling under the Robot-Avoidance and No-Guidance settings; consequently, the corresponding metric is omitted from the evaluation. 
+
+C. Results 
+
+Table I compares ConFlow against its ablations and the Flow Matching (FM) baseline under different inference-guidance settings. Overall, ConFlow consistently achieves the lowest collision rates across all evaluation modes, demonstrating superior generalization and robustness. This validates our central hypothesis that transferring guidance from inference to training can reduce the training–deployment mismatch while improving robustness. This also indicates that the benefits of constraint-guided learning are complementary to inference-time guidance. The performance gain of ConFlow ( D+∪D −) over ConFlow (D+) further highlights the importance of utilizing non-expert demonstrations under our proposed framework. In contrast, as expected, naively including negative examples into a standard FM degrades performance due to the ambiguous supervision signal introduced by mixing positive and negative samples. A key observation is that, even without any inference-time guidance, ConFlow achieves substantially lower robot-collision rates than FM (0.016 vs. 0.031). This result suggests that the collision-avoidance behavior has been internalized by the learned velocity field during training rather than being enforced solely through test-time corrections. Consequently, ConFlow remains robust even when deployment-time guidance is unavailable or imperfect. 
+
+D. Ablation on Source Distributions 
+
+Table II evaluates the impact of the proposed conditional Gaussian Process (CGP) source distribution. Replacing the standard Gaussian prior with CGP consistently improves all evaluated metrics. In particular, the robot-collision rate is reduced by nearly 46% (0.0288 → 0.0156 ), while both median and 95 -th-percentile smoothness metrics improve substantially. Furthermore, endpoint errors decrease by more than an order of magnitude, indicating that conditioning the source distri-bution on the start and goal states effectively preserves task boundary conditions during generation. These results highlight two key advantages of the proposed source distribution. First, the GP prior introduces temporal cor-relations between neighboring waypoints, encouraging smooth trajectory structures before any flow transformation is applied. Second, endpoint conditioning embeds task-relevant boundary information directly into the source distribution, reducing the burden on the learned flow to satisfy start–goal constraints. TABLE I COLLISION -RATE ABLATION ON THE TWO -ROBOT TASK . L OWER IS BETTER . R ESULTS ARE REPORTED UNDER THREE INFERENCE SETTINGS : NO GUIDANCE , ROBOT -AVOIDANCE GUIDANCE , AND OBSTACLE -AVOIDANCE GUIDANCE . T RAINING SET CONFIGURATION IS INDICATED IN THE BRACKET : ( D+ ), ( D− ) DENOTE POSITIVE AND NEGATIVE DATA , RESPECTIVELY .No Guidance Robot Avoidance Obstacle Avoidance Method Robot Robot Robot Object ConFlow ( D+ ∪ D −) 0.016 0.004 0.000 0.035 
+
+ConFlow ( D+) 0.043 0.004 0.035 0.074 FM ( D+) 0.031 0.020 0.039 0.039 FM ( D+ ∪ D −) 0.055 0.270 0.281 0.059 TABLE II ABLATION STUDY ON SOURCE DISTRIBUTIONS 
+
+Metric Gaussian CGP Collision rate ↓ 0.0288 0.0156 
+
+Smoothness median ↓ 0.0678 0.0174 
+
+Smoothness p95 ↓ 0.2218 0.0309 
+
+Start error / robot ↓ 0.0267 0.0006 
+
+End error / robot ↓ 0.0276 0.0006 
+
+The qualitative results in Fig. 2 further support these ob-servations. Compared with a standard Gaussian prior, CGP produces noticeably smoother trajectories with fewer local oscillations. We additionally observed that unconstrained GP priors were sensitive to kernel-scale selection and occasionally generated trajectories that drifted far from the data manifold. Such behavior can lead to unstable samples and degraded performance, particularly in safety-critical motion-generation tasks. Conditioning the GP on the start and goal states effec-tively mitigates this issue by preserving both temporal struc-ture and task-specific boundary information. Overall, these results demonstrate that incorporating structured priors into the source distribution significantly improves the quality and stability of the learned flow. VI. C ONCLUSION 
+
+We present ConFlow, a constraint-guided flow match-ing framework for robot motion generation that integrates deployment-time constraints directly into the training objec-tive. By combining a constraint-guided loss with a conditional Gaussian Process source distribution, ConFlow reduces the training–inference mismatch inherent in guidance-based gener-ative models while promoting smooth and safe trajectory gen-eration. Experiments on a multi-robot navigation benchmark demonstrate improved collision avoidance and motion quality compared with standard flow matching baselines. The frame-work also benefits from infeasible demonstrations as negative supervision, yielding further reductions in constraint violations without requiring additional expert data. Future work will extend ConFlow to higher-dimensional robotic systems, such as articulated manipulators, and evaluate performance on real- 
+
+> Fig. 2. Visualization of generated trajectories using Gaussian and conditional GP (CGP) as source distributions. The Gaussian produces trajectories with more local oscillations, while CGP yields much smoother motions. Moreover, without endpoint conditioning, trajectories from Gaussian drifted far from the data distribution, leading to unstable samples.
+
+world platforms. More broadly, these results suggest that jointly designing the training objective and source distribution — rather than treating them as independent components — is an effective approach to embedding task-relevant structure into flow-based generative models, and represents a promising direction for safer and more capable robot motion generation. REFERENCES 
+
+[1] Marvin Alles, Nutan Chen, Patrick van der Smagt, and Botond Cseke. Flowq: Energy-guided flow poli-cies for offline reinforcement learning. arXiv preprint arXiv:2505.14139 , 2025. [2] Aude Billard, Alin Albu-Schaeffer, Michael Beetz, Wol-fram Burgard, Peter Corke, Matei Ciocarlie, Ravinder Dahiya, Danica Kragic, Ken Goldberg, Yukie Nagai, et al. A roadmap for ai in robotics. Nature Machine Intelligence , 7(6):818–824, 2025. [3] Joao Carvalho, An T Le, Mark Baierl, Dorothea Koert, and Jan Peters. Motion planning diffusion: Learning and planning of robot motions with diffusion models. In 2023 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) , pages 1916–1923. IEEE, 2023. [4] Nutan Chen, Botond Cseke, Elie Aljalbout, Alexandros Paraschos, Marvin Alles, and Patrick Van der Smagt. Guided decoding for robot on-line motion generation and adaption. In 2024 IEEE-RAS 23rd International Conference on Humanoid Robots (Humanoids) , pages 321–327. IEEE, 2024. [5] Jacob K Christopher, James E Warner, and Ferdinando Fioretto. Constraint-aware flow matching: Decision aligned end-to-end training for constrained sampling. 
+
+arXiv preprint arXiv:2605.12754 , 2026. [6] Jianxiang Feng, Jongseok Lee, Simon Geisler, Stephan G¨ unnemann, and Rudolph Triebel. Topology-matching normalizing flows for out-of-distribution detection in robot learning. In Conference on Robot Learning , pages 3214–3241. PMLR, 2023. [7] Yingqing Guo, Hui Yuan, Yukang Yang, Minshuo Chen, and Mengdi Wang. Gradient guidance for diffusion models: An optimization perspective. Advances in Neural Information Processing Systems , 37:90736–90770, 2024. [8] Moritz Knaust and Dorothea Koert. Guided robot skill learning: A user-study on learning probabilistic movement primitives with non-experts. In 2020 IEEE-RAS 20th International Conference on Humanoid Robots (Humanoids) , pages 514–521. IEEE, 2021. [9] Hang Li, Qian Feng, Zhi Zheng, Jianxiang Feng, Zhaopeng Chen, and Alois Knoll. Language-guided object-centric diffusion policy for generalizable and collision-aware manipulation. In 2025 IEEE Interna-tional Conference on Robotics and Automation (ICRA) ,pages 12834–12841. IEEE, 2025. [10] Yaron Lipman, Marton Havasi, Peter Holderrieth, Neta Shaul, Matt Le, Brian Karrer, Ricky TQ Chen, David Lopez-Paz, Heli Ben-Hamu, and Itai Gat. Flow matching guide and code. arXiv preprint arXiv:2412.06264 , 2024. [11] Yorai Shaoul, Itamar Mishani, Shivam Vats, Jiaoyang Li, and Maxim Likhachev. Multi-robot motion planning with diffusion models. In The Thirteenth International Conference on Learning Representations , 2025. URL https://openreview.net/forum?id=AUCYptvAf3. [12] Julen Urain, Niklas Funk, Jan Peters, and Georgia Chalvatzaki. Se (3)-diffusionfields: Learning smooth cost functions for joint grasp and motion optimization through diffusion. In 2023 IEEE international conference on robotics and automation (ICRA) , pages 5923–5930. IEEE, 2023. [13] Yanwei Wang, Lirui Wang, Yilun Du, Balakumar Sun-daralingam, Xuning Yang, Yu-Wei Chao, Claudia P´ erez-D’Arpino, Dieter Fox, and Julie Shah. Inference-time policy steering through human interactions. In 2025 IEEE International Conference on Robotics and Automa-tion (ICRA) , pages 15626–15633. IEEE, 2025. [14] Christopher Williams and Carl Rasmussen. Gaussian processes for regression. Advances in neural information processing systems , 8, 1995. [15] Ye Yuan, Jiaming Song, Umar Iqbal, Arash Vahdat, and Jan Kautz. Physdiff: Physics-guided human motion diffusion model. In Proceedings of the IEEE/CVF inter-national conference on computer vision , pages 16010– 16021, 2023. APPENDIX 
+
+a) Architecture and training details.: We parameter-ize the velocity field with a residual multilayer perceptron (ResMLP). Each trajectory has length 32 and state dimen-sion 4, corresponding to the two planar robot positions 
+
+(x1, y 1, x 2, y 2). The trajectory is flattened before being passed to the network, giving an input dimension of 32 × 4 = 128 .The ResMLP uses a scalar time input, hidden dimension 1024 ,and 4 residual blocks. The model is trained with AdamW using learning rate 3 × 10 −4, batch size 2048 , and 20001 training iterations. Gradients are clipped with maximum norm 3.0.For each training batch, we sample target trajectories x1
+
+from the two-robot training dataset and construct the source trajectory x0 from a conditional Gaussian-process prior. The prior is conditioned on the start and goal states of x1, with length scale 0.4 and variance parameter σf = 1.0. We use an affine probability path with a conditional optimal-transport scheduler. The full training dataset contains 10000 
+
+trajectories and includes both collision-free and robot-collision demonstrations. The proposed constrained model modifies the standard flow-matching objective with a robot–robot collision-avoidance term. Let vθ (xt, t ) be the learned velocity field and ˙xt be the target velocity from the probability path. We compute a softplus collision barrier between the two robots using collision threshold 0.3 and sharpness parameter γ = 10 .0.The gradient of this barrier with respect to xt is smoothed along the trajectory using a Gaussian filter with σ = 5 .0 and kernel size 9. For training, λc = 2 .5, C(xt) is the robot– robot collision barrier, and M (x1) is a binary mask indicating whether the target trajectory contains a robot–robot collision under threshold 0.3. Thus, the collision-avoidance correction is applied only to collision-risk training samples. The ODE solver step size is 0.004. For inference-time guidance, the robot-collision and obstacle-avoidance guidance weights are set to 0.08 and 1.0, respectively.

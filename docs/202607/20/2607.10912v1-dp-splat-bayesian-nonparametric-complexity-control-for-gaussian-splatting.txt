@@ -1,0 +1,1026 @@
+Title: DP-Splat: Bayesian Nonparametric Complexity Control for Gaussian Splatting
+
+URL Source: https://arxiv.org/pdf/2607.10912v1
+
+Published Time: Tue, 14 Jul 2026 01:25:08 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+# DP-Splat: Bayesian Nonparametric Complexity Control for Gaussian Splatting 
+
+Aqi Dong Embry-Riddle Aeronautical University 
+
+donga2@erau.edu 
+
+# Abstract 
+
+3D Gaussian Splatting represents scenes as finite mixtures of anisotropic Gaussians whose number of components K is governed by heuristic adaptive density control or user-specified caps. Variational Bayes Gaussian Splatting (VBGS) recast splat fitting as conjugate varia-tional inference over a finite mixture, but K remains fixed. We replace the finite symmetric Dirichlet over mixture weights with a truncated stick-breaking Dirichlet-process prior—and, as a theory-backed alternative, a sparse overfitted finite Dirichlet—so that the number of oc-cupied components adapts to the data while every update remains a closed-form coordinate-ascent step (Beta/Categorical/Normal–Inverse–Wishart); a natural-gradient stochastic vari-ant makes the per-step cost independent of the number of points. We give an exact mono-tonicity guarantee, a rigorous truncation-error bound that corrects an anti-conservative large-α approximation in common use, and an honest account of what the fitted number of components does and does not estimate. Empirically, (i) the effective complexity ̂ K adapts to scene complexity and recovers the true K (within ±1) on well-separated synthetic data with regime-appropriate concentration; (ii) a deconfounded three-way image comparison shows the DP prior’s contribution is complexity selection , not per-component efficiency: converged DP fits exceed single-pass fixed-K VBGS at matched budgets by +2 .7 dB on av-erage yet tie an equally converged fixed-K baseline, while on 3D scenes DP-Splat matches or exceeds VBGS’s held-out color prediction with 5.9–7.6× fewer components (single-pass fits at compute comparable to VBGS’s already match with ≈5× fewer); (iii) the posterior-predictive color variance is well calibrated on model-matched synthetic data (regression-ECE 
+
+≈ 3 × 10 −3); and (iv) the ordering suggested by exact-posterior asymptotics reverses under mean-field coordinate ascent at practical N : the Dirichlet-process prior resists over-splitting while the sparse finite mixture saturates its truncation—a gap between variational practice and posterior asymptotics that we document across three orders of magnitude in N . Code, exact reproduction commands, and all experiment records accompany the submission. 
+
+# 1 Introduction 
+
+3D Gaussian Splatting (3DGS) (Kerbl et al., 2023) represents a scene as a mixture of anisotropic 3D Gaussians and renders it with a differentiable rasterizer, achieving state-of-the-art novel-view synthesis at real-time frame rates. A central but under-examined design choice is the number of components : 3DGS grows and prunes Gaussians with adaptive density control—gradient-magnitude splitting and opacity thresholds—that works well in practice but is a stack of heuristics with tunable knobs and no statistical semantics. Follow-up work has made the dynamics more principled (e.g., MCMC-style relocation moves; Kheradmand et al., 2024) yet still requires a user-specified cap on the component count. Variational Bayes Gaussian Splatting (VBGS; Van de Maele et al., 2024) reframed splat fitting as conjugate variational inference over a finite mixture on colored points: closed-form coordinate-ascent variational infer-ence (CAVI) replaces stochastic gradients, enabling continual learning without replay. But the mixture is finite with K fixed in advance, uncertainty is per-component only, and VBGS inherits a component-recycling heuristic to revive dead components—adaptive density control through the back door. 1arXiv:2607.10912v1 [cs.CV] 12 Jul 2026 In the statistics literature, letting a mixture choose its own complexity is a mature problem with three stan-dard routes: Dirichlet-process (DP) mixtures with truncated variational inference (Ferguson, 1973; Sethura-man, 1994; Ishwaran & James, 2001; Blei & Jordan, 2006); sparse overfitted finite mixtures whose superfluous components empty asymptotically (Rousseau & Mengersen, 2011; Malsiner-Walli et al., 2016); and mixtures of finite mixtures with a prior on K (Miller & Harrison, 2018). None of this machinery has, to our knowledge, been applied to splatting-style scene representations. 
+
+This paper. We replace VBGS’s finite symmetric Dirichlet over mixture weights with a truncated stick-breaking DP prior (primary variant) and a sparse overfitted Dirichlet (secondary, theory-backed variant), keeping the entire pipeline conjugate: every update remains a closed-form CAVI step over Beta, Categorical, Normal–Inverse–Wishart (and optionally Gamma, when the DP concentration α is learned) factors, and a natural-gradient stochastic variant (SVI; Hoffman et al., 2013) has per-step cost independent of the number of points N . The result is a splat-fitting procedure in which the number of occupied components ̂ K is an output of posterior inference rather than an input. Our contributions are deliberately statistical rather than benchmark-oriented; we validate claimed properties instead of chasing rendering leaderboards: 1. Closed-form nonparametric splat fitting. A “weight-prior switch” ( dp / sparse _dir / dir )over an otherwise unchanged conjugate model (§3–§4), with exact CAVI (monotone to machine precision; Proposition 1) and an SVI variant that reproduces CAVI exactly in the full-batch limit and fits N = 10 7 points on a laptop CPU. 2. A corrected truncation-error bound. We state the rigorous finite-α truncation bound 
+
+2N (α/ (1+ α)) T −1 and show that the widely quoted 4N e −(T −1) /α approximation of Ishwaran & James (2001) is anti-conservative at α ≈ 1—it undershoots even the exactly evaluated Ishwaran– James bound by orders of magnitude in the regime where DP-Splat models actually operate (§5, Figure 3). 3. An honest account of ̂ K. Consistency theory says DP posteriors inflate the number of components (Miller & Harrison, 2014) while sparse overfitted mixtures empty them (Rousseau & Mengersen, 2011). We document that under CAVI the ordering reverses : the DP variant shows slow, log-like ̂ K
+
+growth while the sparse variant saturates its truncation by N = 10 6 regardless of its concentration— not a contradiction of the exact-posterior theorems, but evidence that they are a poor guide to vari-ational practice at these scales (§6, Figure 4). We trace both effects to coordinate-ascent dynamics (component death without revival) rather than to the priors, and show that learning α by variational Bayes tracks the local optimum instead of correcting it. ̂ K is a useful, pragmatic complexity control; it is not a consistent estimator of a “true” K, and we say so. 4. Calibrated color uncertainty for free. The mixture-of-Students posterior predictive yields a closed-form conditional color variance Var[ c | s] whose binned calibration error against realized squared error is ≈ 3×10 −3 on model-matched synthetic data (Figure 5), with a misspecified real-scene assessment reported alongside—uncertainty that fixed-precision baselines simply do not expose. 5. A deconfounded account of matched-budget efficiency. At the complexity the DP posterior 
+
+chooses , converged CAVI exceeds single-pass fixed-K VBGS by +2 .7 dB on average—but ties an equally converged fixed-K baseline at the same ̂ K, isolating the prior’s contribution to complexity selection and uncertainty rather than per-component efficiency. On 3D scenes DP-Splat matches or exceeds VBGS’s held-out point-color prediction with 5.9–7.6× fewer effective components; a single-pass fit at compute comparable to VBGS’s one-shot protocol already matches it with ≈5× fewer (§6). Throughout, the likelihood is the mixture density on colored points (as in VBGS): rendering is a deployment map applied to the fitted posterior, not part of the model, and all theory is stated for the point mixture (§5). 22 Related work 
+
+Complexity control in splatting. 3DGS (Kerbl et al., 2023) manages its component budget by gradient-magnitude densification and opacity pruning—effective but untheorized heuristics whose thresholds are tuned per scene family. 3DGS-as-MCMC (Kheradmand et al., 2024) replaces cloning/splitting with probability-preserving relocation moves, giving the dynamics a sampling interpretation, but retains a user-specified cap on the number of Gaussians. BOGausS (Pateux et al., 2025) attaches variational-flavored confidence scores to densification decisions. VBGS (Van de Maele et al., 2024) is our direct foundation: it fits the mixture on colored point data with conjugate priors and closed-form CAVI, enabling continual learning, and has been extended to SLAM (Zhu et al., 2026); in all of these the mixture is finite with K fixed, and VBGS additionally relies on a reassignment heuristic that recycles dead components. A separate engineering line compacts trained 3DGS models—post-hoc importance pruning (Fan et al., 2024), learned masks (Lee et al., 2024), and Hessian-based uncertainty pruning (Hanson et al., 2025)—demonstrating that standard fits are heavily over-parameterized; these operate on a fixed-budget MLE fit after the fact, whereas we build parsimony into the prior and obtain it during inference, with an account of what the resulting component count means. Our work replaces exactly one ingredient of VBGS—the weight prior—and removes the need to choose K; notably, VBGS’s own default concentration ( e0 = 1 /K ) already makes its finite Dirichlet “sparse” in the sense of Rousseau & Mengersen (2011), a fact we make explicit and exploit as a baseline variant. 
+
+Automatic complexity in mixtures. The three standard statistical routes are: (i) DP mixtures (Ferguson, 1973; Sethuraman, 1994) with blocked-Gibbs or truncated variational inference (Ishwaran & James, 2001; Blei & Jordan, 2006); (ii) sparse overfitted finite mixtures, where a concentration below a dimension-dependent threshold empties superfluous components asymptotically (Rousseau & Mengersen, 2011; Malsiner-Walli et al., 2016); and (iii) mixtures of finite mixtures with a prior on K, the route with consistent posterior inference on the number of components (Miller & Harrison, 2018; Frühwirth-Schnatter et al., 2021). The cautionary results of Miller & Harrison (2013; 2014)—DP and Pitman–Yor mixture poste-riors are inconsistent for the number of components—anchor our discussion of what ̂ K estimates. Posterior contraction of the mixing measure in Wasserstein distance is due to Nguyen (2013). Our contribution to this literature is not new asymptotics but a documented case study of how variational fitting dynamics interact with (and at practical sample sizes, dominate) these prior-level asymptotics. 
+
+Variational methods. We use textbook conjugate mean-field machinery (Bishop, 2006; Blei et al., 2017), stochastic natural-gradient updates (Hoffman et al., 2013; Amari, 1998), and the standard NIW posterior-predictive Student-t (Murphy, 2012); component emptying under variational Bayes for mixtures was observed as early as Ghahramani & Beal (2000). The order-dependence of the truncated stick-breaking family and size-based component reordering were identified by Kurihara et al. (2007); we deliberately implement the plain scheme and quantify its failure modes instead of patching them (§6). 
+
+Uncertainty for scene representations. Post-hoc or architectural uncertainty for radiance fields and splatting is an active area (e.g., Fisher-information view selection; Jiang et al., 2024); VBGS exposes per-component parameter uncertainty but fixes its color precision, so it has no predictive color variance. Our mixture-of-Students predictive gives calibrated per-point color variance as a by-product of the posterior (§6), which we validate with regression-style calibration curves (Kuleshov et al., 2018). 
+
+# 3 Model 
+
+Data model. Data are N colored points; in 2D-image mode each pixel is a point. Point n has a spatial coordinate sn ∈ RDs (Ds=3 for scenes, 2 for images) and a color cn ∈ RDc (Dc=3 ). Write xn = ( sn, c n).Conditional on the assignment zn = k the two modalities are independent Gaussians, 
+
+sn | zn=k ∼ N (μk,s , Σk,s ), cn | zn=k ∼ N (μk,c , Σk,c ), (1) as in VBGS, whose likelihood we inherit unchanged except that we place a full conjugate prior on the color covariance where VBGS fixes its color precision (we retain its fixed variant behind a compatibility flag used 3for cross-code regression tests, §6). The likelihood is the mixture density on points obtained from RGB-D or lifted depth; rendering—expected color conditional on projected location, with the standard rasterizer handling occlusion—is a deployment map, not part of the likelihood. 
+
+Component priors. Per modality m ∈ { s, c }, conjugate Normal–Inverse–Wishart: 
+
+Σk,m ∼ IW (Ψ 0,m , ν 0,m ), μk,m | Σk,m ∼ N (m0,m , Σk,m /κ 0,m 
+
+), (2) with defaults m0,m the data centroid, Ψ0,m =̂σ 2
+
+> m
+
+I(ν0 − Dm − 1) with ̂σ 2 
+
+> m
+
+the mean per-dimension variance, 
+
+κ0 = 10 −3, ν0 = Dm + 2 .
+
+Weight priors (the switch). Variant A (primary), truncated stick-breaking DP: 
+
+vk ∼ Beta(1 , α ) ( k < T ), vT := 1 , πk = vk
+
+∏
+
+> j<k
+
+(1 − vj ), (3) where T is an inference-time truncation (the Gaussian budget for scenes), optionally with a conjugate 
+
+α ∼ Gamma( a0, b 0) (a0 = b0 = 1 ; flag-controlled). Variant B (secondary), sparse overfitted finite mixture: 
+
+π ∼ Dir( e0, . . . , e 0) with K = T components and e0 ≪ 1; by Rousseau & Mengersen (2011), e0 < d/ 2 (with 
+
+d the per-component parameter dimension) makes superfluous components empty asymptotically. Baseline: 
+
+the same Dirichlet with VBGS’s shipped e0 = 1 /K . All three run through one switch on an otherwise identical model. 
+
+Variational family. Truncated mean field, 
+
+q(z, v, θ, α ) = 
+
+> N
+
+∏
+
+> n=1
+
+q(zn) 
+
+> T−1
+
+∏
+
+> k=1
+
+q(vk)
+
+> T
+
+∏
+
+> k=1
+
+∏
+
+> m
+
+q(μk,m , Σk,m ) q(α), (4) with q(zn) = Cat( rn, 1: T ), q(vk) = Beta( γk, 1, γ k, 2), q(μ, Σ) = NIW( mk, κ k, Ψk, ν k) per modality, and q(α) = Gamma( w1, w 2) when α is learned. 
+
+# 4 Inference 
+
+CAVI. With soft counts and weighted moments Nk = ∑ 
+
+> n
+
+rnk , ¯xk = N −1
+
+> k
+
+∑ 
+
+> n
+
+rnk xn, Sk = ∑ 
+
+> n
+
+rnk (xn −
+
+¯xk)( xn − ¯xk)⊤ (per modality), coordinate ascent cycles four exact updates until the relative ELBO change is below 10 −6:
+
+(i) NIW (each modality independently): 
+
+κk = κ0 + Nk, mk = κ0m0 + Nk ¯xk
+
+κk
+
+, νk = ν0 + Nk, Ψk = Ψ 0 + Sk + κ0Nk 
+
+> κ0+Nk
+
+(¯ xk − m0)(¯ xk − m0)⊤. (5) 
+
+(ii) Sticks (Variant A): γk, 1 = 1 + Nk, γk, 2 = Eq [α] + ∑ 
+
+> j>k
+
+Nj ; the Dirichlet variants use αpost  
+
+> k
+
+= e0 + Nk.
+
+(iii) Responsibilities via expected log-weights E[log πk] = E[log vk]+ ∑ 
+
+> j<k
+
+E[log(1 −vj )] (digamma identities; Dirichlet form ψ(αpost  
+
+> k
+
+) − ψ(∑ 
+
+> j
+
+αpost  
+
+> j
+
+)) and the expected Gaussian log-density under the NIW posterior (Bishop, 2006, §10.2): 
+
+log ρnk = E[log πk] + ∑
+
+> m
+
+( 12 E[log |Λk,m |] − Dm 
+
+> 2
+
+log 2 π − 12 E[(xn,m − μk,m )⊤Λk,m (xn,m − μk,m )])
+
+, (6) normalized with log-sum-exp. 
+
+(iv) Concentration (flagged): w1 = a0 + T − 1, w2 = b0 − ∑ 
+
+> k<T
+
+E[log(1 − vk)] .The ELBO is implemented one named function per term and each expectation is verified against Monte Carlo estimates from q; the full loop is verified against an independently written brute-force oracle and against the reference VBGS implementation (§6). Means are initialized by k-means++ seeding on a subsample; all other posteriors start at their priors. 4Stochastic variant. For large N , the global parameters λ ∈ { γ, NIW naturals , (w1, w 2)} follow natural-gradient steps (Hoffman et al., 2013): a minibatch B yields intermediate estimates ˆλ from sufficient statistics scaled by N/ |B|, blended as λ(t) = (1 − ρt)λ(t−1) + ρt ˆλ with ρt = ( t + τ0)−κsched (τ0 = 64 ; κsched = 0 .7,distinct from the NIW parameter κk; |B| = 2 16 ). The NIW blend is performed in natural-parameter space 
+
+(κ, κm, ν, Ψ + κmm ⊤), in which the conjugate update is affine in the sufficient statistics; with |B| = N
+
+and ρt = 1 the scheme reproduces full-batch CAVI to 10 −8–10 −9 relative (unit-tested per parameter block). Per-step cost is independent of N : fitting N = 10 7 points takes 12 s on a laptop CPU (§6). The rank-one subtraction recovering Ψ from naturals requires float64 or centered data; we document this and all numerical safeguards in the repository. 
+
+Effective complexity and rendering. We report ̂ K = # {k : Nk > n min } with nmin = 1 (sensitivity to nmin ∈ { 0.5, 1, 2, 5} reported throughout; it never changes a conclusion) and the entropy-based count 
+
+exp( − ∑ 
+
+> k
+
+˜πk log ˜ πk), with ˜πk the normalized expected weights. For rendering we map the posterior exactly as VBGS does: component weights Eq [πk] (posterior expected stick weights for Variant A), splat shape from 
+
+E[Σ k] = Ψ k/(νk −D−1) , components with Nk ≤ nmin dropped; images use VBGS’s pure-JAX expected-color renderer, so image-quality comparisons isolate the weight prior rather than the renderer. 
+
+Predictive distribution. Integrating (μ, Σ) over the NIW posterior gives a per-component Student-t,
+
+p(x∗|k) = St (mk, Ψk κk +1   
+
+> κkηk
+
+, η k
+
+) with ηk = νk − D + 1 (Murphy, 2012), and mean-field independence makes the predictive an exact mixture ˆp(x∗) = ∑ 
+
+> k
+
+E[πk] St s(s∗|k) St c(c∗|k). Conditioning on location gives closed-form color moments 
+
+wk(s∗) ∝ E[πk] St s(s∗ | k), E[c | s∗] = ∑
+
+> k
+
+wkmk,c , Cov[ c | s∗] = ∑
+
+> k
+
+wk
+
+(Ck +mk,c m⊤
+
+> k,c
+
+)−E[c | s∗]E[c | s∗]⊤,
+
+(7) with Ck = ˜Sk,c ηk,c /(ηk,c − 2) the Student-t covariance, where ˜Sk,c = Ψ k,c κk +1   
+
+> κkηk,c
+
+is the color Student-t scale (distinct from the scatter matrix Sk; finite covariance for ηk,c > 2, which also covers existence of the mean, 
+
+ηk,c > 1; under the default prior ηk,c = Nk + 3 , so the condition always holds.) All expectations are with respect to q; the factorized per-component predictive St s ×St c reflects mean-field independence of the spatial and color blocks. A complete derivation is given in Appendix E; the closed form is additionally verified against independent numerical integration of the joint predictive (agreement ≤ 10 −11 ) and the implementation assembles the covariance in the positive-semidefinite law-of-total-variance form. These moments feed the held-out log-likelihood and calibration experiments. 
+
+# 5 Statistical properties 
+
+All statements are for the point-data mixture likelihood (1); the rasterized rendering map is downstream of inference and carries no guarantees here (§7). 
+
+Proposition 1 (Exact monotone coordinate ascent) . Each of the four updates of §4 exactly maximizes the ELBO over its mean-field block given the others, hence L is nondecreasing along the CAVI cycle, which converges to a stationary point. Argument. Standard: the model is conjugate exponential-family in every block (Categorical, Beta, NIW, Gamma), so each coordinate update sets the block to the exact conditional maximizer (Bishop, 2006, §10.2); monotone convergence follows from coordinate ascent on a function bounded above. The numerical compan-ion: across all Figure 1 runs (20 seeds × 4 variants, up to 200 iterations each) the worst observed relative ELBO decrease is −9.7 × 10 −16 —a few float64 ulps of the ELBO magnitude—and a separate unit test runs the full 200 iterations × 20 seeds × 4 variants with no violation beyond 10 −10 relative. 
+
+Proposition 2 (Truncation error, rigorous finite-α form) . Let mT and m∞ denote the marginal densities of N observations under the truncated ( vT := 1 ) and full stick-breaking priors with concentration α, all else equal. Then 
+
+∥mT − m∞∥1 ≤ 2
+
+(
+
+1 − E
+
+[( ∑  
+
+> k<T
+
+πk
+
+)N ]) 
+
+≤ 2N
+
+( α
+
+> 1+ α
+
+)T −1
+
+. (8) 5Argument. The first inequality is due to Ishwaran & James (2001). For the second, 1 − xN ≤ N (1 − x)
+
+on [0 , 1] and E[1 − ∑ 
+
+> k<T
+
+πk] = E[∏ 
+
+> k<T
+
+(1 − vk)] = ( α/ (1+ α)) T −1 by independence of the vk. The relation to Ishwaran & James’s widely quoted approximation 4N e −(T −1) /α is as follows: since log(1 + 1 /α ) ≤ 1/α ,the per-stick factor obeys e−1/α ≤ α/ (1+ α) for every α > 0 (with near-equality as α → ∞ , the gap being 
+
+O(α−2)), so the exponential form decays strictly faster in T than the rigorous factor; its constant-4 prefactor compensates only for small T (at α = 1 , 4N e −(T −1) falls below 2N 2−(T −1) for all T ≥ 4). Consequently the exponential expression is anti-conservative in the small-α regime where splat models operate: at α ≈ 1 it undershoots even the exactly evaluated intermediate bound 2(1 −E[( ∑ 
+
+> k<T
+
+πk)N ]) by 3–6 orders of magnitude over the T we sweep (Figure 3, right), and it should not be quoted as a bound there. Figure 3 overlays that exactly evaluated intermediate bound (by Monte Carlo), the closed-form bound (8), and the exponential approximation. Practically, at scene budgets ( T in the hundreds to thousands, ̂ K ≪ T ) the bound is astronomically small: truncation is a non-issue, and we observe held-out log-likelihood and ̂ K to be flat in 
+
+T for T ≳ 2.5̂ K.
+
+What ̂ K estimates (and does not). Even exactly computed DP-mixture posteriors are inconsistent for the number of components: superfluous small clusters persist as N → ∞ (Miller & Harrison, 2013; 2014). Sparse overfitted finite mixtures have the opposite asymptotics—superfluous components empty (Rousseau & Mengersen, 2011)—and mixtures of finite mixtures give the consistent route (Miller & Harrison, 2018; Frühwirth-Schnatter et al., 2021). Our position: ̂ K under truncated CAVI is a pragmatic complexity control ,not an estimator of a “true” K (ill-defined for real scenes in any case), and §6 shows that at practical N
+
+the fitting dynamics dominate these prior-level asymptotics—to the point of inverting the expected ordering between the DP and sparse variants. We view quantifying this gap between variational practice and posterior asymptotics as a contribution in itself; closing it (merge/split or reordering moves, Kurihara et al., 2007; or MFM-style inference) is future work. 
+
+Contraction of the mixing measure. For the fitted mixing measure ̂ G = ∑ 
+
+> k
+
+E[πk] δ(mk,s ,m k,c ) we report Wasserstein-2 distance to the true mixing measure on synthetic data (Figure 6); Nguyen (2013) gives posterior contraction rates for mixing measures in Wasserstein distance for exact posteriors, which we cite as context—no claim is made that CAVI attains them. 
+
+# 6 Experiments 
+
+Experiments validate claimed statistical properties; we do not tune for rendering benchmarks. All runs are config-driven scripts with fixed seeds; every reported number is written to a machine-readable record by the producing script. Hardware: all results in this paper were produced on a single laptop-class CPU (Apple M-series, float64); the stochastic variant makes this sufficient up to N = 10 7.
+
+Verification protocol. Three independent layers guard correctness: (i) every update equation is tested against a brute-force NumPy oracle written directly from the model equations, without reference to the JAX implementation (tolerances 10 −7–10 −12 , parameter-dependent); (ii) every ELBO term is tested against Monte Carlo estimates from q (10 5 samples for scalar terms, SE-calibrated tolerances); (iii) a cross-code regression starts from the reference VBGS implementation’s own initialized model and verifies that one step of our CAVI (baseline configuration: Dirichlet weights with VBGS’s e0 = 1 /K , fixed color precision) reproduces one step of VBGS’s fit_gmm across all posterior parameters to 10 −6–10 −8 relative (parameter-dependent). The suite comprises 47 tests. 
+
+6.1 Exactness and convergence (Figure 1) 
+
+Across 20 seeds × 4 variants ( dp , dp(learn) , sparse _dir , dir ) on colored 2D mixtures ( Ktrue =10 , N =10 4,
+
+T =30 ), the ELBO is monotone to machine precision (worst relative decrease −9.7 × 10 −16 , on one seed of one variant; the other three variants show exactly zero violations). DP variants converge in 5–16 iterations versus 30–73 (median ≈38 ) for the Dirichlet variants. About 10% of DP seeds settle in a visibly lower local optimum—CAVI is a local method and we report this rather than reseeding it away. 6Figure 1: ELBO traces, 20 seeds per panel. All traces are monotone (worst relative decrease −9.7 × 10 −16 ). DP variants converge 3–5× faster in iteration count; dp(learn) (labeled dp+learn_alpha in the legend) is visually identical to dp . Two DP seeds per panel ( 10% ) converge to a lower local optimum. 
+
+Figure 2: ̂ K (nmin =1 ) vs. N for Ktrue ∈ { 3, 10 , 30 } (dotted line), T = 3 Ktrue . Bars: seed min/max ( n=3 ); series are offset horizontally for visibility. dp(learn) coincides with dp( α=1) and sparse _dir with dir (that coincidence is itself a finding; see text). 
+
+6.2 ̂ K recovery is real but concentration-regime-dependent (Figure 2) 
+
+On well-separated colored 2D mixtures with Ktrue ∈ { 3, 10 , 30 }, N ∈ { 10 3, 10 4, 10 5}, T = 3 Ktrue : with a regime-appropriate fixed α, the DP variant recovers Ktrue within ±1—and often exactly—in every regime (α=0 .1 ↔ Ktrue =3 , exact at all N including 10 5; α=1 ↔ 10 ; α=5 ↔ 30 at N =10 4). No single fixed α covers all regimes; small α over-merges large-K data and large α over-splits small-K data at large N . Learning α
+
+variationally does not escape this: dp(learn) tracks dp( α=1) cell-for-cell—the α-posterior adapts to the local optimum the fit is already in (mode-following), a known but rarely quantified VB pathology. The threshold 
+
+nmin is immaterial: ̂ K is identical across nmin ∈ { 0.5, 1, 2, 5} in 159 of 162 fits and differs by at most 1 in the remainder. The components driving over- or under-estimation carry substantial mass—they are not threshold artifacts—and no cell’s conclusion changes. 
+
+6.3 Truncation is a non-issue—with the right bound (Figure 3) 
+
+Sweeping T ∈ { 10 , 25 , 50 , 100 , 200 } at Ktrue =10 , N =2 ×10 4, α=1 : held-out log-likelihood and ̂ K are flat for 
+
+T ≥ 25 (̂ K = 10 .3 ± 0.5); at T = Ktrue two of three seeds land in degraded local optima—an optimization effect, not truncation error. The right panel compares the exactly evaluated intermediate bound 2(1 −
+
+E[( ∑ 
+
+> k<T
+
+πk)N ]) with the two closed-form expressions of Proposition 2: the rigorous form 2N (α/ (1+ α)) T −1
+
+dominates the exact curve as required, while the popular 4N e −(T −1) /α approximation lies below that exactly evaluated quantity by 3–6 orders of magnitude at α=1 —anti-conservative exactly where these models live. 
+
+6.4 The variational inversion of the ̂ K asymptotics (Figure 4) 
+
+Asymptotic theory predicts DP posteriors inflate the number of components (Miller & Harrison, 2014) while sparse overfitted mixtures empty them (Rousseau & Mengersen, 2011). Under truncated CAVI on 3D colored 7Figure 3: Truncation sweep. Left/middle: held-out log-likelihood and ̂ K vs. T (individual seeds shown; 
+
+T =Ktrue exhibits bimodal local optima). Right: the exactly evaluated intermediate bound (MC; censored below MC resolution), the closed-form bound of Proposition 2, and the anti-conservative large-α approxi-mation. 
+
+Figure 4: ̂ K growth with N (3D, Ktrue =10 , T =60 ; CAVI for N ≤ 10 5, SVI beyond; bars: seed min/max). The sparse finite mixture saturates T by N =10 6 for all three e0; the DP variants grow slowly. This inverts the naive reading of the asymptotic theory (see text). mixtures ( Ktrue =10 , T =60 , N from 10 3 to 10 6) we observe the opposite ordering: dp( α=1) grows slowly (10 → 13 .3 over three decades of N , consistent with log-like inflation), while the sparse variant saturates the 
+
+entire truncation ( ̂K = 22 at 10 5, 60 = T at 10 6)—identically for e0 ∈ { 0.1, 0.01 , 0.001 }. The e0-insensitivity is diagnostic: the posteriors do differ by exactly the e0 perturbation while ̂ K does not, so the over-splitting is driven by likelihood-dominated coordinate-ascent dynamics (splitting a dense cluster costs almost nothing at large N , and CAVI has no merge moves), not by the prior. Conversely, the DP’s size-biased stick ordering suppresses late components early—which resists over-splitting at large N but also under-recovers when α is too small for the regime ( dp( α=0 .1) merges to ̂ K ≈ 4 here). At these sample sizes, fitting dynamics dominate prior asymptotics .
+
+6.5 Calibrated color uncertainty (Figure 5) 
+
+On 3D synthetics with overlapping clusters ( 3σ separation), so that predictive color uncertainty genuinely varies in space through component ambiguity, we bin held-out points by predicted tr Cov[ c | s∗] (10 quantile 8Figure 5: Predictive color-variance calibration: binned realized squared error vs. binned predicted variance (three seeds). “ECE” denotes the variance-calibration analogue ∑ 
+
+> b
+
+fb |MSE b − Var b| (Kuleshov et al., 2018). bins) and compare each bin’s mean predicted variance to its realized ∥c∗ − E[c|s∗]∥2. The calibration curve sits on the diagonal across the full variance range; the regression expected calibration error is 1.3–3.0 × 10 −3
+
+(three seeds), with global mean predicted variance within 2% of realized MSE. This is the well-specified regime, where good calibration is expected; under misspecification—the real scenes of §6.8, same protocol on held-out frames—calibration degrades to ECE 0.011 (lego , variance over-estimated by 18% ) and 0.016 
+
+(chair , under-estimated by 21% ): still the right order of magnitude and positively correlated with realized error, but no longer sharp. Fixed-color-precision baselines expose no comparable quantity in either regime. 
+
+6.6 Mixing-measure contraction (Figure 6) 
+
+W2 between the fitted mixing measure (posterior mean atoms, pruned expected weights) and the truth contracts as a power law in N (1.56 → 0.46 for dp , α=1 , over N = 10 3 → 10 5); at N = 10 5 the DP variant is closer than the sparse variant ( 0.46 vs. 0.52 mean), consistent with Figure 4: over-split components carry weight off the true atoms. 
+
+6.7 Images at matched effective budgets: a deconfounded comparison (Table 1) 
+
+Following VBGS’s image protocol (Tiny-ImageNet per Le & Yang, 2015; 64 ×64 , pixels as points, their data pipeline and pure-JAX renderer for all methods), we fit DP-Splat with T =2000 (VBGS’s demo budget) on 12 validation images and compare against three baselines: (a) VBGS at its full budget K=2000 ; (b) VBGS at fixed K =̂ K (matched effective budget, VBGS’s own single-pass protocol); and (c) a converged fixed-K
+
+Dirichlet CAVI fit at K =̂ K—baseline (c) isolates the weight prior from the effect of running coordinate ascent to convergence. The result is clean: DP-Splat exceeds single-pass VBGS at matched ̂ K by +2 .7 dB on average, but against the equally converged fixed-K baseline the difference essentially vanishes ( −0.01 and 
+
++0 .17 dB mean at α ∈ { 1, 100 }). The DP prior’s contribution is selecting ̂ K—and supplying the predictive uncertainty machinery—not per-component rendering efficiency at a given K; the raw matched-budget gap over VBGS is attributable to convergence. Two further honest observations: (i) ̂ K stays two orders of magnitude below the T =2000 budget regardless of α (̂ K ∈ [9 , 17] at α=1 , [29 , 53] at α=100 ; component death again—the prior alone cannot force capacity into a fit), so absolute PSNR sits 3–10 dB below VBGS’s full-2000-budget render; (ii) at α = 1 the DP prior’s own E[K] ≈ log N ≈ 8 is faithfully realized—the model does what its prior says. 9Figure 6: W2(fitted, true mixing measure) vs. N (three seeds; atoms in joint spatial–color mean space). Context: contraction theory for exact posteriors is given by Nguyen (2013); no claim is made that CAVI attains those rates. Table 1: Images at matched effective budgets (12 Tiny-ImageNet images, T =2000 ; mean [min, max] over images; mean only for the full-budget column). All methods rendered identically. “conv. dir@ ̂ K” = converged fixed-K Dirichlet CAVI at the same ̂ K (the deconfound). Full-budget VBGS ( K=2000 ): 18 .4–33 .5 dB across these images. 
+
+α̂ K vs. VBGS@ ̂ K (single-pass) vs. conv. dir@ ̂K vs. VBGS@2000 1 9–17 +2 .80 [+0 .64 , +4 .77] −0.01 [ −0.77 , +0 .77] −6.47 
+
+100 29–53 +2 .70 [+0 .51 , +5 .46] +0 .17 [+0 .02 , +0 .70] −4.79 
+
+6.8 3D scenes, continual fitting, and scaling (Figure 7) 
+
+On NeRF-synthetic scenes (Mildenhall et al., 2020, test-split RGB-D point clouds; 40 frames × 20k sub-sampled points; matched budget T = K = 2000 ), DP-Splat is fit by SVI over the frame stream (10 epochs) and VBGS by its own continual protocol. We report the rasterizer-free held-out metric available to both methods—point-level color prediction E[c | s] against ground truth on an unseen frame—plus ̂ K trajectories and DP-Splat’s predictive variance maps (Table 2). On lego , DP-Splat at α=100 exceeds VBGS’s held-out prediction ( 17 .42 vs. 17 .13 dB) with 5.9× fewer effective components ( ̂ K = 234 vs. 1374 used); on chair it matches within 0.14 dB with 7.6× fewer ( 181 vs. 1373). Compute is not the driver: a single-pass DP-Splat fit (23–25 s, comparable to VBGS’s 36 s one-shot protocol) already reaches 17.25 dB on lego and 16.03 dB on chair ; the additional epochs mainly prune ̂ K (e.g., 276 → 234 ) rather than improve prediction (Ta-ble 2). The fitted complexity also orders the two scenes plausibly—the geometrically richer lego receives more components than chair at identical settings (an n=2 observation we report as such)—and, unlike the baseline, every prediction carries a predictive variance (Figure 7, middle: uncertainty concentrates on edges and occlusion boundaries). Unlike on 64 ×64 images, ̂ K here rises far past 30 with α—the earlier saturation was data-complexity-limited, not a universal ceiling. Rasterized novel-view PSNR/SSIM require the CUDA rasterizer and full-resolution protocols; we scope them to follow-up (§7) and note that published full-pipeline 3DGS numbers (e.g., chair 35 .8 dB; Kerbl et al., 2023) are not comparable to this point-level proxy. Finally, the natural-gradient variant’s per-step cost is flat in N (0.04–0.05 s/step at |B| = 2 16 , T =60 , from N = 10 5
+
+to 10 7 on CPU): dataset size is not the binding constraint for DP-Splat. 
+
+# 7 Limitations and discussion 
+
+Scope of the guarantees. All theory concerns the mixture likelihood on colored points. The rasterized rendering map (occlusion, alpha compositing) is applied downstream of inference exactly as in VBGS and 10 Table 2: Scenes at matched budget T = K = 2000 (held-out frame; point-level metrics; original color units; fit wall-clock on the same CPU). Single-pass DP-Splat uses compute comparable to VBGS’s one-shot continual protocol; extra epochs mainly prune ̂ K rather than improve prediction. α=100 was fixed a priori across scenes (no per-scene tuning); α=1 shown for sensitivity. DP-Splat additionally provides per-point predictive variance and log-likelihood; VBGS’s fixed color precision does not define a comparable quantity. Scene Model Effective K Point-PSNR (dB) Held-out LL/pt Fit (s) lego DP-Splat α=1 (10 ep.) 20 14.56 −1.65 223 lego DP-Splat α=100 (1 ep.) 276 17.25 +0 .69 25 lego DP-Splat α=100 (10 ep.) 234 17.42 +1.03 216 lego VBGS ( K=2000 ) 1374 17.13 — 36 chair DP-Splat α=1 (10 ep.) 19 14.55 −4.68 143 chair DP-Splat α=100 (1 ep.) 264 16.03 −2.06 23 chair DP-Splat α=100 (10 ep.) 181 16.03 −1.95 144 chair VBGS ( K=2000 ) 1373 16.17 — 35 
+
+Figure 7: Scene fitting ( lego ). Left: effective components during continual fitting (matched budget T =2000 ): VBGS pins ∼1374 components of its budget; DP-Splat self-selects ∼234 (α=100 , starting from ∼850 
+
+and shedding redundant components) or ∼20 (α=1 ). Middle: held-out-view predictive color variance— uncertainty concentrates on edges and occlusion boundaries. Right: held-out E[c|s] (denormalized). carries no statistical guarantees; likewise our scene experiments use RGB-D/depth-lifted points and inherit VBGS’s depth dependency. 
+
+What the prior can and cannot do under CAVI. Our central empirical message cuts both ways. The DP prior gives genuine, closed-form complexity adaptation—but the realized ̂ K is shaped as much by coordinate-ascent dynamics (component death without revival; no merge moves) as by the prior, and hyperparameter learning follows the mode rather than fixing it. We chose to implement the plain scheme and measure these effects rather than patch them with the reassignment heuristics our approach is meant to replace; principled revival—restricted re-initialization between CAVI runs, merge/split proposals, or MFM-style inference (Miller & Harrison, 2018)—is the natural next step, and our results give it a quantitative target. 
+
+Rendering-grade evaluation. We deliberately evaluated with the reference implementation’s own ren-derer on images and a rasterizer-free point-level metric on scenes, so that every comparison isolates the weight prior. Full-resolution rasterized novel-view benchmarks (and the corresponding quality-vs-budget frontier against published 3DGS numbers) require the CUDA rasterizer stack and are scoped to follow-up work on GPU hardware; the fitted models and the rendering map are already in place. 11 Numerical practice. Exactness claims hold in float64. Two float64-critical paths are documented in the repository (digamma/Beta computations; the rank-one recovery of Ψ from NIW naturals in the SVI blend), along with a scale-aware eps-level ridge used only inside Cholesky factorizations. None of these affect reported results; float32 deployments should center data and keep the NIW blend in float64. 
+
+Outlook. Because the entire pipeline stays conjugate, the door is open to hierarchical extensions (objects as groups of components via nested constructions) and to uncertainty-driven acquisition (next-best-view from Var[ c | s]), both of which we leave to future work. 
+
+Broader Impact Statement 
+
+This work is foundational statistical methodology for 3D scene representation. Calibrated uncertainty in reconstructions can reduce downstream harm (e.g., flagging under-observed geometry before decisions are made on it); we are not aware of significant risks of harm specific to this method beyond those generic to 3D reconstruction. 
+
+Reproducibility Statement 
+
+All results in this paper are produced by config-driven scripts (one per figure) with fixed seeds; every number in the tables is written to a JSON record by the producing script, and a repository document maps each figure to its exact command. The variational updates are tested against an independently written brute-force NumPy oracle, every ELBO term against Monte Carlo estimates from q, and one full CAVI step against the reference VBGS implementation (cross-code regression to 10 −6–10 −8 relative, parameter-dependent). Code, reproduction commands, and all experiment records are available at https://github.com/archiedong/ dp-splat (MIT license). 
+
+Acknowledgments 
+
+The Software used in this research was created by VERSES, Inc. © 2024 VERSES AI, Inc. 
+
+# References 
+
+Shun-ichi Amari. Natural gradient works efficiently in learning. Neural Computation , 10(2):251–276, 1998. doi: 10.1162/089976698300017746. Christopher M. Bishop. Pattern Recognition and Machine Learning . Information Science and Statistics. Springer, New York, 2006. ISBN 978-0-387-31073-2. David M. Blei and Michael I. Jordan. Variational inference for Dirichlet process mixtures. Bayesian Analysis ,1(1):121–143, 2006. doi: 10.1214/06-BA104. David M. Blei, Alp Kucukelbir, and Jon D. McAuliffe. Variational inference: A review for statisticians. 
+
+Journal of the American Statistical Association , 112(518):859–877, 2017. doi: 10.1080/01621459.2017. 1285773. Peng Ding. On the conditional distribution of the multivariate t distribution. The American Statistician , 70 (3):293–295, 2016. Zhiwen Fan, Kevin Wang, Kairun Wen, Zehao Zhu, Dejia Xu, and Zhangyang Wang. LightGaussian: Unbounded 3D Gaussian compression with 15x reduction and 200+ FPS. In Advances in Neural In-formation Processing Systems , volume 37, pp. 140138–140158. Curran Associates, Inc., 2024. doi: 10.52202/079017-4447. Thomas S. Ferguson. A Bayesian analysis of some nonparametric problems. The Annals of Statistics , 1(2): 209–230, 1973. doi: 10.1214/aos/1176342360. Sylvia Frühwirth-Schnatter, Gertraud Malsiner-Walli, and Bettina Grün. Generalized mixtures of finite mixtures and telescoping sampling. Bayesian Analysis , 16(4):1279–1307, 2021. doi: 10.1214/21-BA1294. 12 Zoubin Ghahramani and Matthew J. Beal. Variational inference for Bayesian mixtures of factor analysers. In Advances in Neural Information Processing Systems 12 , pp. 449–455. MIT Press, 2000. Alex Hanson, Allen Tu, Vasu Singla, Mayuka Jayawardhana, Matthias Zwicker, and Tom Goldstein. PUP 3D-GS: Principled uncertainty pruning for 3D Gaussian splatting. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pp. 5949–5958, 2025. Matthew D. Hoffman, David M. Blei, Chong Wang, and John Paisley. Stochastic variational inference. 
+
+Journal of Machine Learning Research , 14(40):1303–1347, 2013. Hemant Ishwaran and Lancelot F. James. Gibbs sampling methods for stick-breaking priors. Journal of the American Statistical Association , 96(453):161–173, 2001. doi: 10.1198/016214501750332758. Wen Jiang, Boshu Lei, and Kostas Daniilidis. FisherRF: Active view selection and mapping with radiance fields using Fisher information. In Computer Vision – ECCV 2024 , Lecture Notes in Computer Science, pp. 422–440. Springer, 2024. Bernhard Kerbl, Georgios Kopanas, Thomas Leimkühler, and George Drettakis. 3D Gaussian splatting for real-time radiance field rendering. ACM Transactions on Graphics , 42(4):1–14, July 2023. doi: 10.1145/ 3592433. Shakiba Kheradmand, Daniel Rebain, Gopal Sharma, Weiwei Sun, Yang-Che Tseng, Hossam Isack, Abhishek Kar, Andrea Tagliasacchi, and Kwang Moo Yi. 3D Gaussian splatting as Markov chain Monte Carlo. In 
+
+Advances in Neural Information Processing Systems , volume 37, pp. 80965–80986. Curran Associates, Inc., 2024. doi: 10.52202/079017-2573. Volodymyr Kuleshov, Nathan Fenner, and Stefano Ermon. Accurate uncertainties for deep learning using calibrated regression. In Proceedings of the 35th International Conference on Machine Learning , volume 80 of Proceedings of Machine Learning Research , pp. 2796–2804. PMLR, 2018. Kenichi Kurihara, Max Welling, and Yee Whye Teh. Collapsed variational Dirichlet process mixture models. In Proceedings of the Twentieth International Joint Conference on Artificial Intelligence (IJCAI-07) , pp. 2796–2801, 2007. Ya Le and Xuan Yang. Tiny ImageNet visual recognition challenge. Technical report, Stanford University, CS231N course report, 2015. Joo Chan Lee, Daniel Rho, Xiangyu Sun, Jong Hwan Ko, and Eunbyung Park. Compact 3D Gaussian representation for radiance field. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pp. 21719–21728, 2024. Gertraud Malsiner-Walli, Sylvia Frühwirth-Schnatter, and Bettina Grün. Model-based clustering based on sparse finite Gaussian mixtures. Statistics and Computing , 26(1-2):303–324, 2016. doi: 10.1007/ s11222-014-9500-2. Ben Mildenhall, Pratul P. Srinivasan, Matthew Tancik, Jonathan T. Barron, Ravi Ramamoorthi, and Ren Ng. NeRF: Representing scenes as neural radiance fields for view synthesis. In Andrea Vedaldi, Horst Bischof, Thomas Brox, and Jan-Michael Frahm (eds.), Computer Vision – ECCV 2020 , volume 12346 of 
+
+Lecture Notes in Computer Science , pp. 405–421. Springer, 2020. doi: 10.1007/978-3-030-58452-8_24. Jeffrey W. Miller and Matthew T. Harrison. A simple example of Dirichlet process mixture inconsistency for the number of components. In Advances in Neural Information Processing Systems , volume 26. Curran Associates, Inc., 2013. Jeffrey W. Miller and Matthew T. Harrison. Inconsistency of Pitman–Yor process mixtures for the number of components. Journal of Machine Learning Research , 15:3333–3370, 2014. Jeffrey W. Miller and Matthew T. Harrison. Mixture models with a prior on the number of components. 
+
+Journal of the American Statistical Association , 113(521):340–356, 2018. doi: 10.1080/01621459.2016. 1255636. 13 Kevin P. Murphy. Machine Learning: A Probabilistic Perspective . MIT Press, Cambridge, MA, 2012. ISBN 978-0-262-01802-9. XuanLong Nguyen. Convergence of latent mixing measures in finite and infinite mixture models. The Annals of Statistics , 41(1):370–400, 2013. doi: 10.1214/12-AOS1065. Stéphane Pateux, Matthieu Gendrin, Luce Morin, Théo Ladune, and Xiaoran Jiang. BOGausS: Better optimized Gaussian splatting. arXiv preprint arXiv:2504.01844 , 2025. Michael Roth. On the multivariate t distribution. Technical Report LiTH-ISY-R-3059, Linköping University, Division of Automatic Control, 2013. Judith Rousseau and Kerrie Mengersen. Asymptotic behaviour of the posterior distribution in overfitted mixture models. Journal of the Royal Statistical Society: Series B (Statistical Methodology) , 73(5):689–710, 2011. doi: 10.1111/j.1467-9868.2011.00781.x. Jayaram Sethuraman. A constructive definition of Dirichlet priors. Statistica Sinica , 4(2):639–650, 1994. Toon Van de Maele, Ozan Çatal, Alexander Tschantz, Christopher L. Buckley, and Tim Verbelen. Variational Bayes Gaussian splatting. arXiv preprint arXiv:2410.03592 , 2024. Yuhan Zhu, Yanyu Zhang, Jie Xu, and Wei Ren. VBGS-SLAM: Variational Bayesian Gaussian splatting simultaneous localization and mapping. arXiv preprint arXiv:2604.02696 , 2026. 
+
+# A ELBO decomposition and verification 
+
+The ELBO is L = E[log p(X|Z, θ )]+ E[log p(Z|v)]+ E[log p(v|α)]+ E[log p(θ)]+ E[log p(α)] −E[log q(Z, v, θ, α )] ,implemented one named function per term. The NIW terms use the Wishart (precision) parameter-ization p(Λ) = W(Ψ −10 , ν 0); per-term values differ from the Inverse-Wishart statement of §3 by the change-of-variables Jacobian (D+1) E[log |Λk|], which cancels between E[log p(θ)] and E[log q(θ)] , leav-ing L invariant (verified numerically). Every expectation is tested against Monte Carlo draws from q
+
+(Wishart/Beta/Gamma/Dirichlet sampling; 10 5 samples for scalar terms; agreement within 5 standard er-rors), and the assembled cycle is tested for monotonicity over 200 iterations × 20 seeds × 4 variants. 
+
+# B Summary of validation criteria 
+
+Table 3: Validation criteria, fixed before the experiments were run, and their outcomes. Criterion Outcome ELBO monotone under full-batch CAVI (200 it. 
+
+× 20 seeds, all variants) Pass; worst relative decrease −9.7 ×
+
+10 −16 
+
+Updates match independent brute-force oracle (N ≤ 200 , T ≤ 10 )Pass at 10 −7–10 −12 
+
+ELBO terms match MC from q Pass within 5 SE SVI with |B|=N , ρt=1 reproduces CAVI Pass at 10 −8–10 −9
+
+One CAVI step reproduces reference VBGS step (baseline config) Pass at 10 −6–10 −8̂
+
+K recovers Ktrue ± 1 at T = 3 Ktrue Pass with regime-appropriate α (§6) Image PSNR vs. fixed-K VBGS at matched effec-tive budget within 0.5 dB Pass, 24/24 image-α cells (exceeds by +0 .5 to +5 .5 dB); ties converged fixed-K CAVI at the same ̂ K (−0.8
+
+to +0 .8 dB) 14 Figure 8: Scene fitting ( chair ), companion to Figure 7: VBGS pins ∼1373 components; DP-Splat self-selects 
+
+∼181 (α=100 ) or ∼19 (α=1 ). 
+
+# C Additional scene figure D Full ̂ K tables 
+
+Complete per-cell records (including nmin sensitivity and entropy-based effective K) for Figures 2 and 4 ship as machine-readable JSON with the code; the included repository document RESULTS.md renders them as tables. 
+
+# E Derivation of the predictive conditional moments (Eq. 7) 
+
+Setup and notation 
+
+Data points are x = ( s, c ) ∈ RDs × RDc . The per-component likelihood factorizes across modalities, 
+
+p(x | θk) = N(s | μk,s , Σk,s 
+
+) N(c | μk,c , Σk,c 
+
+), θk = ( θk,s , θ k,c ), θk,m = ( μk,m , Σk,m ),
+
+and the mixture likelihood is p(x | π, θ ) = ∑ 
+
+> k
+
+πk p(x | θk). The variational posterior is mean-field: 
+
+q(π, θ ) = q(π) ∏
+
+> k
+
+q(θk,s ) q(θk,c ), q(θk,m ) = NIW (mk,m , κ k,m , Ψk,m , ν k,m 
+
+).
+
+NIW convention. NIW( m, κ, Ψ, ν ) means Σ ∼ IW(Ψ , ν ) with density 
+
+IW(Σ | Ψ, ν ) = |Ψ|ν/ 2
+
+2νD/ 2 ΓD (ν/ 2) |Σ|−(ν+D+1) /2 e− 12 tr(ΨΣ −1), ν > D − 1,
+
+and μ | Σ ∼ N (m, Σ/κ ). Here ΓD (a) = πD(D−1) /4 ∏Di=1 Γ(a + 1−i
+
+> 2
+
+). This is the convention of Murphy (2012, §4.6.3); equivalently the precision satisfies Σ−1 ∼ Wishart(Ψ −1, ν ). The conjugate update in niw.py 
+
+(Ψn = Ψ 0 + S + κ0Nκ0+N (¯ x − m0)(¯ x − m0)⊤, νn = ν0 + N ) is stated in exactly this convention, so the predictive formula below applies. The multivariate Student-t density with location μ, scale matrix S ≻ 0, and degrees of freedom η > 0 is 
+
+St( x | μ, S, η ) = Γ( η+D
+
+> 2
+
+)
+
+Γ( η
+
+> 2
+
+) (ηπ )D/ 2 |S|1/2
+
+[
+
+1 + 1 
+
+> η
+
+(x − μ)⊤S−1(x − μ)
+
+]−(η+D)/2
+
+.
+
+15 Step 1: Eq of the mixture is the mixture of Eq ’s 
+
+The posterior predictive under q is ˆp(x∗) := Eq
+
+[p(x∗ | π, θ )]. For fixed x∗,
+
+ˆp(x∗) = Eq
+
+[∑ 
+
+> k
+
+πk N (s∗ | θk,s ) N (c∗ | θk,c )
+
+] (i)
+
+= ∑
+
+> k
+
+Eq
+
+[πk N (s∗ | θk,s ) N (c∗ | θk,c )]
+
+> (ii )
+
+= ∑
+
+> k
+
+E[πk] E[N (s∗ | θk,s )] E[N (c∗ | θk,c )].
+
+(i) is linearity of expectation; for a finite (truncated) mixture it is trivial, and for the infinite DP sum it is justified by Tonelli’s theorem since every term is nonnegative. (ii ) holds because under the mean-field q, the random variables πk, N (s∗ | θk,s ), and N (c∗ | θk,c ) are functions of the mutually independent blocks π, θk,s ,
+
+θk,c , and the expectation of a product of independent, nonnegative, integrable random variables factorizes (Fubini). Note the k-th term only needs π ⊥ θk,s ⊥ θk,c ; independence across components k is not even required for this identity, though mean-field provides it. Each factor E[N (· | θk,m )] is evaluated in Step 2, giving exactly 
+
+ˆp(s∗, c ∗) = ∑
+
+> k
+
+E[πk] St s(s∗ | k) St c(c∗ | k).
+
+This identity is pointwise-exact in x∗ under q—no approximation beyond the mean-field posterior itself. (Under a truncated stick-breaking q(π) = ∏ 
+
+> k
+
+Beta( vk | γk1, γ k2), E[πk] = E[vk] ∏ 
+
+> j<k
+
+E[1 − vj ] by the same independence argument.) 
+
+Step 2: NIW ⇒ Student-t predictive 
+
+Fix a modality and drop indices: q(μ, Σ) = NIW( m, κ, Ψ, ν ), dimension D. We compute p(x) = ∫∫ N (x |
+
+μ, Σ) N (μ | m, Σ/κ ) IW(Σ | Ψ, ν ) dμ d Σ.
+
+2a: Marginalize μ. Given Σ, write x = μ + ε with ε ∼ N (0 , Σ) independent of μ ∼ N (m, Σ/κ ). Sums of independent Gaussians give 
+
+∫
+
+N (x | μ, Σ) N (μ | m, Σ/κ ) dμ = N
+
+(
+
+x
+
+∣∣∣ m, κ+1  
+
+> κ
+
+Σ
+
+)
+
+.
+
+2b: Marginalize Σ. First a lemma: if Σ ∼ IW(Ψ , ν ) and b > 0, then bΣ ∼ IW( bΨ, ν ) (substitute T = bΣ
+
+in the density; the Jacobian b−D(D+1) /2 is absorbed into the normalizer and tr(Ψ( T /b )−1) = tr(( bΨ) T −1)). Hence it suffices to evaluate, with d := x − m,
+
+p(x) = 
+
+∫
+
+> Σ≻0
+
+N (x | m, Σ) IW(Σ | ˜Ψ, ν ) dΣ, ˜Ψ := κ+1  
+
+> κ
+
+Ψ.
+
+Using d⊤Σ−1d = tr( dd ⊤Σ−1), the integrand is 
+
+| ˜Ψ|ν/ 2
+
+2νD/ 2ΓD (ν/ 2) (2 π)D/ 2 |Σ|− (ν+1)+ D+1 2 exp 
+
+{
+
+− 12 tr [( ˜Ψ + dd ⊤)Σ −1]}
+
+,
+
+i.e. an unnormalized IW( ˜Ψ + dd ⊤, ν + 1) kernel. The IW normalization ∫ |Σ|−(ν′+D+1) /2e− 12 tr( AΣ−1) dΣ = 2ν′D/ 2 ΓD (ν′/2) |A|−ν′/2 with ν′ = ν + 1 , A = ˜Ψ + dd ⊤ yields 
+
+p(x) = π−D/ 2 ΓD
+
+( ν+1 2
+
+)
+
+ΓD
+
+( ν
+
+> 2
+
+) | ˜Ψ|ν/ 2
+
+| ˜Ψ + dd ⊤|(ν+1) /2 (the powers of 2 cancel: − νD  
+
+> 2
+
+− D 
+
+> 2
+
++ (ν+1) D 
+
+> 2
+
+= 0 ).
+
+The multivariate-gamma ratio telescopes: 
+
+ΓD
+
+( ν+1 2
+
+)
+
+ΓD
+
+( ν
+
+> 2
+
+) =
+
+> D
+
+∏
+
+> i=1
+
+Γ( ν+2 −i
+
+> 2
+
+)
+
+Γ( ν+1 −i
+
+> 2
+
+) = Γ( ν+1 2
+
+)
+
+Γ( ν+1 −D
+
+> 2
+
+) ,
+
+16 and the matrix determinant lemma gives | ˜Ψ + dd ⊤| = | ˜Ψ| (1 + d⊤ ˜Ψ−1d). Therefore 
+
+p(x) = Γ( ν+1 2
+
+)
+
+Γ( ν+1 −D
+
+> 2
+
+) πD/ 2 | ˜Ψ|1/2
+
+(1 + d⊤ ˜Ψ−1d)−(ν+1) /2.
+
+2c: Identification as Student-t. Match against St( x | m, S, η ): equate the tail exponents, η + D =
+
+ν + 1 ⇒ η = ν − D + 1 , and the quadratic forms, S−1/η = ˜Ψ−1 ⇒ S = ˜Ψ/η . The normalizers then agree identically: Γ( η+D 
+
+> 2
+
+) = Γ( ν+1 2 ), Γ( η 
+
+> 2
+
+) = Γ( ν+1 −D 
+
+> 2
+
+), and (ηπ )D/ 2|S|1/2 = ηD/ 2πD/ 2 η−D/ 2| ˜Ψ|1/2 = πD/ 2| ˜Ψ|1/2.Substituting ˜Ψ = κ+1  
+
+> κ
+
+Ψ:
+
+p(x) = St 
+
+(
+
+x
+
+∣∣∣ m, Ψ κ + 1 
+
+κ (ν − D + 1) , ν − D + 1 
+
+)
+
+.
+
+This is exactly Murphy (2012, eq. (4.222)): p(x | D ) = tνN −D+1 
+
+(mN , κN +1    
+
+> κN(νN−D+1)
+
+SN
+
+) with SN ≡ ΨN the IW scale. It agrees with Bishop (2006, eq. (10.81)) after translating to the Wishart-on-precision parameterization: 
+
+Lk = (νk +1 −D)βk 
+
+> 1+ βk
+
+Wk ⇔ L−1 
+
+> k
+
+= βk +1    
+
+> βk(νk+1 −D)
+
+Ψk with Wk = Ψ −1 
+
+> k
+
+, βk = κk. Note η = ν −D +1 > 0 is automatic from IW properness ( ν > D − 1), so the predictive is always a proper density. 
+
+Step 3: Conditioning the mixture on the sub-vector s = s∗
+
+Write ak := E[πk], fk(s) := St s(s | k), gk(c) := St c(c | k), so ˆp(s, c ) = ∑ 
+
+> k
+
+akfk(s)gk(c) with ∑ 
+
+> k
+
+ak = 1 .Since each gk is a normalized density, the spatial marginal is ˆp(s) = ∫ ˆp(s, c ) dc = ∑ 
+
+> j
+
+aj fj (s), and ˆp(s∗) > 0
+
+for every s∗ because Student-t densities are strictly positive. Hence 
+
+ˆp(c | s∗) = ˆp(s∗, c )ˆp(s∗) = ∑
+
+> k
+
+wk(s∗) gk(c), wk(s∗) = ak fk(s∗)
+
+∑ 
+
+> j
+
+aj fj (s∗) = E[πk] St s(s∗ | k)
+
+∑ 
+
+> j
+
+E[πj ] St s(s∗ | j) .
+
+The critical subtlety. The general rule for conditioning any mixture is p(c | s∗) = ∑ 
+
+> k
+
+wk(s∗) pk(c |
+
+s∗) with the within-component conditional pk(c | s∗) = pk(s∗, c )/p k(s∗). Here each component’s joint predictive is a genuine product pk(s, c ) = fk(s) gk(c)—spatial and color are independent Student-t’s within a component , because q carries separate NIW factors q(θk,s ) q(θk,c ) (equivalently: two independent Gamma mixing variables, one per modality). Therefore pk(c | s∗) = gk(c) with no conditioning correction: no location shift, no scale inflation, no dof change. 
+
+This would NOT hold for a joint Student-t. If instead pk(s, c ) = St ((s, c ) | (ms, m c), S, η ) with blocks 
+
+Sss , S sc , S cc (as would arise from a single NIW over the full (Ds+Dc)-dimensional covariance), the conditional is (Roth, 2013; Ding, 2016) 
+
+c | s∗ ∼ St 
+
+(
+
+mc + Scs S−1 
+
+> ss
+
+(s∗ − ms), η + δs
+
+η + Ds
+
+(Scc − Scs S−1 
+
+> ss
+
+Ssc 
+
+), η + Ds
+
+)
+
+, δs = ( s∗ − ms)⊤S−1 
+
+> ss
+
+(s∗ − ms).
+
+Even with block-diagonal scale ( Scs = 0 ) the conditional scale still depends on s∗ through η+δs 
+
+> η+Ds
+
+and the dof rises to η + Ds: for a joint t, uncorrelated ̸ = independent, because both blocks share one latent Gamma mixing variable. The no-correction step is thus valid only in the factorized (product-of-independent-t’s) case, which is exactly the case here. 
+
+Step 4: Conditional moments via the mixture law of total expectation/variance 
+
+Introduce the latent label z with Pr( z = k | s∗) = wk(s∗) and c | z=k ∼ gk = St( mk,c , S k,c , η k,c ). By the law of total expectation (each component mean exists iff ηk,c > 1, and Egk [c] = mk,c by symmetry): 
+
+E[c | s∗] = ∑
+
+> k
+
+wk(s∗) mk,c =: ¯ m(s∗).
+
+17 Second moment (each Egk [cc ⊤] = Ck + mk,c m⊤ 
+
+> k,c
+
+with Ck := Cov gk [c], finite iff ηk,c > 2; see Step 5): 
+
+E[cc ⊤ | s∗] = ∑
+
+> k
+
+wk
+
+(Ck + mk,c m⊤
+
+> k,c
+
+), Cov[ c | s∗] = ∑
+
+> k
+
+wk
+
+(Ck + mk,c m⊤
+
+> k,c
+
+) − ¯m ¯m⊤.
+
+Equivalently, in the (algebraically identical, numerically safer) law-of-total-variance form: 
+
+Cov[ c | s∗] = ∑
+
+> k
+
+wk Ck
+
+︸ ︷︷ ︸
+
+> within-component
+
++ ∑
+
+> k
+
+wk (mk,c − ¯m)( mk,c − ¯m)⊤
+
+︸ ︷︷ ︸
+
+> between-component
+
+⪰ 0.
+
+Step 5: Student-t covariance factor and its domain 
+
+Gaussian scale-mixture representation: if u ∼ Gamma( η 
+
+> 2
+
+, η 
+
+> 2
+
+) (shape, rate) and c | u ∼ N (m, S/u ), then marginally c ∼ St( m, S, η ). Verification: with δ = d⊤S−1d,
+
+∫ ∞
+
+> 0
+
+N (c | m, S/u ) Ga( u | η 
+
+> 2
+
+, η 
+
+> 2
+
+) du ∝
+
+∫ ∞
+
+> 0
+
+u η+D 
+
+> 2−1
+
+e− u  
+
+> 2(η+δ)
+
+du = Γ ( η+D
+
+> 2
+
+)( η+δ
+
+> 2
+
+)− η+D
+
+> 2
+
+∝ (1 + δη
+
+)− η+D 
+
+> 2
+
+,
+
+and tracking constants reproduces the St normalizer exactly. Then by the law of total variance, 
+
+Cov[ c] = E[Cov( c | u)] + Cov (E[c | u]) = S E[u−1] + 0 .
+
+For u ∼ Gamma( a, b ), E[u−1] = ∫ u−1 ba 
+
+> Γ( a)
+
+ua−1e−bu du = ba Γ( a−1) Γ( a) ba−1 = ba−1 , finite iff a > 1. With a = b = η/ 2:
+
+Cov[ c] = ηη − 2 S, finite iff η > 2.
+
+Domain summary: η ≤ 1: mean undefined; 1 < η ≤ 2: mean = m but covariance infinite; η > 2: both exist. In DP-Splat, ηk,c = νk,c − Dc + 1 = ν0 + Nk − Dc + 1 ; under the default prior ν0 = Dc + 2 this is Nk + 3 > 2
+
+for all Nk ≥ 0, and predictive.py guards non-default priors at runtime. 
+
+Correspondence with Eq. (7) and the implementation 
+
+Every element of Eq. (7) follows from the derivation: (a) the exact mixture-of-products predictive ˆp =∑ 
+
+> k
+
+E[πk] St s St c (Step 1); (b) Sk = Ψ k κk +1   
+
+> κkηk
+
+, ηk = νk − Dm + 1 , valid under the Σ ∼ IW(Ψ , ν ) convention that niw.py demonstrably uses (Step 2, matching Murphy 2012 eq. 4.222); (c) wk(s∗) ∝ E[πk] St s(s∗ | k)
+
+with pk(c | s∗) = St c(c | k) requiring no correction because and only because the per-component predic-tive factorizes (Step 3); (d) E[c | s∗] = ∑ 
+
+> k
+
+wkmk,c and Cov[ c | s∗] = ∑ 
+
+> k
+
+wk(Ck + mk,c m⊤
+
+> k,c
+
+) − ¯m ¯m⊤
+
+(Step 4); (e) Ck = ηk,c  
+
+> ηk,c −2
+
+Sk,c for ηk,c > 2 (Step 5). The code ( niw_predictive , student_logpdf ,
+
+conditional_color_moments in predictive.py ) implements these formulas exactly, including the ηc > 2
+
+runtime guard. This establishes Eq. (7) exactly as stated in §4. 18
