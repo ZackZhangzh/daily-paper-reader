@@ -1,0 +1,2195 @@
+Title: A machine-learned probability distribution in the phase space of turbulent channel flow for synthetic turbulence and flow reconstruction
+
+URL Source: https://arxiv.org/pdf/2607.18058v1
+
+Published Time: Tue, 21 Jul 2026 02:16:18 GMT
+
+Number of Pages: 33
+
+Markdown Content:
+# A machine-learned probability distribution in the phase space of turbulent channel flow for synthetic turbulence and flow reconstruction 
+
+Frederik Aerts 1, Dirk Nuyens 2 and Johan Meyers 1 
+
+> 1Department of Mechanical Engineering, KU Leuven, Leuven, Belgium
+> 2Department of Computer Science, KU Leuven, Leuven, Belgium
+> Corresponding author: Frederik Aerts, frederik.aerts1@kuleuven.be
+
+Although a complete characterisation of the probability distribution in the phase space of turbulent flows remains elusive, accurately sampling this distribution is essential for both synthetic turbulence generation and turbulent flow reconstruction. Motivated by these applications, we examine to what extent a machine-learned distribution can approximate the physical invariant distribution of turbulent channel flow at Re 𝜏 = 180. We assess three important properties of the approximation: physical ensemble statistics, consistent conditional sampling, and dynamical invariance. To this end, a flow-based generative model is trained on a minimal conditional flow unit, which we define as the smallest domain outside which conditional fields, given a single observation at the domain centre, are indistinguishable from unconditional fields in terms of mean-square discrepancy to other conditional fields. We also introduce a consistent procedure for sampling from the conditional learned distribution. Comparisons with direct numerical simulation show that synthetic turbulent fields reproduce key statistical and dynamical features of turbulence, including intermittency and nonlinear energy transfer. The consistency of conditional sampling is demonstrated in a flow reconstruction problem, and subsequently used to generate synthetic turbulent velocity fields on a large domain. When adopted as initial conditions in direct numerical simulations, these fields yield physical and statistically stationary ensemble statistics, indicating that the learned distribution provides a good approximation to the natural distribution of the turbulent dynamical system. 
+
+Key words: Computational Methods, Nonlinear Dynamical Systems, Turbulent Flows 
+
+1. Introduction 
+
+The probability distribution in the phase space of the velocity field is central to the statistical description of incompressible turbulence (Monin & Yaglom 1971). Its ensemble statistics, such as the Reynolds stresses, energy spectra, and structure functions, describe the structure of turbulence and have been widely studied in theory, experiments, and simulations (Monin & Yaglom 1971; Frisch 1995; Pope 2000). Within the dynamical-systems perspective on turbulence pioneered by Hopf (1948), it is conjectured that this probability distribution should remain invariant under the turbulent dynamics (Hopf 1952). To be physically relevant, it should furthermore be selected as the push-forward of typical 1arXiv:2607.18058v1 [physics.flu-dyn] 20 Jul 2026 F. Aerts, D. Nuyens and J. Meyers 
+
+initial conditions (Ruelle 1978; Eckmann & Ruelle 1985). The resulting physical invariant distribution is known as the natural distribution of the dynamical system (Cvitanovi´ c et al. 
+
+2020). If this natural distribution formally exists, it is supported on the attractor on which the dynamics live, which is typically fractal and thin in phase space for dissipative chaotic systems such as turbulence (Eckmann & Ruelle 1985). The complete characterisation of the presumably highly intricate natural distribution of any turbulent flow remains elusive, reflecting the outstanding ‘problem of turbulence’ (Monin & Yaglom 1971). Fortunately, a complete determination of the natural distribution is by no means necessary in most applications. However, applications such as synthetic turbulence generation and turbulent flow reconstruction inherently rely on our ability to sample this natural distribution. The premise of synthetic turbulence generators is to construct velocity fields that reproduce turbulent ensemble statistics, without simulating the underlying dynamics. When adopted as initial or inflow conditions for numerical simulations of turbulent flows, the synthetic fields should reduce the computational cost required to reach statistical stationarity. In this respect, the statistics of an ensemble of synthetic flow fields should precisely satisfy the dynamical invariance property of the natural distribution. Classical synthetic random Fourier methods build on the construction of divergence-free Gaussian random fields with a prescribed energy spectrum by Kraichnan (1970). The anisotropy and inhomogeneity of wall-bounded turbulence with mean shear can be incorporated through rapid distortion theory (Mann 1994), or by transforming the field with the Cholesky decomposition of the Reynolds stress tensor (Lund et al. 1998) and rescaling it (Smirnov 
+
+et al. 2001). Alternatively, one can start from white noise in real space and filter it with the spatial correlation function, or an approximation of it, to impose an energy spectrum on the turbulent fluctuations (Klein et al. 2003; Di Mare et al. 2006; Xie & Castro 2008). Although such approaches yield the correct energy content at all scales, they do not necessarily capture the spectral energy transfer. The latter depends on third-order statistics (Vassilicos 2015), which are exactly zero for Gaussian fields. In addition, essential nonlinearities such as vortex stretching and self-amplification of the strain rate, as well as intermittency are absent in Gaussian fields, necessitating an adaptation period in the simulation during which a realistic turbulent field develops. Other notable routes to generate synthetic turbulent fields are the application of a minimal multiscale Lagrangian map to an initial Gaussian field (Rosales & Meneveau 2006), and the superposition of coherent structures in synthetic-eddy-methods (Jarrin et al. 2006; Poletto et al. 2013). However, such approaches lose the connection to a probability distribution and thereby the possibility of conditionally sampling that distribution. Turbulent flow reconstruction methods aim to efficiently find turbulent velocity fields that are consistent with typically sparse observations and to quantify the uncertainty on these reconstructions. In the absence of measurement noise, the problem of instantaneous flow field reconstruction is equivalent to sampling the natural distribution conditioned on the observed variables. One of the first approaches to address this challenge was Linear Stochastic Estimation (LSE) (Adrian 1977; Adrian & Moin 1988). LSE reconstructs the best linear estimator for the conditional average of the flow field given the observations, with a procedure that is numerically equivalent to approximating the conditional natural distribution with a Gaussian (Adrian 1996). The conditional average of the flow field is optimal in terms of mean-square reconstruction error. However, the resulting so-called ‘conditional eddies’ do not necessarily capture the instantaneous structures present in the actual flow field: they represent simply the average field associated with the observed event (Adrian 1996). LSE and its spectral variant (Tinney et al. 2006) are not only widely used to retrieve such conditional structures, but also to address fundamental questions, such as the observability of turbulent structures from wall measurements for instance 2A probability distribution in the phase space of turbulent channel flow −20 −15 −10 −5 0 5 10 15 20         
+
+> −20
+> −10 010 20
+> −10 010 20 30 40 50
+> x1
+> x2
+> x3
+> (a)
+> p(x)
+> −10 010
+> x1
+> −10 010
+> x2
+> (b)
+> Natural
+> −10 010
+> x1
+> −10 010
+> x2
+> (c)
+> Gaussian
+> −20 −10 010 20
+> x2
+> p(x2|x1 = 10)
+> (d)
+> Natural Gaussian LSE
+
+Figure 1. Illustration of the natural distribution for the dynamical system representing cellular convection by Lorenz (1963): (a) invariant distribution obtained by the push forward of typical initial conditions, (b) marginal distribution 𝑝 (𝑥 1, 𝑥 2) derived from the natural distribution, (c) Gaussian approximation to this marginal distribution, (d) reconstruction of 𝑥 2 given 𝑥 1 = 10 based on samples of the natural distribution, a Gaussian approximation to it, and Linear Stochastic Estimation (LSE), which equals the conditional mean of the Gaussian. 
+
+(Encinar & Jim´ enez 2019). Another classical approach, known as gappy Proper Orthogonal Decomposition (POD) (Everson & Sirovich 1995; Venturi & Karniadakis 2004; Bui-Thanh 
+
+et al. 2004), seeks reduced order representations of the reconstructed instantaneous fields, by only considering the dominant modes of the covariance tensor (Sirovich 1989). Similar to LSE, which can also be formulated in a POD basis (Bonnet et al. 1994), gappy POD minimises the mean-square reconstruction error, but with a different regularisation of the POD coefficients. Other recently employed regularisation methods are sparsity promoting regularisation (Callaham et al. 2019) and Tikhonov regularisation (Bertram et al. 2021). Although these approaches can achieve low reconstruction errors, they generally do not reconstruct realistic instantaneous fields, in the sense that the statistics of the reconstructed flow field deviate from the true ensemble statistics. The aforementioned synthetic turbulence generators and reconstruction methods focus mostly on the first- and second-order statistics of the natural distribution. That such approaches can yield a relatively poor approximation to the natural distribution of a chaotic system may be demonstrated with the prototypical dynamical system by Lorenz (1963). This dynamical system represents a simplified form of cellular convection, in which the velocity field is described by a mode with amplitude 𝑥 1 and the temperature field by two modes with amplitudes 𝑥 2 and 𝑥 3. Their dynamics are given by dd𝑡 
+
+©«
+
+𝑥 1
+
+𝑥 2
+
+𝑥 3
+
+ª®¬
+
+= ©«
+
+𝜎 (𝑥 2 − 𝑥 1)
+
+𝑥 1 (𝜌 − 𝑥 3) − 𝑥 2
+
+𝑥 1𝑥 2 − 𝛽𝑥 3
+
+ª®¬
+
+, (1.1) where 𝜎 = 10 is the Prandtl number, 𝜌 = 28 is the Rayleigh number normalised by its critical value, and 𝛽 = 8/3 is a number related to the aspect ratio of the convective rolls. For a supercritical Rayleigh number 𝜌 > 1, the fixed point representing the absence of convection at (0, 0, 0) becomes a saddle point and two other fixed points emerge at 
+
+(± √︁ 𝛽 (𝜌 − 1), ±√︁ 𝛽 (𝜌 − 1), 𝜌 − 1). Those represent steady left- or right-turning convective rolls and also become saddle points for 𝜌 > 𝜎 (𝜎 + 𝛽 + 3)( 𝜎 − 𝛽 − 1)−1 (Lorenz 1963). 3F. Aerts, D. Nuyens and J. Meyers 
+
+Although invariant distributions can be constructed as point masses at these fixed points, they are of little physical value, since they do not reproduce the ensemble statistics of typically observed trajectories. When starting from more ‘typical’ points sampled from any other part in phase space, the trajectories evolve towards a strange attractor (Ruelle & Takens 1971). Figure 1(a) demonstrates how the natural distribution is obtained from the push-forward of initial conditions drawn from a multivariate Gaussian with an isotropic variance of 0.5 centred around the fixed point at the origin. It is seen that the natural distribution for this system is distinctly non-Gaussian, as it is neither globally nor locally dense. Suppose now that an observation of the velocity field is available, such that it is known that 𝑥 1 = 10, and let us be interested in reconstructing the temperature mode amplitude 𝑥 2. Figures 1(b) and (c) show the marginal natural distribution 𝑝 (𝑥 1, 𝑥 2) and a Gaussian distribution with the same mean and covariance. The conditional natural distribution 𝑝 (𝑥 2 |𝑥 1 = 10 ), shown in figure 1(d), is obtained by retaining samples from the joint distribution in figure 1(b) with 9 .9 ≤ 𝑥 1 ≤ 10 .1. It shows that the dynamics dictate 𝑥 2 to be either somewhat larger or smaller than 10. However, this information is lost in the Gaussian approximation to the conditional distribution, which is obtained analogously from the joint distribution in figure 1(c). Although its conditional mean, which corresponds to the reconstruction from LSE, yields a low reconstruction error, it is unlikely to be observed under the natural distribution. To synthesise and reconstruct realistic states, one should therefore sample an approximation of the natural distribution that captures higher-order statistics as well. Recent advances in probabilistic machine learning have shown that generative models offer promising computational methods to generate and reconstruct instantaneous turbulent flow fields. Generative Adversarial Networks (GANs) let a generator neural network and a discriminator neural network compete in a zero-sum game to generate flow fields that cannot be discriminated from reference flow fields (Goodfellow et al. 2014, 2020). These have been used for super-resolution reconstruction (Xie et al. 2018; Deng et al. 2019; Kim et al. 2021; Yousif et al. 2021), synthetic turbulence generation of two-dimensional cuts of the velocity field (Kim & Lee 2020; Drygala et al. 2022), reconstruction of two-dimensional cuts of the velocity field from plane observations (Li et al. 2023 a) and wall measurements (G¨ uemes et al. 2021), and the reconstruction of spatially three-dimensional flow fields from plane observations (Yousif et al. 2023) and wall measurements (Cu´ ellar 
+
+et al. 2024). Diffusion models corrupt reference flow fields by iteratively adding noise and learning how to reverse this process (Sohl-Dickstein et al. 2015; Ho et al. 2020; Song 
+
+et al. 2021), and have been shown to outperform GANs on image generation benchmarks (Dhariwal & Nichol 2021). Such models have been used for super-resolution reconstruction (Shu et al. 2023), the reconstruction of two-dimensional slices of turbulent flow fields (Li 
+
+et al. 2023 b; Vishwasrao et al. 2025), the generation and reconstruction of spatially three-dimensional turbulence from observational setups prescribed during training (Rybchuk 
+
+et al. 2023) or generic ones (Amor´ os-Trepat et al. 2026), and spatially two-dimensional (Gao et al. 2024 a) and three-dimensional spatiotemporal turbulence (Gao et al. 2024 b; Du 
+
+et al. 2024; Steinbrenner et al. 2026). When comparing GANs and diffusion models for flow reconstruction in rotating turbulence, Li et al. (2023 b) showed not only that diffusion models outperform GANs, but also that there exists a trade-off between obtaining a reliable mean-square error and realistic ensemble statistics of the reconstructed part of the flow field. This motivates a probabilistic interpretation of the mean-square error, enabling the derivation of an expected error for instantaneous reconstructions. When approximating the natural distribution of a turbulent flow with a probabilistic machine learning model, all dynamically relevant scales should be considered. In synchro-nisation experiments, it has been shown that all turbulent structures larger than about 20 Kolmogorov dissipation lengths must be known to perfectly reconstruct the small scales 4A probability distribution in the phase space of turbulent channel flow 
+
+in isotropic turbulence (Yoshida et al. 2005), Kolmogorov flow (Lalescu et al. 2013), and channel flow (Wang & Zaki 2022). However, when synthesizing or reconstructing truly three-dimensional turbulent fields with diffusion models, the dimensionality of the phase space was a priori reduced, either by training the model in a latent space (as in Rybchuk et al. 
+
+2023; Du et al. 2024; Steinbrenner et al. 2026) or by training it on filtered fields (as in Gao 
+
+et al. 2024 b; Amor´ os-Trepat et al. 2026). Another class of models, known as flow-based generative models, show remarkable performance in high-resolution image generation tasks (Esser et al. 2024), and have recently been adopted for the reconstruction of two-dimensional planes from wall measurements (Parikh et al. 2026). Flow-based generative models originate from continuous normalizing flows, which learn how to transform an initial distribution, typically Gaussian, to a target distribution (Chen et al. 2019), but they can be related to diffusion models through the flow-matching paradigm (Lipman et al. 
+
+2023, 2024; Lai et al. 2025). Apart from their promising nature, flow-based generative models can be defined through a dynamical system, thereby revealing a natural connection between the probabilistic machine learning model and the dynamical-systems perspective on turbulence. The objective of this work is to evaluate to what extent a machine-learned distribution can approximate the physical invariant distribution of a turbulent channel flow at a friction Reynolds number of Re 𝜏 = 180. We examine three properties of the learned distribution relevant to synthetic turbulence generation and turbulent flow reconstruction: the physicality of its ensemble statistics, the consistency of conditional sampling, and its dynamical invariance. To this end, a flow-based generative model is trained on what we call a minimal conditional flow unit, so that it can approximately represent all dynamically relevant scales on arbitrarily large domains. In addition, we introduce a new and consistent technique to sample the learned conditional distribution. When validating the consistency of conditional sampling, the mean-square reconstruction error is compared to an LSE-based estimated reconstruction error, obtained from its probabilistic interpretation. To the best of our knowledge, this is the first explicit attempt to approximate the natural distribution of a spatially three-dimensional turbulent dynamical system using a probabilistic machine-learning model, a task complicated by the system’s high dimensionality and intricate statistics. The manuscript is further organised as follows. The machine-learned probability dis-tribution is described in §2, covering the approximate representation of the natural distribution on a minimal conditional flow unit, the flow-based generative model, the new conditional sampling method, and the case set-up. In §3, the three properties, namely physical ensemble statistics, consistent conditional sampling, and dynamical invariance, are examined through applications in synthetic turbulence generation and turbulent flow reconstruction. Conclusions are then drawn in §4. 
+
+> 2. Machine-learned probability distribution
+
+We consider a direct numerical simulation of incompressible pressure-driven channel flow at friction Reynolds number Re 𝜏 = 180. Given a consistent spatial discretisation on the computational domain 𝛺 ⊂ R3, the Navier–Stokes equations are approximated by a finite-dimensional dynamical system with state vector 𝒖 = (𝒖 𝑖 )𝑁 𝑖 =1 ∈ R3𝑁 , where 𝒖 𝑖 ∈ R3
+
+denotes the velocity at the spatial point 𝒙 𝑖 ∈ 𝛺 . The resulting semi-discrete dynamics are written as d𝒖 
+
+d𝑡 = F ( 𝒖 ), 𝒖 𝑡 = 𝛷 𝑡 (𝒖 0), (2.1) 5F. Aerts, D. Nuyens and J. Meyers 
+
+where F denotes the spatially discretised Navier–Stokes operator, and the flow map 𝛷 𝑡 
+
+maps an initial condition 𝒖 0 to the corresponding state 𝒖 𝑡 after time 𝑡 . The state of this turbulent dynamical system is fully specified by the solenoidal velocity field 𝒖 𝑡 , as it uniquely determines the pressure gradient by the incompressibility constraint and the absolute pressure has no effect on the dynamics (Pope 2000). Although it is possible to represent the velocity field explicitly in a solenoidal basis for a given discretisation, we leave the incompressibility constraint implicit and adopt a discretisation-agnostic approach. The remainder of this section describes the approximation of the natural distribution of this finite-dimensional dynamical system. Although a complete determination of the natural distribution is extremely difficult (Monin & Yaglom 1971), we elaborate in §2.1 why probabilistic machine learning models offer a new and promising approach to approximate it from data. In §2.2, we introduce the minimal conditional flow unit on which the machine-learned distribution is trained. After presenting the flow-based generative model in §2.3 and the conditional sampling algorithm in §2.4, we summarise the sampling procedure with the machine-learned probability distribution and detail the numerical set-up in §2.5. 2.1. Approximating the natural distribution with data 
+
+The natural distribution of a dynamical system is an invariant probability distribution whose ensemble statistics agree with the long-time statistics of trajectories starting from typical initial conditions (Cvitanovi´ c et al. 2020). Although the formal construction of such a distribution is extremely difficult for turbulent dynamical systems (Ruelle 2012), we demonstrate that its two essential properties, dynamical invariance and physical repre-sentativeness, can be incorporated relatively straightforwardly in a data-driven approach. The property of dynamical invariance dates back to Hopf (1952), who required in his equation for the characteristic functional that the probability distribution in the phase space of the flow field remains invariant under the Navier–Stokes dynamics. Such an invariant probability measure can be constructed as the time average of Dirac deltas along a trajectory 
+
+𝒖 𝑡 = 𝛷 𝑡 (𝒖 0) (Eckmann & Ruelle 1985) 
+
+𝜌 (𝒖 ) = lim 
+
+> 𝑇 →∞
+
+1
+
+𝑇 
+
+∫ 𝑇 
+
+> 0
+
+𝛿 (𝒖 − 𝒖 𝑡 ) d𝑡. (2.2) Hence the infinite-time average of any continuous observable 𝜑 (𝒖 ) is given by the ensemble average over the invariant probability measure 
+
+∫
+
+𝜑 (𝒖 ) d𝜌 (𝒖 ) = lim 
+
+> 𝑇 →∞
+
+1
+
+𝑇 
+
+∫ 𝑇 
+
+> 0
+
+𝜑 (𝒖 𝑡 ) d𝑡. (2.3) If the invariant probability measure 𝜌 is also indecomposable or ergodic, then the time averages in (2.2) and (2.3) reproduce that measure for all initial conditions 𝒖 0, except possibly for a set of initial conditions whose 𝜌 -measure is zero (Eckmann & Ruelle 1985). However, there are many invariant ergodic measures, so one should choose a measure that is ‘physical’ to describe turbulence (Ruelle 1978). For instance, by selecting the laminar solution as initial condition in (2.2) one could construct an unphysical measure, in the sense that its ensemble statistics differ from those of trajectories starting arbitrarily close to the laminar solution, which eventually become turbulent. As the world is intrinsically a little noisy, observing exactly the laminar solution has zero probability, whereas observing a perturbation within a certain range of amplitudes is probable, or ‘typical’. To be physically relevant, the measure should thus not only be invariant under the dynamics, but also observable from typical initial conditions. 6A probability distribution in the phase space of turbulent channel flow 
+
+An invariant measure 𝜌 (𝒖 ) is called physical if there is a positive Lebesgue measure set 𝑉 ⊂ R3𝑁 such that (2.3) holds for every initial condition 𝒖 0 ∈ 𝑉 (Eckmann & Ruelle 1985; Young 2002). This property does not follow from Birkhoff’s ergodic theorem, since a physical invariant measure 𝜌 can describe the asymptotic behaviour of trajectories starting outside its support, which additionally has Lebesgue measure zero for a genuinely volume decreasing attractor. In this sense, 𝜌 is observable not because randomly chosen initial conditions are likely to lie on its support, but because a positive-Lebesgue-measure set of initial conditions, lying in the basins of one or more attractors associated with 𝜌 , gives rise to long-time statistics governed by 𝜌 . Another way to define a physical or observable measure was put forth by Kolmogorov, based on the fact that any realistic physical system is also influenced by external noise (Eckmann & Ruelle 1985; Young 2002). The Kolmogorov measure is then defined as the zero-noise limit of the normally unique stationary measure of the noisy dynamical system, which is described by a stochastic process (Eckmann & Ruelle 1985). As any physical turbulent system is subject to external noise, we can therefore coarse-grain the invariant measure from (2.2), with an unknown kernel 𝐾 𝜀 with finite noise level 𝜀 . In that respect, we may think of the natural distribution in terms of a probability density, obtained by 
+
+𝜋 (𝒖 ) =
+
+∫
+
+𝐾 𝜀 (𝒖 − 𝒗 ) d𝜌 (𝒗 ), (2.4 a)
+
+= lim 
+
+> 𝑇 →∞
+
+1
+
+𝑇 
+
+∫ 𝑇 
+
+> 0
+
+𝐾 𝜀 (𝒖 − 𝒖 𝑡 ) d𝑡, (2.4 b)where the trajectory 𝒖 𝑡 = 𝛷 𝑡 (𝒖 0) starts from a ‘typical’ initial condition 𝒖 0. Although physical invariant measures, often called Sinai–Ruelle–Bowen (SRB) measures, are well understood for uniformly hyperbolic systems and have been constructed for some nonuni-formly hyperbolic systems, their rigorous construction for fully developed turbulent flows remains an open problem (Young 2002; Ruelle 2012). Probabilistic machine-learning models can approximate the natural distribution directly from samples, making it relatively straightforward to incorporate the properties described above. The dynamical invariance property can be enforced implicitly by drawing these samples as snapshots from a sufficiently long trajectory with stationary statistics. Whether these stationary statistics are physical, i.e. representative of typical initial conditions and realisations of the external noise, can then be assessed empirically by comparing them with statistics obtained from independent numerical experiments using a different initial condition or discretisation. Moreover, recent probabilistic machine-learning models provide scalable computational methods to approximate the full natural distribution, rather than only selected statistics. 2.2. Minimal conditional flow unit 
+
+It is desirable to represent the approximated natural distribution on a minimal domain size and resolution, where the latter can be determined from synchronisation experiments (cf. Yoshida et al. 2005; Lalescu et al. 2013; Wang & Zaki 2022). In DNS, the smallest periodic domain that can sustain the turbulent solution in a channel flow is given by the minimal flow unit (Jim´ enez & Moin 1991; Flores & Jim´ enez 2010). However, larger turbulent structures may emerge in larger domains (Lozano-Dur´ an & Jim´ enez 2014), and such structures are not necessarily compatible with exact periodic repetition of the minimal flow unit. Therefore, we introduce the minimal conditional flow unit, which allows to approximately sample (aperiodic) flow fields on arbitrarily large domains. To construct such a minimal conditional flow unit, we make use of conditional probability, the decay of 7F. Aerts, D. Nuyens and J. Meyers 0 2π 4πx/δ             
+
+> 0
+> π
+> 2πz/δ  BAC2Rx/δ
+> 2Rz/δ
+> (a) 0π/ 2πx/δ
+> 0.00.51.0
+> ρ2
+> (b)
+> ρ2
+> uu
+> ρ2
+> vv
+> ρ2
+> ww
+> ρ2
+> uv
+> 0π/ 8π/ 4
+> z/δ
+> 0.00.51.0
+> ρ2
+> (c)
+> Figure 2. Definition of the minimal conditional flow unit in a turbulent channel flow: (a) the minimal conditional flow unit in red, (b) squared streamwise correlation at different wall-normal heights, (c) squared spanwise correlation at different wall-normal heights. The correlations are taken from the database by Kim et al. (1987). In (a) the subdomains 𝐴 ,𝐵 , and 𝐶 used in the sequential conditional sampling argument are also shown.
+
+velocity correlations, and the statistical homogeneity in directions under which the system is translationally invariant. We define the minimal conditional flow unit as the smallest domain in the homogeneous direction(s) outside which a conditional velocity field, conditioned on a velocity component at the domain centre, is indistinguishable from corresponding unconditional fields in terms of mean-square discrepancy from other conditional realisations. Let 𝑢 𝑜 denote an observed or known velocity component at the centre of the unit and 𝑢 𝑢 an unobserved component outside of it. The MSE between a conditional realisation 𝑢 𝑐 𝑢 ∼ 𝜋 (𝑢 𝑢 |𝑢 𝑜 ) and an independent marginal realisation 𝑢 𝑚 𝑢 ∼ 𝜋 (𝑢 𝑢 ) equals 
+
+⟨( 𝑢 𝑐 𝑢 − 𝑢 𝑚 𝑢 )2 |𝑢 𝑜 ⟩ = Var (𝑢 𝑢 |𝑢 𝑜 ) + Var (𝑢 𝑢 ) + (⟨ 𝑢 𝑢 |𝑢 𝑜 ⟩ − ⟨ 𝑢 𝑢 ⟩) 2, (2.5) which follows from the variance identity. For two independent conditional realisations 𝑢 𝑐 𝑢 
+
+and 𝑢 𝑐, new  
+
+> 𝑢
+
+∼ 𝜋 (𝑢 𝑢 |𝑢 𝑜 ), the MSE is given by 
+
+⟨( 𝑢 𝑐 𝑢 − 𝑢 𝑐, new  
+
+> 𝑢
+
+)2 |𝑢 𝑜 ⟩ = 2 Var (𝑢 𝑢 |𝑢 𝑜 ). (2.6) To quantify the difference in MSE, we approximate the conditional mean ⟨𝑢 𝑢 |𝑢 𝑜 ⟩ and conditional variance Var (𝑢 𝑢 |𝑢 𝑜 ) similar as in linear stochastic estimation (Adrian 1996) as 
+
+⟨𝑢 𝑢 |𝑢 𝑜 ⟩ ≈ ⟨ 𝑢 𝑢 ⟩ + 𝜌 𝑢𝑜 (𝑢 𝑜 − ⟨ 𝑢 𝑜 ⟩) √︁ Var (𝑢 𝑢 )/ Var (𝑢 𝑜 ), (2.7 a)Var (𝑢 𝑢 |𝑢 𝑜 ) ≈ Var (𝑢 𝑢 )( 1 − 𝜌 2
+
+> 𝑢𝑜
+
+), (2.7 b)where 𝜌 𝑢𝑜 is the cross-correlation between 𝑢 𝑢 and 𝑢 𝑜 . Hence, we find that 
+
+⟨( 𝑢 𝑐 𝑢 − 𝑢 𝑚 𝑢 )2 |𝑢 𝑜 ⟩ − ⟨( 𝑢 𝑐 𝑢 − 𝑢 𝑐, new  
+
+> 𝑢
+
+)2 |𝑢 𝑜 ⟩ ≈ 𝜌 2 
+
+> 𝑢𝑜
+
+Var (𝑢 𝑢 )
+
+ (𝑢 𝑜 − ⟨ 𝑢 𝑜 ⟩) 2
+
+Var (𝑢 𝑜 ) + 1
+
+
+
+. (2.8) When the squared cross-correlation 𝜌 2 
+
+> 𝑢𝑜
+
+is sufficiently small, the difference between the MSEs involving marginal and conditional samples is negligible, as both MSEs then approach 2 Var (𝑢 𝑢 ). Similarly, it can be shown that the MSEs of conditional and marginal samples with respect to the conditional mean both approach Var (𝑢 𝑢 ). In this limit, the conditional and unconditional fields are practically indistinguishable in terms of their MSE relative to other conditional realisations. The same conclusion holds relative to the conditionally averaged velocity field, which represents the conditional eddy associated with 𝑢 𝑜 in linear stochastic estimation (Adrian 1996). The dimensions of the minimal conditional flow unit in a given turbulent flow can hence be estimated from its two-point correlation structure. Let 𝑅 ℎ denote the distance 8A probability distribution in the phase space of turbulent channel flow 
+
+in a homogeneous direction ℎ beyond which all relevant squared cross-correlations are sufficiently small. Then the minimal conditional flow unit spans 2 𝑅 ℎ in that homogeneous direction, since a velocity component at the centre of the unit must be separated by at least 𝑅 ℎ from components outside the unit on either side. Figure 2(a) shows the minimal conditional flow unit in a turbulent channel flow. As only the wall-normal direction is inhomogeneous, the minimal conditional channel-flow unit has size 2 𝑅 𝑥 × 2𝛿 × 2𝑅 𝑧 , where 
+
+𝛿 is the channel half-height, 𝑥 represents the streamwise direction, and 𝑧 the spanwise direction. From the squared cross-correlations computed from the database of Kim et al. 
+
+(1987) and shown in figure 2(b,c), we estimate 𝑅 𝑥 ≈ 𝜋𝛿 and 𝑅 𝑧 ≈ 𝜋𝛿 /4, giving approximate dimensions 2 𝜋𝛿 × 2𝛿 × 𝜋𝛿 /2 to the minimal conditional channel flow unit. When the natural distribution is represented on the minimal conditional flow unit, flow fields on larger domains can still be sampled approximately through sequential conditional sampling. Consider three subdomains 𝐴 , 𝐵 , and 𝐶 that are adjacent in a homogeneous direction. Each subdomain has width 𝑅 𝑥 and 𝑅 𝑧 in the homogeneous directions 𝑥 and 𝑧 ,and spans the full domain in the inhomogeneous direction, as shown in figure 2(a). Let 
+
+𝒖 𝐴 = (𝒖 𝑖 )𝒙 𝑖 ∈ 𝐴 denote the discretised velocity field restricted to subdomain 𝐴 , with 𝒖 𝐵 and 
+
+𝒖 𝐶 defined analogously. The natural distribution of the flow field on the combined domain 
+
+𝐴 ∪ 𝐵 ∪ 𝐶 can then be decomposed using the chain rule of probability: 
+
+𝜋 (𝒖 𝐴 , 𝒖 𝐵 , 𝒖 𝐶 ) = 𝜋 (𝒖 𝐴 )𝜋 (𝒖 𝐵 |𝒖 𝐴 )𝜋 (𝒖 𝐶 |𝒖 𝐴 , 𝒖 𝐵 ). (2.9) This decomposition suggests a sequential sampling procedure: first sample 𝒖 𝐴 , then sample 
+
+𝒖 𝐵 conditionally on 𝒖 𝐴 , and finally sample 𝒖 𝐶 conditionally on 𝒖 𝐴 and 𝒖 𝐵 . However, the minimal conditional flow unit contains information only over an extent of 2 𝑅 ℎ in every homogeneous direction. It therefore provides access to local conditional distributions such as 𝜋 (𝒖 𝐵 |𝒖 𝐴 ) and 𝜋 (𝒖 𝐶 |𝒖 𝐵 ), but not directly to the full three-subdomain conditional 
+
+𝜋 (𝒖 𝐶 |𝒖 𝐴 , 𝒖 𝐵 ), which spans an extent of 3 𝑅 ℎ. We therefore introduce the local-conditioning approximation 
+
+𝜋 (𝒖 𝐶 |𝒖 𝐴 , 𝒖 𝐵 ) ≈ 𝜋 (𝒖 𝐶 |𝒖 𝐵 ). (2.10) By statistical homogeneity, the local conditional distributions are invariant under trans-lations in the homogeneous direction, so that 𝜋 𝐶 | 𝐵 = 𝜋 𝐵 | 𝐴 . Under this approximation, flow fields on larger domains 𝐴 ∪ · · · ∪ 𝑍 can be generated by sequentially sampling new subdomains, each conditioned only on the previously sampled neighbouring subdomain: 
+
+𝜋 (𝒖 𝐴 , . . . , 𝒖 𝑍 ) ≈ 𝜋 (𝒖 𝐴 )𝜋 (𝒖 𝐵 |𝒖 𝐴 ) · · · 𝜋 (𝒖 𝑍 |𝒖 𝑌 ). (2.11) Note that the sequential local conditioning procedure does not rule out long-range depen-dencies, as these can be propagated indirectly through previously generated subdomains. The validity of the local-conditioning approximation is not guaranteed by marginal decorrelation alone. In particular, even if 𝒖 𝐴 and 𝒖 𝐶 are uncorrelated, this does not imply that they are conditionally independent given 𝒖 𝐵 .1 Information from 𝐴 may still be transmitted to 𝐶 through 𝐵 when both regions are correlated with 𝐵 , a mechanism known as the relay effect (Chil` es & Delfiner 2012). Consequently, even choosing 𝑅 ℎ as the distance at which correlations vanish exactly does not guarantee that conditioning only on 𝐵 is equivalent to conditioning on both 𝐴 and 𝐵 . Nevertheless, distant information often contributes little beyond nearby information because of the screening effect, which                                              
+
+> 1For example, let 𝑢 𝐴 ∼ N ( 0,1),𝑢 𝐶 ∼ N ( 0,1)be independent, and define 𝑢 𝐵 =(𝑢 𝐴 +𝑢 𝐶 )/ √2. Then
+> 𝜌 𝐴𝐶 =0, while 𝜌 𝐴𝐵 =𝜌 𝐵𝐶 =1/√2 and 𝜎 2
+> 𝐴 =𝜎 2
+> 𝐵 =𝜎 2
+> 𝐶 =1. Hence 𝑢 𝐶 |𝑢 𝐴 ∼𝑢 𝐶 ∼ N ( 0,1)and
+> 𝑢 𝐶 |𝑢 𝐵 ∼ N ( 𝑢 𝐵 /√2,1/2), whereas 𝜋 (𝑢 𝐶 |𝑢 𝐴 , 𝑢 𝐵 )=𝛿 (𝑢 𝐴 +𝑢 𝐶 − √2𝑢 𝐵 )is deterministic, which is not obvious from the correlation structure alone.
+
+9F. Aerts, D. Nuyens and J. Meyers 
+
+is known to be strong for certain covariance structures (Stein 2002, 2011). Motivated by this screening approximation, we assume that the field in region 𝐵 contains most, or at least sufficient, information about the field in region 𝐶 . This assumption is natural in the present construction because 𝐵 contains the neighbouring points that exert a non-negligible influence on 𝐶 according to the MSE-criterion, whereas points in 𝐴 are farther away than 𝑅 ℎ in the homogeneous direction. Since the minimal conditional flow unit spans 2𝑅 ℎ, conditioning on a region of width 𝑅 ℎ allows one to sample the velocity field up to an additional distance 𝑅 ℎ in the homogeneous direction. This motivates the subdomain decomposition in (2.11) and provides the basis for sequential conditional sampling of flow fields on larger domains. 2.3. Flow-based generative model 
+
+Flow-based generative models learn a transformation of a prescribed probability distri-bution, typically a standard Gaussian, to a target probability distribution. In our case, the target is the coarse-grained, or smoothed, natural distribution of the velocity field in (2.4), restricted to a minimal conditional flow unit. From this point onward, we denote by 𝒖 ∈ R𝑛 
+
+the discretised velocity field restricted to such a unit, where 𝑛 is the number of remaining degrees of freedom, and write its probability density as 𝜋 (𝒖 ).In continuous normalizing flows (Chen et al. 2019), a dynamical system for the evolution of a state 𝒗 ∈ R𝑛 in terms of a fictitious time coordinate 𝜉 ∈ [ 0, 1) is introduced, i.e., d𝒗 
+
+d𝜉 = 𝒇 (𝒗 , 𝜉 ), 𝒗 𝜉 = 𝛹 𝜉 (𝒗 0), (2.12) through a 𝜉 -dependent generator 𝒇 (𝒗 , 𝜉 ). The flow map 𝛹 𝜉 defined by this set of ordinary differential equations deterministically maps an initial condition 𝒗 0 to its state 𝒗 𝜉 at time 
+
+𝜉 . If the initial condition 𝒗 0 is drawn from a prescribed base distribution 𝑝 0, then the flow map induces a time-dependent probability density or probability path ( 𝑝 𝜉 )0≤ 𝜉 < 1, with 
+
+𝒗 𝜉 ∼ 𝑝 𝜉 (·) . For sufficiently regular generators, the flow map is invertible and probability mass is conserved along trajectories (Villani 2009; Chen et al. 2019). The density 𝑝 𝜉 
+
+therefore satisfies the probability continuity equation 
+
+𝜕 𝜕𝜉 𝑝 𝜉 (𝒗 ) + ∇ 𝒗 · [ 𝒇 (𝒗 , 𝜉 ) 𝑝 𝜉 (𝒗 )] = 0. (2.13) The goal is then to find a generator 𝒇 (𝒗 , 𝜉 ) whose induced terminal density 𝑝 𝜉 →1 ≡ 𝑝 1
+
+satisfies 𝑝 1 ≈ 𝜋 , where 𝜋 is the target distribution. Once such a generator has been found, synthetic turbulent velocity fields can be generated by drawing 𝒗 0 ∼ 𝑝 0 (·) and integrating (2.12) from 𝜉 = 0 to 𝜉 = 1, understood in the improper sense. Note that the dynamical system from (2.1) governed by the Navier–Stokes dynamics essentially accomplishes the same task during spin-up of turbulence, so the true objective is finding an alternative generator and probability path that achieve this goal at a much lower computational cost. The question thus becomes how to effectively couple the initial distribution 𝑝 0 to the target distribution 𝜋 through a probability path 𝑝 𝜉 , induced by a generator 𝒇 in the sense of (2.12) and (2.13). In the flow-matching paradigm (Lipman et al. 2024), such a coupling is constructed by specifying a conditional probability path 𝑝 𝜉 (𝒗 |𝒖 ) for all samples from the target distribution 𝒖 ∼ 𝜋 (·) . After marginalisation, the corresponding (marginal) probability path is then obtained for 𝜉 ∈ [ 0, 1) as 
+
+𝑝 𝜉 (𝒗 ) =
+
+∫
+
+𝑝 𝜉 (𝒗 |𝒖 )𝜋 (𝒖 )d𝒖 . (2.14) 10 A probability distribution in the phase space of turbulent channel flow 
+
+As a result, the requirement that the final distribution 𝑝 1 equals the target distribution 𝜋 
+
+is satisfied when the conditional probability path converges to the Dirac delta distribution 
+
+𝑝 1 (𝒗 |𝒖 ) = 𝛿 (𝒗 − 𝒖 ). For the initial distribution 𝑝 0, a standard Gaussian can be chosen with 
+
+𝑝 0 (𝒗 |𝒖 ) = N ( 𝒗 ; 0, I). Let the conditional path 𝑝 𝜉 (𝒗 |𝒖 ) satisfy the probability continuity equation with conditional generator 𝒇 (𝒗 , 𝜉 |𝒖 ) for each target sample 𝒖 and for 𝜉 ∈ [ 0, 1),where the open interval allows for target distributions with compact support (Lipman et al. 
+
+2024). Then the marginal path 𝑝 𝜉 (𝒗 ), defined in (2.14), satisfies the probability continuity equation for 𝜉 ∈ [ 0, 1) with the marginal generator (Lipman et al. 2023) 
+
+𝒇 (𝒗 , 𝜉 ) =
+
+∫
+
+𝒇 (𝒗 , 𝜉 |𝒖 ) 𝑝 𝜉 (𝒗 |𝒖 )𝜋 (𝒖 )
+
+𝑝 𝜉 (𝒗 ) d𝒖 . (2.15) In practice, this integral need not be evaluated explicitly. Instead, a neural network 𝒇 𝝑 
+
+with parameters 𝝑 is trained to approximate 𝒇 , based on a chosen conditional probability path. One approach is to select the conditional path as the minimizer of a cost functional with desirable properties. The path minimizing the 2-norm of the conditional generator along its associated conditional probability path is known as the Gaussian conditional optimal transport path (Lipman et al. 2024). It is given by the conditional flow map 
+
+𝛹 𝜉 (𝒗 0 |𝒖 ) = 𝜉 𝒖 + ( 1 − 𝜉 )𝒗 0, with as conditional generator and probability path 
+
+𝒇 (𝒗 , 𝜉 |𝒖 ) = 𝒖 − 𝒗 
+
+1 − 𝜉 , (2.16 a)
+
+𝑝 𝜉 (𝒗 |𝒖 ) = N ( 𝒗 ; 𝜉 𝒖 , (1 − 𝜉 )2I). (2.16 b)By construction, this conditional path yields straight trajectories in phase space, which has been empirically associated with faster training and sampling, as well as better generalisation, compared to standard diffusion paths (Lipman et al. 2023). Moreover, standard explicit time integrators are stable for this conditional generator on equidistant grids 𝜉 𝑖 = 𝑖 /𝑁 ∈ [ 0, 1] with 𝑖 = 0, . . . , 𝑁 for all 𝑁 > 0. For a timestep 𝛥𝜉 = 1/𝑁 , the most restrictive local eigenvalue is 𝜆 = −𝑁 , so their product 𝜆𝛥𝜉 = −1 belongs to the stability region of the forward Euler method and standard explicit Runge–Kutta methods. The target probability path is matched by training the neural network 𝒇 𝝑 (𝒗 , 𝜉 ) to approximate the target generator 𝒇 (𝒗 , 𝜉 ) along 𝑝 𝜉 (𝒗 ) through the flow-matching loss (Lipman et al. 2023): 
+
+LFM (𝝑 ) = E𝜉 ∼U 10 , 𝒗 ∼ 𝑝 𝜉 (·) 
+
+h
+
+𝒇 𝝑 (𝒗 , 𝜉 ) − 𝒇 (𝒗 , 𝜉 ) 22
+
+i
+
+. (2.17) Unfortunately, the flow-matching loss is intractable due to the integration over the entire target distribution in the definition of the target generator in (2.15). However, Lipman 
+
+et al. (2023) showed that the gradient of the flow-matching loss with respect to the neural network parameters is equal to that of the conditional flow-matching loss 
+
+LCFM (𝝑 ) = E𝜉 ∼U 10 ,𝒖 ∼ 𝜋 (·) ,𝒗 ∼ 𝑝 𝜉 (· | 𝒖 )
+
+∥ 𝒇 𝝑 (𝒗 , 𝜉 ) − 𝒇 (𝒗 , 𝜉 |𝒖 )∥ 22
+
+ , (2.18 a)
+
+= E𝜉 ∼U 10 ,𝒖 ∼ 𝜋 (·) ,𝒗 0∼ 𝑝 0 (·) 
+
+h
+
+∥ 𝒇 𝝑 
+
+
+
+𝛹 𝜉 (𝒗 0 |𝒖 ), 𝜉 
+
+
+
+− ( 𝒖 − 𝒗 0)∥ 22
+
+i
+
+, (2.18 b)where the second equality is obtained for the chosen Gaussian conditional optimal transport path. Consequently, the neural-network generator can be trained to match the generator of straight-line trajectories connecting initial states drawn from the base distribution 
+
+𝑝 0 to states drawn from the target distribution 𝜋 . The learned generator 𝒇 ★ 
+
+> 𝝑
+
+(𝒗 , 𝜉 ) can then be used to generate synthetic turbulent velocity fields that approximately follow the natural distribution, by integrating the set of ordinary differential equations of (2.12) with 
+
+𝒇 (𝒗 , 𝜉 ) ≈ 𝒇 ★ 
+
+> 𝝑
+
+(𝒗 , 𝜉 ) and initial conditions drawn from a standard Gaussian. 11 F. Aerts, D. Nuyens and J. Meyers 
+
+2.4. Approximate sampling of the conditional natural distribution 
+
+We now introduce a modification to the flow-based generative model, so that we can also approximately sample the conditional natural distribution. To this end, we first derive the training loss for a guided flow-based model that transports a standard Gaussian to the conditional natural distribution. We then construct an approximate minimizer of this loss by relating the guided generator to the previously learned marginal generator (see §2.3). Consider the conditional natural distribution 𝜋 (𝒖 𝑢 |𝒖 𝑜 ). Here, 𝒖 𝑜 = M 𝒖 denotes an observed, or known, part of the velocity field. The mask matrix M ∈ R𝑚 ×𝑛 contains 𝑚 
+
+distinct rows of the identity matrix and therefore selects the observed components. The unobserved part of the velocity field is denoted by 𝒖 𝑢 = M⊥𝒖 . The complementary mask 
+
+M⊥ ∈ R(𝑛 −𝑚 ) × 𝑛 contains the remaining 𝑛 − 𝑚 rows of the identity matrix. With the conditional natural distribution as target distribution, we can construct a guided generator 
+
+𝒇 (𝒗 , 𝜉 |𝒖 𝑜 ) and corresponding guided probability path 𝑝 𝜉 (𝒗 |𝒖 𝑜 ),
+
+𝑝 𝜉 (𝒗 |𝒖 𝑜 ) =
+
+∫
+
+𝑝 𝜉 (𝒗 |𝒖 )𝜋 (𝒖 𝑢 |𝒖 𝑜 )d𝒖 𝑢 , (2.19 a)
+
+𝒇 (𝒗 , 𝜉 |𝒖 𝑜 ) =
+
+∫
+
+𝒇 (𝒗 , 𝜉 |𝒖 ) 𝑝 𝜉 (𝒗 |𝒖 )𝜋 (𝒖 𝑢 |𝒖 𝑜 )
+
+𝑝 𝜉 (𝒗 |𝒖 𝑜 ) d𝒖 𝑢 , (2.19 b)that satisfy the probability continuity equation for 𝜉 ∈ [ 0, 1), if the conditional generator 
+
+𝒇 (𝒗 , 𝜉 |𝒖 ) and conditional probability path 𝑝 𝜉 (𝒗 |𝒖 ) do so. The neural network for the guided generator 𝒇 𝝑 (𝒗 , 𝜉 |𝒖 𝑜 ) should then be trained by minimizing its discrepancy with the target generator 𝒇 (𝒗 , 𝜉 |𝒖 𝑜 ) over the target probability path 𝑝 𝜉 (𝒗 |𝒖 𝑜 ) and for all realisations of the observed part of the state 𝒖 𝑜 ∼ 𝜋 𝑜 (·) . Similar to before, it can be shown that the gradient of this loss with respect to the neural network parameters 𝝑 equals that of a guided conditional flow-matching loss 
+
+LGCFM (𝝑 ) = E𝜉 ∼U 10 ,𝒖 𝑜 ∼ 𝜋 𝑜 (·) ,𝒗 ∼ 𝑝 𝜉 (· | 𝒖 𝑜 )
+
+∥ 𝒇 𝝑 (𝒗 , 𝜉 |𝒖 𝑜 ) − 𝒇 (𝒗 , 𝜉 |𝒖 )∥ 22
+
+ , (2.20 a)
+
+= E𝜉 ∼U 10 ,𝒖 𝑜 ∼ 𝜋 𝑜 (·) ,𝒖 𝑢 ∼ 𝜋 (· | 𝒖 𝑜 ),𝒗 0∼ 𝑝 0 (·) 
+
+h
+
+∥ 𝒇 𝝑 
+
+
+
+𝛹 𝜉 (𝒗 0 |𝒖 ), 𝜉 |𝒖 𝑜 
+
+
+
+− ( 𝒖 − 𝒗 0)∥ 22
+
+i
+
+, (2.20 b)where the second equality is obtained for the conditional optimal transport path. Conse-quently, the conditional natural distribution can be approximately sampled by integrating the guided generator 𝒇 ★ 
+
+> 𝝑
+
+(𝒗 , 𝜉 |𝒖 𝑜 ) that minimises the guided conditional flow-matching loss, starting from states drawn from the initial distribution 𝒗 0 ∼ N ( 0, I).The conditional natural distribution 𝜋 (𝒖 𝑢 |𝒖 𝑜 ) can be defined for any mask M. However, training a separate guided generator for each possible mask would be impractical. We therefore construct an approximate minimiser of the guided conditional flow-matching loss as follows. Since the guided generator can take the observed part of the state 𝒖 𝑜 as input, we can exactly match the target generator for the observed part by choosing 
+
+M 𝒇 ★ 
+
+> 𝝑
+
+(𝒗 , 𝜉 |𝒖 𝑜 ) = 𝒖 𝑜 − M 𝒗 
+
+1 − 𝜉 , (2.21) for the conditional optimal transport path, see (2.16a). As a result, only the components of the generator selected by M⊥ contribute to the guided conditional flow-matching loss in (2.20b). As the guided generator should be usable with any mask M, we average the loss over all possible masks M ∈ R𝑚 ×𝑛 containing 𝑚 random, distinct rows of the identity matrix with 𝑚 ∈ { 1, . . . , 𝑛 − 1}, i.e., 
+
+EM , 𝜉 ∼U 10 ,𝒖 ∼ 𝜋 (·) ,𝒗 ∼ 𝑝 𝜉 (· | 𝒖 )
+
+∥M⊥   𝒇 𝝑 (𝒗 , 𝜉 |𝒖 𝑜 ) − 𝒇 (𝒗 , 𝜉 |𝒖 ) ∥22
+
+ . (2.22) 12 A probability distribution in the phase space of turbulent channel flow              
+
+> Figure 3. Schematic representation of the sampling process with the flow-based generative model: (a) The flow map 𝒗 𝜉 =𝛹 𝜉
+> 𝝑 (𝒗 0)deterministically maps an initial condition 𝒗 0, sampled from a standard Gaussian, to a turbulent channel flow field 𝒗 1at fictitious time 𝜉 =1. (b) Through sequential conditional sampling with minimal conditional flow units, turbulent channel flow fields on arbitrarily large domains can be generated.
+
+Here, M⊥ explicitly selects the unobserved components, for which the discrepancy is not necessarily zero. If the unobserved part of the guided generator network M⊥ 𝒇 𝝑 (𝒗 , 𝜉 |𝒖 𝑜 )
+
+is restricted to be independent of 𝒖 𝑜 , then (2.22) becomes a random selection of 𝑛 − 𝑚 
+
+component-wise squared errors from the conditional flow-matching loss in (2.18a). Under this restriction and under a mask distribution that weights all components equally, the previously trained generator can therefore be reused as an approximate minimiser of (2.22), so that M⊥ 𝒇 ★ 
+
+> 𝝑
+
+(𝒗 , 𝜉 |𝒖 𝑜 ) ≈ M⊥ 𝒇 ★ 
+
+> 𝝑
+
+(𝒗 , 𝜉 ).Consequently, we can approximately sample the conditional natural distribution 𝜋 (𝒖 𝑢 |𝒖 𝑜 )
+
+by integrating the modified system of ordinary differential equations d𝒗 
+
+d𝜉 = M⊤
+
+ 𝒖 𝑜 − M 𝒗 
+
+1 − 𝜉 
+
+
+
++  M⊥⊤ M⊥ 𝒇 ★ 
+
+> 𝝑
+
+(𝒗 , 𝜉 ) (2.23) over 𝜉 ∈ [ 0, 1), starting from an initial condition 𝒗 0 ∼ N ( 0, I). Projecting (2.23) onto the observed and unobserved parts with M and M⊥ gives the system that is solved in practice: 
+
+M 𝒗 𝜉 = 𝜉 𝒖 𝑜 + ( 1 − 𝜉 )M 𝒗 0, (2.24 a)
+
+M⊥ d𝒗 𝜉 
+
+d𝜉 = M⊥ 𝒇 ★ 
+
+> 𝝑
+
+(𝒗 𝜉 , 𝜉 ). (2.24 b)2.5. Summary and case set-up 
+
+The sampling procedure of the machine-learned probability distribution in the phase space of turbulent channel flow fields is depicted in figure 3. Since the flow-based generative model is trained on a minimal conditional flow unit, synthetic turbulent velocity fields on such a unit can be generated by integrating the learned set of ordinary differential equations, d𝒗 
+
+d𝜉 = 𝒇 ★ 
+
+> 𝝑
+
+(𝒗 , 𝜉 ), (2.25) from an initial condition 𝒗 0 ∼ N ( 0, I). As shown in figure 3(a), the deterministic flow map 𝒗 𝜉 = 𝛹 𝜉  
+
+> 𝝑
+
+(𝒗 0) transforms the initial Gaussian field into a synthetic turbulent velocity 13 F. Aerts, D. Nuyens and J. Meyers 
+
+field at 𝜉 = 1. Samples from the conditional natural distribution are obtained in the same way, but by integrating the modified dynamical system from (2.23), again starting from a Gaussian initial condition. This conditional sampling procedure can be used to reconstruct turbulent velocity fields when part of the velocity field is known. It also enables the generation of synthetic turbulent velocity fields on arbitrarily large domains. Figure 3(b) schematically depicts this domain-extension procedure. First, one minimal conditional flow unit is sampled unconditionally (orange). The domain is then extended in the 𝑥 -direction by conditionally generating half a neighbouring unit using the most relevant information from the orange region (red). The same procedure is applied in the 𝑧 -direction (blue). The remaining corner region (purple) is then generated conditionally on the most relevant information from all three previously generated regions. Repeating this process allows larger synthetic turbulent fields to be assembled from minimal conditional flow units. The reference direct numerical simulation, whose snapshots are used to train the machine-learned probability distribution, is performed with the pseudospectral code SP-Wind (Meyers & Sagaut 2007; Meyers & Meneveau 2010; Bon & Meyers 2022). The flow is governed by the incompressible Navier –Stokes equations on a domain of size 8 𝜋𝛿 ×2𝛿 ×3𝜋𝛿 
+
+along the streamwise ( 𝑥 ), wall-normal ( 𝑦 ), and spanwise ( 𝑧 ) directions, where 𝛿 = 1 is the half-channel height. The domain is periodic in the streamwise and spanwise directions, with a grid resolution of 𝛥𝑥 + × 𝛥𝑧 + = 11 .8×5.9 or 𝑁 𝑥 × 𝑁 𝑧 = 384 ×288. In the wall-normal direction, a fourth-order energy conservative scheme (Verstappen & Veldman 2003) is used on a grid resolution of 𝛥𝑦 + ∈ [ 0.17 , 3.1] obtained for 𝑁 𝑦 = 256 with a hyperbolic tangent stretching function. The time-integration uses a fourth-order Runge–Kutta method, for which the timestep is chosen such that the Courant number is maintained below 0.4. The flow field is initialized with a random perturbation of the laminar profile and simulated for 
+
+𝑡𝑢 𝜏 /𝛿 = 40 outer time units to reach statistical stationarity. Subsequently, velocity field snapshots are recorded every 𝛥𝑡𝑢 𝜏 /𝛿 = 0.25 over an additional 50 outer time units. The ensemble statistics of this reference DNS were first validated by comparing them with those of the reference simulation by Kim et al. (1987), for all statistics examined in §3, when available. As such, the snapshots can truly be considered to be samples from the coarse-grained natural distribution of the dynamical system (cf. §2.1). The machine-learned distribution is trained on a minimal conditional flow unit, which has another resolution and size than the DNS domain. Here, the fields are coarsened by a factor 2 to a resolution 𝛥𝑥 + × 𝛥𝑦 + × 𝛥𝑧 + = 23 .6 × [ 0.34 − 6.2] × 11 .8, by filtering the field in the periodic directions with a sharp cut-off filter at half the maximal wavenumber and downsampling the field in the wall-normal direction. To get rid of potential elongated streaks in the average over all snapshots due to the locking of streamwise structures in the periodic domain (Munters et al. 2016), we also randomly shift the flow field of each snapshot in the periodic 𝑧 -direction, which is consistent with the translational invariance. Since the DNS domain is sufficiently larger than the minimal conditional channel flow unit of size 2 𝜋𝛿 × 2𝛿 × 𝜋𝛿 /2 (cf. §2.2), the statistics within the minimal conditional flow units are effectively homogeneous. After splitting the domain into 24 minimal conditional flow units, 4824 snapshots of velocity fields on minimal conditional flow units are obtained, which are no longer periodic in the streamwise and spanwise direction. As a side effect, energy spectra computed on them will be subject to spectral leakage of the discrete Fourier transform. Of these 4824 snapshots, the first 80% are used to train the machine-learned distribution, the next 10% are held out as a validation set to detect overfitting during training and select model settings, without being used to update the model parameters. The final 10% are reserved as an independent test set for out-of-sample evaluation, as discussed in the next section. Further details on the neural network architecture and training procedure are given in Appendix A. 14 A probability distribution in the phase space of turbulent channel flow 0 5 10 15 20         
+
+> 0
+> 0.5
+> 1
+> 1.5
+> 2
+> ⟨u⟩/u τ
+> y/δ
+> (a)
+> 0123
+> 0
+> 0.5
+> 1
+> 1.5
+> 2
+> ⟨u′
+> iu′
+> i⟩0.5/u τ
+> y/δ
+> (b)
+> u′
+> v′
+> w′
+> −1−0.500.51
+> 0
+> 0.5
+> 1
+> 1.5
+> 2
+> -⟨u′v′⟩/u 2
+> τ
+> y/δ
+> (c)
+> DNS
+> Synthetic
+> Figure 4. Comparison of the one-point first- and second-order ensemble statistics between the synthetic and the DNS velocity fields: (a) mean velocity profile, (b) root-mean-square velocity fluctuations, and (c) Reynolds shear stress.
+
+3. Applications in synthetic turbulence and turbulent flow reconstruction 
+
+Three properties of the machine-learned distribution are examined. First, the physicality of its ensemble statistics is assessed in §3.1, by comparing the statistics of synthetic turbulent channel flow fields on minimal conditional flow units with those of DNS. Then, the consistency of conditional sampling is analysed in §3.2, for a flow reconstruction problem that allows for a clear probabilistic interpretation of the reconstruction error. In addition, we examine whether the sequential conditional sampling with minimal conditional flow units indeed allows to generate velocity fields on larger domains. Lastly, the dynamical invariance of the distribution is studied in §3.3, by examining the time evolution of the statistics of synthetic velocity fields on a large domain when used as initial conditions for DNS. The results presented below are obtained by integrating both sets of ordinary differential equations (2.25) and (2.23) with a fourth-order Runge–Kutta method with only 20 timesteps, which takes about 1 second per field on a Nvidia H100 GPU. 3.1. Synthetic turbulent channel flow fields 
+
+We start our analysis with figure 4, which compares the first- and second-order one-point statistics of an ensemble of 500 synthetic velocity fields on minimal conditional flow units with those of the unseen DNS test data. Figure 4(a) shows that the mean velocity profile is correctly represented, and as a consequence the viscous shear is as well. Also the turbulent kinetic energy in each of the three velocity components is properly captured as seen in figure 4(b). Close to the wall, the root-mean-square velocity fluctuations are highly anisotropic as the variance of the streamwise velocity fluctuations is significantly larger than the others. Also the inhomogeneity in the wall-normal direction is adequately captured. In addition, the generated flow fields display the correct turbulent vertical momentum flux or shear stress profile as shown in figure 4(c). Consequently, the synthetic turbulent flow fields convincingly represent the inhomogeneity and anisotropy in the Reynolds stresses. However, these one-point statistics can be reproduced by Gaussian fields as well. Following Kim et al. (1987), we also examine the higher-order one-point statistics. The skewness 𝑆 (𝜑 ) = ⟨𝜑 3⟩/⟨ 𝜑 2⟩3/2 of the velocity component fluctuations is compared in figure 5(a). Close to the wall, the streamwise velocity fluctuation has large positive skewness while farther from the wall it has negative skewness. This is consistent with the result from quadrant analysis showing a higher contribution to the production of 15 F. Aerts, D. Nuyens and J. Meyers 0 50 100 150                        
+
+> −1
+> −0.5
+> 0
+> 0.5
+> 1
+> y+
+> S
+> (a)
+> 050 100 150
+> 0
+> 5
+> 10
+> y+
+> F
+> (b)
+> u′
+> v′
+> w′
+> 050 100 150
+> −6
+> −4
+> −2
+> 0
+> y+
+> S(u′v′)
+> (c)
+> 050 100 150
+> 0
+> 20
+> 40
+> 60
+> 80
+> y+
+> F (u′v′)
+> (d)
+> DNS
+> Synthetic
+> Figure 5. Comparison of the one-point third- and fourth-order ensemble statistics between the synthetic and the DNS velocity fields: (a,c) skewness 𝑆 (𝜑 )=⟨𝜑 3⟩/⟨ 𝜑 2⟩3/2, (b,d) flatness 𝐹 (𝜑 )=⟨𝜑 4⟩/⟨ 𝜑 2⟩2; (a,b) velocity fluctuations, (c,d) turbulent shear stress. The dashed grey lines denote the Gaussian values of 𝑆 =0 and 𝐹 =3.
+
+turbulent kinetic energy by sweeps of high-speed fluid towards the wall ( 𝑢 ′ > 0, 𝑣 ′ < 0) close to the wall ( 𝑦 + < 15) and by ejections of low-speed fluid outward of the wall (𝑢 ′ < 0, 𝑣 ′ > 0) farther from the wall (Wallace 2016). The wall-normal velocity fluctuation 
+
+𝑣 ′ has positive skewness in the viscous sublayer, negative skewness in the buffer layer, and positive skewness in the log-law region. The skewness of the spanwise velocity component fluctuation is zero, because of the spanwise reflection symmetry of the turbulent channel flow dynamics. The flatness 𝐹 (𝜑 ) = ⟨𝜑 4⟩/⟨ 𝜑 2⟩2, also known as kurtosis, of the velocity component fluctuations is shown in figure 5(b). The synthetic turbulent channel flow fields reproduce the highly intermittent behaviour close to the wall, as indicated by the large flatness or heavy tails of their distribution. Very close to the wall, however, the skewness and flatness of the wall-normal velocity in the synthetic fields tend toward the Gaussian values of 𝑆 = 0 and 𝐹 = 3. Figure 5(c) and 5(d) show that the large skewness and flatness of the turbulent shear stress are also replicated, except very close to the wall, similar as for the wall-normal velocity component in figure 5(b). Overall, the one-point statistics of the synthetic turbulent flow fields are thus adequately matched up to fourth order, including significant skewness and intermittency, which are typically absent in Gaussian fields. The spatial coherency of the synthetic turbulent channel flow fields is examined by comparing their two-point statistics with those of DNS velocity fields out of sample. Figure 6 shows the one-dimensional streamwise and spanwise energy spectra of the three velocity components at three wall-normal locations: 𝑦 + ∈ { 5.2, 29 , 178 }. Recall that the minimal conditional flow units are not periodic, so the computed spectra are subject to spectral leakage, as seen in the inflated values for ⟨𝐸 𝑢𝑢 ⟩ at 𝑦 + = 5.2 and large wavenumbers. 2 It is seen that the synthetic velocity fields reproduce the spectral 
+
+> 2This artefact becomes more apparent when comparing the reference DNS spectra computed on the small aperiodic domain with those computed on the large periodic domain, shown in figure 11.
+
+16 A probability distribution in the phase space of turbulent channel flow 10 0 10 1
+
+10 −5
+
+10 −4
+
+10 −3
+
+10 −2
+
+10 −1
+
+10 0
+
+kx
+
+> ⟨E⟩
+
+10 0 10 1
+
+10 −3
+
+10 −2
+
+10 −1
+
+10 0
+
+kx
+
+10 0 10 1
+
+10 −4
+
+10 −3
+
+10 −2
+
+10 −1
+
+kx  
+
+> ⟨Euu ⟩
+> ⟨Evv ⟩
+> ⟨Eww ⟩
+
+10 1 10 2
+
+10 −4
+
+10 −3
+
+10 −2
+
+10 −1
+
+10 0
+
+kz
+
+> ⟨E⟩
+
+10 1 10 2
+
+10 −3
+
+10 −2
+
+10 −1
+
+10 0
+
+kz
+
+10 1 10 2
+
+10 −4
+
+10 −3
+
+10 −2
+
+10 −1
+
+kz
+
+(a) (b) (c) 
+
+(d) (e) (f) 
+
+Figure 6. Comparison of the one-dimensional energy spectra ⟨𝐸 𝑢𝑢 ⟩, ⟨𝐸 𝑣𝑣 ⟩, and ⟨𝐸 𝑤𝑤 ⟩ between the synthetic and the DNS velocity fields on the minimal conditional channel flow unit of 2 𝜋𝛿 ×2𝛿 ×𝜋𝛿 /2 at three wall-normal heights: (a,d) 𝑦 + = 5.2, (b,e) 𝑦 + = 29, (c,f) 𝑦 + = 178. −5 0 5
+
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> 10 0
+> δ∥u/ ⟨(δ∥u)2⟩1/2
+> PDF
+
+(a)     
+
+> y+= 178
+> y+= 29
+> −505
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> 10 0
+> δ⊥u/ ⟨(δ⊥u)2⟩1/2
+> PDF
+
+(b) 
+
+> DNS
+> Synthetic
+
+Figure 7. Comparison of the distribution of streamwise velocity increments between the synthetic and the DNS velocity fields: (a) streamwise increments with spacing 𝛥𝑥 + = 23 .6, (b) spanwise increments with spacing 
+
+𝛥𝑧 + = 11 .8. The dotted grey lines denote Gaussian PDFs and are given for reference. 
+
+energy content of the DNS velocity fields over all scales that can be represented in the considered minimal conditional flow unit. Only the largest spanwise scales of the streamwise velocity component are underrepresented as seen in figure 6(e). By the relation of the energy spectrum to the spatial correlation, this implies that the spatial coherency 17 F. Aerts, D. Nuyens and J. Meyers 
+
+up to second order is correctly mimicked. Reproducing the spectral energy content is also possible with Gaussian random Fourier methods (Kraichnan 1970; Wu 2017). Therefore, we also examine the local structure of the turbulent fluctuations through the distribution of velocity increments in figure 7. In the centre of the channel at 𝑦 + = 178, the distributions of streamwise ( 𝛥𝑥 + = 23 .6) and spanwise increments ( 𝛥𝑧 + = 11 .8) of the streamwise velocity of the synthetic fields displays the same heavy tails as those of DNS. Closer to the wall at 𝑦 + = 29, the synthetic fields also reproduce the large skewness of the longitudinal velocity increments, which is related to the interscale energy flux – cf. Kolmogorov’s four-fifths law and the generalised K´ arm´ an–Howarth equation (Vassilicos 2015). Overall, the synthetic turbulent velocity fields thus adequately reproduce the large- and small-scale spatial coherency of the velocity fields from DNS, including their non-Gaussian features. 3.2. Consistency of conditional sampling 
+
+The second property of interest is the consistency of conditional sampling from the learned distribution. This property is relevant, on the one hand, to flow reconstruction problems where a part of the velocity field is observed and another part must be inferred. On the other hand, it enables the generation of synthetic turbulent velocity fields on arbitrarily large domains via the sequential conditional sampling procedure illustrated in figure 3(b) and described in §2.5. To assess this consistency, we focus on three aspects: (1) the spatial evolution of the mean-square-reconstruction error, (2) the realism of the ensemble statistics of the reconstructed fields, and (3) the validity of the local-conditioning approximation in (2.10), used in the sequential conditional sampling procedure with minimal conditional flow units. The latter two aspects are evaluated for synthetic turbulent flow fields on a large domain, whereas the first is examined in a derived flow reconstruction problem. Consider the flow reconstruction problem in figure 8(a), in which a downstream half of a minimal conditional channel flow unit is unobserved and should be reconstructed from the observed upstream half. The true unobserved part of the velocity field necessarily follows the conditional natural distribution, but it is unknown to which particular realisation it corresponds. Consequently, an ensemble of fields drawn from this distribution spans the range of dynamically consistent instantaneous fields compatible with the observations, while the associated ensemble variance quantifies the inherent reconstruction uncertainty. By simulating the ordinary differential equation of (2.23) with the corresponding mask, we obtain such an ensemble of reconstructed velocity fields that exactly equal the reference velocity field in the observed part of the domain, and should remain consistent with the observed part in the unobserved region. This consistency is quantified through the mean-square error of every velocity component in the reconstructed part of the domain, normalised by the height-dependent variance of that velocity component and averaged over the channel height. For the streamwise velocity component, this becomes 
+
+⟨𝑒 2 
+
+> 𝑢
+
+(𝑥 )⟩ = 1
+
+𝜋𝛿 
+
+∫ 2 𝛿 
+
+> 0
+
+∫ 𝜋 /20
+
+[( 𝑢 rec (𝒙 ) − 𝑢 ref (𝒙 )] 2
+
+𝑢 ′ 
+
+> ref
+
+(𝒙 )𝑢 ′ 
+
+> ref
+
+(𝒙 ) d𝑧 
+
+!
+
+d𝑦. (3.1) When computing the integral in the wall-normal direction, we however neglect the error in the region closer than 𝛥𝑦 + = 1 to the wall, because of the vanishing variance. As a point of reference, we also derive an estimate for the reconstruction error using approximations from linear stochastic estimation (Adrian 1996; Tinney et al. 2006). The methodology behind this estimate is presented in appendix B. We consider both the error obtained by reconstructed fields drawn from the true conditional distribution and the error obtained by the conditionally averaged field. In principle, the mean-square error of the conditional average represents the lowest attainable reconstruction error. However, 18 A probability distribution in the phase space of turbulent channel flow x            
+
+> •
+> •
+> •
+> observed reconstructed
+> 0123
+> 0
+> 0.5
+> 1
+> 1.5
+> 2
+> 2.5
+> x/δ
+> ⟨e2
+> u(x)⟩
+> 0123
+> 0
+> 0.5
+> 1
+> 1.5
+> 2
+> 2.5
+> x/δ
+> ⟨e2
+> v (x)⟩
+> 0123
+> 0
+> 0.5
+> 1
+> 1.5
+> 2
+> 2.5
+> x/δ
+> ⟨e2
+> w(x)⟩
+> Ensemble member
+> Ensemble average
+> LSE-based estimate
+> (a) (b)
+> (c) (d)
+
+Figure 8. Reconstruction error in a flow reconstruction problem: (a) schematic representation of the problem, (b-d) mean-square error on the streamwise, wall-normal, and spanwise velocity component. The mean ± one standard deviation for the wall-normal average are shown, both for the mean and members of the ensemble of reconstructed velocity fields. The orange lines denote estimates based on Linear Stochastic Estimation (LSE). 
+
+because our estimate is based on linear stochastic estimation, the estimated reconstruction error for the conditionally averaged field should be interpreted as the mean-square error of the best linear approximation to the conditional average. Figures 8(b-d) show the mean-square error obtained by averaging over an ensemble of 20 reconstructed fields for each of 50 reference fields from the unseen test data. The reconstruction error increases gradually with distance into the unobserved region, approaching the marginal variance for the ensemble mean and twice the marginal variance for individual ensemble members. This behaviour is consistent with the probabilistic interpretation of the mean-square reconstruction error: for the conditional mean, it equals the conditional variance (cf. Adrian 1996), whereas for fields sampled from the conditional distribution, it equals twice the conditional variance (cf. §2.2 and appendix B). As the quantity of interest decorrelates from the observations, the conditional variance converges to the marginal variance. This convergence occurs more rapidly for the spanwise and wall-normal velocity components than for the streamwise component. Figures 8(b-d) also show the corresponding LSE-based estimate of the reconstruction error, both for the conditional average and conditional realisations (cf. appendix B). The averaged reconstruction error of samples from the machine-learned conditional distribution is largely consistent with the LSE-based estimate for samples from the true conditional distribution, although it increases somewhat more rapidly. A similar trend is observed for the error of the ensemble average. Overall, these results indicate that the conditional sampling procedure provides accurate reconstructions and a satisfactory quantification of the associated uncertainty. 19 F. Aerts, D. Nuyens and J. Meyers 0 2π 4π 6π 8πx/δ                                     
+
+> 0
+> π
+> 2π
+> 3πz/δ
+> (a)
+> 02π4π6π8πx/δ
+> 0
+> π
+> 2π
+> 3πz/δ
+> (b)
+> 02π4π6π8πx/δ
+> 0
+> π
+> 2π
+> 3πz/δ
+> (c)
+> 02π4π6π8πx/δ
+> 0
+> π
+> 2π
+> 3πz/δ
+> (d)
+> 02π4π6π8πx/δ
+> 0
+> π
+> 2π
+> 3πz/δ
+> (e)
+> 02π4π6π8πx/δ
+> 0
+> π
+> 2π
+> 3πz/δ
+> (f)
+> 02π4π6π8πx/δ
+> 0
+> π
+> 2π
+> 3πz/δ
+> (g)
+> 02π4π6π8πx/δ
+> 0
+> π
+> 2π
+> 3πz/δ
+> (h)
+> 02π4π6π8πx/δ
+> 0
+> π
+> 2π
+> 3πz/δ
+> (i)
+> 02π4π6π8πx/δ
+> 0
+> π
+> 2π
+> 3πz/δ
+> (j)
+> -2.0 0.0 2.0
+> u′
+> -2.5 0.0 2.5
+> u′
+> -5.0 0.0 5.0
+> u′
+> -5.0 0.0 5.0
+> u′
+> -5.0 0.0 5.0
+> u′
+
+Figure 9. Comparison of the streamwise velocity fluctuation field between the DNS (left) and the synthetic (right) velocity fields at different wall-normal heights: (a-b) 𝑦 + = 178, (c-d) 𝑦 + = 59 .5, (e-f) 𝑦 + = 29, (g-h) 
+
+𝑦 + = 10, (i-j) 𝑦 + = 5.2. 
+
+The procedure of generating half of a minimal conditional flow unit conditioned on an observed or known other half may be applied sequentially, as depicted in figure 3(b), to generate synthetic velocity fields on the original domain size of 8 𝜋𝛿 × 2𝛿 × 3𝜋𝛿 . Figure 9 shows the streamwise component of a synthetic velocity field obtained in this manner next to a DNS streamwise velocity field of the unseen test data, at different wall-normal heights. At the wall-normal heights 𝑦 + = 59 .5 and 𝑦 + = 29, as shown in figure 9(c-f), the elongated structures are qualitatively very similar to those in the DNS, even though they surpass 20 A probability distribution in the phase space of turbulent channel flow 0 2π 4π 6π 8πx/δ                                     
+
+> 0
+> π
+> 2π
+> 3πz/δ
+> (a)
+> 02π4π6π8πx/δ
+> 0
+> π
+> 2π
+> 3πz/δ
+> (b)
+> 02π4π6π8πx/δ
+> 0
+> π
+> 2π
+> 3πz/δ
+> (c)
+> 02π4π6π8πx/δ
+> 0
+> π
+> 2π
+> 3πz/δ
+> (d)
+> 02π4π6π8πx/δ
+> 0
+> π
+> 2π
+> 3πz/δ
+> (e)
+> 02π4π6π8πx/δ
+> 0
+> π
+> 2π
+> 3πz/δ
+> (f)
+> 02π4π6π8πx/δ
+> 0
+> π
+> 2π
+> 3πz/δ
+> (g)
+> 02π4π6π8πx/δ
+> 0
+> π
+> 2π
+> 3πz/δ
+> (h)
+> 02π4π6π8πx/δ
+> 0
+> π
+> 2π
+> 3πz/δ
+> (i)
+> 02π4π6π8πx/δ
+> 0
+> π
+> 2π
+> 3πz/δ
+> (j)
+> -2.5 0.0 2.5
+> v′
+> -5.0 0.0 5.0
+> v′
+> -2.5 0.0 2.5
+> v′
+> -1.0 0.0 1.0
+> v′
+> -0.5 0.0 0.5
+> v′
+
+Figure 10. Comparison of the wall-normal velocity fluctuation field between the DNS (left) and the synthetic (right) velocity fields at different wall-normal heights: (a-b) 𝑦 + = 178, (c-d) 𝑦 + = 59 .5, (e-f) 𝑦 + = 29, (g-h) 
+
+𝑦 + = 10, (i-j) 𝑦 + = 5.2. 
+
+the streamwise length of the minimal conditional flow unit. At the centre of the channel (𝑦 + = 178), as shown in figure 9(a-b), the largest spanwise scales appear to be slightly underrepresented. Closer to the wall at 𝑦 + = 10 and 𝑦 + = 5.2, as shown in figure 9(g-j), the very large scale motions are generally reproduced, although they are somewhat shortened or cut in the synthetic fields. These cuts at 𝑥 /𝛿 = 𝑖𝜋 with 𝑖 = 2, . . . , 7 originate from the boundary of the observed and unobserved region, over which the velocity-increment distributions have heavier tails than in DNS at some, but not all, wall-normal heights (not 21 F. Aerts, D. Nuyens and J. Meyers 10 0 10 1              
+
+> 10 −5
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> 10 0
+> kx
+> ⟨E⟩
+> 10 010 1
+> 10 −3
+> 10 −2
+> 10 −1
+> 10 0
+> kx
+> 10 010 1
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> kx
+> ⟨Euu ⟩
+> ⟨Evv ⟩
+> ⟨Eww ⟩
+> 10 010 110 2
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> 10 0
+> kz
+> ⟨E⟩
+> 10 010 110 2
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> 10 0
+> kz
+> 10 010 110 2
+> 10 −6
+> 10 −5
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> kz
+> (a) (b) (c)
+> (d) (e) (f)
+
+Figure 11. Comparison of the one-dimensional energy spectra ⟨𝐸 𝑢𝑢 ⟩, ⟨𝐸 𝑣𝑣 ⟩, and ⟨𝐸 𝑤𝑤 ⟩ between the synthetic and the DNS velocity fields on a domain of 8 𝜋𝛿 × 2𝛿 × 3𝜋𝛿 at three wall-normal heights: (a,d) 𝑦 + = 5.2, (b,e)      
+
+> 𝑦 +=29, (c,f) 𝑦 +=178. The scales larger than those represented on the minimal conditional flow unit are shaded.
+
+shown). The wall-normal velocity component of the synthetic velocity field is shown in figure 10, again next to a field from the DNS test data. Overall, the shape of the turbulent structures shows strong qualitative resemblance to those of the DNS. Similar as for the streamwise velocity component, some structures may be noticed to be cut through and patched to others at the boundaries of the known and unknown region in the conditional sampling steps. Close to the wall, the highly intermittent behaviour of the wall-normal velocity is also reproduced with strong local bursts amidst more moderate elongated structures. Consequently, sequential conditional sampling with minimal conditional flow units allows generating synthetic turbulent velocity fields that share at least the qualitative intricate features of DNS fields on arbitrarily large domains. The spatial coherency of synthetic turbulent velocity fields generated on the original domain is validated by comparing their spectral energy content with that of the DNS fields. Figure 11 shows the one-dimensional streamwise and spanwise energy spectra of the three velocity components at three wall-normal locations: 𝑦 + ∈ { 5.2, 29 , 178 } for an ensemble of 10 synthetic fields. It is seen that the energy content at the small scales is still well-reproduced for the three velocity components, except close to the wall for the streamwise spectrum of 𝑢 and 𝑤 in figure 11(a), and in the middle of the channel for the spanwise spectrum of the three velocity components in figure 11(f). This is in agreement with the observed structures that are cut-through and patched together in figures 9 and 10. It must 22 A probability distribution in the phase space of turbulent channel flow 
+
+be noted, however, that the synthetic turbulent flow fields do not satisfy periodic boundary conditions and are thus also subject to spectral leakage. The same issues of inflated energy content were indeed observed for the DNS fields on minimal conditional flow units in figure 6(a,f). Even the energy content at scales larger than those represented in the minimal conditional flow unit (shaded in figure 11), is adequately reproduced by the synthetic velocity fields. The longest streamwise and spanwise structures of the streamwise velocity are, however, slightly underrepresented at all wall-normal distances. The good agreement for the spectra of the other velocity components is to be expected, since the fields are essentially uncorrelated at these distances. This is reflected by the flat one-dimensional spectra at low wavenumbers, which are also obtained for Dirac delta correlations. Overall, the spatial coherency of the synthetic velocity fields is thus well-preserved for the scales represented within the minimal conditional flow unit and generalised up to a domain that is 24 times as large. Consequently, the partial conditioning with minimal conditional flow units serves as an adequate approximation to full conditioning in this setting. Note that our definition of the minimal conditional flow unit is based on conditioning on a single velocity component at the centre of the domain (cf. §2.2). Alternative definitions, in which the flow field is conditioned on multiple components and/or multiple spatial locations, may require larger units for the unconditional and conditional fields to become indistinguishable in terms of the MSE. This is also illustrated in figure 8, where the flow field is conditioned on the upstream half of a minimal conditional flow unit. In that case, the MSE of the streamwise velocity component, ⟨𝑒 2 
+
+> 𝑢
+
+(𝑥 )⟩ in figure 8(b), has not yet reached twice the marginal variance over half a conditional flow unit, which is the MSE that unconditional fields obtain. Using larger units in the sequential conditional sampling procedure may improve the energy spectra of large generated velocity fields, but would also increase the computational cost. Overall, we find that the minimal conditional flow unit defined by conditioning on a single velocity component is adequate for the present purposes. 3.3. Dynamical invariance of the machine-learned probability distribution 
+
+We showed that the synthesised and reconstructed velocity fields sampled from the machine-learned distribution are turbulent-looking up to the considered ensemble statistics, but evaluating all ensemble statistics is impracticable. Therefore, we now examine whether the learned distribution is invariant under the turbulent dynamics. Apart from being a defining property of the natural distribution, it is also crucial for synthetic turbulence applications. If the learned distribution is dynamically invariant, initial conditions sampled from the natural distribution remain on the attractor without exciting large transients. Hence, a practical approach to test this last property of interest is evaluating the stationarity of the ensemble statistics of the previously generated synthetic turbulent fields (cf. figures 9-11), when used as initial conditions for DNS. The resolution of the synthetic turbulent velocity fields is fine enough to represent all dynamically relevant scales up to the dissipation range, but not necessarily equal to the DNS resolution, which needs to be finer so as to keep discretisation errors sufficiently small. To obtain initial conditions on the original DNS resolution, we must, in our case, upsample the synthetic turbulent velocity fields by a factor two. In the streamwise and spanwise direction, the velocity field is interpolated spectrally. As a result, the smallest scales of the upsampled initial condition initially contain no energy. An initial transient is therefore required to populate the smallest scales in the dissipation range. This transient is expected to evolve on the Kolmogorov time scale 𝑡 𝜈 , which varies from 𝑡 𝜈 𝑢 𝜏 /𝛿 = 0.013 at the walls to 𝑡 𝜈 𝑢 𝜏 /𝛿 = 0.076 at the centre of the channel, based on the DNS data of Kim 
+
+et al. (1987). Since the synthetic velocity fields are not necessarily divergence-free in the 23 F. Aerts, D. Nuyens and J. Meyers 10 0 10 1              
+
+> 10 −6
+> 10 −5
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> 10 0
+> kx
+> kx⟨E⟩
+> 10 010 1
+> 10 −3
+> 10 −2
+> 10 −1
+> 10 0
+> kx
+> 10 010 1
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> kx
+> ⟨Euu ⟩
+> ⟨Evv ⟩
+> ⟨Eww ⟩
+> 10 010 110 2
+> 10 −5
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> 10 0
+> kz
+> kz ⟨E⟩
+> 10 010 110 2
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> 10 0
+> 10 1
+> kz
+> 10 010 110 2
+> 10 −7
+> 10 −6
+> 10 −5
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> 10 0
+> kz
+> (a) (b) (c)
+> (d) (e) (f)
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> 0.8
+> 0.9
+> 1
+> tu τ /δ
+
+Figure 12. Time evolution of the premultiplied one-dimensional energy spectra averaged over an ensemble of 10 trajectories starting from synthetic initial conditions on a domain of 8 𝜋𝛿 × 2𝛿 × 3𝜋𝛿 . The spectra are shown at three wall-normal heights: (a,d) 𝑦 + = 5.2, (b,e) 𝑦 + = 29, (c,f) 𝑦 + = 178. The line colour indicates the time of evaluation, with intervals of 𝛥𝑡𝑢 𝜏 /𝛿 = 0.1. The scales larger and smaller than those represented on the minimal conditional flow unit are shaded. 
+
+considered discretisation, we also apply a pressure projection step before integrating the Navier–Stokes dynamics. To assess whether the ensemble statistics reach stationarity after the brief transient, we examine their temporal evolution using DNS snapshots recorded at intervals of 𝛥𝑡𝑢 𝜏 /𝛿 = 0.1 for the previously generated ensemble of 10 synthetic turbulent velocity fields. Rather than attempting an exhaustive statistical characterisation, we focus on the temporal evolution of the Turbulent Kinetic Energy (TKE), whose spectra, production and dissipation jointly capture the essential features of the energy dynamics. Figure 12 shows the premultiplied one-dimensional streamwise and spanwise energy spectra at different wall-normal heights, where the premultiplication enables an energy-density interpretation on the logarithmic wavenumber axes. It is seen that the smallest scales are indeed regenerated after only 𝛥𝑡𝑢 𝜏 /𝛿 = 0.1. Beyond this point, no significant transient behaviour is observed in the spectral energy content. In figure 13, we further verify the stationarity of the production and dissipation of TKE, which govern the net evolution of the total TKE, over a longer trajectory spanning 𝑡𝑢 𝜏 /𝛿 = 10. Their temporal variations are consistent with those observed in DNS snapshots of the reference trajectory, whose 0.5th and 99.5th percentile are shown as grey dashed lines. Figure 13(b) additionally shows that the nonlinear turbulent transport of TKE also remains stationary. Since this term depends on third-order moments of the velocity 24 A probability distribution in the phase space of turbulent channel flow 10 −1 10 0 10 1 10 2                 
+
+> 0.00
+> 0.10
+> 0.20
+> y+
+> Production
+> 10 −110 010 110 2
+> −0.05
+> 0.00
+> 0.05
+> y+
+> Turbulent transport
+> 10 −110 010 110 2
+> −0.20
+> −0.15
+> −0.10
+> −0.05
+> 0.00
+> y+
+> Dissipation
+> (a) (b) (c)
+> 0.1
+> 2
+> 4
+> 6
+> 8
+> 10
+> tu τ /δ
+> Figure 13. Time evolution of turbulent kinetic energy budget terms from a DNS on a domain of 8 𝜋𝛿 ×2𝛿 ×3𝜋𝛿
+> initialised with a synthetic turbulent velocity field: (a) production, (b) turbulent transport, (c) dissipation. The line colour indicates the time of evaluation, with intervals of 𝛥𝑡𝑢 𝜏 /𝛿 =0.1. The grey dashed lines indicate the 0.5th and 99.5th percentiles from the reference DNS trajectory.
+
+fluctuations, it vanishes identically in Gaussian synthetic fields. This again highlights the importance of the non-Gaussian features of the natural distribution imposed by the turbulent dynamics. Overall, these results suggest that the machine-learned distribution exhibits the dynamical invariance property central to the definition of the natural distribution. 
+
+4. Conclusion 
+
+Motivated by applications in synthetic turbulence generation and turbulent flow recon-struction, we examine to what extent a machine-learned distribution can approximate the physical invariant distribution of a turbulent channel flow at a friction Reynolds number of Re 𝜏 = 180. We study three properties that the learned distribution should have: dynamical invariance (Hopf 1952), ensemble statistics that are representative for observable trajectories of the dynamical system (Ruelle 1978), and consistent conditional sampling, which should hold for any probability distribution. Since training (or conditioning) the distribution on arbitrarily large domains is impracticable, we represent the distribution on a minimal conditional flow unit, and show that this still enables generating velocity fields on larger domains. We define the minimal conditional flow unit as the smallest domain in the homogeneous direction(s) outside which the conditional velocity field, conditioned on a velocity component at the domain centre, is indistinguishable from corresponding unconditional fields in terms of mean-square discrepancy from other conditional realisations. In this way, the minimal conditional flow unit spans the extent over which conditional flow fields, including the conditional eddies from linear stochastic estimation (Adrian 1996), are distinguishable from unconditional fields in terms of mean-square discrepancy. Our methodology is based on training a flow-based generative model (Lipman et al. 2023) to synthesize and reconstruct spatially three-dimensional turbulent channel flow velocity fields. Similar to the Navier–Stokes dynamics during spin-up, the flow-based generative model deterministically maps an initial condition to a state on the attractor. However, it does so by defining an auxiliary dynamical system for the velocity field that is trained to produce straight trajectories in phase space. As a result, random fields that initially follow a standard Gaussian can be transformed into synthetic turbulent channel flow fields by integrating the auxiliary dynamical system, with only 20 steps of a fourth-order Runge-Kutta method in our test cases. In flow reconstruction problems in which only a part of the velocity field 25 F. Aerts, D. Nuyens and J. Meyers 
+
+is observed, the unobserved part of the field necessarily follows the conditional natural distribution. Hence, an ensemble of realistic reconstructions can be obtained by sampling this conditional natural distribution, where the ensemble variance quantifies the remaining reconstruction uncertainty. We show that the conditional learned distribution can be defined for any partition of observed and unobserved variables without retraining a neural network. This is achieved by deriving a modified dynamical system that approximately minimises a guided conditional flow-matching loss. As a result, the conditional natural distribution can be sampled approximately by integrating this modified dynamical system, using the same number of integration steps as for unconditional generation. The machine-learned distribution displays the three considered properties of the natural distribution, relevant to synthetic turbulence generation and turbulent flow reconstruction. First, synthetic turbulent velocity fields sampled from the distribution reproduce the mean velocity, Reynolds stresses, and one-dimensional energy spectra, similarly to classical Gaussian random Fourier methods originating from the work of Kraichnan (1970). Im-portantly, they additionally capture distinct non-Gaussian features, including the skewness and flatness of the velocity fluctuations, turbulent shear stress, and velocity-increment distributions. Second, conditional sampling is consistent, as the mean-square reconstruction error obtained from an ensemble of reconstructed fields largely agrees with an estimated reconstruction error based on linear stochastic estimation (Adrian 1996; Tinney et al. 2006). By means of sequential conditional sampling, we also generate synthetic velocity fields on the large original DNS domain. These fields share the qualitative features of DNS velocity fields and adequately replicate their energy spectra, supporting the representation of the learned distribution on a minimal conditional flow unit. Third, the synthetic fields on the large domain remain on the attractor without exciting a large transient when used as initial conditions for DNS. After an adaptation period of the order of the Kolmogorov timescale, the ensemble-averaged energy spectra remain approximately stationary. Moreover, the turbulent production and dissipation, as well as the nonlinear transport of turbulent kinetic energy, remain statistically stationary over a simulation spanning 𝑡𝑢 𝜏 /𝛿 = 10 time units. Together, these results show that the machine-learned distribution reproduces key statistical and dynamical features of turbulent channel flow, is consistent under conditional sampling, and remains close to the turbulent attractor under Navier–Stokes evolution. It therefore provides a physically meaningful approximation to the natural distribution of the turbulent dynamical system. Probabilistic machine-learning models, and flow-based generative models in particular, provide promising computational methods for improving synthetic turbulence generators and flow-reconstruction algorithms, because they can represent intricate features of the full natural distribution. The present study focused on the distribution in the phase space of turbulent channel flow at a relatively low Reynolds number. Extending the approach to higher Reynolds numbers may require architectural improvements to handle the rapid increase in the dimensionality of the discretised fields. In this regime, it may also be advantageous to impose incompressibility explicitly, rather than relying on the model to learn this constraint implicitly. Parametrising the dependence of the distribution on the Reynolds number is another useful direction, although this may require explicit treatment of inner–outer scaling. Further developments are also needed for more practical flow configurations. In particular, unstructured grids are more common in complex geometries than the structured grid used here, and may require a different neural-network backbone. Although the present work defined the conditional distribution of one part of the velocity field given another, conditioning on derived quantities, such as wall shear stress or pressure, may also be valuable. Lastly, the use of large generated fields in combination with Taylor’s frozen-turbulence hypothesis may also be of interest for synthetic inflow generation. 26 A probability distribution in the phase space of turbulent channel flow 
+
+Hyperparameter Description Values Used Image resolution Field resolution ( 𝑛 𝑥 × 𝑛 𝑦 × 𝑛 𝑧 ) 48 × 128 × 24 Input/Output channels State dimensionality (velocity) 3Model channels Internal state dimensionality 64 Channel multipliers Per-level up/downsampling rates (1, 2, 3, 4)
+
+Number of resolutions U-Net levels 4Conv resampling Learned convolutions for up/downsampling Enabled Residual blocks per level Number of residual blocks per downsample 1Attention resolutions Downsample rates with attention blocks Only at the bottleneck Attention heads Number of attention heads 4Dropout Dropout probability in residual blocks 0.1
+
+Table 1. Hyperparameters used in the U-Net architecture of Dhariwal & Nichol (2021). 
+
+Funding. The authors acknowledge support from Research Foundation - Flanders (FWO, grant no. 11A6S26N) and from KU Leuven (project no. 3E230463). The computational resources and services used in this work were provided by the VSC (Flemish Supercomputer Center), funded by the Research Foundation - Flanders (FWO) and the Flemish Government. 
+
+Declaration of interests. The authors report no conflict of interest. 
+
+Author ORCIDs. F. Aerts, https://orcid.org/0009-0001-4853-2714; D. Nuyens, https://orcid.org/0000-0002-4555-2314; J. Meyers, https://orcid.org/0000-0002-2828-4397 
+
+Appendix A. Network architecture and training 
+
+The flow-based generative model is defined by the generator 𝒇 𝝑 (𝒖 , 𝜉 ), parametrised by a neural network. As neural network architecture, we adopt the U-Net design of Dhariwal & Nichol (2021), with the selected hyperparameters listed in table 1. The network is trained by minimising the conditional flow-matching loss in (2.18), using the first 80% of the DNS snapshots used as samples of the target distribution. Training is performed on a single Nvidia H100 GPU using the R-Adam optimiser (Liu et al. 2021), with an initial learning rate of 1e-4, a batch size of 12, and a total of 500 epochs. During training, the conditional flow-matching loss decreases steadily on both the training set and the validation set, defined as the subsequent 10% of the snapshots. At the end of each epoch, we generate an ensemble of 48 velocity fields by integrating the current generator from 𝜉 = 0 to 𝜉 = 1, using a fourth-order Runge-Kutta scheme with 20 integration steps. We then evaluate the mean-square error of the ensemble-averaged velocity field and Reynolds stresses relative to the corresponding statistics computed from 48 velocity fields drawn from the validation set. The model checkpoint with the lowest validation error for these one-point first- and second-order statistics is selected as the trained flow-based generative model. The remaining 10% of the DNS snapshots, which are not used during training or validation, are reserved for examining the properties of the machine-learned distribution in §3. 
+
+Appendix B. Estimated reconstruction error based on linear stochastic estimation 
+
+In what follows, we estimate the mean-square error (MSE) between the true unobserved part of the field and a stochastic estimate for it. We first relate this MSE to the conditional average and conditional variance, through a multivariate generalisation of (2.7). Then we describe a procedure of estimating this MSE from the DNS snapshots restricted to a minimal conditional flow unit. Similar as in §2.4, we denote by 𝒖 𝒐 = M 𝒖 the observed part of the discretised velocity field 𝒖 ∈ R𝑛 , where M ∈ R𝑚 ×𝑛 is a mask matrix containing 𝑚 distinct rows of the identity matrix. The unobserved part of the velocity field is denoted by 𝒖 𝒖 = M⊥𝒖 , where the complementary mask M⊥ ∈ R(𝑛 −𝑚 ) × 𝑛 contains the remaining 𝑛 − 𝑚 rows of the identity matrix. 
+
+B.1. Expression for the mean-square reconstruction error 
+
+The true unobserved part of the velocity field 𝒖 true  
+
+> 𝑢
+
+necessarily follows the conditional distribution 𝜋 (𝒖 𝑢 |𝒖 𝑜 )
+
+with mean ⟨𝒖 𝑢 |𝒖 𝑜 ⟩ and covariance Cov (𝒖 𝑢 |𝒖 𝑜 ). Let the reconstruction 𝒖 rec  
+
+> 𝑢
+
+be drawn independently from a distribution with mean ⟨𝒖 rec  
+
+> 𝑢
+
+|𝒖 𝑜 ⟩ and covariance Cov (𝒖 rec  
+
+> 𝑢
+
+|𝒖 𝑜 ). Because the true realisation 𝒖 true  
+
+> 𝑢
+
+is unknown, 
+
+27 F. Aerts, D. Nuyens and J. Meyers 
+
+we examine the expected squared error by averaging over all possible 𝒖 true  
+
+> 𝑢
+
+. Likewise, when the reconstruction is stochastic, we average over all possible reconstructions 𝒖 rec  
+
+> 𝑢
+
+. Because the reconstruction error depends on the observed state, we also average over 𝒖 𝑜 , so that the resulting error quantifies ensemble-averaged performance rather than performance conditional on a particular observation. The resulting MSE is given by 
+
+∥𝒖 rec  
+
+> 𝑢
+
+− 𝒖 true  
+
+> 𝑢
+
+∥2 = E𝒖 𝑜 
+
+Tr  Cov (𝒖 rec  
+
+> 𝑢
+
+|𝒖 𝑜 ) + Tr (Cov (𝒖 𝑢 |𝒖 𝑜 )) + ∥⟨ 𝒖 rec  
+
+> 𝑢
+
+|𝒖 𝑜 ⟩ − ⟨ 𝒖 𝑢 |𝒖 𝑜 ⟩∥ 2  , (B 1) which follows from the variance identity. For a particular observation 𝒖 𝑜 , the lowest mean-square error of all deterministic estimators is achieved by the conditional average (Adrian 1996). Indeed, 0 = 𝜕 𝜕 𝒖 rec 
+
+> 𝑢
+
+⟨∥ 𝒖 rec  
+
+> 𝑢
+
+− 𝒖 true  
+
+> 𝑢
+
+∥2 |𝒖 𝑜 ⟩ = −2(⟨ 𝒖 𝑢 |𝒖 𝑜 ⟩ − 𝒖 rec  
+
+> 𝑢
+
+) ⇔ 𝒖 rec  
+
+> 𝑢
+
+= ⟨𝒖 𝑢 |𝒖 𝑜 ⟩.
+
+However, the conditional average is not necessarily representative of instantaneous turbulent structures. Like the true unobserved part of the velocity field, realistic conditional fields should follow the conditional natural distribution. For an independent realisation of the conditional velocity field 𝒖 𝑐 𝑢 ∼ 𝜋 (𝒖 𝑢 |𝒖 𝑜 ), the mean-square error becomes 
+
+∥𝒖 𝑐 𝑢 − 𝒖 true  
+
+> 𝑢
+
+∥2 = 2 Tr  E𝒖 𝑜 [Cov (𝒖 𝑢 |𝒖 𝑜 )]  . (B 2) Similarly, the mean-square error between the truth and the mean of an ensemble of 𝑀 independent conditional realisations {𝒖 𝑐,𝑚 𝑢 }𝑀 𝑚 =1 with 𝒖 𝑐,𝑚 𝑢 ∼ 𝜋 (𝒖 𝑢 |𝒖 𝑜 ) equals 
+
+*
+
+1
+
+𝑀 
+
+> 𝑀
+
+∑︁ 
+
+> 𝑚 =1
+
+𝒖 𝑐,𝑚 𝑢 − 𝒖 true  
+
+> 𝑢
+> 2
+
++
+
+=
+
+
+
+1 + 1
+
+𝑀 
+
+
+
+Tr  E𝒖 𝑜 [Cov (𝒖 𝑢 |𝒖 𝑜 )]  , (B 3) which recovers (B 2) for 𝑀 = 1, and the MSE of the ensemble average for 𝑀 → ∞ , i.e. Tr  E𝒖 𝑜 [Cov (𝒖 𝑢 |𝒖 𝑜 )] .Note that the trace of the covariance matrix consists of the conditional variances: [Cov (𝒖 𝑢 |𝒖 𝑜 )] 𝑖,𝑖 =
+
+Var (𝑢 𝑢,𝑖 |𝒖 𝑜 ). Consequently, both the minimal obtainable MSE, obtained by the conditional average, and the MSE of realistic conditional fields in (B 2) are related to the conditional variance. 
+
+B.2. Approximation of the error with linear stochastic estimation 
+
+The conditional covariance matrix is defined through the conditional average, which is unknown. Because we typically only have one realisation of the field in the unobserved region per realisation of the observed region available, we cannot compute ⟨𝒖 𝑢 |𝒖 𝑜 ⟩ from data. Therefore, we will approximate it with the best linear estimator, as given by linear stochastic estimation (Adrian 1996). The conditional average is approximated up to first order as ⟨𝒖 𝑢 |𝒖 𝑜 ⟩ ≈ ⟨ 𝒖 𝑢 ⟩ + L(𝒖 𝑜 − ⟨ 𝒖 𝑜 ⟩) . The matrix 
+
+L ∈ R(𝑛 −𝑚 ) × 𝑚 is determined by minimising the mean-square discrepancy with the conditional average ⟨𝒖 𝑢 |𝒖 𝑜 ⟩,averaged over 𝒖 𝑜 . The first-order necessary condition for optimality then requires 0 = 𝜕 𝜕 L ⟨∥⟨ 𝒖 𝑢 |𝒖 𝑜 ⟩ − ⟨ 𝒖 𝑢 ⟩ − L𝒖 ′ 
+
+> 𝑜
+
+∥2⟩ (B 4 a)
+
+= −2⟨(⟨ 𝒖 𝑢 |𝒖 𝑜 ⟩ − ⟨ 𝒖 𝑢 ⟩ − L𝒖 ′
+
+> 𝑜
+
+)𝒖 ′⊤  
+
+> 𝑜
+
+⟩ (B 4 b)
+
+= −2(C𝑢𝑜 − LC 𝑜𝑜 ) (B 4 c)where (c) follows from the law of total expectation, and introducting C𝑜𝑜 = ⟨𝒖 ′ 
+
+> 𝑜
+
+𝒖 ′⊤  
+
+> 𝑜
+
+⟩ and C𝑢𝑜 = ⟨𝒖 ′ 
+
+> 𝑢
+
+𝒖 ′⊤  
+
+> 𝑜
+
+⟩. The covariance matrix C𝑜𝑜 is positive semidefinite and thus not necessarily invertible. In particular, if a discrete incompressibility constraint holds on the velocity field, that is D𝒖 = 0 with D ∈ R𝑣 ×𝑛 , then the range of C is constrained to the null space of D, so that C is not necessarily of full rank. Therefore we select L = C𝑢𝑜 C+
+
+> 𝑜𝑜
+
+,where C+ 
+
+> 𝑜𝑜
+
+is the Moore–Penrose inverse of C𝑜𝑜 , thereby making L the minimum norm solution to (B 4). The best linear estimator for the conditional average is then 
+
+⟨𝒖 𝑢 |𝒖 𝑜 ⟩ ≈ ⟨ 𝒖 𝑢 ⟩ + C𝑢𝑜 C+ 
+
+> 𝑜𝑜
+
+(𝒖 𝑜 − ⟨ 𝒖 𝑜 ⟩) . (B 5) Note that the Moore–Penrose inverse of the symmetric matrix C𝑜𝑜 projects 𝒖 ′ 
+
+> 𝑜
+
+onto col (C𝑜𝑜 ), applies the inverse of C𝑜𝑜 restricted to col (C𝑜𝑜 ), and embeds the result back into R𝑚 . Since for any 𝒗 𝑜 ⊥ col (C𝑜𝑜 ) holds that 0 = 𝒗 ⊤ 
+
+> 𝑜
+
+C𝑜𝑜 𝒗 𝑜 = ⟨( 𝒖 ′⊤  
+
+> 𝑜
+
+𝒗 𝑜 )2⟩, we find that 𝒖 ′ 
+
+> 𝑜
+
+∈ col (C𝑜𝑜 ) almost surely, in which case the projection part of C+ 
+
+> 𝑜𝑜
+
+leaves 𝒖 ′ 
+
+> 𝑜
+
+unchanged. With the estimated conditional average from linear stochastic estimation, the conditional covariance matrix, averaged over 𝒖 𝑜 , is approximately given by 
+
+E𝒖 𝑜 [Cov (𝒖 𝑢 |𝒖 𝑜 )] = E𝒖 𝑜 ,𝒖 𝑢 ∼ 𝜋 (· | 𝒖 𝑜 ) [( 𝒖 𝑢 − ⟨ 𝒖 𝑢 |𝒖 𝑜 ⟩)( 𝒖 𝑢 − ⟨ 𝒖 𝑢 |𝒖 𝑜 ⟩) ⊤] (B 6 a)
+
+≈ (𝒖 ′ 
+
+> 𝑢
+
+− C𝑢𝑜 C+ 
+
+> 𝑜𝑜
+
+𝒖 ′
+
+> 𝑜
+
+)( 𝒖 ′ 
+
+> 𝑢
+
+− C𝑢𝑜 C+ 
+
+> 𝑜𝑜
+
+𝒖 ′
+
+> 𝑜
+
+)⊤ (B 6 b)
+
+28 A probability distribution in the phase space of turbulent channel flow 
+
+= 𝒖 ′ 
+
+> 𝑢
+
+𝒖 ′⊤  
+
+> 𝑢
+
+− C𝑢𝑜 C+ 
+
+> 𝑜𝑜
+
+𝒖 ′ 
+
+> 𝑜
+
+𝒖 ′⊤  
+
+> 𝑢
+
+− 𝒖 ′ 
+
+> 𝑢
+
+𝒖 ′⊤  
+
+> 𝑜
+
+C+
+
+> 𝑜𝑜
+
+C𝑜𝑢 + C𝑢𝑜 C+ 
+
+> 𝑜𝑜
+
+𝒖 ′ 
+
+> 𝑜
+
+𝒖 ′⊤  
+
+> 𝑜
+
+C+
+
+> 𝑜𝑜
+
+C𝑜𝑢 (B 6 c)
+
+= C𝑢𝑢 − C𝑢𝑜 C+
+
+> 𝑜𝑜
+
+C𝑜𝑢 (B 6 d)where (a) uses the definition of the conditional covariance Cov (𝒖 𝑢 |𝒖 𝑜 ), (b) approximates the conditional mean with linear stochastic estimation, (c) follows from expanding the squares, and (d) from ensemble averaging over the natural distribution 𝒖 ∼ 𝜋 (·) . Consequently, the total MSE is approximately given by 
+
+*
+
+1
+
+𝑀 
+
+> 𝑀
+
+∑︁ 
+
+> 𝑚 =1
+
+𝒖 𝑐,𝑚 𝑢 − 𝒖 true  
+
+> 𝑢
+> 2
+
++
+
+≈
+
+
+
+1 + 1
+
+𝑀 
+
+
+
+Tr C𝑢𝑢 − C𝑢𝑜 C+
+
+> 𝑜𝑜
+
+C𝑜𝑢 
+
+ :=
+
+
+
+1 + 1
+
+𝑀 
+
+
+
+Tr C𝑢𝑢 |𝑜 
+
+ , (B 7) where C𝑢𝑢 |𝑜 can be recognised as the generalised Schur complement of the full covariance matrix C = ⟨𝒖 ′ 𝒖 ′⊤ ⟩.Note that the projection step inherent in the pseudo-inverse of C𝑜𝑜 also leaves C𝑜𝑢 unchanged, since col (C𝑜𝑢 ) ⊂ 
+
+col (C𝑜𝑜 ). Indeed, C𝑜𝑢 = ⟨𝒖 ′ 
+
+> 𝑜
+
+𝒖 ′⊤  
+
+> 𝑢
+
+⟩, so its columns lie in the span of 𝒖 ′
+
+> 𝑜
+
+, which coincides with col (C𝑜𝑜 ).Similar as in spectral linear stochastic estimation (Tinney et al. 2006), we make use of the property that the Fourier-transformed covariance matrices diagonalise per wavenumber in the statistically homogeneous directions. This reduces the size of the covariance matrices that must be inverted and improves the numerical robustness when estimating the covariances from data. Although the channel flow is statistically homogeneous in both the streamwise and spanwise direction, only the spanwise homogeneity is preserved by the observational setup shown in figure 8(a). Therefore, we will only consider the spanwise Fourier transform. To show that the conditional covariance matrix diagonalises per spanwise wavenumber, let the state vector be ordered by spanwise planes: 𝒖 = {𝒖 (𝑖 𝑧 ) }𝑛 𝑧 −1  
+
+> 𝑖 𝑧 =0
+
+, where 𝒖 (𝑖 𝑧 ) ∈ R𝑞 and 𝑞 = 3𝑛 𝑥 𝑛 𝑦 . With this convention, the unitary discrete Fourier transform in the spanwise direction is F = F𝑧 ⊗ I𝑞 with F𝑧 F ∗ 
+
+> 𝑧
+
+= I𝑛 𝑧 , where ⊗ denotes the Kronecker product and the asterisk the conjugate transpose. Hence, the spanwise Fourier representation of the covariance matrix C = ⟨𝒖 ′ 𝒖 ′⊤ ⟩ is ˆC = FCF ∗. Because of the statistical homogeneity in the spanwise direction, ˆC is block diagonal and can be written as the direct sum 
+
+ˆC = diag ( ˆC (0) , ˆC (1) , . . . , ˆC (𝑛 𝑧 −1) ) ≡  
+
+> 𝑛 𝑧 −1
+
+Ê 
+
+> 𝑘 𝑧 =0
+
+ˆC (𝑘 𝑧 ) , (B 8) where ˆC (𝑘 𝑧 ) ∈ C𝑞 ×𝑞 is the covariance matrix associated with wavenumber-index 𝑘 𝑧 . For the measurement setup shown in figure 8(a), the mask matrix can be written as M = diag (M𝑟 , . . . , M𝑟 ) ≡ I𝑛 𝑧 ⊗ M𝑟 where M𝑟 ∈ R𝑟 ×𝑞 
+
+with 𝑟 = 𝑚 /𝑛 𝑧 . The complementary mask matrix is then given by M⊥ = I𝑛 𝑧 ⊗ M⊥ 
+
+> 𝑟
+
+where M⊥ 
+
+> 𝑟
+
+∈ R𝑝 ×𝑞 and 
+
+𝑝 = 𝑞 − 𝑟 . Because the mask is uniform along the spanwise direction, it follows that MF = F𝑜 M where 
+
+F𝑜 = F𝑧 ⊗ I𝑟 and M⊥F = F𝑢 M⊥ where F𝑢 = F𝑧 ⊗ I𝑝 . Consequently, the Fourier-transformed covariance submatrices inherit the same block-diagonal structure. For example, we find for C𝑢𝑜 = C∗ 
+
+> 𝑜𝑢
+
+that 
+
+ˆC𝑢𝑜 = F𝑢 M⊥CM ⊤F ∗ 
+
+> 𝑜
+
+= M⊥FCF ∗M⊤ =  I𝑛 𝑧 ⊗ M⊥
+
+> 𝑟
+
+ © « 
+
+> 𝑛 𝑧 −1
+
+Ê 
+
+> 𝑘 𝑧 =0
+
+ˆC (𝑘 𝑧 ) ª®¬ I𝑛 𝑧 ⊗ M⊤
+
+> 𝑟
+
+ = 
+
+> 𝑛 𝑧 −1
+
+Ê 
+
+> 𝑘 𝑧 =0
+
+ˆC (𝑘 𝑧 ) 
+
+> 𝑢𝑜
+
+.
+
+As a result, the Fourier-transformed conditional covariance, ˆC𝑢𝑢 |𝑜 = F𝑢 C𝑢𝑢 |𝑜 F ∗ 
+
+> 𝑢
+
+, becomes 
+
+ˆC𝑢𝑢 |𝑜 = 
+
+> 𝑛 𝑧 −1
+
+Ê 
+
+> 𝑘 𝑧 =0
+
+h ˆC (𝑘 𝑧 ) 
+
+> 𝑢𝑢
+
+− ˆC (𝑘 𝑧 )
+
+> 𝑢𝑜
+
+ ˆC (𝑘 𝑧 )
+
+> 𝑜𝑜
+
++ ˆC (𝑘 𝑧 )
+
+> 𝑜𝑢
+
+i
+
+:= 
+
+> 𝑛 𝑧 −1
+
+Ê 
+
+> 𝑘 𝑧 =0
+
+ˆC (𝑘 𝑧 ) 
+
+> 𝑢𝑢 |𝑜
+
+. (B 9) The mean-square reconstruction error can be computed directly from the blocks of the Fourier-transformed conditional covariance matrix. Since the spanwise homogeneity also holds for the reconstruction error, we directly compute the spanwise average with Parseval’s theorem. Let 𝑢 (𝑖 𝑧 ) 
+
+> 𝑢,ℓ
+
+denote the ℓ-th unobserved velocity component in the 𝑖 𝑧 -th spanwise plane, where ℓ = 0, . . . , 𝑝 − 1. Equivalently, the corresponding global index is 𝑖 = 𝑖 𝑧 𝑝 + ℓ. The spanwise-averaged mean-square reconstruction error for this component is 
+
+𝜀 2 
+
+> ℓ
+
+:= 1
+
+𝑛 𝑧 𝑛 𝑧 −1∑︁  
+
+> 𝑖 𝑧 =0
+
+*
+
+1
+
+𝑀 
+
+> 𝑀
+
+∑︁ 
+
+> 𝑚 =1
+
+𝑢 𝑐,𝑚, (𝑖 𝑧 ) 
+
+> 𝑢,ℓ
+
+− 𝑢 true , (𝑖 𝑧 )
+
+> 𝑢,ℓ
+
+!2 +
+
+≈
+
+
+
+1 + 1
+
+𝑀 
+
+ 1
+
+𝑛 𝑧 𝑛 𝑧 −1∑︁  
+
+> 𝑖 𝑧 =0
+
+h
+
+C (𝑖 𝑧 )
+
+> 𝑢𝑢 |𝑜
+
+i 
+
+> ℓ,ℓ
+
+, (B 10) where C (𝑖 𝑧 ) 
+
+> 𝑢𝑢 |𝑜
+
+∈ R𝑝 × 𝑝 denotes the block matrix on the diagonal of C𝑢𝑢 |𝑜 associated with spanwise plane 𝑖 𝑧 .Using Parseval’s identity for the unitary spanwise DFT, we then find 
+
+𝜀 2 
+
+> ℓ
+
+≈
+
+
+
+1 + 1
+
+𝑀 
+
+ 1
+
+𝑛 𝑧 𝑛 𝑧 −1∑︁  
+
+> 𝑘 𝑧 =0
+
+h ˆC (𝑘 𝑧 )
+
+> 𝑢𝑢 |𝑜
+
+i 
+
+> ℓ,ℓ
+
+. (B 11) 
+
+29 F. Aerts, D. Nuyens and J. Meyers 
+
+This expression is used to compute the normalised MSE in (3.1), shown in figures 8(b-d). Similarly, we find that the total MSE in (B 7) can be computed without an inverse Fourier transform as 
+
+*
+
+1
+
+𝑀 
+
+> 𝑀
+
+∑︁ 
+
+> 𝑚 =1
+
+𝒖 𝑐,𝑚 𝑢 − 𝒖 true  
+
+> 𝑢
+> 2
+
++
+
+≈
+
+
+
+1 + 1
+
+𝑀 
+
+ 𝑛 𝑧 −1∑︁  
+
+> 𝑘 𝑧 =0
+
+Tr 
+
+ ˆC (𝑘 𝑧 )
+
+> 𝑢𝑢 |𝑜
+
+
+
+, (B 12) which follows from the cyclic property of the trace Tr (C𝑢𝑢 |𝑜 ) = Tr (F𝑢 F ∗ 
+
+> 𝑢
+
+ˆC𝑢𝑢 |𝑜 ) = Tr ( ˆC𝑢𝑢 |𝑜 ) and the block-diagonal structure of ˆC𝑢𝑢 |𝑜 .
+
+B.3. Estimation of the conditional covariance from DNS snapshots 
+
+For each spanwise wavenumber index 𝑘 𝑧 , we estimate the corresponding block of the Fourier-transformed generalised Schur complement ˆC (𝑘 𝑧 ) 
+
+> 𝑢𝑢 |𝑜
+
+from DNS snapshots. To arrive at an unbiased estimator for ˆC (𝑘 𝑧 )
+
+> 𝑢𝑢 |𝑜
+
+,note that the linear stochastic estimator in (B 5) can be interpreted as the conditional mean of a Gaussian approximation to the natural distribution of the velocity field 𝒖 ∼ N (⟨ 𝒖 ⟩, C). For a possibly singular positive-semidefinite covariance matrix, the conditional Gaussian distribution is defined as (Ouellette 1981, §6.1) 
+
+𝒖 𝑢 |𝒖 𝑜 ∼ N  ⟨𝒖 𝑢 ⟩ + C𝑢𝑜 C+ 
+
+> 𝑜𝑜
+
+(𝒖 𝑜 − ⟨ 𝒖 𝑜 ⟩) , C𝑢𝑢 − C𝑢𝑜 C+
+
+> 𝑜𝑜
+
+C𝑜𝑢 
+
+ , (B 13) where we use the Moore–Penrose inverse as generalised inverse. Under this Gaussian assumption, the non-self-conjugate spanwise Fourier coefficients follow the complex conditional Gaussian distribution 
+
+ˆ𝒖 (𝑘 𝑧 ) 
+
+> 𝑢
+
+| ˆ𝒖 (𝑘 𝑧 ) 
+
+> 𝑜
+
+∼ CN 
+
+
+
+⟨ ˆ𝒖 (𝑘 𝑧 ) 
+
+> 𝑢
+
+⟩ + ˆC (𝑘 𝑧 ) 
+
+> 𝑢𝑜
+
+ˆC (𝑘 𝑧 )+ 
+
+> 𝑜𝑜
+
+ˆ𝒖 ′( 𝑘 𝑧 ) 
+
+> 𝑜
+
+, ˆC (𝑘 𝑧 ) 
+
+> 𝑢𝑢
+
+− ˆC (𝑘 𝑧 ) 
+
+> 𝑢𝑜
+
+ˆC (𝑘 𝑧 )+ 
+
+> 𝑜𝑜
+
+ˆC (𝑘 𝑧 )
+
+> 𝑜𝑢
+
+
+
+, (B 14) whereas the self-conjugate coefficients follow the corresponding real conditional Gaussian distribution. Consequently, we can use an unbiased estimator for the conditional covariance in (B 14) to estimate ˆC (𝑘 𝑧 )
+
+> 𝑢𝑢 |𝑜
+
+.Consider 𝑁 𝑠 independent DNS snapshots {𝒖 𝑠 }𝑁 𝑠 
+
+> 𝑠 =1
+
+. The corresponding centred snapshots are defined by 
+
+{𝒖 ′ 
+
+> 𝑠
+
+}𝑁 𝑠  
+
+> 𝑠 =1
+
+where 𝒖 ′ 
+
+> 𝑠
+
+= 𝒖 𝑠 − Í𝑁 𝑠  
+
+> 𝑠 =1
+
+𝒖 𝑠 /𝑁 𝑠 . Let ˆ𝒖 ′( 𝑘 𝑧 ) 
+
+> 𝑜,𝑠
+
+∈ C𝑟 denote the spanwise discrete Fourier transform of M 𝒖 ′
+
+> 𝑠
+
+at wavenumber-index 𝑘 𝑧 , and let ˆ𝒖 ′( 𝑘 𝑧 ) 
+
+> 𝑢,𝑠
+
+∈ C𝑝 be defined analogously for M⊥𝒖 ′ 
+
+> 𝑠
+
+. These vectors are collected in the snapshot matrices 
+
+ˆU′( 𝑘 𝑧 ) 
+
+> 𝑜
+
+=
+
+
+
+ˆ𝒖 ′( 𝑘 𝑧 ) 
+
+> 𝑜, 1
+
+, . . . , ˆ𝒖 ′( 𝑘 𝑧 )
+
+> 𝑜, 𝑁 𝑠
+
+
+
+∈ C𝑟 × 𝑁 𝑠 , ˆU′( 𝑘 𝑧 ) 
+
+> 𝑢
+
+=
+
+
+
+ˆ𝒖 ′( 𝑘 𝑧 ) 
+
+> 𝑢, 1
+
+, . . . , ˆ𝒖 ′( 𝑘 𝑧 )
+
+> 𝑢, 𝑁 𝑠
+
+
+
+∈ C𝑝 × 𝑁 𝑠 .
+
+The resulting unbiased sample covariance estimators for ˆC (𝑘 𝑧 ) 
+
+> 𝑢𝑢
+
+, ˆC (𝑘 𝑧 ) 
+
+> 𝑜𝑜
+
+, and ˆC (𝑘 𝑧 ) 
+
+> 𝑢𝑜
+
+are 
+
+ˆS (𝑘 𝑧 ) 
+
+> 𝑢𝑢
+
+= 1
+
+𝑁 𝑠 − 1 ˆU′( 𝑘 𝑧 ) 
+
+> 𝑢
+
+ˆU′( 𝑘 𝑧 )∗  
+
+> 𝑢
+
+, ˆS (𝑘 𝑧 ) 
+
+> 𝑜𝑜
+
+= 1
+
+𝑁 𝑠 − 1 ˆU′( 𝑘 𝑧 ) 
+
+> 𝑜
+
+ˆU′( 𝑘 𝑧 )∗  
+
+> 𝑜
+
+, ˆS (𝑘 𝑧 ) 
+
+> 𝑢𝑜
+
+= 1
+
+𝑁 𝑠 − 1 ˆU′( 𝑘 𝑧 ) 
+
+> 𝑢
+
+ˆU′( 𝑘 𝑧 )∗  
+
+> 𝑜
+
+.
+
+Under the Gaussian approximation and with 𝜌 𝑘 𝑧 = rank ( ˆS (𝑘 𝑧 ) 
+
+> 𝑜𝑜
+
+), the generalised Schur complement estimator 
+
+ˆS (𝑘 𝑧 ) 
+
+> 𝑢𝑢 |𝑜
+
+= 𝑁 𝑠 − 1
+
+𝑁 𝑠 − 1 − 𝜌 𝑘 𝑧 
+
+h ˆS (𝑘 𝑧 ) 
+
+> 𝑢𝑢
+
+− ˆS (𝑘 𝑧 )
+
+> 𝑢𝑜
+
+ ˆS (𝑘 𝑧 )
+
+> 𝑜𝑜
+
++ ˆS (𝑘 𝑧 )
+
+> 𝑜𝑢
+
+i
+
+, (B 15) can be shown to be unbiased, i.e. E[ ˆS (𝑘 𝑧 )
+
+> 𝑢𝑢 |𝑜
+
+] = ˆC (𝑘 𝑧 )
+
+> 𝑢𝑢 |𝑜
+
+, based on Theorem 3.3 of Andersen (1995). The finite-sample correction factor is consistent with the rank-dependent correction of Ouellette (1981) §6.4 in the real case. When ˆS (𝑘 𝑧 ) 
+
+> 𝑜𝑜
+
+is full rank, the complex positive-definite result of Andersen (1995) Theorem 3.6 is recovered. To keep 𝜌 𝑘 𝑧 ≤ 𝑟 well below 𝑁 𝑠 − 1, we use all available DNS snapshots and downsample the velocity field by an additional factor 4 in the wall-normal direction, when estimating the generalised Schur complement. Because of the stretched grid in this direction, the first- and second-order statistics are found to be still adequately represented after downsampling. 
+
+30 A probability distribution in the phase space of turbulent channel flow 
+
+REFERENCES 
+
+Adrian, R. J. 1977 On the role of conditional averages in turbulence theory. In Symposia on Turbulence in Liquids , , vol. 34, pp. 323–332. 
+
+Adrian, R. J. 1996 Stochastic estimation of the structure of turbulent fields. In Eddy Structure Identification 
+
+(ed. J. P. Bonnet), pp. 145–195. Vienna: Springer Vienna. 
+
+Adrian, R. J. & Moin, P. 1988 Stochastic estimation of organized turbulent structure: homogeneous shear flow. 
+
+J. Fluid Mech. 190 , 531–559. 
+
+Amor ´ os-Trepat, M., Medrano-Navarro, L., Liu, Q., Guastoni, L. & Thuerey, N. 2026 Guiding diffusion models to reconstruct flow fields from sparse data. Phys. Fluids 38 (1), 015112. 
+
+Andersen, H. H. 1995 Linear and graphical models: for the multivariate complex normal distribution . Lecture Notes in Statistics Volume 101. New York: Springer-Verlag. 
+
+Bertram, A., Bekemeyer, P. & Held, M. 2021 Fusing distributed aerodynamic data using Bayesian Gappy Proper Orthogonal Decomposition . AIAA, paper 2021-2602. 
+
+Bon, T. & Meyers, J. 2022 Stable channel flow with spanwise heterogeneous surface temperature. J. Fluid Mech. 933 .
+
+Bonnet, J. P., Cole, D. R., Delville, J., Glauser, M. N. & Ukeiley, L. S. 1994 Stochastic estimation and proper orthogonal decomposition: complementary techniques for identifying structure. Exp. Fluids 17 (5), 307–314. 
+
+Bui-Thanh, T., Damodaran, M. & Willcox, K. 2004 Aerodynamic data reconstruction and inverse design using Proper Orthogonal Decomposition. AIAA J. 42 (8), 1505–1516. 
+
+Callaham, J. L., Maeda, K. & Brunton, S. L. 2019 Robust flow reconstruction from limited measurements via sparse representation. Phys. Rev. Fluids 4 (10), 103907. 
+
+Chen, R. T. Q., Rubanova, Y., Bettencourt, J. & Duvenaud, D. 2019 Neural ordinary differential equations. ArXiv:1806.07366 [cs]. 
+
+Chil` es, J.-P. & Delfiner, P. 2012 Geostatistics: modeling spatial uncertainty , 2nd edn. Wiley Series in Probability and Statistics Ser v.713. Hoboken: Wiley. 
+
+Cu´ ellar, A., G ¨ uemes, A., Ianiro, A., Flores, ´ O., Vinuesa, R. & Discetti, S. 2024 Three-dimensional generative adversarial networks for turbulent flow estimation from wall measurements. J. Fluid Mech. 991 ,A1. 
+
+Cvitanovi´ c, P., Artuso, R., Mainieri, R., Tanner, G. & Vattay, G. 2020 Chaos: classical and quantum .
+
+Deng, Z., He, C., Liu, Y. & Kim, K. C. 2019 Super-resolution reconstruction of turbulent velocity fields using a generative adversarial network-based artificial intelligence framework. Phys. Fluids 31 (12), 125111. 
+
+Dhariwal, P. & Nichol, A. 2021 Diffusion models beat GANs on image synthesis. ArXiv:2105.05233 [cs]. 
+
+Di Mare, L., Klein, M., Jones, W. P. & Janicka, J. 2006 Synthetic turbulence inflow conditions for large-eddy simulation. Phys. Fluids 18 (2), 025107. 
+
+Drygala, C., Winhart, B., Di Mare, F. & Gottschalk, H. 2022 Generative modeling of turbulence. Phys. Fluids 34 (3), 035114. 
+
+Du, P., Parikh, M. H., Fan, X., Liu, X.-Y. & Wang, J.-X. 2024 Conditional neural field latent diffusion model for generating spatiotemporal turbulence. Nat. Commun. 15 (1), 10416. 
+
+Eckmann, J.-P. & Ruelle, D. 1985 Ergodic theory of chaos and strange attractors. Rev. Mod. Phys. 57 , 617–656. 
+
+Encinar, M. P. & Jim´ enez, J. 2019 Logarithmic-layer turbulence: a view from the wall. Phys. Rev. Fluids 
+
+4 (11), 114603. 
+
+Esser, P., Kulal, S., Blattmann, A., Entezari, R., M ¨ uller, J., Saini, H., Levi, Y., Lorenz, D., Sauer, A., Boesel, F., Podell, D., Dockhorn, T., English, Z., Lacey, K., Goodwin, A., Marek, Y. & Rombach, R. 
+
+2024 Scaling Rectified Flow Transformers for High-Resolution Image Synthesis. ArXiv:2403.03206 [cs]. 
+
+Everson, R. & Sirovich, L. 1995 Karhunen –Lo` eve procedure for gappy data. J. Opt. Soc. Am. A 12 (8), 1657. 
+
+Flores, O. & Jim´ enez, J. 2010 Hierarchy of minimal flow units in the logarithmic layer. Phys. Fluids 22 (7), 071704. 
+
+Frisch, U. 1995 Turbulence: the legacy of A. N. Kolmogorov , 1st edn. Cambridge University Press. 
+
+Gao, H., Han, X., Fan, X., Sun, L., Liu, L.-P., Duan, L. & Wang, J.-X. 2024 a Bayesian conditional diffusion models for versatile spatiotemporal turbulence generation. Comput. Methods Appl. Mech. Eng. 427 , 117023. 
+
+Gao, H., Kaltenbach, S. & Koumoutsakos, P. 2024 b Generative learning for forecasting the dynamics of high-dimensional complex systems. Nat. Commun. 15 (1), 8904. 
+
+Goodfellow, I., Pouget-Abadie, J., Mirza, M., Xu, B., Warde-Farley, D., Ozair, S., Courville, A. & Bengio, Y. 2020 Generative adversarial networks. Commun. ACM 63 (11), 139–144. 
+
+Goodfellow, I. J., Pouget-Abadie, J., Mirza, M., Xu, B., Warde-Farley, D., Ozair, S., Courville, A. & Bengio, Y. 2014 Generative adversarial nets. Advances in neural information processing systems 27 .
+
+G ¨ uemes, A., Discetti, S., Ianiro, A., Sirmacek, B., Azizpour, H. & Vinuesa, R. 2021 From coarse wall measurements to turbulent velocity fields through deep learning. Phys. Fluids 33 (7), 075121. 
+
+31 F. Aerts, D. Nuyens and J. Meyers 
+
+Ho, J., Jain, A. & Abbeel, P. 2020 Denoising Diffusion Probabilistic Models. ArXiv:2006.11239 [cs]. 
+
+Hopf, E. 1948 A mathematical example displaying features of turbulence. Commun. Pure Appl. Math. 1 (4), 303–322. 
+
+Hopf, E. 1952 Statistical hydromechanics and functional calculus. Indiana Univ. Math. J. 1 (1), 87–123. 
+
+Jarrin, N., Benhamadouche, S., Laurence, D. & Prosser, R. 2006 A synthetic-eddy-method for generating inflow conditions for large-eddy simulations. Int. J. Heat Fluid Flow 27 (4), 585–593. 
+
+Jim´ enez, J. & Moin, P. 1991 The minimal flow unit in near-wall turbulence. J. Fluid Mech. 225 , 213–240. 
+
+Kim, H., Kim, J., Won, S. & Lee, C. 2021 Unsupervised deep learning for super-resolution reconstruction of turbulence. J. Fluid Mech. 910 , A29. 
+
+Kim, J. & Lee, C. 2020 Deep unsupervised learning of turbulence for inflow generation at various Reynolds numbers. J. Comput. Phys. 406 , 109216. 
+
+Kim, J., Moin, P. & Moser, R. 1987 Turbulence statistics in fully developed channel flow at low Reynolds number. J. Fluid Mech. 177 , 133–166. 
+
+Klein, M., Sadiki, A. & Janicka, J. 2003 A digital filter based generation of inflow data for spatially developing direct numerical or large eddy simulations. J. Comput. Phys. 186 (2), 652–665. 
+
+Kraichnan, R. H. 1970 Diffusion by a random velocity field. Phys. Fluids 13 (1), 22–31. 
+
+Lai, C.-H., Song, Y., Kim, D., Mitsufuji, Y. & Ermon, S. 2025 The principles of diffusion models. ArXiv:2510.21890 [cs]. 
+
+Lalescu, C. C., Meneveau, C. & Eyink, G. L. 2013 Synchronization of chaos in fully developed turbulence. 
+
+Phys. Rev. Lett. 110 (8), 084102. 
+
+Li, T., Buzzicotti, M., Biferale, L., Bonaccorso, F., Chen, S. & Wan, M. 2023 a Multi-scale reconstruction of turbulent rotating flows with proper orthogonal decomposition and generative adversarial networks. J. Fluid Mech. 971 , A3. 
+
+Li, T., Lanotte, A. S., Buzzicotti, M., Bonaccorso, F. & Biferale, L. 2023 b Multi-scale reconstruction of turbulent rotating flows with generative diffusion models. Atmosphere 15 (1), 60. 
+
+Lipman, Y., Chen, R. T. Q., Ben-Hamu, H., Nickel, M. & Le, M. 2023 Flow matching for generative modeling. ArXiv:2210.02747 [cs]. 
+
+Lipman, Y., Havasi, M., Holderrieth, P., Shaul, N., Le, M., Karrer, B., Chen, R. T. Q., Lopez-Paz, D., Ben-Hamu, H. & Gat, I. 2024 Flow matching guide and code. ArXiv:2412.06264 [cs]. 
+
+Liu, L., Jiang, H., He, P., Chen, W., Liu, X., Gao, J. & Han, J. 2021 On the variance of the adaptive learning rate and beyond. ArXiv:1908.03265 [cs]. 
+
+Lorenz, E. N. 1963 Deterministic nonperiodic flow. J. Atmos. Sci. 20 (2), 130–141. 
+
+Lozano-Dur ´ an, A. & Jim´ enez, J. 2014 Effect of the computational domain on direct simulations of turbulent channels up to Re 𝜏 = 4200. Phys. Fluids 26 (1), 011702. 
+
+Lund, T. S., Wu, X. & Squires, K. D. 1998 Generation of turbulent inflow data for spatially-developing boundary layer simulations. J. Comput. Phys. 140 (2), 233–258. 
+
+Mann, J. 1994 The spatial structure of neutral atmospheric surface-layer turbulence. J. Fluid Mech. 273 ,141–168. 
+
+Meyers, J. & Meneveau, C. 2010 Large eddy simulations of large wind-turbine arrays in the atmospheric boundary layer. AIAA Paper No. 2010-827 pp. 1–10. 
+
+Meyers, J. & Sagaut, P. 2007 Is plane-channel flow a friendly case for the testing of large-eddy simulation subgrid-scale models? Phys. Fluids 19 (4), 048105. 
+
+Monin, A. S. & Yaglom, A. M. 1971 Statistical fluid mechanics: mechanics of turbulence . MIT Press. 
+
+Munters, W., Meneveau, C. & Meyers, J. 2016 Shifted periodic boundary conditions for simulations of wall-bounded turbulent flows. Phys. Fluids 28 (2), 025112. 
+
+Ouellette, D. V. 1981 Schur complements and statistics. Linear Algebra and its Applications 36 , 187 –295. 
+
+Parikh, M. H., Fan, X. & Wang, J.-X. 2026 Conditional flow matching for generative modelling of near-wall turbulence with quantified uncertainty. J. Fluid Mech. 1029 , A32. 
+
+Poletto, R., Craft, T. & Revell, A. 2013 A new divergence free synthetic eddy method for the reproduction of inlet flow conditions for LES. Flow Turbul. Combust. 91 (3), 519–539. 
+
+Pope, S. B. 2000 Turbulent flows . Cambridge University Press. 
+
+Rosales, C. & Meneveau, C. 2006 A minimal multiscale Lagrangian map approach to synthesize non-Gaussian turbulent vector fields. Phys. Fluids 18 (7), 075104. 
+
+Ruelle, D. 1978 What are the measures describing turbulence? Prog. Theor. Phys. Suppl. 64 , 339–345. 
+
+Ruelle, D. & Takens, F. 1971 On the nature of turbulence. Les rencontres physiciens-math´ ematiciens de Strasbourg-RCP25 12 , 1–44. 
+
+Ruelle, D. P. 2012 Hydrodynamic turbulence as a problem in nonequilibrium statistical mechanics. Proc. Natl. Acad. Sci. U.S.A. 109 (50), 20344–20346. 
+
+Rybchuk, A., Hassanaly, M., Hamilton, N., Doubrawa, P., Fulton, M. J. & Mart´ ınez-Tossas, L. A. 
+
+32 A probability distribution in the phase space of turbulent channel flow 
+
+2023 Ensemble flow reconstruction in the atmospheric boundary layer from spatially limited measurements through latent diffusion models. Phys. Fluids 35 (12), 126604. 
+
+Shu, D., Li, Z. & Barati Farimani, A. 2023 A physics-informed diffusion model for high-fidelity flow field reconstruction. J. Comput. Phys. 478 , 111972. 
+
+Sirovich, L. 1989 Chaotic dynamics of coherent structures. Physica D: Nonlinear Phenomena 37 (1-3), 126–145. 
+
+Smirnov, A., Shi, S. & Celik, I. 2001 Random flow generation technique for large eddy simulations and particle-dynamics modeling. J. Fluids Eng. 123 (2), 359–371. 
+
+Sohl-Dickstein, J., Weiss, E. A., Maheswaranathan, N. & Ganguli, S. 2015 Deep Unsupervised Learning using Nonequilibrium Thermodynamics. ArXiv:1503.03585 [cs]. 
+
+Song, Y., Sohl-Dickstein, J., Kingma, D. P., Kumar, A., Ermon, S. & Poole, B. 2021 Score-based generative modeling through stochastic differential equations. ArXiv:2011.13456 [cs]. 
+
+Stein, M. L. 2002 The screening effect in kriging. Ann. Stat. 30 (1), 298–323. 
+
+Stein, M. L. 2011 2010 Rietz Lecture: When does the screening effect hold? Ann. Stat. 39 (6), 2795–2819. 
+
+Steinbrenner, F., Turan, B., Teng, H. & Xiao, H. 2026 Turbulence generation and data assimilation in wall-bounded flows with a latent diffusion model. ArXiv:2603.02143 [physics.flu-dyn]. 
+
+Tinney, C. E., Coiffet, F., Delville, J., Hall, A. M., Jordan, P. & Glauser, M. N. 2006 On spectral linear stochastic estimation. Exp. Fluids 41 (5), 763–775. 
+
+Vassilicos, J. C. 2015 Dissipation in turbulent flows. Annu. Rev. Fluid Mech. 47 (1), 95–114. 
+
+Venturi, D. & Karniadakis, G. E. 2004 Gappy data and reconstruction procedures for flow past a cylinder. 
+
+J. Fluid Mech. 519 , 315–336. 
+
+Verstappen, R. W. C. P. & Veldman, A. E. P. 2003 Symmetry-preserving discretization of turbulent flow. J. Comput. Phys. 187 (1), 343–368. 
+
+Villani, C. 2009 Optimal Transport , Grundlehren der mathematischen Wissenschaften , vol. 338. Berlin, Heidelberg: Springer Berlin Heidelberg. 
+
+Vishwasrao, A., Gutha, S. B. C., Cremades, A., Wijk, K., Patil, A., Gorle, C., McKeon, B. J., Azizpour, H. & Vinuesa, R. 2025 Diff-SPORT: Diffusion-based Sensor Placement Optimization and Reconstruction of Turbulent flows in urban environments. ArXiv:2506.00214 [physics]. 
+
+Wallace, J. M. 2016 Quadrant analysis in turbulence research: history and evolution. Annu. Rev. Fluid Mech. 
+
+48 (1), 131–158. 
+
+Wang, M. & Zaki, T. A. 2022 Synchronization of turbulence in channel flow. J. Fluid Mech. 943 , A4. 
+
+Wu, X. 2017 Inflow turbulence generation methods. Annu. Rev. Fluid Mech. 49 (1), 23–49. 
+
+Xie, Y., Franz, A., Chu, M. & Thuerey, N. 2018 tempoGAN: a temporally coherent, volumetric GAN for super-resolution fluid flow. ACM Trans. Graph. 37 (4), 1–15. 
+
+Xie, Z.-T. & Castro, I. P. 2008 Efficient generation of inflow conditions for large eddy simulation of street-scale flows. Flow Turbul. Combust. 81 (3), 449–470. 
+
+Yoshida, K., Yamaguchi, J. & Kaneda, Y. 2005 Regeneration of small eddies by data assimilation in turbulence. Phys. Rev. Lett. 94 (1), 014501. 
+
+Young, L.-S. 2002 What are SRB measures, and which dynamical systems have them? J. Stat. Phys. 108 (5-6), 733–754. 
+
+Yousif, M. Z., Yu, L., Hoyas, S., Vinuesa, R. & Lim, H. 2023 A deep-learning approach for reconstructing 3D turbulent flows from 2D observation data. Sci. Rep. 13 (1), 2529. 
+
+Yousif, M. Z., Yu, L. & Lim, H.-C. 2021 High-fidelity reconstruction of turbulent flow from spatially limited data using enhanced super-resolution generative adversarial network. Phys. Fluids 33 (12), 125119. 
+
+33

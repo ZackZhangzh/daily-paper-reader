@@ -1,0 +1,4323 @@
+Title: Learning Standard Model structure from LHC data with Riemannian flow matching
+
+URL Source: https://arxiv.org/pdf/2607.16144v1
+
+Published Time: Mon, 20 Jul 2026 01:19:57 GMT
+
+Number of Pages: 35
+
+Markdown Content:
+## Learning Standard Model structure from LHC data with Riemannian flow matching 
+
+Midori Kato, 1, ∗ Kevin A. Urqu´ ıa-Calder´ on, 1, † Inar Timiryasov, 1, ‡ and Oleg Ruchayskiy 1, §
+
+> 1
+
+Niels Bohr Institute, University of Copenhagen, Jagtvej 155A, DK-2200, Copenhagen, Denmark 
+
+(Dated: July 20, 2026) In this work we demonstrate that a single transformer-based generative model can capture Stan-dard Model structure spanning five decades of invariant mass, from the sub-GeV regime to the TeV continuum, a range that no single Monte Carlo sample covers. To achieve this we design 
+
+ShellFlow , a Riemannian conditional flow matching model that, given the recorded event com-position, generates each particle on its on-shell manifold. Its only physics priors are the on-shell condition and the invariant-mass formula. The model is trained on ∼ 10 9 real pp collision events from the ATLAS Open Data 13 TeV release and told nothing else. From a single training run, the model learns to reproduce all of the following: intra-particle kinematics, the dilepton resonances (J/ψ , Υ, Z) at their PDG positions, the leptonic Weinberg angle, the W and top-quark masses, and inter-particle correlations that enter no training objective. A substantial fraction of the Standard Model is thus learnable directly from recorded collision data. 
+
+I. INTRODUCTION Motivation and contribution 
+
+The Large Hadron Collider (LHC) produces enormous datasets, driven both by the need to access rare physics processes and by the five-sigma significance threshold that the field imposes on discovery claims. Inter-pretation of these datasets currently relies on Monte Carlo (MC) event generators such as Pythia [1], Her-wig [2], Sherpa [3], MadGraph5 aMC@NLO [4, 5], 
+
+Powheg [6], Whizard [7], and EvtGen [8], tuned per analysis to a specific physics channel or BSM signal hy-pothesis. Detector-level MC simulation is computation-ally expensive, and the corresponding analyses target one channel at a time, making it difficult to assess which of the many proposed BSM scenarios is in fact compatible with the data. Machine learning has been applied to collider analy-ses for decades, beginning with multilayer perceptrons as event-level classifiers [9] and growing into the graph neural networks and transformers that now drive state-of-the-art tracking [10, 11], reconstruction, and jet tag-ging [12]. A continuously updated bibliography of this field is maintained in Ref. [13]. Three directions of current research are directly rele-vant for the present work. The first is generative mod-elling of collider data. Deep generative networks were introduced for fast calorimeter simulation, first with GANs [14], then with normalizing flows [15] and diffu-sion models [16, 17]. They have been compared in a community benchmark [18] and now run in production in the ATLAS fast simulation chain [19]. The same tools are applied to event generation itself [20, 21], using dif-fusion models [22–24], autoregressive transformers [25],     
+
+> ∗midori.kato.73@gmail.com
+> †kevin.urquia@nbi.ku.dk
+> ‡inar.timiryasov@nbi.ku.dk
+> §oleg.ruchayskiy@nbi.ku.dk
+
+and most recently flow matching [26–28]. Throughout this line of work the generator stands in for a simulator, and it is both trained on and judged against Monte Carlo samples. Closest in concept to the geometry used here, Ref. [29] constrains the generative trajectories them-selves to relativistic phase space, imposing exact energy– momentum conservation on a global phase-space mani-fold, whereas ShellFlow factorises the geometry into a product of per-particle mass shells. The second direction is foundation models for par-ticle physics, which aim to replace the per-analysis pipeline with a single pre-trained model [30, 31]. Early self-supervision for jets learned representations by com-paring augmented views of the same jet [32]. Cur-rent examples include masked pretraining on particle sets [33], generative models that transfer across tasks [34, 35], a foundation-model framework trained on over 10 9
+
+jets [36], models of complete events [37], sequence mod-els of detector hits [38], and Lorentz-equivariant trans-formers [39]. Nearly all of these models are trained on simulated samples, and they are demonstrated through transfer to downstream tasks, whereas the model of the present work is a generator judged by reconstruction-level closure against the data it was trained on. The two clos-est precedents each satisfy one half of what we do here: the Aspen Open Jets project [40] pretrains a foundation model on 1 .8 × 10 8 individual jets from CMS Open Data (recorded data, but individual jets rather than complete events), while a point-cloud diffusion model for heavy-ion collisions [41] generates complete events, but is trained on transport-model simulation. The third direction learns from recorded collider data directly, with as little reference to simulation as possible. Classification without labels [42] established that classi-fiers can be trained on mixed samples of real events carry-ing no per-event labels, and turned data-vs-data discrim-ination into a search strategy [43]. Resonant anomaly detection extends this by fitting generative density mod-els (ANODE [44], CATHODE [45], CURTAINs [46]) to recorded sideband data and sampling background tem-plates from them in a single search channel. Simulation-arXiv:2607.16144v1 [hep-ph] 17 Jul 2026 2assisted and diffusion-based variants refine the template construction [47–49]. Beyond the resonant setting, nor-malizing flows have been used to sharpen autoencoder-based detection [50], and anomaly-preserving contrastive embeddings extend model-independent searches to com-plete events [51]. The programme is organised around community challenges [52], is reviewed in Refs. [53, 54], and has been deployed on recorded data by both ATLAS and CMS [55–57]. These density models are, however, deliberately narrow, restricted to a handful of engineered observables, a single search channel, and the background alone. The present work occupies the intersection that these three directions leave open. We are not aware of a pre-vious model that generates the complete final-state kine-matics of reconstructed events, across all processes at once, after training on recorded data alone. The event composition, particle types and charges, and MET are supplied as conditioning inputs (Sec. III D). We train ShellFlow , a Riemannian Conditional Flow Matching [58] generator with a transformer back-bone [59], directly on the union of the 2-to-4 lepton and 1LMET30 skims of the ATLAS Open Data 13 TeV pp 
+
+release [60, 61], comprising ∼ 8.2 × 10 8 recorded collision events. The training distribution is real collider data, and no Monte-Carlo events are used. The only physics priors are the on-shell constraint E2 = m2 + |p|2 and the invariant-mass formula, embedded by routing the flow on a product of on-shell per-particle manifolds. Both are Lorentz-invariant statements that hold for every par-ticle and every process, and they therefore impose no bias toward any specific channel or specific resonance. The model receives no channel label and no objective attached to a specific task during training. The only se-lections upstream of training are the Open Data skim definitions and the multiplicity cut of Sec. III D, neither of which is tied to the analyses below. The same single training run is evaluated across five orders of magnitude in invariant mass, from the sub-GeV light-meson bound states through the charmonium and bottomonium fam-ilies to the electroweak resonances and the top quark. Downstream observables are extracted by applying stan-dard ATLAS analysis selections to the trained generator at evaluation time. The principal result of this work is that a single self-supervised generator can internalise nontrivial Stan-dard Model relationships from real collider data, with-out a channel label or a per-process objective. The ev-idence takes two forms, and the Results section is or-ganised around them. The first is fidelity to the train-ing distribution. The single-particle kinematic marginals of the six reconstructed object types are reproduced with high accuracy, including the geometric crack re-gions of the ATLAS detector, and the opposite-sign same-flavour (OSSF) dilepton invariant-mass spectrum is captured across five decades in mℓℓ with the J/ψ (1 S), 
+
+ψ(2 S), Υ family, and Z peaks all sitting at their Par-ticle Data Group [62] positions (cf. ATLAS measure-ments of the same resonances [63–65]). The second is agreement on quantities that no training objective tar-gets. Several inter-particle observables that appear in neither the primary nor the auxiliary loss, in particular the dilepton cone distance ∆ Rℓℓ , the dilepton-to-MET azimuthal opening ∆ ϕ(ℓℓ, MET), the transverse mass 
+
+mT , the scalar transverse-momentum sum HT , and the leading and sub-leading lepton pT , agree with the truth distributions to within the statistical resolution of the validation sample. The supervised inclusive mass den-sities constrain at most low-order combinations of these quantities (the pair mass, for instance, couples ∆ Rℓℓ to the lepton momenta), so their simultaneous agreement reflects the model’s internal representation of the joint event structure. The forward-backward asymmetry of the Drell–Yan continuum yields a Weinberg angle [66] sin 2 θw that reproduces the truth-sample leading-order fit within statistical uncertainty in both flavour channels, with the offset from the PDG [62] effective leptonic value attributable to the LO template rather than to the gener-ator, and event-level transverse-momentum conservation closes to the precision of the visible-momentum predic-tion. Together these closures provide a starting point for searches for physics beyond the Standard Model and for event-generation tasks that have so far required ded-icated analyses tied to a single channel. The remainder of the paper presents the results (Sec. II) before the methodology (Sec. III), reflecting that the central interest of this work lies in what the model recovers from real collider data. Section IV discusses the design choices that proved necessary, the limitations of the current model, and the outlook, and Sec. V concludes. 
+
+> How to read this paper
+
+The paper is written for two audiences with different natural entry points. 
+
+For the reader whose primary interest is the physics. 
+
+We recommend proceeding directly to Sec. II, which opens with Table I. That table maps every physics ob-servable examined in this paper to the figure, table, or equation that establishes its closure between the gener-ative model output and the real data, and records the supervision channel through which each structure could have been influenced during training, separating what is imposed by the model design from what is recovered from the data. Figure 4 is the central result of the paper: the OSSF dilepton invariant-mass spectrum from generated events, in which the J/ψ , Υ, and Z resonances appear at their PDG positions across five decades in mℓℓ although none of these masses was supplied to the model. 
+
+For the reader whose primary interest is the method-ology. The technical construction of ShellFlow is col-lected in Sec. III: the Riemannian conditional flow match-ing objective on which the training rests, the per-particle on-shell manifolds and their charts that constrain the generator geometry, the dual-head transformer architec-3ture with its primary and auxiliary loss terms, and the ATLAS Open Data training pipeline used to produce the weights whose outputs are analysed in Sec. II.  
+
+> II. RESULTS
+
+Table I maps each physics signal probed in this section to the figure, table, or equation in which it appears. The body of this section then describes each entry in detail, while the architectural and training choices that make these closures possible are deferred to Sec. III. Each truth-vs. generated comparison in the figures below is quantified by three scalar agreement met-rics, annotated on each panel and reported through-out this section. The 1-Wasserstein distance W1(p, q ) = R |Fp − Fq | [67, 68] measures the integrated cumulative-distribution gap between the truth and the generated distributions and is sensitive to global shape distor-tions. The symmetrised Kullback–Leibler (KL) diver-gence [69, 70] SKL( p, q ) = 12 [KL( p∥q) + KL( q∥p)] 1 mea-sures the binwise log-density mismatch and is sensitive to local under- or over-production. The Bray–Curtis dis-similarity BC( p, q ) = P 
+
+> i
+
+|pi − qi|/ P
+
+> i
+
+(pi + qi) ∈ [0 , 1] [71] measures the bin-by-bin density overlap. All three van-ish when the generated distribution matches the truth exactly, so smaller values indicate better closure. System-atic treatments of generative-model evaluation in collider physics, including high-dimensional two-sample tests and classifier-based diagnostics, are developed in Refs. [72– 74]. Each metric is computed on one generated sam-ple. Regenerating the sample five times with independent prior seeds, at fixed conditioning, changes the dilepton metrics of this section by 0.5–3%, at or below the sta-tistical fluctuation of the truth sample itself. The fitted quantities of Tables II and III are more sensitive and carry this regeneration spread as a second uncertainty. We evaluate the trained model on five groups of ob-servables, following the grouping of Table I. The first group establishes faithfulness of the intra-particle kine-matic marginals, of the event-level transverse-momentum balance, and of a set of inter-particle observables that enter no training loss. The second group examines the resonance structure of the OSSF dilepton invariant-mass spectrum. The third is an electroweak measurement, the Weinberg angle extracted from the Drell–Yan forward– backward asymmetry. The fourth covers multi-jet and parton-level structure, where the leading dijet kinematics and the three-particle invariant masses test whether pair-wise and triple correlations combine into the correct joint densities. The fifth reaches the heavy-particle masses, with the hadronic and leptonic top quark peaks, the ac-companying hadronic W and leptonic Z peaks, and the       
+
+> 1The directed divergence is KL( p∥q) = P
+> ipilog( pi/q i), evaluated here on the common binning {i}of the compared histograms, with both densities normalised to unit sum.
+
+Higgs golden channel H → ZZ ∗ → 4ℓ. The Supervision column of Table I records what each of these closures can and cannot inherit from training: the analysis se-lections and the angular structure of every observable enter no training objective, while the mass spectra are supervised, because alongside its primary flow-matching objective the model carries an auxiliary loss term on the inclusive invariant-mass density of every pair, triplet, and quadruplet of generated particles (the K-body masses, Sec. III C), so the corresponding peak placements are fi-delity rather than emergence claims. Truth distributions refer throughout to the 5% validation split of the joint sample, held out from training. Each test below is structured as a closure between truth (validation) and generated samples, processed through the same analysis pipeline, and asks whether the generator preserves the shape and the location of a given physical structure when the standard ATLAS-style selection is applied to it. The claims of this section are therefore claims of agreement, not measurements of the underlying physical parameters, and they should not be read as competing with the dedicated precision mea-surements of those parameters. The model is given no information about any specific resonance, channel, or de-cay topology, so the structures recovered below must be encoded in internal features of the trained network, ac-tivated by the data themselves. What this section aims to establish is that this encoding exists. The precision of any single closure matters less.  
+
+> A. Intra-particle kinematics
+
+We compare truth and generated marginals in col-lider coordinates, ( pT , η, ϕ, E ) for the massless types and (pT , η, ϕ, E, m ) for the massive types. The model repro-duces the truth distributions across all six particle types to high accuracy, with only a handful of identifiable de-fects. The uniform ϕ marginals follow directly from the model’s internal representation of each momentum di-rection as a point on the unit sphere S2 (Sec. III B): a uniform spherical prior projects to a uniform marginal in ϕ, so the model does not have to learn periodic-ity. A shallow deficit of generated events at η ≈ 0 is visible in every type, and its origin is not established. By contrast, the prominent twin gaps in the hadronic-
+
+τ η marginal and the sharp η ≈ 0 gap in the muon η
+
+marginal are detector-level features. The former corre-spond to the transition region between the barrel and endcap calorimeters, 1 .37 < |η| < 1.52 [75]; the latter to the |η| < 0.1 region, where the muon spectrometer is only partially instrumented to leave room for the cabling and services of the inner detector and the calorimeters [76]. The model reproduces both gaps from data rather than smoothing them out. Electrons and muons, the primary objects in the 2-to-4 lepton dataset, fit the truth distributions tightly across all four variables, with W1, SKL, and BC scores 4
+
+TABLE I. Result summary. Each row maps a physics signal probed in this section to the figure, table, or equation where the corresponding closure (or imposed constraint) is shown. Rows in blue marked with ∗ are constraints imposed by the model design. All other rows are recovered from the data. The Supervision column records the training channel that could have influenced each structure (see text). Angular structure and analysis selections are never supervised. Reference values are taken from PDG [62]. The full set of truth-vs.-generated validation figures is available at https://hep-ssl-webapp.pages.dev/ .
+
+Physics Content Result Supervision 
+
+1. Kinematic constraints & conservation laws 
+
+On-shell relation ∗ m2 = E2 − | p|2 (by the manifold design) Eq. (10) imposed Invariant-mass formula ∗ M 2 
+
+> K
+
+= ( P 
+
+> i
+
+Ei)2 − | P 
+
+> i
+
+pi|2 (by loss design) Eq. (8) imposed Intra-particle kinematics coordinate marginals ( pT , η, ϕ, E, m ) per type Fig. 1 primary loss 
+
+pT conservation P 
+
+> i
+
+pT,i + pmiss  
+
+> T
+
+→ 0 Fig. 2 none (MET cond.) Inter-particle kinematics ∆R, ∆ ϕ, mT , Σ HT , lead./sub-lead. lepton pT Fig. 3 none 
+
+2. OSSF dilepton resonances 
+
+Resonance peaks J/ψ , Υ, Z → ℓℓ Fig. 4 aux. mass density Resonances and angular relations mℓℓ vs. ∆ ϕ Fig. 5 aux. (mass axis only) 
+
+3. Electroweak measurement 
+
+Weinberg angle sin 2 θw from the Drell–Yan AFB Fig. 6, Table II none 
+
+4. Multi-jet & parton kinematics 
+
+Leading-dijet correlation (mjj , ¯η) joint density; envelope x1,2 ≤ 1 Fig. 7 aux. ( mjj only) Three-particle invariant masses mℓℓℓ , mγℓℓ , mℓℓj , mjjj , mℓjj , system pT Fig. 25 (App. D) aux. mass density 
+
+5. Heavy-particle mass 
+
+Top quark t → W +b → jjb , ¯ t → W −¯b → ℓ¯ν¯b Fig. 8 aux. mass density 
+
+W , Z W → jj , Z → ℓℓ Fig. 8, Table III aux. mass density Higgs H → 4ℓ Fig. 9 aux. mass density 1              
+
+> 10
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> 10 7
+> Events
+> W1 = 0.86
+> SKL = 0.00136
+> BC = 0.0107
+> pT
+> Truth
+> Gen
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> 1.2
+> Events
+> ×10 6
+> W1 = 0.0655
+> SKL = 0.0106
+> BC = 0.0494
+> η
+> Truth
+> Gen
+> 0
+> 1
+> 2
+> 3
+> 4
+> 5
+> 6
+> 7
+> 8
+> Events
+> ×10 5
+> W1 = 0.00396
+> SKL = 0.000522
+> BC = 0.013
+> φ
+> Truth
+> Gen
+> 1
+> 10
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> 10 7
+> Events
+> W1 = 1.08
+> SKL = 0.000155
+> BC = 0.00638
+> E
+> Truth
+> Gen
+> 110 10 210 3
+> pT[GeV ]
+> 0.00
+> 0.25
+> 0.50
+> 0.75
+> 1.00
+> Gen / Truth
+> −202
+> η
+> 0.6
+> 0.8
+> 1.0
+> 1.2
+> Gen / Truth
+> −π−π
+> 20π
+> 2π
+> φ
+> 0.95
+> 1.00
+> 1.05
+> Gen / Truth
+> 110 10 210 3
+> E[GeV ]
+> 0
+> 1
+> 2
+> Gen / Truth
+
+Muon kinematics — 60 bins 
+
+> 1
+
+Fig. 1. Muon kinematics. Muon intra-particle marginals in collider coordinates ( pT , η, ϕ, E ): truth compared with the generated distribution. Selection: all reconstructed muons in the validation sample. The agreement metrics W1, SKL, and BC are defined at the start of Sec. II. The corresponding marginals for the other five reconstructed object types are collected in App. A. 
+
+reaching the smallest numerical values of any particle type. Photons, statistically under-represented in this skim relative to the leptons, are reproduced in good agreement with truth across all four variables. The two jet types form the primary massive sector. Both the four-momentum components and the mass marginal are repro-duced within statistical fluctuations, confirming that the model preserves the on-shell relation m2 = E2 − | p|2 at generation time. The corresponding collider-coordinate marginals for the five non-muon types (electron, photon, 5
+
+τhad , small-R jet, large-R jet) are collected in App. A.  
+
+> B. Event-level transverse-momentum conservation
+
+The simplest event-level closure tests the generator against the kinematic relation P 
+
+> i
+
+pT,i + pmiss  
+
+> T
+
+≈ 0. The proper definition of the missing transverse momentum entering this relation is given in Ref. [77]. The relation is not exact in reconstructed data: the ATLAS Emiss  
+
+> T
+
+in-cludes a soft term built from tracks not associated with any reconstructed object, so both the recorded and the generated events carry a residual, and the closure asks whether the generator reproduces it. Figure 2 shows the signed components P pT,x + Emiss  
+
+> x
+
+and P pT,y + Emiss 
+
+> y
+
+over the visible (non-MET) objects together with the signed magnitude residual |pvis  
+
+> T
+
+|− Emiss  
+
+> T
+
+, comparing truth and generated. The signed-component distributions peak at zero and the generated curves overlay truth within sta-tistical fluctuations. The signed-magnitude residual shows a visibly asym-metric shape with a bump on the negative side. The bump is carried by the 1LMET30 component of the joint sample. Its events are selected with Emiss  
+
+> T
+
+> 30 GeV, and their recorded Emiss  
+
+> T
+
+, which also receives the soft term and any hadronic activity not stored as an object in the skim, systematically exceeds the transverse momen-tum summed over the stored objects, so the magnitude residual is negative. The 2-to-4 lepton component con-centrates the residual around zero. The generator repro-duces this two-component shape, including its asymme-try.  
+
+> C. Inter-particle observables without supervision
+
+The transverse-momentum closure of the previous sub-section follows from the conditioning channel that feeds MET into the generator, and so is in part an arith-metic check on the model. A stronger test is whether the generator reproduces inter-particle observables that enter neither the primary flow-matching loss nor the aux-iliary K-body loss and have no dedicated conditioning channel. We collect six such observables in Fig. 3. The OSSF dilepton cone distance ∆ Rℓℓ = p(∆ η)2 + (∆ ϕ)2
+
+is computed for every OSSF lepton pair in the event. The dilepton-to-MET azimuthal opening ∆ ϕ(ℓℓ, MET) is the azimuthal angle between pT of the Z-candidate OSSF pair, chosen as the pair whose invariant mass lies closest to mZ , and pmiss  
+
+> T
+
+. The transverse mass 
+
+mT =
+
+q
+
+2 pℓT Emiss 
+
+> T
+
+ 1 − cos ∆ ϕ(ℓ, pmiss  
+
+> T
+
+) (1) uses the highest-pT lepton ℓ not assigned to the Z-candidate pair, making it the W -candidate transverse mass of three-lepton topologies. The scalar transverse-momentum sum HT = P 
+
+> i
+
+pT,i runs over all visible re-constructed objects in the event. The leading and sub-leading lepton pT are ranked among electrons and muons in events with at least two leptons. All six are com-puted after sampling, identically on truth and on gen-erated, and the generator has no objective that targets any of them. Two indirect channels deserve note: the 
+
+K = 2 auxiliary density on mℓℓ constrains a combination of ∆ Rℓℓ and the lepton momenta, and the MET con-ditioning supplies the reference vector for ∆ ϕ(ℓℓ, MET) and mT . Neither, however, fixes the joint distributions examined here. The generated and truth distributions agree to within the statistical resolution of the validation sample across all six panels. The ∆ ϕ(ℓℓ, MET) distribution closes across the full [ −π, π ] range, including the visible en-hancement near |∆ϕ| ≈ π. In events where the dilep-ton system dominates the visible activity, the transverse-momentum balance of Sec. II B forces pmiss  
+
+> T
+
+to point op-posite the pair. This back-to-back configuration is the one selected on by dilepton-plus-Emiss  
+
+> T
+
+analyses [78]. The ∆Rℓℓ distribution reproduces the small-cone enhance-ment from collimated dilepton resonances and the broad continuum at large ∆ R. The mT , HT , and the leading and sub-leading lepton pT marginals close in shape and normalisation across four decades in events per bin. All six closures show that the model has internalised multi-particle structure that no observable-level term targets.  
+
+> D. Resonance recovery in the OSSF dilepton spectrum
+
+We turn next to the OSSF dilepton invariant-mass spectrum. The K = 2 branch of the auxiliary loss (Sec. III C) supervises log mℓℓ directly, so peak placement is a fidelity claim rather than an emergence one. What is less obvious in advance is whether a single model can simultaneously hold the narrow resonance peaks above the Drell–Yan continuum across the five decades of mℓℓ 
+
+that separate the dilepton kinematic threshold from the TeV continuum, in both flavour channels, with the same hyperparameters. Figure 4 shows that it can. Three distinct peak structures emerge above the Drell– Yan continuum. The charmonium states J/ψ (1 S) and 
+
+ψ(2 S) resolve as two distinct peaks at their PDG po-sitions. The bottomonium family Υ(1 S, 2S, 3S) forms a single composite peak. The individual Υ states are not resolved at the present resolution and training hori-zon. The Z peak at ≈ 91 .2 GeV rises above the con-tinuum at its expected position. The falling Drell–Yan continuum underneath is captured across the full range in both flavour channels. The agreement is the result of two physics priors built into the construction: the on-shell condition, embedded in the coordinates on which each particle is generated (Sec. III B), which removes the single-particle mass smearing that would otherwise widen every pair mass; and the auxiliary K-body loss (Sec. III C), which supervises the invariant mass of every particle tuple directly. The ablation of Sec. IV B (Fig. 12, 60.0
+
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> Events
+> ×10 6
+> W1 = 1.6
+> SKL = 7.7e-05
+> BC = 0.00185
+
+Magnitude imbalance         
+
+> Truth
+> Gen
+> −100 −50 050 100
+> |~pvis
+> T| − Emiss
+> T[GeV ]
+> 0.9
+> 1.0
+> 1.1
+> Gen / Truth
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> Events
+> ×10 6
+> W1 = 1.6
+> SKL = 4.46e-05
+> BC = 0.000596
+
+x-component closure        
+
+> Truth
+> Gen
+> −100 −50 050 100
+> Σpx+Emiss ,x T[GeV ]
+> 0.9
+> 1.0
+> Gen / Truth
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> Events
+> ×10 6
+> W1 = 1.61
+> SKL = 0.00025
+> BC = 0.00343
+
+y-component closure        
+
+> Truth
+> Gen
+> −100 −50 050 100
+> Σpy+Emiss ,y T[GeV ]
+> 0.9
+> 1.0
+> Gen / Truth
+
+Transverse momentum conservation — 60 bins 
+
+> 1
+
+Fig. 2. Transverse momentum conservation. Event-level pT closure on the joint sample: signed components P pT,x +Emiss 
+
+> x
+
+and P pT,y + Emiss  
+
+> y
+
+, plus the signed magnitude residual |pvis  
+
+> T
+
+| − Emiss  
+
+> T
+
+, truth vs. generated. The signed components close at zero. The asymmetric magnitude bump on the negative side is carried by the 1LMET30 component, whose Emiss  
+
+> T
+
+selection and unstored soft activity make Emiss  
+
+> T
+
+exceed |pvis  
+
+> T
+
+| (see text). Selection: all events in the validation sample. 
+
+Table VI) shows that both are necessary: retrained vari-ants lacking either ingredient, or both, fail to form the quarkonium peaks and degrade the Z peak. The marginal mass spectrum confirms that the model places events at the correct invariant mass, but it does not by itself demonstrate that the underlying decay kine-matics have been learned. A sharper test examines mℓℓ 
+
+jointly with the azimuthal opening angle |∆ϕ| of the two leptons. Each resonance imposes a characteristic corre-lation set by the boost kinematics of the parent particle: the J/ψ family is produced with high boost and decays into a collimated lepton pair (small |∆ϕ|), while the Z
+
+is produced near rest in the transverse plane and decays into two nearly back-to-back leptons ( |∆ϕ| → π). Fig-ure 5 shows the joint distribution ( mℓℓ , |∆ϕ|) in a three-by-three grid, with rows slicing the mass axis around the 
+
+J/ψ , Υ, and Z resonances and columns showing truth, generated, and the truth-vs-generated density contours. The generated distributions reproduce the location and angular extent of the truth densities in each window, including the back-to-back configuration at the Z pole and the high-boost collimated topology of the J/ψ . In the Υ window the model has learned the correct angu-lar structure at every mℓℓ (the angular spread lies within the truth envelope throughout), even though it resolves Υ(1 S) cleanly while smearing 2 S and 3 S together. The narrow resonance peaks of the dilepton spectrum are highly sensitive to the forward noising that flow-matching training applies to the data: each training event is corrupted along a path parameterised by a flow time t, from the clean event at t = 1 to pure noise at 
+
+t = 0 (Sec. III A), and the model learns from the par-tially noised samples. Under this noising the narrow light quarkonia ω(782), ϕ(1020), and ψ(2 S) are indis-tinguishable from the surrounding continuum well before the flow time reaches t ≈ 0.99, the J/ψ (1 S) and Υ peaks follow by t ≈ 0.9, and only the broad Z peak and the Drell–Yan continuum survive past t ≈ 0.95. We docu-71
+
+> 10
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> Events
+
+W1 = 0.0368 
+
+SKL = 0.0049 
+
+BC = 0.0361 
+
+∆R (OSSF) 
+
+Truth 
+
+Gen     
+
+> 0π
+> 2π3π
+> 22π
+> ∆R
+> 0.5
+> 1.0
+> Gen / Truth
+> 0
+> 2
+> 4
+> 6
+> 8
+> Events
+> ×10 5
+
+W1 = 0.036 
+
+SKL = 0.00199 
+
+BC = 0.0282 
+
+∆φ dilepton vs MET 
+
+Truth 
+
+Gen      
+
+> −π−π
+> 20π
+> 2π
+> ∆φ(``, MET)
+> 0.9
+> 1.0
+> 1.1
+> Gen / Truth
+> 1
+> 10
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> Events
+
+W1 = 1.24 
+
+SKL = 0.00144 
+
+BC = 0.0193 
+
+Transverse mass mT
+
+Truth 
+
+Gen     
+
+> 110 10 210 3
+> mT
+
+[GeV ]
+
+> 0
+> 2
+> Gen / Truth
+> 1
+> 10
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> Events
+
+W1 = 5.61 
+
+SKL = 0.000984 
+
+BC = 0.0147 
+
+HT
+
+Truth 
+
+Gen    
+
+> 10 10 210 3
+> HT
+
+[GeV ]
+
+> 0
+> 1
+> Gen / Truth
+> 1
+> 10
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> Events
+
+W1 = 0.91 
+
+SKL = 0.000459 
+
+BC = 0.0102 
+
+Leading lepton pT
+
+Truth 
+
+Gen  
+
+> 10 10 2
+
+leading lepton pT [GeV ]
+
+> 0.75
+> 1.00
+> 1.25
+> Gen / Truth
+> 1
+> 10
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> 10 7
+> Events
+
+W1 = 0.411 
+
+SKL = 0.000845 
+
+BC = 0.0122 
+
+Subleading lepton pT
+
+Truth 
+
+Gen  
+
+> 10 10 2
+
+subleading lepton pT [GeV ]
+
+> 0.5
+> 1.0
+> 1.5
+> Gen / Truth
+
+Inter-particle kinematics: ∆R, ∆φ, mT , HT , lepton pT — 60 bins 
+
+> 1
+
+Fig. 3. Inter-particle kinematics. Inter-particle observables that enter neither the primary flow-matching loss nor the auxiliary K-body loss and have no dedicated conditioning channel: the OSSF cone distance ∆ Rℓℓ , the dilepton-to-MET azimuthal opening ∆ ϕ(ℓℓ, MET), the transverse mass mT of Eq. (1), the scalar transverse-momentum sum HT , and the leading and sub-leading lepton pT , all defined in the text. Truth (validation set) vs. generated. All six are computed after sampling, identically on truth and on generated. Selection: all events for HT ; OSSF pairs for ∆ Rℓℓ and ∆ ϕ(ℓℓ, MET); three-lepton events for mT ; events with ≥ 2 leptons for the lepton pT spectra. 810 2                                                       
+
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> 10 7
+> 10 8
+> Events
+> ω
+> φ
+> J/ψ
+> ψ(2 S)
+> Υ(1 S)
+> Υ(2 S)
+> Υ(3 S)
+> Z
+> W1 = 1.55
+> SKL = 0.00422
+> BC = 0.029
+> OSSF m(ee )— 200 bins
+> Truth
+> Gen
+> 10 −210 −1110 10 210 3
+> m(e+e−)[GeV ]
+> 0
+> 5
+> Gen / Truth
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> 10 7
+> 10 8
+> Events
+> ω
+> φ
+> J/ψ
+> ψ(2 S)
+> Υ(1 S)
+> Υ(2 S)
+> Υ(3 S)
+> Z
+> W1 = 1.13
+> SKL = 0.00236
+> BC = 0.0243
+> OSSF m(μμ )— 200 bins
+> Truth
+> Gen
+> 10 −210 −1110 10 210 3
+> m(μ+μ−)[GeV ]
+> 0
+> 5
+> Gen / Truth
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> 10 7
+> 10 8
+> Events
+> ω
+> φ
+> J/ψ
+> ψ(2 S)
+> Υ(1 S)
+> Υ(2 S)
+> Υ(3 S)
+> Z
+> W1 = 1.23
+> SKL = 0.00261
+> BC = 0.0229
+> OSSF m(`` )— 200 bins
+> Truth
+> Gen
+> 10 −210 −1110 10 210 3
+> m(`+`−)[GeV ]
+> 0
+> 5
+> Gen / Truth
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> Events
+> ω
+> φW1 = 0.0494
+> SKL = 0.0304
+> BC = 0.0925
+> ω/φ region — 100 bins
+> Truth
+> Gen
+> 0.50 0.75 1.00 1.25 1.50 1.75 2.00
+> mμμ [GeV ]
+> 0.5
+> 1.0
+> 1.5
+> Gen / Truth  10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> Events
+> J/ψ ψ(2 S)
+> W1 = 0.0482
+> SKL = 0.0555
+> BC = 0.137
+> J/ψ region — 100 bins
+> Truth
+> Gen
+> 2.02.53.03.54.04.5
+> mμμ [GeV ]
+> 1
+> 2
+> Gen / Truth  10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> Events
+> Υ(1 S)
+> Υ(2 S)
+> Υ(3 S)W1 = 0.153
+> SKL = 0.0345
+> BC = 0.116
+> Υregion — 100 bins
+> Truth
+> Gen
+> 6810 12 14
+> mμμ [GeV ]
+> 1.0
+> 1.5
+> Gen / Truth  10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> Events
+> mZ
+> W1 = 0.408
+> SKL = 0.0048
+> BC = 0.0285
+> Zregion — 100 bins
+> Truth
+> Gen
+> 60 70 80 90 100 110 120
+> mμμ [GeV ]
+> 0.75
+> 1.00
+> Gen / Truth
+
+Dilepton invariant masses and dimuon resonance zooms 
+
+> 1
+
+Fig. 4. Main result: OSSF dilepton invariant-mass spectrum, truth (validation set) vs. generated, across five decades in 
+
+mℓℓ , with zooms on the four resonance regions. The J/ψ (1 S) and ψ(2 S) appear as two distinct peaks at their PDG positions, the bottomonium family Υ(1 S, 2S, 3S) forms a single composite peak, and the Z at ≈ 91 .2 GeV rises above the falling Drell– Yan continuum. None of these masses was supplied to the model. In every panel the sub-panel below shows the bin-by-bin generated-to-truth ratio, and summary agreement metrics are annotated in the panel. Top-left: dielectron channel m(e+e−). 
+
+Top-middle: dimuon channel m(μ+μ−). Top-right: combined m(ℓ+ℓ−). The three top panels span the full mass range with 200 log-spaced bins. Bottom row: dimuon-channel zooms on each resonance region ( ω/ϕ , J/ψ , Υ, Z), 100 bins each. Selection: 
+
+exactly two OSSF leptons (electrons or muons) with pT > 10 GeV. 
+
+ment this in Appendix C (Fig. 24). A loss that weights all events equally cannot recover features that are buried in noise this aggressively, which is the empirical motiva-tion for the distribution-matching weight w⋆ (Sec. III C, Eq. (20)): w⋆ tells the auxiliary loss that certain mass re-gions are under-produced and need extra gradient signal even when the forward-noised samples no longer carry their structure. The ω and ϕ peaks remain absent from the generated spectrum because they are erased so early in the forward process that no amount of re-weighting on the auxiliary loss can resurrect them at the present resolution and training horizon. A modest event excess is also visible between the dimuon kinematic threshold and the ω/ϕ region, with small under-productions at the immediate shoulders of the J/ψ and Υ peaks where w⋆
+
+pulls events into the peaks at the expense of the adjacent bins. 
+
+E. Weinberg angle from the Drell–Yan asymmetry 
+
+The dilepton spectrum carries more than just the mass distribution. The Drell–Yan forward–backward asymme-try AF B (mℓℓ ) encodes the relative chiral couplings of the 
+
+Z and photon intermediaries, and a fit to its shape yields the effective leptonic weak mixing angle sin 2 θw. Because the asymmetry is odd in the decay angle, conventionally defined in the Collins–Soper frame [79], and correlated with the lepton charge, no inclusive invariant-mass den-sity can encode it. Among the observables studied in this paper it is the cleanest case of structure the model can only have learned from the joint event kinematics. We extract sin 2 θw from the trained model’s generated events using a leading-order Drell–Yan template fit applied iden-tically to the truth validation sample, separately in the dimuon and dielectron channels, in the spirit of the CMS measurements at 8 TeV [80] and 13 TeV [81] but at the simpler leading-order level. The closure between truth and generated is insensitive to the template refinements of the full measurement, since both samples are fit with the same template. The best-fit values are collected in Table II. In each channel the generated and truth fits are statistically compatible, with pulls on the truth– generated difference of 0 .3σ (dimuon) and 1 .2σ (dielec-tron), so the generator preserves the Drell–Yan forward– backward asymmetry to the precision of the truth sample 92.25 2.50 2.75 3.00 3.25 3.50 3.75 4.00 4.25 4.50  
+
+> m`` [GeV ]
+> 0
+> π
+> 10
+> π
+> 5
+> |∆φ(`+, ` −)|
+
+Truth: J/ψ region           
+
+> 2.25 2.50 2.75 3.00 3.25 3.50 3.75 4.00 4.25 4.50
+> m`` [GeV ]
+> 0
+> π
+> 10
+> π
+> 5
+
+Gen: J/ψ region           
+
+> 5000
+> 10000
+> 15000
+> 20000
+> Pairs / bin
+> 2.25 2.50 2.75 3.00 3.25 3.50 3.75 4.00 4.25 4.50
+> m`` [GeV ]
+> 0
+> π
+> 10
+> π
+> 5
+> |∆φ(`+, ` −)|
+
+σ contours: J/ψ region                 
+
+> Truth 1σ
+> Truth 2σ
+> Truth 3σ
+> Gen 1σ
+> Gen 2σ
+> Gen 3σ
+> 8.79.09.39.69.910 .210 .510 .811 .111 .4
+> m`` [GeV ]
+> 0
+> π
+> 6
+> π
+> 3
+> π
+> 2
+> 2π
+> 3
+> |∆φ(`+, ` −)|
+
+Truth: Υ region           
+
+> 8.79.09.39.69.910 .210 .510 .811 .111 .4
+> m`` [GeV ]
+> 0
+> π
+> 6
+> π
+> 3
+> π
+> 2
+> 2π
+> 3
+
+Gen: Υ region           
+
+> 200
+> 400
+> 600
+> 800
+> 1000
+> 1200
+> 1400
+> Pairs / bin
+> 8.79.09.39.69.910 .210 .510 .811 .111 .4
+> m`` [GeV ]
+> 0
+> π
+> 6
+> π
+> 3
+> π
+> 2
+> 2π
+> 3
+> |∆φ(`+, ` −)|
+
+σ contours: Υ region                 
+
+> Truth 1σ
+> Truth 2σ
+> Truth 3σ
+> Gen 1σ
+> Gen 2σ
+> Gen 3σ
+> 82 84 86 88 90 92 94 96 98 100
+> m`` [GeV ]
+> π
+> 2
+> 3π
+> 4
+> π
+> |∆φ(`+, ` −)|
+
+Truth: Z region            
+
+> 82 84 86 88 90 92 94 96 98 100
+> m`` [GeV ]
+> π
+> 2
+> 3π
+> 4
+> π
+
+Gen: Z region           
+
+> 2000
+> 4000
+> 6000
+> 8000
+> 10000
+> 12000
+> Pairs / bin
+> 82 84 86 88 90 92 94 96 98 100
+> m`` [GeV ]
+> π
+> 2
+> 3π
+> 4
+> π
+> |∆φ(`+, ` −)|
+
+σ contours: Z region       
+
+> Truth 1σ
+> Truth 2σ
+> Truth 3σ
+> Gen 1σ
+> Gen 2σ
+> Gen 3σ
+
+OSSF dilepton: m`` vs |∆φ| (truth vs generated) 
+
+> 1
+
+Fig. 5. Dilepton resonances and angular relations. Joint distribution of the OSSF dilepton invariant mass and the azimuthal opening angle, displayed as a 3 × 3 grid (rows: J/ψ family, Υ family, Z peak, each restricted to a mass window centred on the resonance; columns: truth, generated, σ contours). The third column overlays the 1 σ, 2 σ, and 3 σ isocontours of the truth (solid) and generated (dashed) distributions. Selection: OSSF dilepton, pT > 10 GeV per lepton. 
+
+itself. These pulls are stable under a more careful error treatment: including the generation spread of Table II and the truth–generated fit correlation induced by the shared conditioning events, measured with a paired event bootstrap to be ρ ≈ 0.3, changes each pull by less than 0.1σ, since the two corrections act in opposite directions. The truth fits sit 0 .006–0 .007 above the PDG effective leptonic mixing angle and the CMS Run-1 NLO mea-surement [62, 80]. This offset reflects the choice of the LO fit template, not a deficiency of the generator, since the generated and the truth fits sit on the same side of PDG by approximately the same amount in each channel. The model therefore preserves the parity structure of the Drell–Yan process in addition to its mass spectrum. 
+
+F. Leading dijet kinematics 
+
+The leading dijet probes whether the model has cap-tured the longitudinal structure of the hadronic activ-ity in these events, predominantly jets recoiling against the leptonic system in the two skims, through observ-ables tied to the incoming parton momenta. The average pseudorapidity of the two leading jets, ¯ η = ( η1 + η2)/2, approximates the longitudinal boost of the dijet centre-of-mass frame and tracks the asymmetry of the parton 10 −0.2                                                                        
+
+> −0.1
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> μ+μ−
+> AF B
+> 0.0≤ | Y`` |<0.4
+> 70 90 110
+> M`` [GeV]
+> −0.025
+> 0.000
+> 0.025
+> (data  − fit)
+> 0.4≤ | Y`` |<0.8
+> 70 90 110
+> M`` [GeV]
+> 0.8≤ | Y`` |<1.2
+> 70 90 110
+> M`` [GeV]
+> 1.2≤ | Y`` |<1.6
+> 70 90 110
+> M`` [GeV]
+> 1.6≤ | Y`` |<2.0
+> 70 90 110
+> M`` [GeV]
+> 2.0≤ | Y`` |<2.4
+> 70 90 110
+> M`` [GeV]
+> −0.2
+> −0.1
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> e+e−
+> AF B
+> 0.0≤ | Y`` |<0.4
+> 70 90 110
+> M`` [GeV]
+> −0.025
+> 0.000
+> 0.025
+> (data  − fit)
+> 0.4≤ | Y`` |<0.8
+> 70 90 110
+> M`` [GeV]
+> 0.8≤ | Y`` |<1.2
+> 70 90 110
+> M`` [GeV]
+> 1.2≤ | Y`` |<1.6
+> 70 90 110
+> M`` [GeV]
+> 1.6≤ | Y`` |<2.0
+> 70 90 110
+> M`` [GeV]
+> 2.0≤ | Y`` |<2.4
+> 70 90 110
+> M`` [GeV]
+
+Weinberg angle from AF B (m`` , |Y`` |) (truth vs generated)    
+
+> Truth — data points Generated — data points Truth fit (LO template @ best-fit sin²�_W) Gen fit (LO template @ best-fit sin²�_W)
+> 1
+
+Fig. 6. Weinberg angle extraction. Forward–backward asymmetry AFB (mℓℓ ) in six bins of dilepton rapidity |Yℓℓ |, on truth (validation set) and on generated samples. In each panel the points are the measured asymmetry (truth in black, generated in orange), the curves are the LO Drell–Yan template evaluated at the best-fit sin 2 θw of the corresponding sample (truth solid, generated dashed), and the strip below each panel shows the data-minus-fit residuals. The fits to the generated sample and to the truth sample are statistically compatible (0 .3σ and 1 .2σ pulls in the dimuon and dielectron channels), and both sit ≲ 0.007 above the PDG effective leptonic mixing angle, an offset attributable to the LO fit template. Top row: dimuon channel. Bottom row: dielectron channel. Selection: OSSF dilepton with pT > 20 GeV on the leading lepton and pT > 15 GeV on the sub-leading lepton, restricted to the Drell–Yan window 60 GeV < m ℓℓ < 120 GeV. TABLE II. Fitted Weinberg angle sin 2 θw (LO AFB template). Best-fit values from the LO Drell–Yan AFB (mℓℓ ) template fit on truth and generated samples, against the PDG effective leptonic mixing angle and the CMS Run-1 NLO value [80]. The fit uncertainty σfit and the generation spread σgen , the standard deviation of the fitted value over five regenerations of the sample with independent prior seeds, are listed separately. 
+
+Source sin 2 θw σfit σgen 
+
+μ+μ− truth 0.23690 ±0.00084 —
+
+μ+μ− generated 0.23657 ±0.00082 ±0.00055 
+
+e+e− truth 0.23792 ±0.00103 —
+
+e+e− generated 0.23627 ±0.00092 ±0.00073 PDG eff. leptonic 0.23122 — —CMS Run-1 NLO 0.23140 — —
+
+momentum fractions x1, x 2 of the incoming partons, ¯η ≈ yboost = 12 ln( x1/x 2),x1,2 = mjj 
+
+√s e±¯η . (2) The kinematic constraints x1, x 2 ≤ 1 impose a triangular envelope on the joint ( mjj , ¯η) density: ln mjj ≤ ln √s −|¯η|, with the apex at mjj = √s = 13 TeV. Figure 7 shows the joint distribution for the truth and generated samples, with 1 σ, 2 σ, and 3 σ contours of the truth distribution overlaid. The generator repro-duces both the sharp kinematic edges of the triangular envelope and the density inside. Beyond the supervised 
+
+mjj marginal, the joint ( mjj , ¯η) correlation is reproduced with no observable-level target. 11 −2 −1 0 1 2                        
+
+> ¯η= ( η1+η2)/2
+> 10
+> 10 2
+> 10 3
+> 10 4
+> mjj  [GeV ]
+> Truth
+> −2−1012
+> ¯η= ( η1+η2)/2
+> 10
+> 10 2
+> 10 3
+> 10 4
+> mjj  [GeV ]
+> Gen
+> −2−1012
+> ¯η= ( η1+η2)/2
+> 10
+> 10 2
+> 10 3
+> 10 4
+> mjj  [GeV ]
+> σcontours (truth vs gen)
+> Truth 1σ
+> Truth 2σ
+> Truth 3σ
+> Gen 1σ
+> Gen 2σ
+> Gen 3σ
+> 1000
+> 2000
+> 3000
+> 4000
+> 5000
+> 6000
+> 7000
+> 1000
+> 2000
+> 3000
+> 4000
+> 5000
+> 6000
+
+Leading dijet kinematics: mjj vs ¯η — 60 bins 
+
+> 1
+
+Fig. 7. Dijet kinematics. Joint distribution of the leading-dijet invariant mass mjj and average pseudorapidity ¯ η = ( η1 +η2)/2, truth (validation set) vs. generated. In all panels the two observables are built from the two leading jets of events with at least two reconstructed jets, and the triangular envelope is the kinematic constraint x1, x 2 ≤ 1 on the parton momentum fractions. Left: truth. Middle: generated. Right: 1σ, 2 σ, 3 σ contours of truth (solid) and generated (dashed) overlaid for direct comparison. 
+
+G. Three-particle invariant masses 
+
+Beyond the dilepton sector, each three-particle combi-nation is a distinct test of the model’s correlation struc-ture, because the generated events must reproduce triple as well as pairwise relationships between reconstructed objects. Most three-body spectra are smooth continua or kinematic mixes from Standard-Model processes. One combination, the all-jets triplet, carries a genuine reso-nance from the hadronic decay t → W b → q ¯q′b.Figure 25, collected in Appendix D, compares truth and generated distributions on eight three-particle com-binations: 3 ℓ (multi-lepton continuum from W Z and ZZ 
+
+topologies), γℓℓ (radiative Z return at mZ ), ℓℓj (Z+ jet with the dilepton at mZ and the jet carrying the QCD recoil), jjj (multijet QCD bulk plus the hadronic top peak at m ≈ 173 GeV), ℓjj (W + jets and semileptonic top topologies), and the system transverse momenta of each triplet as a 3-body momentum-balance check. The continua and kinematic mixes are reproduced over the full mass range in each combination, and the hadronic-top peak emerges above the multijet QCD continuum in 
+
+mjjj .
+
+H. Heavy-particle mass closures: W , Z, top 
+
+The model is not told that the top quark exists, nor is it given the top mass, the W mass, or the t → W b 
+
+decay topology. The b-tagging score of each jet is avail-able to the model only as a conditioning input, not as a generated quantity. Recovery of the top peak under the standard semileptonic t¯t selection is therefore a closure test on whether the generator has learned the joint kine-matics of the lepton, the neutrino, and the multi-jet final state to the level a top decay requires, not a precision measurement of the top mass. The 1LMET30 component of the joint sample pro-vides the standard single-lepton plus jets topology of semileptonic t¯t events, in which one top decays to ℓνb 
+
+and the other to q ¯q′b. We apply the standard ATLAS-style t¯t selection [82] to the truth (validation) sample and a generated sample of equal input size (4 .1 × 10 7
+
+events each): exactly one isolated lepton ( e or μ) with 
+
+pT > 25 GeV, missing transverse energy Emiss  
+
+> T
+
+> 30 GeV, at least four jets with pT > 25 GeV, and exactly two of the four leading jets b-tagged. The two non-b jets are taken as the hadronic-side W candidate (unbiased by any MW selection), and the b jets are assigned to the hadronic and leptonic top candidates by minimising the two-top mass difference. The selection retains 44 ,763 truth and 37 ,730 generated events. The neutrino pz is solved from the MW constraint on the lepton and the 12 missing transverse energy, taking the smaller-|pz | root of the resulting quadratic and its real part when the dis-criminant is negative, as is standard in top-quark recon-struction. This follows the spirit of KLFitter [83] with-out the full likelihood machinery (hence the “KLFitter-lite” label used below). The fit floats the top mass with no MW constraint on the hadronic side, so the recon-structed peak positions sit below the PDG values for both truth and generated. The gen-vs-truth agreement is the operative closure. The leptonic Z panel uses a sepa-rate, simpler dilepton selection: at least two leptons with 
+
+pT > 20 GeV, the leading OSSF pair, and the standard 
+
+Z window 60 GeV < m ℓℓ < 120 GeV, retaining 2 .6 × 10 6
+
+truth and 2 .5 × 10 6 generated events. Figure 8 compares the truth and generated peaks for four reconstructed heavy-particle observables, each fitted with a Double-Sided Crystal Ball (DSCB) shape (a Gaus-sian core with two independent power-law tails [84], gen-eralising the standard Crystal Ball function of Ref. [85]) on a linear background. The truth peaks are fitted with all shape parameters floating. The generated peaks are fitted with a truth-shape template, in which the resolu-tion and tail parameters are fixed to the truth fit and only the normalisation, position, and background float. The template is required because a free-shape fit degenerates on the generated hadronic-side distributions, whose res-onant cores are diluted relative to truth, and returns a width pinned at the fit bound with no meaningful posi-tion. The fitted central values and the residuals against PDG references are collected in Table III. The leptonic top mℓνb closes cleanly because the neu-trino is reconstructed from the missing transverse energy (a conditioning input) and the lepton via the W con-straint rather than being directly generated, so the clo-sure requires that the lepton kinematics, the b-jet kine-matics, and the missing transverse energy be simultane-ously consistent with a parent top decay. The hadronic top mjjb and the hadronic W m jj (the two non-b jets, unbiased by any reference to the W mass) close within the combined fit and regeneration uncertainties quoted in Table III. Fit-free cross-checks support the positional closure: the histogram modes of the truth and generated distributions coincide within one bin in every panel, and the interquartile ranges of the selected distributions agree to 18% or better (IQR-ratio column of Table III). The tightest closure of the four sits on the leptonic Z → ℓℓ ,where the truth and the generated fits both land within 0.7 GeV of the PDG mZ . Lepton four-momenta are read directly off the generated coordinates, with no interme-diate reconstruction step, so the dilepton invariant mass inherits the same sub-GeV precision as the per-particle marginals. What the generator has not yet reproduced is the prominence of the hadronic resonant cores: at matched sample size, the generated yield within one core width (μ ± σ) of the fitted peak sits 9% below truth for the hadronic top and 23% for the hadronic W (3% for the leptonic top) 2, with the difference redistributed into the surrounding continuum, and a free-shape fit consequently cannot isolate the generated core width at all. We at-tribute the core dilution to a combination of the res-olution of the coordinates in which jet four-momenta are generated (Sec. III B), the smoothing inherent in the distribution-matching weight (Sec. III C), and the present 30-epoch training horizon. The bottom ratio panels of Fig. 8 sit at unity across the full mass range in all four reconstructions: the closure is a positional one, robust to the core dilution on the hadronic side, but the dilution limits the precision to which the hadronic peaks can be extracted from generated samples.  
+
+> I. Higgs golden channel
+
+The four-lepton system in the H → ZZ ∗ → 4ℓ golden channel is the rarest and most demanding observable in the joint sample. The branching fraction B(H → 4ℓ)is of order 10 −4, and the topology requires one on-shell 
+
+Z → ℓℓ at mZ ≈ 91 GeV plus one off-shell Z∗ →
+
+ℓℓ . The analysis selection is patterned on the ATLAS 
+
+H → ZZ ∗ → 4ℓ measurement [86] and proceeds in two stages: a ZZ ∗ pairing stage that selects events with ex-actly four leptons satisfying p(1 ,2,3)  
+
+> T
+
+> 20 , 15 , 10 GeV and OSSF pairs in mZ ∈ [50 , 106] GeV and mZ∗ ∈ [12 , 115] GeV, followed by a per-lepton quality stage that imposes 
+
+ptvarcone30 /p T < 0.15, topoetcone20 /p T < 0.20, and 
+
+|d0/σ d0 | < 5 for electrons and < 3 for muons. The kine-matic thresholds, mass windows, and impact-parameter cuts follow Ref. [86], while the isolation cuts are adapted to the isolation variables available in the Open Data for-mat. Figure 9 compares the truth and generated four-lepton invariant-mass spectra at the two selection stages. The left panel applies only the ZZ ∗ pairing and pT cuts and retains ∼ 2.3 × 10 4 events per sample. The right panel applies the additional per-lepton quality cuts and re-duces the selected sample by an order of magnitude to 
+
+∼ 1.4 × 10 3 events. With pT cuts only, the generator re-produces the bulk m4ℓ continuum shape and the location of the broad Z-recoil shoulder, with a moderate excess in the 150–200 GeV sideband. Once the per-lepton quality cuts are imposed, the truth spectrum resolves into the two-peak structure expected from Z → 4ℓ at 91 GeV and H → 4ℓ at 125 GeV, while the generated spectrum collapses to a featureless continuum that does not repro-duce either peak. The combination of the rare-process       
+
+> 2Computed from the histograms of Fig. 8 in three steps: the core window is taken as μ±σof the truth fit; the counts of the bins whose centres fall inside the window are summed, separately for the truth and the generated sample; and the generated-to-truth ratio of the two sums is scaled by the truth-to-generated ratio of selected-event counts (44 ,763 /37 ,730), so that the shapes are compared at matched sample size. The Poisson uncertainty on each deficit is 1–1 .5%.
+
+13 0
+
+> 200
+> 400
+> 600
+> 800
+> 1000
+> 1200
+> 1400
+> Events
+
+Hadronic top mjjb — 60 bins        
+
+> Truth
+> DSCB + bkg
+> Gen
+> DSCB template + bkg (gen)
+> PDG = 172.8 GeV
+> 50 100 150 200 250 300 350
+> mjjb
+
+[GeV ]
+
+> 1
+> 2
+> Gen / Truth
+> 0
+> 250
+> 500
+> 750
+> 1000
+> 1250
+> 1500
+> 1750
+> Events
+
+Leptonic top m`νb — 60 bins        
+
+> Truth
+> DSCB + bkg
+> Gen
+> DSCB template + bkg (gen)
+> PDG = 172.8 GeV
+> 50 100 150 200 250 300 350
+> m`νb
+
+[GeV ]
+
+> 0
+> 1
+> Gen / Truth
+> 0
+> 200
+> 400
+> 600
+> 800
+> 1000
+> 1200
+> 1400
+> Events
+
+Hadronic W → jj (mjj ) — 60 bins           
+
+> Truth
+> DSCB + bkg
+> Gen
+> DSCB template + bkg (gen)
+> PDG = 80.4 GeV
+> 20 40 60 80 100 120 140 160 180 200
+> mjj
+
+[GeV ] 
+
+> 0.75
+> 1.00
+> Gen / Truth
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> 3.0
+> Events
+> ×10 5
+
+Leptonic Z → `` (m`` ) — 60 bins        
+
+> Truth
+> DSCB + bkg
+> Gen
+> DSCB template + bkg (gen)
+> PDG = 91.2 GeV
+> 60 70 80 90 100 110 120
+> m``
+
+[GeV ]
+
+> 0.8
+> 1.0
+> Gen / Truth
+
+Heavy-particle mass closures: top, W , and Z
+
+> 1
+
+Fig. 8. Heavy-particle masses. Reconstructed-mass closures for the top quark, the W , and the Z, truth (validation) vs. generated. In every panel the truth peak is fit with a free-shape DSCB on a linear background, the generated peak with a truth-shape DSCB template in which only the normalisation, position, and background float (see text), and the lower sub-panel shows the bin-by-bin generated-to-truth ratio. Top-left: hadronic top mjjb . Top-right: leptonic top mℓνb . Bottom-left: 
+
+hadronic W m jj . These three panels share the semileptonic t¯t selection and KLFitter-lite reconstruction described in the text. 
+
+Bottom-right: leptonic Z m ℓℓ , under the OSSF dilepton selection and the standard Z window. 
+
+branching fraction B(H → 4ℓ) ∼ 10 −4 and the multi-cut topology makes this the hardest observable in the joint sample to learn. The correlated failure of the inner Z
+
+shoulder and the Higgs peak indicates that the model has not yet learned the joint quality-cut acceptance: the per-lepton quality features that define this selection are passed in as conditioning information but the generator does not produce events whose lepton tracks satisfy all four cuts simultaneously at the correct rate. We discuss this failure mode further in Sec. IV C. 14 
+
+TABLE III. Heavy-particle masses: fitted DSCB [85] peak positions μ versus PDG [62], on truth and generated samples, with residuals ∆ = μ − PDG, together with the truth core width σ and a fit-free width comparison. The hadronic top reconstruction floats the top with no MW constraint on the hadronic side, which biases its peak position downward equally on truth and on generated. The gen-vs-truth agreement is the closure. The leptonic Z row is the corresponding OSSF dilepton fit under the standard Z window used by Fig. 8. 
+
+Observable Truth μ (GeV) a Gen μ (GeV) b Truth σ (GeV) c IQR ratio d PDG (GeV) ∆ Truth e ∆ Gen f
+
+Hadronic top mjjb 165 .1 ± 1.2 167 .5 ± 2.3 ± 3.6 25 .4 ± 1.8 1.10 172 .76 −7.6 −5.2Leptonic top mℓνb 166 .9 ± 1.3 166 .8 ± 1.6 ± 1.9 32 .9 ± 2.4 1.06 172 .76 −5.8 −5.9Hadronic W m jj 80 .0 ± 0.4 77 .3 ± 1.8 ± 3.5 9.6 ± 0.5 1.18 80 .38 −0.4 −3.1Leptonic Z m ℓℓ 90 .9 ± 0.1 90 .5 ± 0.1 ± 0.05 2.6 ± 0.1 0.96 91 .19 −0.3 −0.7 
+
+> a
+
+Peak position from a free-shape DSCB fit on a linear background. Uncertainties are fit uncertainties on the position, not peak widths.  
+
+> b
+
+Peak position from a truth-shape template fit: the DSCB shape is fixed from the truth fit; only normalisation, position, and background float. The first uncertainty is the fit uncertainty on the position; the second is the standard deviation of the fitted position over five regenerations of the sample with independent prior seeds.  
+
+> c
+
+Width of the truth DSCB Gaussian core: the physical spread of the reconstructed mass around μ. 
+
+> d
+
+Generated-to-truth ratio of the interquartile ranges within the fit window; a fit-free width comparison.  
+
+> e
+
+∆ Truth = Truth μ − PDG.  
+
+> f
+
+∆ Gen = Gen μ − PDG. 100 150 200 250 300                     
+
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> Events
+> mZmH
+> W1 = 4.48
+> SKL = 0.0313
+> BC = 0.0804
+> ZZ* + pTcuts only — 100 bins
+> Truth
+> Gen
+> 100 150 200 250 300
+> m4`[GeV ]
+> 0
+> 1
+> 2
+> Gen / Truth  mH
+> 100 150 200 250 300
+> 10 0
+> 10 1
+> Events
+> mZmH
+> W1 = 62.5
+> SKL = 1.16
+> BC = 0.417
+> ZZ* + pT+ quality cuts — 100 bins
+> Truth
+> Gen
+> 100 150 200 250 300
+> m4`[GeV ]
+> 0.0
+> 2.5
+> 5.0
+> 7.5
+> Gen / Truth  mH
+
+Higgs m4` in the H → ZZ ∗ → 4` selection 
+
+> 1
+
+Fig. 9. Higgs in the four-lepton invariant-mass spectrum. Four-lepton invariant-mass spectrum m4ℓ in the H → ZZ ∗ →
+
+4ℓ golden channel, truth (validation) vs. generated, at the two selection stages defined in the text. The lower sub-panels show the bin-by-bin generated-to-truth ratio. Left: kinematic stage ( ∼ 2.3 × 10 4 events per sample). The generator reproduces the continuum shape with a moderate excess in the 150–200 GeV sideband. Right: quality stage ( ∼ 1.4 × 10 3 events per sample). Truth resolves into a Z → 4ℓ peak at 91 GeV and a Higgs peak at 125 GeV, while the generated spectrum is consistent with a featureless continuum. 
+
+III. METHOD 
+
+Flow matching [87] casts generation as the solution of an ordinary differential equation (ODE). A velocity field 
+
+uθt (x) on Rd, parameterised by a neural network, defines the initial-value problem 
+
+dx t
+
+dt = uθt (xt), xt=0 = x0 ∼ pinit , (3) whose solution carries a sample x0 of a simple base dis-tribution pinit (here a standard Gaussian) to a generated sample xt=1 . Training adjusts θ so that the distribu-tion of xt=1 matches the data distribution pdata . The link between a velocity field and the distribution it trans-ports is the continuity equation: a field utarget  
+
+> t
+
+generates the probability path pt : [0 , 1] → P (Rd) with endpoints 15 
+
+pt=0 = pinit and pt=1 = pdata when 
+
+∂t pt(x) + ∇x · pt(x) utarget  
+
+> t
+
+(x) = 0 . (4) The marginal field utarget  
+
+> t
+
+(x) is not tractable, but it does not need to be. For a data point z ∼ pdata and a noise sample x0 ∼ pinit , the straight-line path xt = (1 − t) x0 +
+
+t z is generated by the conditional field utarget  
+
+> t
+
+(x|z) = (z − x)/(1 − t), which along the path equals the constant velocity z − x0. Regressing the network on it, 
+
+LCFM (θ) = Et, x 0, z uθt (xt) − utarget  
+
+> t
+
+(xt|z) 2, (5) with t ∼ U (0 , 1), has the same θ-gradient as the in-tractable regression on the marginal field [87]. Each training step therefore only draws a time, a data event, and a noise sample. No simulation or likelihood eval-uation is required. This is Conditional Flow Matching (CFM). The Euclidean construction, however, places no constraint on where the generated samples live, yet col-lider objects satisfy on-shell relations that a free vector in 
+
+Rd does not respect. We therefore train the Riemannian extension of CFM, summarised next.  
+
+> A. Conditional flow matching on Riemannian manifolds
+
+Riemannian flow matching [58] transfers the construc-tion above onto a curved space M with three replace-ments: straight lines become geodesics, vector differences become logarithm maps, and the Euclidean norm be-comes the norm induced by the metric. Let M carry at every point x a metric gx, an in-ner product on the tangent space TxM (the local lin-earisation of M at x). On every manifold used in this work, gx is simply the Euclidean dot product of an am-bient embedding space restricted to the tangent space, so gx(v, w ) = ⟨v, w ⟩ for tangent vectors v, w . Two maps replace vector addition and subtraction. The exponen-tial map exp x : TxM → M takes a tangent vector v
+
+to the endpoint of the geodesic that leaves x with ini-tial velocity v and runs for unit time; the logarithm map log x : M → TxM is its inverse where defined, returning the initial velocity of the unit-time geodesic from x to its argument. Their argument types differ because the two maps invert one another: exp x(log x y) = y.The conditional path anchored on a data point z is the geodesic interpolant 
+
+xt = exp x0
+
+ t log x0 z, (6) the curved-space analogue of the straight line, and the conditional field that generates it takes the closed form [58] utarget  
+
+> t
+
+(x|z) = log x(z)/(1 − t) ∈ TxM, of which the Euclidean field above is the flat-space case. The ob-jective becomes the Riemannian conditional flow match-ing loss 
+
+LRCFM (θ) = Et, x 0, z uθt (xt) − utarget  
+
+> t
+
+(xt|z) 2
+
+> g(xt)
+
+, (7) with ∥w∥2 
+
+> g(x)
+
+≡ gx(w, w ) and the network output pro-jected onto the tangent space at xt. The full derivation is given in [58]. When M = Rd and gx ≡ I, every el-ement above reduces to its Euclidean counterpart from Eq. (5). Generation solves the initial-value problem of Eq. (3) on the manifold, stepping with exp xt so that the state never leaves M. What remains is the physics input, the choice of M and its charts, which is the subject of the next subsection.  
+
+> B. On-shell manifolds for collider objects
+
+A physical particle satisfies the on-shell relation E2 =
+
+m2 + |p|2, and a generator should not be able to produce anything else. Modelling each reconstructed particle as a free four-vector in R4 offers no such guarantee: the components ( E, p x, p y , p z ) fluctuate independently, the generated mass m2 = E2 − | p|2 can land anywhere (in-cluding at unphysical m2 < 0), and the invariant mass of a K-body system, 
+
+m2 
+
+> K
+
+= X
+
+> i
+
+(E2 
+
+> i
+
+− | pi|2) + 2 X
+
+> i<j
+
+(EiEj − pi · pj ), (8) inherits independent fluctuations from every diagonal and angular component, broadening any sharp resonance into a continuum. We therefore place each particle on its on-shell manifold from the outset, so that the mass-shell condition holds by construction for every generated sam-ple. Doing so raises two practical difficulties. First, the mass shell of a particle of mass m is a hyperboloid whose curvature scales as 1 /m 2. Its exp x and log x
+
+maps are built from cosh and sinh of the boost rapidity 
+
+χ = arccosh( E/m ), and for an electron at LHC energies 
+
+χ ≈ 12, deep in the regime where these functions overflow and lose precision in single-precision arithmetic, a prob-lem several orders of magnitude harsher for electrons and muons than for the heaviest jets. Second, reconstructed composites such as hadronic taus and jets do not carry a single rest mass. Their reconstructed m is a distribution broadened by the jet algorithm and the underlying QCD shower. We solve the first problem by factorising the per-particle manifold so that all curvature is confined to a unit two-sphere S2, with the remaining degrees of free-dom on flat charts, and the second by promoting mass to a generated coordinate in a log-mass chart for the composite-mass sector. 
+
+a. Charts. Table IV collects the four charts and their encode and decode maps: encode takes a re-constructed four-momentum to the chart coordinates the flow operates on, decode inverts it at generation time. Throughout, k indexes the six reconstructed ob-ject types, and Eref ,k and mfloor ,k are per-type reference constants estimated on the training set. The direction chart on S2 parameterises the three-momentum direction ˆn = p/|p|, with the metric ob-tained by restricting the Euclidean dot product ⟨· , ·⟩ of 16 
+
+TABLE IV. Per-coordinate charts. Each reconstructed four-momentum is encoded into chart coordinates before the flow acts on it and decoded back at generation time. The on-shell row is not a generated coordinate: it is the relation the decode enforces, which ties E, |p|, and m together for every generated particle. Flat (non-S2) coordinates are normalized per type after encoding, Eq. (13). 
+
+Chart Encode Decode 
+
+Direction ( S2) ˆn = p/|p| p = |p| ˆn
+
+Log energy yE = log( E/E ref ,k ) E = Eref ,k eyE
+
+Boost rapidity χ = arccosh( E/m ) E = m cosh χ
+
+Log mass zm = log( m/m floor ,k ) m = mfloor ,k ezm
+
+On-shell (imposed) m = pE2 − | p|2 |p| = √E2 − m2
+
+the ambient R3 to the sphere. Geodesics on the unit sphere are great circles with closed-form expressions, so the three maps the training loop needs (the logarithm, the exponential, and their composition along the condi-tional path) require no numerical integration. For points 
+
+x, y ∈ S2 separated by the angle θ = arccos ⟨x, y ⟩ and a tangent vector v ∈ TxS2, they read [88]: log x(y) = θ
+
+sin θ
+
+ y − ⟨ x, y ⟩ x,
+
+exp x(v) = cos ∥v∥ x + sin ∥v∥∥v∥ v, 
+
+slerp(ˆ n0, ˆn1; t) = sin  (1 − t) Ω 
+
+sin Ω ˆn0 + sin  t Ω
+
+sin Ω ˆn1.
+
+(9) Here ˆ n0 and ˆ n1 are the direction coordinates of the noise sample and of the data sample, cos Ω = ˆ n0 · ˆn1, and the slerp (spherical linear interpolation) expression on the third line is the closed-form value of exp ˆn0
+
+ t log ˆn0 ˆn1
+
+,i.e. the geodesic interpolant of Eq. (6) on S2. We work with the slerp form directly because the θ/ sin θ ratio in log x loses precision when the two directions approach back-to-back ( θ → π), while the slerp expression stays stable over almost the full range of angular separations. In the opposite limit of nearly parallel directions (Ω → 0), where the sin Ω denominator itself degenerates, we fall back to linear interpolation followed by re-projection onto the sphere. The three flat charts of Table IV carry the remaining degrees of freedom. The log-energy chart yE parame-terises the energy of the fixed-mass sector, where the rest mass is a known constant and energy is the only mag-nitude to generate. The boost-rapidity chart χ ∈ [0 , ∞)parameterises the momentum magnitude of a massive ob-ject so that the on-shell relation m2 = E2 − | p|2 reads 
+
+E = m cosh χ, |p| = m sinh χ, (10) exact by construction. The log-mass chart zm promotes the reconstructed mass of the composite sector to a gener-ated coordinate, with the per-type floor mfloor ,k keeping 
+
+χ well-defined at small reconstructed masses. 
+
+b. Per-particle manifolds. The massless sector 3
+
+(e, μ, γ ) is parameterised on 
+
+Mmassless = R × S2, ψ := ( yE , ˆn), (11) with the rest mass fixed to its PDG value and the energy recovered as E = Eref ,k exp( yE ). The massive sector (τhad , small-R jet, large-R jet) lives on 
+
+Mmassive = R × S2 × R, ψ := ( χ, ˆn, z m), (12) with the reconstructed mass generated by the flow. In both cases the full four-momentum at decode time satis-fies E2 − | p|2 = m2 automatically by construction. Ta-ble V collects the per-type manifold assignment across the six reconstructed object types. The per-event mani-fold is the product of per-particle manifolds over the ob-jects present in the event, M = Q 
+
+> p∈event
+
+Mtype( p), and the conditional flow factorises across particles. Missing transverse energy enters the model as a conditioning in-put via cross-attention, not as a generated coordinate. 
+
+TABLE V. Per-type on-shell manifold assignment and gen-erated chart coordinates. The massless sector ( Mmassless ,Eq. (11)) fixes the rest mass to its PDG value and only the en-ergy magnitude is generated. The massive sector ( Mmassive ,Eq. (12)) also generates the reconstructed mass. MET con-ditions the model via cross-attention and is not generated. “Dim” is the chart-embedding dimension on which the flow operates, with the unit direction ˆ n ∈ S2 counted by its three 
+
+R3 components. The on-shell condition is enforced by the manifold geometry rather than by the chart dimension. 
+
+Type Manifold Dim Chart 
+
+Electron R × S2 4 (yE , ˆn)Muon R × S2 4 (yE , ˆn)Photon R × S2 4 (yE , ˆn)
+
+τhad R × S2 × R 5 (χ, ˆn, z m)Small-R jet R × S2 × R 5 (χ, ˆn, z m)Large-R jet R × S2 × R 5 (χ, ˆn, z m)
+
+The Euclidean chart coordinates are normalized per type, so that geodesic distances sit on a comparable scale across object types, 
+
+eyE = yE − μyE ,k 
+
+σyE ,k 
+
+, eχ = χ − μχ,k 
+
+σχ,k 
+
+, ezm = zm − μzm,k 
+
+σzm,k 
+
+,
+
+(13) with per-type means μ•,k and standard deviations σ•,k 
+
+measured on the training set and inverted at decode time. The S2 factor is passed through unchanged, since its round metric already has a fixed unit curvature shared by every particle type.          
+
+> 3The photon is exactly massless and the electron is treated as such (me≃0). The muon keeps its PDG mass, imposed at decode through |p|=
+> q
+> E2−m2
+> μ.Its manifold is nevertheless that of the massless sector.
+
+17  
+
+> C. Architecture and dual-head loss
+
+The model is a transformer [59] preceded by a type-aware embedding layer and followed by two parallel out-put heads. The embedding layer (Fig. 10) lifts the raw per-particle inputs into the four conditioning streams of the backbone: a per-particle token h, which carries the diffusion state; a per-particle modulation signal cond, built from the particle type, charge, and per-type de-tector extras, which drives the adaptive layer-norm mod-ulation inside each block; a global time token temb , the sinusoidal encoding of the flow time t; and a small set of MET tokens. The chart-coordinate path is the only one that carries the diffusion state ψt ≡ zt, the per-particle chart coordinates of the state at flow time t: the inter-polant xt of Eq. (6) during training, and the integrated flow state during generation. It is processed through two parallel linear projections, one for the massless and one for the massive per-particle manifolds of Sec. III B, and a type-conditional selector routes each particle through the projection that matches its on-shell manifold. The event-level missing transverse energy MET ∈ R2 is pro-jected into K cross-attention tokens consumed once per block by the backbone, not generated by the flow. The backbone (Fig. 11) is a stack of L Diffusion Trans-former (DiT) blocks with adaLN-Zero modulation [89], followed by a final adaLN modulation and two paral-lel output heads. The trained configuration uses L = 6 blocks of width dmodel = 128 with four attention heads, for a total of 3 .0 × 10 6 trainable parameters (Table VIII). The physics closures of Sec. II are obtained already at this compact model size. The residual stream h runs vertically through each block. The three sub-layers (self-attention, MET cross-attention, and a position-wise feed-forward network) branch off, each preceded by RM-SNorm [90] and modulated by the adaLN parameters (γ•, β •, α •) produced once per block from temb + cond, and join back into the residual stream. Both heads pre-dict a per-particle velocity. The primary head produces the velocity vθ (ψt, t ) ≡ uθt (ψt) consumed by the flow-matching ODE integrator at sampling time, and it carries the loss described next. The auxiliary head produces a parallel velocity vaux  
+
+> θ
+
+that never touches the integrator: it exists solely to carry K-body invariant-mass supervision back to the shared backbone, and is described together with its loss below. Splitting the supervision in this way is essential. In single-head ablations the K-body Huber added directly to the primary loss dominated the optimi-sation, the resonance peaks sharpened at the expense of the underlying continuum, and the intra-particle CFM marginals of Sec. II A degraded measurably. Isolating the K-body signal on its own head breaks this coupling and allows the resonance-sharpening and the continuum-modelling losses to be tuned independently. The primary loss is the RCFM objective of Eq. (7) with the quadratic norm replaced by a Huber loss [91] on the velocity residual, 
+
+Hδ (r) = 
+
+( 12 r2 |r| ≤ δ, δ |r| − δ
+
+> 2
+
+ |r| > δ, (14) with δ = 1, quadratic near zero and linear in the tails so that rare hard events cannot dominate the gradient. The residual is modulated by a soft per-particle quality weight qeff  
+
+> i
+
+:
+
+LRCFM = E qeff  
+
+> i
+
+Hδ
+
+ vθ (ψt, t )i − utarget  
+
+> t
+
+(ψt)i
+
+  , (15) where the expectation is taken per particle type, per event , so that each event contributes equally to the gra-dient regardless of its reconstructed multiplicity. The ef-fective weight qeff  
+
+> i
+
+acts as a per-particle particleness , the likelihood that the reconstructed object is a genuine par-ticle rather than a misreconstructed one, and is a linear floor of the raw quality score qi ∈ [0 , 1], 
+
+qeff  
+
+> i
+
+= qcfm floor +  1 − qcfm floor 
+
+ qi ∈ [ qcfm floor , 1 ] , (16) with floor qcfm floor = 0 .5. The floor keeps the model ex-posed to the bulk continuum while steering it towards well-reconstructed objects: high-particleness objects pull on the gradient with full weight, low-quality objects only half. The raw quality score qi is a non-learned type-conditional sigmoid product of detector quality features chosen to match standard ATLAS analysis cuts. The ex-plicit per-type definition and the corresponding cuts and sigmoid slopes are collected in Appendix E. The auxiliary loss exposes the K-body invariant-mass identity directly to the gradient. The auxiliary veloc-ity vaux  
+
+> θ
+
+is decoded to per-particle four-momenta to-gether with their time derivatives, from which pair sums (Eij , pij , ˙Eij , ˙pij ) are constructed once and reused at 
+
+K = 3 (pair plus single) and K = 4 (pair of dis-joint pairs). Writing μK (I) ≡ log m2 
+
+> K
+
+(I) for the log squared invariant mass of a K-tuple I of active parti-cles, the per-tuple residuals on the position and velocity of μK are passed through a Huber loss with tuple weight 
+
+qI = Q 
+
+> i∈I
+
+qi and distribution-matching weight w⋆ 
+
+> I
+
+:
+
+Laux =
+
+> Kmax
+
+X
+
+> K=2
+
+qI w⋆ 
+
+> I
+
+ρI (t) I∈C K
+
+,ρI (t) = 1t>t gate Hδ (∆ pos  
+
+> I
+
+) + Hδ (∆ vel  
+
+> I
+
+),
+
+(17) with the per-tuple residuals ∆pos  
+
+> I
+
+= log mpred  
+
+> K
+
+(I) − log mtruth  
+
+> K
+
+(I),
+
+∆vel  
+
+> I
+
+= ˙ μpred  
+
+> K
+
+(I) − ˙μtruth  
+
+> K
+
+(I). (18) Here CK is the set of active K-tuples per event and ⟨·⟩ 
+
+is the qI w⋆ 
+
+> I
+
+-weighted average over tuples. The loss runs over all K-tuples of active particles for K ∈ { 2, 3, 4},with no restriction on particle type or charge, and no specific channel is targeted. The ceiling Kmax = 4 cov-ers the invariant masses that appear in two-, three-, and 18 kinematics (E, p, m ) type, charge, extras t ∈ R MET ∈ R2                                 
+
+> encode to manifold chart (manifold design)
+> zt∈R5
+> Linear
+> massless
+> Linear
+> massive
+> type-embed
+> ⊕
+> charge-embed
+> ⊕
+> extras
+> Sinusoidal( t)SiLU ◦Linear
+> select by type Linear ◦SiLU ◦Linear Proj Linear ◦SiLU ◦Linear Reshape ◦Linear
+> FiLM
+> hM
+> (γ, β )
+> h∈RN×dcond ∈RN×dtemb ∈RdMET tokens ∈RK×d
+> mask
+> to transformer backbone
+> Embedding Layer
+
+Fig. 10. Embedding-layer architecture. Raw inputs (top row, grey, outside the model) are lifted into the four conditioning streams of the transformer backbone: a per-particle token h, a per-particle adaLN-Zero modulation signal cond, a global time token temb , and K MET cross-attention tokens. The diffusion state zt on the chart of Sec. III B is the only stream that is fed into the type-conditional two-path linear projection (massless or massive branch). 
+
+four-body final states, of which the dilepton resonances and the four-lepton Higgs channel are examples rather than targets. The position term is gated to late flow times ( t > t gate = 0 .99) so the auxiliary signal does not dominate the flow at early diffusion times where the des-tination mass is still buried in noise. The distribution-matching weight w⋆ is the central in-gredient that lets the auxiliary loss resolve narrow peaks above the surrounding continuum. We estimate Gaus-sian kernel densities of the K-body log-mass distribution on both the truth and the generator sides, ˆp(log m) = 1
+
+nh 
+
+> n
+
+X
+
+> j=1
+
+K
+
+ log m−log mj
+
+> h
+
+
+
+,
+
+K(u) = 1√2π e−u2/2,
+
+(19) with bandwidth h = 0 .01 in log-mass units, and combine them into the smoothed importance-weight 
+
+w⋆(r) =  (1 − η) rk + η−α, r = ˆpgen (log m)ˆptruth (log m) , (20) parameterised by an exponent α, a sharpness k, and a truth-prior mix η that sets the ceiling w⋆ 
+
+> max
+
+= η−α. At a deficit ( r → 0) the weight saturates at the ceiling; at a match ( r = 1) the weight is unity; at an excess ( r →∞) the weight tends to zero. The η-mix removes the naive-ratio singularity at ˆ pgen → 0 that would otherwise produce a discontinuous loss landscape. The total training loss is the sum of the primary and auxiliary contributions, 
+
+Ltotal = LRCFM + Laux , (21) with the internal weights of Eq. (17) chosen so that the two contributions are of comparable magnitude after a short warm-up. 
+
+D. Dataset and training 
+
+The model is trained on the de-duplicated union of the 2-to-4 lepton and 1LMET30 skims of the ATLAS Open Data 13 TeV pp release [60, 61], filtered to events whose total reconstructed particle multiplicity satisfies 
+
+Nparticles ≤ 8 to keep the per-batch padding fraction low. The union is constructed by retaining each ATLAS event exactly once: events that appear in both source skims under the same (run , event) identifier are kept in a single copy. The retained sample is split 95 /5 with seed 42 into roughly 7 .8 × 10 8 training events and 4 .1 × 10 7 held-out validation events. Each event is preprocessed into 19 h ∈ RN ×d cond ∈ RN ×d temb ∈ Rd MET tokens ∈ RK×d
+
+from embedding layer 
+
++
+
+adaLN MLP 
+
+Linear ◦ SiLU 
+
+Self-Attention (γ1, β 1, α 1)      
+
+> RMSNorm →scale-shift →MHA →gate
+
+MET Cross-Attention (γc, α c)      
+
+> RMSNorm →scale →MHA(MET) →gate
+
+FFN (γ2, β 2, α 2)        
+
+> RMSNorm →scale-shift →SwiGLU →Linear →gate
+
+⊕
+
+⊕
+
+⊕
+
+AdaLN-Zero DiT Block 
+
+× L
+
+Final adaLN : (γf , β f ) = Linear ◦ SiLU( base ), h ← RMSNorm( h) (1 + γf ) + βf
+
+CFM head   
+
+> out_proj :Linear d→5
+> raw velocity in R5
+
+Aux head   
+
+> out_proj_aux :Linear d→5
+> raw velocity in R5
+
+Decode from manifold  
+
+> tangent projection at xt
+
+Decode from manifold  
+
+> tangent projection at xt
+
+vθ ∈ RN ×5 vaux  
+
+> θ
+
+∈ RN ×5
+
+to CFM loss to K-body aux loss 
+
+Model Backbone 
+
+Fig. 11. Model backbone. A stack of L adaLN-Zero DiT blocks operates on the per-particle token stream h produced by the embedding layer of Fig. 10. Each block routes h through multi-head self-attention (MHA), multi-head cross-attention to the MET tokens (MHA(MET)), and a feed-forward sub-layer, each preceded by RMSNorm [90] a and gated by adaLN modulation parameters derived from temb + cond. A final adaLN modulation feeds two parallel output heads: the primary head predicts the per-particle velocity vθ consumed by the flow-matching ODE integrator, and the auxiliary head predicts per-particle quantities that are combined into the K-body invariant-mass targets of Eq. (18).  
+
+> a
+
+RMSNorm( x) = x / 
+
+q 1
+
+> d
+
+Pdi=1 x2 
+
+> i
+
++ ϵ, applied per token over the feature dimension d.20 an unordered set of reconstructed objects across the six supported types ( e, μ, τ had , γ, jet , large-R jet), together with the event-level missing transverse energy used as conditioning. We retain the standard ATLAS analysis fields used to construct the per-type quality score and the kinematic charts. Further details of the preprocessing pipeline and the per-type reference scales are deferred to the Supplemental Material. The full list of selected features is given in Appendix G. The model is optimised end-to-end with AdamW [92], with decoupled weight decay and gradients clipped to a global norm of 1 .0 before each update. The learning rate follows a cosine schedule with a peak of 6 × 10 −4,a 10 ,000-step linear warm-up, and a floor of 10 −6. An exponential moving average (EMA) of the parameters 
+
+θEMA  
+
+> t
+
+= ρ θ EMA  
+
+> t−1
+
++(1 −ρ) θt with decay ρ = 0 .9995 is main-tained throughout training, and all evaluation, sample generation, and reported metrics use θEMA rather than the live training weights. Training runs in distributed data-parallel on eight GPUs at a per-device batch size of 4,096, giving an effective global batch of 32 ,768 events. Mixed-precision bf16 is used throughout, and the model is compiled with torch.compile . The full schedule runs for 30 epochs on the joint sample (7 .2 × 10 5 optimiser steps). The complete set of training hyperparameters, together with the hardware and software environment of the training run, is collected in Appendix F (Tables VIII and IX). The CFM forward process is the geodesic inter-polant of Eq. (6) on the per-type chart, with the flow time drawn uniformly on [10 −2, 1−10 −6], clipped at both ends to keep the interpolant away from its endpoint degenera-cies. At inference time generation reduces to numerical integration of vθ from t = 0 to t = 1 with a fixed-step solver of 200 steps, each step applied through the expo-nential map on the spherical factor so the state remains on the manifold. The model generates only the particle kinematics ( pT , η, ϕ, E, m). The particle type, charge, MET, and the remaining reconstruction features are con-ditioning inputs, taken at sampling time directly from the validation events. Every truth-vs. generated comparison in Sec. II is therefore paired on identical composition, and any distributional difference is attributable to the generated kinematics alone.   
+
+> IV. DISCUSSION A. Design choices that mattered
+
+The headline result, that resonance peaks emerge at PDG positions without the model ever being given the masses, depends on two physics priors built into the model rather than learned from data. The first is the on-shell condition, embedded in the chart geometry of Sec. III B. Without it, the resonance peaks are smeared away. The second is the hierarchical K-body auxiliary loss of Sec. III C, which supervises the invariant mass of every K-tuple of particles directly. Without it, peaks be-low the high-statistics Z mass are either absent or broad enough to merge into the surrounding continuum. Both statements are demonstrated by the ablation of Sec. IV B. Two soft re-weighting mechanisms shape where the gradient signal lands. The per-particle quality score 
+
+qi multiplies every per-particle contribution, so well-reconstructed objects pull harder on the gradient than fakes. The distribution-matching weight w⋆ along the 
+
+K-body mass axis boosts the loss where the generator under-produces and damps it where it overshoots. With-out w⋆, a bulk of excess events would be generated in the high-statistics middle of the mass spectrum, with compensating deficits in the adjacent continuum. The dual-head architecture prevents the strong gradient sig-nal from peaks like J/ψ and Υ from dragging neighbour-ing events into the peak via shared output weights. En-coding the three-momentum direction on S2 removes the need for the model to learn ϕ periodicity and produces a uniform ϕ marginal by construction. The distribution-matching weight w⋆ is therefore a form of mass-density supervision. It tells the auxiliary head where on the log-mass axis the model is under-producing relative to truth, and corrects it. It is not peak supervision. The weight carries a single marginal density, the truth distribution of log m2 
+
+> K
+
+. Nothing in it specifies the angular separation of the decay products, the flavour rule that selects OSSF leptons, the boost of the parent particle that places a peak above the contin-uum, or the joint correlation structure between any two of these. The closure tests on ∆ ϕ(ℓℓ, MET), ∆ Rℓℓ , and the Drell–Yan forward–backward asymmetry, none of which has a corresponding mass-density target, are recovered by the primary head from the underlying kinematics rather than supplied by w⋆.Despite these designs, ShellFlow fails to reconstruct three known peaks: the ω(782), the ϕ(1020), and the Higgs. For the two sub-GeV mesons, the forward noising washes the peaks into the continuum earlier than any other feature of the dilepton spectrum (App. C). The Higgs peak emerges only after the joint per-lepton quality selection, which leaves a sample too rare for the model to learn at the present training statistics. Section IV C examines both cases.  
+
+> B. Ablation of the two priors
+
+In order to demonstrate that the on-shell chart of Sec. III B and the K-body auxiliary loss of Sec. III C are responsible for the resonance recovery, we retrain the model from scratch in four configurations: (i) with both (ShellFlow ), (ii) with the auxiliary loss but without the chart, (iii) with the chart but without the auxiliary loss, and (iv) with neither. The two configurations with-out the chart generate log E, the three-momentum di-rection ˆ n = p/|p|, and log |p| as independent Euclidean coordinates, so the energy and the momentum of a gen-erated particle are not tied to each other. The architec-21                                                                                                          
+
+> TABLE VI. Ablation metrics on the OSSF dimuon spectrum, windows as in Fig. 12, identical conditioning for all variants.
+> W1is in GeV, while SKL and BC are dimensionless. The last two rows quantify the muon on-shell condition, counting muons off shell at |m2−m2
+> μ|>0.01 GeV 2.On-shell chart ✓—✓—
+> K-body auxiliary loss ✓✓——
+> Full dimuon spectrum
+> W1[GeV] 1.78 3.19 1.59 6.39 SKL 0.013 0.158 0.043 0.234 BC 0.052 0.242 0.086 0.323
+> ω/ϕ window, 0.5–2 GeV
+> W1[GeV] 0.098 0.217 0.067 0.208 SKL 0.059 0.186 0.036 0.183 BC 0.137 0.303 0.291 0.398
+> J/ψ window, 2–4.5 GeV
+> W1[GeV] 0.094 0.344 0.326 0.347 SKL 0.129 0.770 0.694 0.752 BC 0.192 0.448 0.454 0.475 Υwindow, 6–14 GeV
+> W1[GeV] 0.233 0.887 0.850 0.859 SKL 0.047 0.384 0.370 0.363 BC 0.149 0.384 0.342 0.353
+> Zwindow, 60–120 GeV
+> W1[GeV] 0.186 1.69 0.852 3.41 SKL 0.008 0.126 0.035 0.162 BC 0.051 0.208 0.117 0.248 ∆Rℓℓ W10.073 0.189 0.056 0.401 median |m2−m2
+> μ|[GeV 2]7×10 −51.45 7×10 −51.12 off-shell muon fraction 0.7% 99.4% 0.7% 99.2%
+> The lowest (best) value of each row is shown in bold, and ties are both bold.
+
+ture, the dataset, and all hyperparameters are kept iden-tical, and each variant is trained for two epochs. The 
+
+ShellFlow variant is therefore a shorter training of the model of Sec. II. All four variants are sampled with iden-tical conditioning on 5 × 10 5 validation events. Figure 12 shows the resulting dilepton spectra, and Table VI col-lects the metrics. Only ShellFlow produces the J/ψ and Υ peaks. In the other three variants the corresponding windows con-tain only continuum. The Z peak is produced by all four variants, but ShellFlow matches the truth most closely, with SKL = 0 .008 in the Z window against 0 .035– 0.162 for the ablated variants. The two variants with-out the chart generate heavily off-shell muons (median 
+
+|m2 − m2
+
+> μ
+
+| > 1 GeV 2, with more than 99% of the muons off shell), so plain Euclidean flow matching does not learn the on-shell condition from the data. One visible conse-quence is the empty spectrum below ≈ 0.5 GeV, where nearly collinear on-shell muon pairs would lie. Table VI agrees with these observations: ShellFlow gives the lowest, and hence best, value of every metric in the J/ψ ,Υ, and Z windows. The chart geometry is thus required for physical four-momenta, and the auxiliary loss for re-solving the narrow resonances.  
+
+> C. Limitations and open issues
+
+We group the limitations of ShellFlow into physics issues, where a known structure of the data is not yet reproduced by the generator, and systematic limitations of the setup that constrain what the generator can in principle say about real collider events. 
+
+a. Physics issues. Beyond the muon η marginal, where the muon-spectrometer acceptance gap at |η| <
+
+0.1 [76] is a real feature of the data, a consistent shallow deficit at η ≈ 0 appears across particle types that have no physical gap there. We attribute this to the parameter-isation of the S2 direction chart, whose density distorts mildly at the equator of the sphere. The Higgs peak at m4ℓ ≈ 125 GeV and the Z → 4ℓ
+
+peak at 91 GeV are absent from the generated four-lepton spectrum after the simultaneous per-lepton quality cut (Sec. II I). The model has learned part of the selection structure but did not converge on the combination of per-lepton isolation, impact-parameter, and calorimeter cuts that the analysis requires at this rare-process branching fraction. Whether longer training closes this gap has not been tested and is the natural next step. The narrow sub-GeV vector mesons ω(782) and 
+
+ϕ(1020) are absent from the generated dilepton spec-trum. The CFM forward noising washes these peaks into the continuum substantially earlier than any other reso-nance (Sec. II D). On top of that, the log-energy chart is normalised against per-type reference energies of tens of GeV, where the model performs well, which compresses the sub-GeV regime into a narrow interval of the chart and lowers the model’s effective resolution there. The resonant cores of the generated hadronic-side mass peaks are shallower and broader than in truth (Sec. II H): at matched sample size the generated yield within one core width of the peak falls 9% below truth on the hadronic top and 23% on the hadronic W , the selected distributions are 10–18% broader in their fit-free in-terquartile range, and a free-shape DSCB fit cannot iso-late the generated core width. The template-fit posi-tions of these peaks nevertheless agree with truth within the combined fit and regeneration uncertainties of Ta-ble III, so the closure tests are robust to the dilution, but sharpening the cores to truth prominence requires longer training and possibly finer chart resolution on jet four-momenta. We stress that the core dilution is not a limitation of the demonstration the present paper is making. The model is given no top-mass information, and the recovery of the peak at the correct location and within the correct selection acceptance already implies that an internal feature corresponding to top-like events must exist. Closing the residual prominence gap is a pre-cision question, to be revisited once dedicated precision-measurement methodology is built on top of the frame-work demonstrated here. 
+
+b. Systematic limitations. Three properties of the present setup constrain what the generator can say about real collider events. 22 1                                                      
+
+> 10
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> Events
+> ω
+> φ
+> J/ψ
+> ψ(2 S)
+> Υ(1 S)
+> Υ(2 S)
+> Υ(3 S)
+> Z
+> OSSF m(ee )— 200 bins
+> Truth
+> shellFlow
+> Euclidean + aux
+> on shell, no aux
+> Euclidean, no aux
+> 10 −210 −1110 10 210 3
+> m(e+e−)[GeV ]
+> 0
+> 5
+> Gen / Truth
+> 1
+> 10
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> Events
+> ω
+> φ
+> J/ψ
+> ψ(2 S)
+> Υ(1 S)
+> Υ(2 S)
+> Υ(3 S)
+> Z
+> OSSF m(μμ )— 200 bins
+> Truth
+> shellFlow
+> Euclidean + aux
+> on shell, no aux
+> Euclidean, no aux
+> 10 −210 −1110 10 210 3
+> m(μ+μ−)[GeV ]
+> 0
+> 5
+> Gen / Truth
+> 1
+> 10
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> Events
+> ω
+> φ
+> J/ψ
+> ψ(2 S)
+> Υ(1 S)
+> Υ(2 S)
+> Υ(3 S)
+> Z
+> OSSF m(`` )— 200 bins
+> Truth
+> shellFlow
+> Euclidean + aux
+> on shell, no aux
+> Euclidean, no aux
+> 10 −210 −1110 10 210 3
+> m(`+`−)[GeV ]
+> 0
+> 5
+> Gen / Truth
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> Events
+> ω
+> φ
+> ω/φ region — 100 bins
+> 0.50 0.75 1.00 1.25 1.50 1.75 2.00
+> mμμ [GeV ]
+> 0
+> 2
+> Gen / Truth  10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> Events
+> J/ψ ψ(2 S)
+> J/ψ region — 100 bins
+> 2.02.53.03.54.04.5
+> mμμ [GeV ]
+> 0
+> 10
+> Gen / Truth  10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> Events
+> Υ(1 S)
+> Υ(2 S)
+> Υ(3 S)
+> Υregion — 100 bins
+> 6810 12 14
+> mμμ [GeV ]
+> 0
+> 5
+> Gen / Truth  10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> Events
+> mZ
+> Zregion — 100 bins
+> 60 70 80 90 100 110 120
+> mμμ [GeV ]
+> 0
+> 20
+> Gen / Truth
+
+Ablation: dilepton invariant masses and dimuon resonance zooms (2-epoch variants) 
+
+> 1
+
+Fig. 12. Ablation: OSSF dilepton spectra of the four variants in the format of Fig. 4, with the truth in black. ShellFlow is the full configuration, with both the on-shell chart and the K-body auxiliary loss; on shell, no aux keeps the chart but drops the auxiliary loss; Euclidean + aux keeps the auxiliary loss but generates energy, direction, and momentum as independent Euclidean coordinates; Euclidean, no aux has neither. Without the chart the spectrum below ≈ 0.5 GeV is empty and every peak washes out; without the auxiliary loss only a degraded Z survives; only ShellFlow recovers peaks and continuum simultaneously. All variants are trained for two epochs, so the ShellFlow variant shown here is a shorter training of the model of Fig. 4. 
+
+Particle identification and charge are conditioning, not inferred. The particle type and charge of each object are passed to the model as conditioning inputs rather than predicted from kinematics. The generator produces kinematics conditioned on a given event composition and does not itself assign identities. The conditioning is also taken as truth, so a particle mislabelled by the recon-struction is generated as its assigned type. Once the model is upgraded to generate the particle type and charge, the identity can instead be treated probabilis-tically. 
+
+Missing transverse energy is conditioning, not gener-ated. MET enters the model via cross-attention rather than being sampled alongside the visible particles, so gen-erated events are not self-contained. Downstream analy-ses that require a self-consistent MET, in particular those involving neutrinos, are not yet supported. 
+
+Fixed particle multiplicity with padding. The training set is restricted to events with reconstructed particle mul-tiplicity Nparticles ≤ 8 to keep the per-batch padding frac-tion low. The high-multiplicity tail of the joint sample is therefore discarded, and any event-level completeness claim is implicitly conditioned on Nparticles ≤ 8. 
+
+D. Outlook 
+
+a. Physics or statistics? The model reproduces much of the Standard Model from the joint sample: the resonance peaks at PDG positions, the Weinberg angle, the top-quark mass closures, the leading-dijet kinematic envelope. Whether the network has learned this physics or has only reproduced the marginals through correla-tions in the training statistics is not settled by the dis-tributions reported here. The answer lies in the internal representation of the trained network, and reaching it re-quires mechanistic interpretability of the model, which is an ongoing line of work in our group. 
+
+b. Mechanistic interpretability. If the network has internalised the structures of Sec. II, internal features in the backbone should activate selectively on events carry-ing the corresponding physics. Locating the feature sub-space that distinguishes, for example, a Z → ℓℓ event from the Drell–Yan continuum would expose the net-work’s own representation of the resonance and would in principle allow the relevant feature to be amplified at inference time, sharpening the peak on demand. 23 
+
+c. Multi-signal BSM search. Training the same ar-chitecture on Monte-Carlo samples that contain the Stan-dard Model together with BSM processes turns the gen-erator into an event-level anomaly detector that is not tied to any single signal hypothesis. Different BSM sce-narios excite different internal features, and the activa-tion pattern itself becomes the discriminator. A single trained generator then covers many signal hypotheses at once, extending the data-driven anomaly-detection pro-gramme [52, 53] from low-dimensional background tem-plates to complete events. 
+
+d. Generating the unobserved. A further upgrade is to generate the particles that the detector cannot see, starting with the neutrinos behind the missing trans-verse energy. This step requires Monte Carlo. Trained on simulated events in which the neutrinos are known, the model learns to predict them from the observed par-ticles. Applied to recorded events, it then generates a neutrino prediction for each one, and the resulting sam-ple presents the full scope of the collision, the observed part measured and the unobserved part supplied by the model.  
+
+> V. CONCLUSION
+
+a. What was learned. The ShellFlow generator, a single Riemannian Conditional Flow Matching model with a transformer backbone, trained on the union of the 1LMET30 and 2-to-4 lepton skims of the ATLAS Open Data 13 TeV pp release with no supervision tied to any particular channel, captures a substantial fraction of the Standard Model directly from real collider data. The 
+
+J/ψ , Υ, and Z resonances appear at their PDG posi-tions in both flavour channels, and the Weinberg angle is preserved at the precision of the truth-sample leading-order fit. The hadronic and leptonic top-quark masses, the hadronic W mass, and the leptonic Z mass close against the truth under the standard semileptonic t¯t and OSSF dilepton reconstructions. The leading-dijet joint distribution reproduces the ( mjj , ¯η) correlation beyond its supervised mjj marginal, and the event-level pT clo-sure reproduces the two-component structure of the joint sample. The only physics priors built into the model are the on-shell condition and the invariant-mass formula, both Lorentz-invariant statements that impose no bias toward any specific channel or specific resonance. The model is therefore independent of process and mass by construction. 
+
+b. What remains. The Standard Model is not yet fully captured. The narrow sub-GeV vector mesons 
+
+ω(782) and ϕ(1020), the sharpness of the reconstructed top and W peaks, and the Higgs H → 4ℓ resonance un-der the simultaneous per-lepton quality cut remain be-yond the present training horizon. These gaps call for further training and for the model extensions outlined above, in particular the addition of a generated MET field that carries implicit neutrinos, and the relaxation of the fixed-multiplicity assumption. 
+
+c. Why it matters. A generator that learns physics directly from data, rather than from the chain of simula-tion and analysis cuts, opens a class of downstream tasks that the present paper does not itself address. Mech-anistic interpretability of the trained network can ask whether the model has truly learned the resonances or only their statistical shadows. Searches for physics be-yond the Standard Model that are not tied to a single signal hypothesis can use the same architecture, trained on simulated samples that contain new physics processes, as an event-level anomaly detector. Generation of the un-observed at the event level can extend the conditioning to the MET field and reconstruct the full Standard Model interaction event by event, including the particles that the detector cannot see. The model reported here is the natural starting point for each of these. 
+
+> COMPANION WEBSITE
+
+The complete set of results presented in this paper, together with the full collection of truth-vs. generated validation figures, can be found on the companion website at https://hep-ssl-webapp.pages.dev/ .
+
+> ACKNOWLEDGMENTS
+
+We thank Jean-Loup Tastet and Craig Wiglesworth for their comments on the manuscript, and Arnau Morancho Tard` a and Troels C. Petersen for helpful discussions and advice. We acknowledge the work of the ATLAS Collab-oration to record or simulate, reconstruct, and distribute the Open Data used in this paper, and to develop and support the software with which it was analysed. The GPU compute used to train the generative models was provided by the NVIDIA Academic Grant Program. This work was supported by a research grant (VIL57416) from VILLUM FONDEN. 
+
+> AI USAGE
+
+Large language models were used in the preparation of this manuscript to revise prose, correct grammar, and draft portions of the text. Parts of the model implemen-tation and the majority of the visualization code were also generated with the assistance of large language mod-els, primarily through the Claude Code agentic coding environment (Anthropic). All output was reviewed and validated by the authors. 24 
+
+Appendix A: Per-particle collider marginals 
+
+Figure 1 of Sec. II A shows the muon intra-particle marginals ( pT , η, ϕ, E ) in the main text. The remain-ing five reconstructed object types are reported here: Figs. 13–14 for the two other light types and Figs. 15–17 for the three hadronic types ( τhad , small-R jet, large-R
+
+jet). The massive types add the reconstructed mass m
+
+to the four collider variables. 1
+
+10 
+
+10 2
+
+10 3
+
+10 4
+
+10 5
+
+10 6
+
+10 7
+
+> Events
+
+W1 = 1.35 
+
+SKL = 0.0017 
+
+BC = 0.0136 
+
+pT
+
+Truth 
+
+Gen 
+
+0
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+8
+
+> Events
+
+×10 5
+
+W1 = 0.0675 
+
+SKL = 0.0096 
+
+BC = 0.0449 
+
+η
+
+Truth 
+
+Gen 
+
+0
+
+1
+
+2
+
+3
+
+4
+
+5
+
+> Events
+
+×10 5
+
+W1 = 0.00336 
+
+SKL = 0.000344 
+
+BC = 0.0108 
+
+φ
+
+Truth 
+
+Gen 
+
+10 
+
+10 2
+
+10 3
+
+10 4
+
+10 5
+
+10 6
+
+10 7
+
+> Events
+
+W1 = 1.39 
+
+SKL = 0.000348 
+
+BC = 0.00933 
+
+E
+
+Truth 
+
+Gen 
+
+1 10 10 2 10 3
+
+pT [GeV ]
+
+0.4
+
+0.6
+
+0.8
+
+1.0
+
+> Gen / Truth
+
+−2 0 2
+
+η
+
+0.8
+
+1.0
+
+1.2
+
+> Gen / Truth
+
+−π −π 
+
+> 2
+
+0 π 
+
+> 2
+
+π
+
+φ
+
+0.95 
+
+1.00 
+
+1.05 
+
+> Gen / Truth
+
+1 10 10 2 10 3
+
+E [GeV ]
+
+0.0
+
+0.5
+
+1.0
+
+1.5
+
+> Gen / Truth
+
+Electron kinematics — 60 bins 
+
+> 1
+
+Fig. 13. Electron kinematics. Electron intra-particle marginals ( pT , η, ϕ, E ). Truth (validation set) vs. generated. Same conventions as Fig. 1. 1
+
+10 
+
+10 2
+
+10 3
+
+10 4
+
+10 5
+
+> Events
+
+W1 = 4.48 
+
+SKL = 0.00554 
+
+BC = 0.0437 
+
+pT
+
+Truth 
+
+Gen 
+
+0.00 
+
+0.25 
+
+0.50 
+
+0.75 
+
+1.00 
+
+1.25 
+
+1.50 
+
+1.75 
+
+> Events
+
+×10 4
+
+W1 = 0.0727 
+
+SKL = 0.0137 
+
+BC = 0.0647 
+
+η
+
+Truth 
+
+Gen 
+
+0.0
+
+0.2
+
+0.4
+
+0.6
+
+0.8
+
+1.0
+
+> Events
+
+×10 4
+
+W1 = 0.00471 
+
+SKL = 0.000306 
+
+BC = 0.00924 
+
+φ
+
+Truth 
+
+Gen 
+
+1
+
+10 
+
+10 2
+
+10 3
+
+10 4
+
+10 5
+
+> Events
+
+W1 = 1.84 
+
+SKL = 0.000319 
+
+BC = 0.00615 
+
+E
+
+Truth 
+
+Gen 
+
+1 10 10 2 10 3
+
+pT [GeV ]
+
+0.4
+
+0.6
+
+0.8
+
+1.0
+
+1.2
+
+> Gen / Truth
+
+−2 0 2
+
+η
+
+0.8
+
+1.0
+
+1.2
+
+> Gen / Truth
+
+−π −π 
+
+> 2
+
+0 π 
+
+> 2
+
+π
+
+φ
+
+0.95 
+
+1.00 
+
+1.05 
+
+1.10 
+
+> Gen / Truth
+
+1 10 10 2 10 3
+
+E [GeV ]
+
+0
+
+2
+
+4
+
+6
+
+> Gen / Truth
+
+Photon kinematics — 60 bins 
+
+> 1
+
+Fig. 14. Photon kinematics. Photon intra-particle marginals ( pT , η, ϕ, E ). Truth (validation set) vs. generated. Same conventions as Fig. 1. 25 1
+
+10 
+
+10 2
+
+10 3
+
+10 4
+
+10 5
+
+10 6
+
+> Events
+
+W1 = 6.36 
+
+SKL = 0.0193 
+
+BC = 0.0797 
+
+pT
+
+Truth 
+
+Gen 
+
+0.0
+
+0.5
+
+1.0
+
+1.5
+
+2.0
+
+> Events
+
+×10 5
+
+W1 = 0.0649 
+
+SKL = 0.00916 
+
+BC = 0.0504 
+
+η
+
+Truth 
+
+Gen 
+
+0.0
+
+0.2
+
+0.4
+
+0.6
+
+0.8
+
+1.0
+
+1.2
+
+1.4
+
+> Events
+
+×10 5
+
+W1 = 0.00395 
+
+SKL = 0.000147 
+
+BC = 0.00691 
+
+φ
+
+Truth 
+
+Gen 
+
+10 
+
+10 2
+
+10 3
+
+10 4
+
+10 5
+
+10 6
+
+> Events
+
+W1 = 10.2 
+
+SKL = 0.00579 
+
+BC = 0.0325 
+
+E
+
+Truth 
+
+Gen 
+
+1
+
+10 
+
+10 2
+
+10 3
+
+10 4
+
+10 5
+
+10 6
+
+10 7
+
+> Events
+
+W1 = 0.0298 
+
+SKL = 1.3 
+
+BC = 0.785 
+
+m
+
+Truth 
+
+Gen 
+
+10 10 2 10 3
+
+pT [GeV ]
+
+0
+
+2
+
+4
+
+> Gen / Truth
+
+−2 0 2
+
+η
+
+1.0
+
+1.5
+
+2.0
+
+2.5
+
+> Gen / Truth
+
+−π −π 
+
+> 2
+
+0 π 
+
+> 2
+
+π
+
+φ
+
+0.96 
+
+0.98 
+
+1.00 
+
+1.02 
+
+1.04 
+
+> Gen / Truth
+
+10 10 2 10 3
+
+E [GeV ]
+
+1
+
+2
+
+3
+
+4
+
+> Gen / Truth
+
+0.0 0.1 0.2 0.3
+
+m [GeV ]
+
+0
+
+2000 
+
+4000 
+
+> Gen / Truth
+
+Tau kinematics — 60 bins 
+
+> 1
+
+Fig. 15. Hadronic-τ kinematics. Hadronic-τ intra-particle marginals ( pT , η, ϕ, E, m ). The reconstructed mass m is included because τhad uses the massive chart R × S2 × R (Table V). Truth vs. generated; same conventions as Fig. 1. 1
+
+10 
+
+10 2
+
+10 3
+
+10 4
+
+10 5
+
+10 6
+
+10 7
+
+> Events
+
+W1 = 3.82 
+
+SKL = 0.00864 
+
+BC = 0.0644 
+
+pT
+
+Truth 
+
+Gen 
+
+0.0
+
+0.2
+
+0.4
+
+0.6
+
+0.8
+
+1.0
+
+1.2
+
+> Events
+
+×10 6
+
+W1 = 0.054 
+
+SKL = 0.00624 
+
+BC = 0.0403 
+
+η
+
+Truth 
+
+Gen 
+
+0
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+8
+
+> Events
+
+×10 5
+
+W1 = 0.00509 
+
+SKL = 0.000263 
+
+BC = 0.00954 
+
+φ
+
+Truth 
+
+Gen 
+
+10 
+
+10 2
+
+10 3
+
+10 4
+
+10 5
+
+10 6
+
+10 7
+
+> Events
+
+W1 = 2.64 
+
+SKL = 0.000221 
+
+BC = 0.00895 
+
+E
+
+Truth 
+
+Gen 
+
+10 2
+
+10 3
+
+10 4
+
+10 5
+
+10 6
+
+10 7
+
+> Events
+
+W1 = 0.136 
+
+SKL = 0.00117 
+
+BC = 0.0218 
+
+m
+
+Truth 
+
+Gen 
+
+10 10 2 10 3
+
+pT [GeV ]
+
+0.6
+
+0.8
+
+1.0
+
+1.2
+
+> Gen / Truth
+
+−2 0 2
+
+η
+
+0.8
+
+1.0
+
+1.2
+
+> Gen / Truth
+
+−π −π 
+
+> 2
+
+0 π 
+
+> 2
+
+π
+
+φ
+
+0.975 
+
+1.000 
+
+1.025 
+
+1.050 
+
+> Gen / Truth
+
+10 10 2 10 3
+
+E [GeV ]
+
+1
+
+2
+
+3
+
+4
+
+> Gen / Truth
+
+0 20 40 60 80 
+
+m [GeV ]
+
+0.8
+
+1.0
+
+1.2
+
+1.4
+
+1.6
+
+> Gen / Truth
+
+Jet kinematics — 60 bins 
+
+> 1
+
+Fig. 16. Small-R jet kinematics. Small-R jet intra-particle marginals ( pT , η, ϕ, E, m ). The reconstructed mass m is included because jets use the massive chart R × S2 × R (Table V). Truth vs. generated; same conventions as Fig. 1. 26 1
+
+> 10
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> Events
+> W1 = 10.6
+> SKL = 0.0502
+> BC = 0.0447
+
+pT
+
+> Truth
+> Gen
+> 0.00
+> 0.25
+> 0.50
+> 0.75
+> 1.00
+> 1.25
+> 1.50
+> 1.75
+> Events
+> ×10 4
+> W1 = 0.017
+> SKL = 0.00586
+> BC = 0.0281
+
+η
+
+> Truth
+> Gen
+> 0
+> 2
+> 4
+> 6
+> 8
+> Events
+> ×10 3
+> W1 = 0.00362
+> SKL = 0.000219
+> BC = 0.0086
+
+φ
+
+> Truth
+> Gen
+> 1
+> 10
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> Events
+> W1 = 8.74
+> SKL = 0.00154
+> BC = 0.0221
+
+E
+
+> Truth
+> Gen
+> 10
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> Events
+> W1 = 0.0254
+> SKL = 8.82e-05
+> BC = 0.000568
+
+m                
+
+> Truth
+> Gen
+> 10 210 3
+> pT[GeV ]
+> 0.6
+> 0.8
+> 1.0
+> 1.2
+> Gen / Truth
+> −202
+> η
+> 0.8
+> 0.9
+> 1.0
+> 1.1
+> Gen / Truth
+> −π−π
+> 20π
+> 2π
+> φ
+> 0.95
+> 1.00
+> 1.05
+> Gen / Truth
+> 10 210 3
+> E[GeV ]
+> 0.5
+> 1.0
+> 1.5
+> Gen / Truth
+> 0100 200 300 400 500
+> m[GeV ]
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> Gen / Truth
+
+Large-R Jet kinematics — 60 bins 
+
+> 1
+
+Fig. 17. Large-R jet kinematics. Large-R jet intra-particle marginals ( pT , η, ϕ, E, m ). The reconstructed mass m is included because large-R jets use the massive chart R × S2 × R (Table V). Truth vs. generated; same conventions as Fig. 1. 
+
+Appendix B: Per-particle Cartesian marginals 
+
+Figures 18–23 report the Cartesian momentum marginals (px, p y , p z ) for all six reconstructed object types. The agreement matches the collider marginals of Sec. II A and App. A. 0.0
+
+0.2
+
+0.4
+
+0.6
+
+0.8
+
+1.0
+
+1.2
+
+1.4
+
+1.6
+
+> Events
+
+×10 6
+
+W1 = 0.85 
+
+SKL = 0.000867 
+
+BC = 0.0128 
+
+px
+
+Truth 
+
+Gen 
+
+0.0
+
+0.2
+
+0.4
+
+0.6
+
+0.8
+
+1.0
+
+1.2
+
+1.4
+
+1.6
+
+> Events
+
+×10 6
+
+W1 = 0.841 
+
+SKL = 0.00124 
+
+BC = 0.013 
+
+py
+
+Truth 
+
+Gen 
+
+0.0
+
+0.5
+
+1.0
+
+1.5
+
+2.0
+
+2.5
+
+> Events
+
+×10 6
+
+W1 = 2.81 
+
+SKL = 0.000696 
+
+BC = 0.0172 
+
+pz
+
+Truth 
+
+Gen 
+
+−50 0 50 
+
+px [GeV ]
+
+0.8
+
+0.9
+
+1.0
+
+> Gen / Truth
+
+−50 0 50 
+
+py [GeV ]
+
+0.8
+
+0.9
+
+1.0
+
+> Gen / Truth
+
+−200 0 200 
+
+pz [GeV ]
+
+0.9
+
+1.0
+
+1.1
+
+> Gen / Truth
+
+Electron cartesian momentum — 60 bins 
+
+> 1
+
+Fig. 18. Electron Cartesian components. Electron Cartesian marginals ( px, p y , p z ). Truth vs. generated. 27 0.0
+
+0.5
+
+1.0
+
+1.5
+
+2.0
+
+2.5
+
+3.0
+
+> Events
+
+×10 6
+
+W1 = 0.511 
+
+SKL = 0.000604 
+
+BC = 0.00738 
+
+px
+
+Truth 
+
+Gen 
+
+0.0
+
+0.5
+
+1.0
+
+1.5
+
+2.0
+
+2.5
+
+3.0
+
+> Events
+
+×10 6
+
+W1 = 0.55 
+
+SKL = 0.000862 
+
+BC = 0.00915 
+
+py
+
+Truth 
+
+Gen 
+
+0.0
+
+0.5
+
+1.0
+
+1.5
+
+2.0
+
+2.5
+
+3.0
+
+3.5
+
+4.0
+
+> Events
+
+×10 6
+
+W1 = 2.11 
+
+SKL = 0.0005 
+
+BC = 0.014 
+
+pz
+
+Truth 
+
+Gen 
+
+−50 −25 0 25 50 
+
+px [GeV ]
+
+0.8
+
+0.9
+
+1.0
+
+> Gen / Truth
+
+−50 −25 0 25 50 
+
+py [GeV ]
+
+0.8
+
+0.9
+
+1.0
+
+> Gen / Truth
+
+−200 −100 0 100 200 
+
+pz [GeV ]
+
+0.9
+
+1.0
+
+1.1
+
+> Gen / Truth
+
+Muon cartesian momentum — 60 bins 
+
+> 1
+
+Fig. 19. Muon Cartesian components. Muon Cartesian marginals ( px, p y , p z ). Truth vs. generated. 0
+
+1
+
+2
+
+3
+
+4
+
+5
+
+> Events
+
+×10 4
+
+W1 = 2.92 
+
+SKL = 0.00319 
+
+BC = 0.0304 
+
+px
+
+Truth 
+
+Gen 
+
+0
+
+1
+
+2
+
+3
+
+4
+
+5
+
+> Events
+
+×10 4
+
+W1 = 2.76 
+
+SKL = 0.00309 
+
+BC = 0.03 
+
+py
+
+Truth 
+
+Gen 
+
+0
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+> Events
+
+×10 4
+
+W1 = 3.09 
+
+SKL = 0.00176 
+
+BC = 0.0275 
+
+pz
+
+Truth 
+
+Gen 
+
+−100 0 100 
+
+px [GeV ]
+
+0.7
+
+0.8
+
+0.9
+
+1.0
+
+1.1
+
+> Gen / Truth
+
+−100 0 100 
+
+py [GeV ]
+
+0.7
+
+0.8
+
+0.9
+
+1.0
+
+1.1
+
+> Gen / Truth
+
+−500 −250 0 250 500 
+
+pz [GeV ]
+
+0.8
+
+0.9
+
+1.0
+
+1.1
+
+1.2
+
+> Gen / Truth
+
+Photon cartesian momentum — 60 bins 
+
+> 1
+
+Fig. 20. Photon Cartesian components. Photon Cartesian marginals ( px, p y , p z ). Truth vs. generated. 28 0
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+8
+
+> Events
+
+×10 5
+
+W1 = 4.05 
+
+SKL = 0.0088 
+
+BC = 0.0387 
+
+px
+
+Truth 
+
+Gen 
+
+0
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+8
+
+> Events
+
+×10 5
+
+W1 = 4.01 
+
+SKL = 0.0125 
+
+BC = 0.0575 
+
+py
+
+Truth 
+
+Gen 
+
+0.0
+
+0.2
+
+0.4
+
+0.6
+
+0.8
+
+1.0
+
+1.2
+
+> Events
+
+×10 6
+
+W1 = 7.63 
+
+SKL = 0.00354 
+
+BC = 0.0225 
+
+pz
+
+Truth 
+
+Gen 
+
+−100 −50 0 50 100 
+
+px [GeV ]
+
+0.6
+
+0.8
+
+1.0
+
+> Gen / Truth
+
+−100 −50 0 50 100 
+
+py [GeV ]
+
+0.6
+
+0.8
+
+1.0
+
+> Gen / Truth
+
+−400 −200 0 200 400 
+
+pz [GeV ]
+
+0.8
+
+1.0
+
+1.2
+
+> Gen / Truth
+
+Tau cartesian momentum — 60 bins 
+
+> 1
+
+Fig. 21. Hadronic-τ Cartesian components. Hadronic-τ Cartesian marginals ( px, p y , p z ). Truth vs. generated. 0
+
+1
+
+2
+
+3
+
+4
+
+5
+
+> Events
+
+×10 6
+
+W1 = 2.4 
+
+SKL = 0.00254 
+
+BC = 0.0274 
+
+px
+
+Truth 
+
+Gen 
+
+0
+
+1
+
+2
+
+3
+
+4
+
+5
+
+> Events
+
+×10 6
+
+W1 = 2.4 
+
+SKL = 0.0028 
+
+BC = 0.029 
+
+py
+
+Truth 
+
+Gen 
+
+0
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+> Events
+
+×10 6
+
+W1 = 0.809 
+
+SKL = 2.57e-05 
+
+BC = 0.00259 
+
+pz
+
+Truth 
+
+Gen 
+
+−100 0 100 
+
+px [GeV ]
+
+0.9
+
+1.0
+
+1.1
+
+> Gen / Truth
+
+−100 0 100 
+
+py [GeV ]
+
+0.9
+
+1.0
+
+1.1
+
+> Gen / Truth
+
+−500 −250 0 250 500 
+
+pz [GeV ]
+
+0.950 
+
+0.975 
+
+1.000 
+
+1.025 
+
+1.050 
+
+> Gen / Truth
+
+Jet cartesian momentum — 60 bins 
+
+> 1
+
+Fig. 22. Small-R jet Cartesian components. Small-R jet Cartesian marginals ( px, p y , p z ). Truth vs. generated. 29 0.0                
+
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> Events
+> ×10 4
+> W1 = 6.9
+> SKL = 0.00281
+> BC = 0.0239
+> px
+> Truth
+> Gen
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> Events
+> ×10 4
+> W1 = 6.68
+> SKL = 0.00296
+> BC = 0.0239
+> py
+> Truth
+> Gen
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> Events
+> ×10 4
+> W1 = 4.19
+> SKL = 0.00105
+> BC = 0.0179
+> pz
+> Truth
+> Gen
+> −500 −250 0250 500
+> px[GeV ]
+> 0.7
+> 0.8
+> 0.9
+> 1.0
+> 1.1
+> Gen / Truth
+> −500 −250 0250 500
+> py[GeV ]
+> 0.7
+> 0.8
+> 0.9
+> 1.0
+> Gen / Truth
+> −1500 −1000 −500 0500 1000
+> pz[GeV ]
+> 0.9
+> 1.0
+> 1.1
+> Gen / Truth
+
+Large-R Jet cartesian momentum — 60 bins 
+
+> 1
+
+Fig. 23. Large-R jet Cartesian components. Large-R jet Cartesian marginals ( px, p y , p z ). Truth vs. generated. 
+
+Appendix C: Forward-process noising of the dilepton spectrum 
+
+This appendix documents how the OSSF dilepton invariant-mass distribution degrades under the CFM for-ward noising process at a sequence of flow times t ∈{1, 0.99 , 0.95 , 0.9, 0.8, 0.5, 0.3, 0.1}, where the noising follows xt = t x data + (1 − t) z with z ∼ N (0 , I ) on the chart, so t = 1 is the clean truth distribution and t = 0 is the noise prior. The progression explains why the narrow resonance peaks of Sec. II D are the hardest part of the dilepton spectrum to learn and motivates the KDE-based distribution-matching weight w⋆ of Eq. (20): already at 
+
+t ≈ 0.99 the narrow light quarkonia ω(782), ϕ(1020), and 
+
+ψ(2 S) are indistinguishable from the surrounding contin-uum; by t ≈ 0.9 the J/ψ (1 S) and Υ peaks have followed; and below t ≈ 0.8 only the broad Z shoulder remains be-fore it too dissolves into the Drell–Yan continuum. Once these features are buried in noise, the only signal the pri-mary CFM loss can use to recover them at sampling time is their small residual weight in the conditional velocity field, and the auxiliary w⋆ weight is what amplifies that residual at the under-produced mass regions. 
+
+Appendix D: Three-particle invariant masses 
+
+This appendix collects the truth-vs.-generated compar-ison on eight three-particle combinations summarised in Sec. II G, shown in Fig. 25. 
+
+Appendix E: Per-particle quality score 
+
+The raw quality score qi entering the effective weight 
+
+qeff  
+
+> i
+
+of Eq. (16) is a type-conditional sigmoid product of detector quality features. For each feature f with cut cf
+
+and slope αf we write the shorthand σf ≡ σ αf (cf − f )
+
+(with the sign flipped when the cut sets a lower bound), so that σf ∈ (0 , 1) smoothly tracks the corresponding hard analysis cut. With this shorthand the per-type score reads 
+
+qe = qμ = σℓ 
+
+> iso
+
+σℓ
+
+> ip
+
+,qγ = σγ
+
+> iso
+
+,qjet = σJVT ,qτhad = σRNN ,qlarge-R jet = σD2 ,
+
+(E1) with MET and padding tokens carrying q = 1by convention. The isolation variables are riso =min( ptvarcone30 , topoetcone20 )/p T for leptons and 
+
+rγ 
+
+> iso
+
+= min( topoetcone40 , ptcone20 )/p T for photons. The score is non-learned: no gradient flows through qk,and the cuts c and slopes α collected in Table VII are fixed per-type detector constants chosen to track the standard ATLAS analysis cuts but with a soft sigmoid 30 1 10 10 21                            
+
+> 10
+> 10 2
+> 10 3
+> 10 4
+> OSSF pairs
+> t= 1
+> 110 10 21
+> 10
+> 10 2
+> 10 3
+> 10 4
+> t= 0 .99
+> 110 10 21
+> 10
+> 10 2
+> 10 3
+> 10 4
+> t= 0 .95
+> 110 10 21
+> 10
+> 10 2
+> 10 3
+> 10 4t= 0 .9
+> 110 10 2
+> m`` [GeV ]
+> 1
+> 10
+> 10 2
+> 10 3
+> 10 4
+> OSSF pairs
+> t= 0 .8
+> 110 10 2
+> m`` [GeV ]
+> 1
+> 10
+> 10 2
+> 10 3
+> 10 4
+> t= 0 .5
+> 110 10 2
+> m`` [GeV ]
+> 1
+> 10
+> 10 2
+> 10 3
+> 10 4
+> t= 0 .3
+> 110 10 2
+> m`` [GeV ]
+> 1
+> 10
+> 10 2
+> 10 3
+> 10 4t= 0 .1
+
+Truth OSSF dilepton invariant mass under CFM forward noising ( μ+μ− channel, 200 bins) 
+
+> 1
+
+Fig. 24. CFM forward noising of the dimuon spectrum. Truth OSSF dimuon invariant-mass spectrum after application of the CFM forward noising xt = t x data + (1 − t) z at flow times t ∈ { 1, 0.99 , 0.95 , 0.9, 0.8, 0.5, 0.3, 0.1} (clean → noisy). The narrow light-quarkonium peaks ω and ϕ and the ψ(2 S) are washed into the continuum already at t ≈ 0.99; the J/ψ (1 S) and Υ families follow by t ≈ 0.9; below t ≈ 0.8 only the broad Z shoulder remains before it too dissolves into the Drell–Yan continuum. 
+
+Selection: same OSSF dilepton selection as Fig. 4, restricted to the μ+μ− channel (the cleanest channel for resonance visibility); 
+
+∼ 4.2 × 10 5 dimuon OSSF pairs from the validation sample, histogrammed with 200 log-spaced bins between 0 .3 and 500 GeV. 
+
+edge rather than a hard step, so that borderline objects are neither fully accepted nor fully rejected. 
+
+TABLE VII. Per-type detector quality cuts c and sigmoid slopes α used in Eq. (E1). Lepton isolation riso and photon isolation rγ 
+
+> iso
+
+are defined in the surrounding text. MET and padding tokens carry q = 1 by convention and are not listed. 
+
+Type Feature c α
+
+Leptons ( e, μ ) riso 0.15 10 .0
+
+|d0/σ d0 | 3.00 1.00 Photon rγ 
+
+> iso
+
+0.15 10 .0Jet jvt 0.50 5.00 
+
+τhad RNNJetScore 0.50 5.00 Large-R jet D2 1.50 5.00 
+
+Appendix F: Training configuration and computing environment 
+
+Table VIII collects the architecture and training hyper-parameters of the single training run analysed through-out this paper. All values are quoted from the logged configuration of that run. The loss constants refer to the symbols of Sec. III C: the Huber scale δ and the gate 
+
+tgate of Eq. (17), the distribution-matching exponent α,sharpness k, and truth-prior mix η of Eq. (20), and the quality floor qcfm floor of Eq. (16). The run executes on a single dedicated node whose hardware and software environment is summarised in Ta-ble IX. The full 30-epoch schedule completes in approxi-mately 61 h of wall-clock time. 
+
+Appendix G: Selected input fields 
+
+Table X lists the ATLAS Open Data fields retained by the preprocessing pipeline, grouped by reconstructed ob-ject type and named as in the source ntuples. The four kinematic fields ( pT , η, ϕ, E) are common to all types and carry the generated state. The remaining fields are type-specific detector quantities that enter the model as con-ditioning, through the conditioning streams of Sec. III C and the per-particle quality score of Appendix E. 31 10 0
+
+10 1
+
+10 2
+
+10 3
+
+10 4 
+
+> Events
+> ω
+> φ
+> J/ψ
+> ψ(2 S)
+> ΥZ
+
+W1 = 2.44 
+
+SKL = 0.00161 
+
+BC = 0.02 
+
+m``` (3-lepton mass) 
+
+Truth 
+
+Gen 
+
+10 −2 10 −1 1 10 10 2 10 3
+
+m``` [GeV ]
+
+0
+
+20 
+
+> Gen / Truth
+
+10 0
+
+10 1
+
+10 2
+
+10 3
+
+10 4
+
+10 5 
+
+> Events
+> ω
+> φ
+> J/ψ
+> ψ(2 S)
+> ΥZ
+
+W1 = 17.1 
+
+SKL = 0.00575 
+
+BC = 0.0427 
+
+mjjj (3-jet mass, top peak) 
+
+Truth 
+
+Gen 
+
+10 −2 10 −1 1 10 10 2 10 3
+
+mjjj [GeV ]
+
+0.0
+
+2.5
+
+5.0
+
+> Gen / Truth
+
+10 0
+
+10 1
+
+10 2
+
+10 3
+
+10 4
+
+10 5 
+
+> Events
+> ω
+> φ
+> J/ψ
+> ψ(2 S)
+> ΥZ
+
+W1 = 4.14 
+
+SKL = 0.00135 
+
+BC = 0.0219 
+
+m``j (Z+jet mix) 
+
+Truth 
+
+Gen 
+
+10 −2 10 −1 1 10 10 2 10 3
+
+m``j [GeV ]
+
+0
+
+10 
+
+> Gen / Truth
+
+10 0
+
+10 1
+
+10 2
+
+10 3
+
+10 4 
+
+> Events
+> ω
+> φ
+> J/ψ
+> ψ(2 S)
+> ΥZ
+
+W1 = 3.93 
+
+SKL = 0.00437 
+
+BC = 0.0349 
+
+mγ`` (radiative Z return) 
+
+Truth 
+
+Gen 
+
+10 −2 10 −1 1 10 10 2 10 3
+
+mγ`` [GeV ]
+
+0
+
+5
+
+> Gen / Truth
+
+10 0
+
+10 1
+
+10 2
+
+10 3
+
+10 4
+
+10 5 
+
+> Events
+> ω
+> φ
+> J/ψ
+> ψ(2 S)
+> ΥZ
+
+W1 = 11.3 
+
+SKL = 0.00389 
+
+BC = 0.0364 
+
+m`jj (W +jets-like) 
+
+Truth 
+
+Gen 
+
+10 −2 10 −1 1 10 10 2 10 3
+
+m`jj [GeV ]
+
+0
+
+5
+
+> Gen / Truth
+
+10 2
+
+10 3
+
+10 4
+
+> Events
+
+W1 = 1.17 
+
+SKL = 0.000607 
+
+BC = 0.0132 
+
+pT (3 `) (trilepton boost) 
+
+Truth 
+
+Gen 
+
+1 10 10 2
+
+pT (3 `) [GeV ]
+
+0.5
+
+1.0
+
+> Gen / Truth
+
+10 2
+
+10 3
+
+10 4
+
+10 5
+
+> Events
+
+W1 = 5.89 
+
+SKL = 0.00441 
+
+BC = 0.0399 
+
+pT (3 j) (3-jet boost) 
+
+Truth 
+
+Gen 
+
+1 10 10 2
+
+pT (3 j) [GeV ]
+
+1.0
+
+1.5
+
+> Gen / Truth
+
+10 3
+
+10 4
+
+10 5
+
+> Events
+
+W1 = 3.83 
+
+SKL = 0.00334 
+
+BC = 0.0377 
+
+pT (``j ) system boost 
+
+Truth 
+
+Gen 
+
+1 10 10 2
+
+pT (``j ) [GeV ]
+
+0.8
+
+1.0
+
+> Gen / Truth
+
+3-particle kinematics: invariant masses and system pT
+
+> 1
+
+Fig. 25. Three-particle kinematics. Three-particle invariant masses and system pT spectra, truth vs. generated (log-log). The lower sub-panel of each pair shows the bin-by-bin generated-to-truth ratio. Eight combinations are shown: mℓℓℓ , mγℓℓ ,
+
+mℓℓj , mjjj , mℓjj , and the corresponding system pT distributions. The hadronic top peak at mjjj ≈ 173 GeV emerges above the multijet QCD continuum. 32 
+
+TABLE VIII. Architecture and training hyperparameters of the reported run. 
+
+Hyperparameter Value 
+
+Architecture 
+
+DiT blocks L 6model width dmodel 128 attention heads 4feed-forward expansion ratio 4MET cross-attention tokens 4dropout 0trainable parameters 3.0 × 10 6
+
+Optimiser (AdamW) 
+
+peak learning rate 6 × 10 −4
+
+weight decay 0.01 (β1, β 2) (0 .9, 0.999) 
+
+ε 10 −8
+
+gradient clip (global norm) 1.0EMA decay ρ 0.9995 
+
+Learning-rate schedule 
+
+type cosine warm-up 10 4 steps, linear minimum learning rate 10 −6
+
+epochs 30 total optimiser steps 717 ,180 
+
+Data and batching 
+
+batch size per GPU 4,096 global batch size 32 ,768 train / validation split 0.95 / 0.05 split seed 42 
+
+Loss 
+
+Huber scale δ 1.0
+
+K-body orders K ∈ { 2, 3, 4}, equal weight position-term gate tgate 0.99 exponent α 1.0sharpness k 5truth-prior mix η 1/3 ( w⋆ 
+
+> max
+
+= 3) quality floor qcfm floor 0.5
+
+Flow-time sampling 
+
+distribution t ∼ U [tmin , t max ](tmin , t max ) (0 .01 , 1 − 10 −6)
+
+Compute 
+
+GPUs 8, data-parallel numerical precision bf16-mixed 
+
+compilation torch.compile 
+
+TABLE IX. Hardware and software environment of the train-ing node. 
+
+Component Specification 
+
+GPU 8× NVIDIA A100 (80 GB), NVLink CPU 2× AMD EPYC 7J13 (128 cores) System memory 2 TB Storage 19 TB NVMe RAID array Software PyTorch 2 .10 (CUDA 12 .8), Linux TABLE X. Selected ATLAS Open Data fields per particle type. Fields in blue enter the model as conditioning inputs, while the remaining kinematic fields are generated on the per-type charts of Sec. III B. The event metadata does not enter the model. 
+
+Field Description 
+
+Event metadata 
+
+runNumber ATLAS run number 
+
+eventNumber Event number within the run; with the run number it uniquely identifies the event 
+
+Missing transverse energy 
+
+met Magnitude of the missing transverse momentum 
+
+met phi Azimuthal angle of the missing transverse momentum 
+
+Leptons ( e, μ)
+
+lep pt Transverse momentum pT
+
+lep eta Pseudorapidity η
+
+lep phi Azimuthal angle ϕ
+
+lep e Energy E
+
+lep charge Electric charge 
+
+lep z0 Longitudinal track coordinate z0
+
+at the primary vertex 
+
+lep d0 Transverse impact parameter d0
+
+lep ptvarcone30 Variable-cone track isolation, ∆R = 0 .3 [93] 
+
+lep topoetcone20 Topological calorimeter isolation, ∆R = 0 .2 [93] 
+
+lep d0sig Significance of d0
+
+Photon 
+
+photon pt Transverse momentum pT
+
+photon eta Pseudorapidity η
+
+photon phi Azimuthal angle ϕ
+
+photon e Energy E
+
+photon charge Set to zero; aligns the slot with the lepton block 
+
+photon topoetcone40 Topological ET isolation, ∆R = 0 .4
+
+photon ptcone20 Track isolation, ∆ R = 0 .2
+
+Hadronically decaying tau 
+
+tau pt Transverse momentum pT
+
+tau eta Pseudorapidity η
+
+tau phi Azimuthal angle ϕ
+
+tau e Energy E
+
+tau charge Electric charge 
+
+tau nTracks Charged tracks in the decay (1- or 3-prong) 
+
+tau RNNJetScore RNN score, true tau against fake-tau jets 
+
+Small-R jet 
+
+jet pt Transverse momentum pT
+
+jet eta Pseudorapidity η
+
+jet phi Azimuthal angle ϕ
+
+jet e Energy E
+
+jet btag quantile b-tagging score as a working-point quantile 
+
+jet jvt Jet Vertex Tagger score (pile-up suppression) 
+
+Large-R jet 
+
+largeRJet pt Transverse momentum pT
+
+largeRJet eta Pseudorapidity η
+
+largeRJet phi Azimuthal angle ϕ
+
+largeRJet e Energy E
+
+largeRJet m Invariant mass 
+
+largeRJet D2 D2 substructure variable ( W /Z
+
+tagger) 33 
+
+[1] T. Sj¨ ostrand, S. Ask, J. R. Christiansen, R. Corke, N. De-sai, P. Ilten, S. Mrenna, S. Prestel, C. O. Rasmussen, and P. Z. Skands, An introduction to PYTHIA 8.2, Comput. Phys. Commun. 191 , 159 (2015), arXiv:1410.3012 [hep-ph]. [2] J. Bellm et al. , Herwig 7.0/Herwig++ 3.0 release note, Eur. Phys. J. C 76 , 196 (2016), arXiv:1512.01178 [hep-ph]. [3] E. Bothmann et al. (Sherpa), Event Generation with Sherpa 2.2, SciPost Phys. 7, 034 (2019), arXiv:1905.09127 [hep-ph]. [4] J. Alwall, R. Frederix, S. Frixione, V. Hirschi, F. Maltoni, O. Mattelaer, H.-S. Shao, T. Stelzer, P. Torrielli, and M. Zaro, The automated computation of tree-level and next-to-leading order differential cross sections, and their matching to parton shower simulations, JHEP 07 , 079, arXiv:1405.0301 [hep-ph]. [5] S. Frixione and B. R. Webber, Matching NLO QCD com-putations and parton shower simulations, JHEP 06 , 029, arXiv:hep-ph/0204244. [6] S. Alioli, P. Nason, C. Oleari, and E. Re, A general framework for implementing NLO calculations in shower Monte Carlo programs: the POWHEG BOX, JHEP 06 ,043, arXiv:1002.2581 [hep-ph]. [7] W. Kilian, T. Ohl, and J. Reuter, WHIZARD: Simulating Multi-Particle Processes at LHC and ILC, Eur. Phys. J. C 71 , 1742 (2011), arXiv:0708.4233 [hep-ph]. [8] D. J. Lange, The EvtGen particle decay simulation pack-age, Nucl. Instrum. Meth. A 462 , 152 (2001). [9] B. Denby, Neural Networks and Cellular Automata in Experimental High-energy Physics, Comput. Phys. Com-mun. 49 , 429 (1988). [10] J. Shlomi, P. Battaglia, and J.-R. Vlimant, Graph Neural Networks in Particle Physics, Mach. Learn. Sci. Tech. 2,021001 (2021), arXiv:2007.13681 [hep-ex]. [11] X. Ju et al. (Exa.TrkX), Performance of a geomet-ric deep learning pipeline for HL-LHC particle track-ing, Eur. Phys. J. C 81 , 876 (2021), arXiv:2103.06995 [physics.data-an]. [12] H. Qu, C. Li, and S. Qian, Particle Transformer for Jet Tagging, in Proceedings of the 39th Interna-tional Conference on Machine Learning (ICML) (2022) arXiv:2202.03772 [hep-ph]. [13] M. Feickert and B. Nachman, A living review of machine learning for particle physics (2021), arXiv:2102.02770 [hep-ph]. [14] M. Paganini, L. de Oliveira, and B. Nachman, Ac-celerating science with generative adversarial networks: An application to 3D particle showers in multilayer calorimeters, Phys. Rev. Lett. 120 , 042003 (2018), arXiv:1705.02355 [hep-ex]. [15] C. Krause and D. Shih, Fast and accurate generation of calorimeter showers with normalizing flows, Phys. Rev. D 
+
+107 , 113003 (2023), arXiv:2106.05285 [physics.ins-det]. [16] V. Mikuni and B. Nachman, Score-based generative mod-els for calorimeter shower simulation, Phys. Rev. D 106 ,092009 (2022), arXiv:2206.11898 [hep-ph]. [17] O. Amram and K. Pedro, Denoising diffusion models with geometry adaptation for high fidelity calorimeter simula-tion, Phys. Rev. D 108 , 072014 (2023), arXiv:2308.03876 [physics.ins-det]. [18] O. Amram et al. , CaloChallenge 2022: a community chal-lenge for fast calorimeter simulation, Rept. Prog. Phys. 
+
+88 , 116201 (2025), arXiv:2410.21611 [physics.ins-det]. [19] ATLAS Collaboration, AtlFast3: the next generation of fast simulation in ATLAS, Comput. Softw. Big Sci. 6, 7 (2022), arXiv:2109.02551 [hep-ex]. [20] A. Butter, T. Plehn, and R. Winterhalder, How to GAN LHC Events, SciPost Phys. 7, 075 (2019), arXiv:1907.03764 [hep-ph]. [21] A. Butter, T. Plehn, S. Schumann, et al. , Machine learn-ing and LHC event generation, SciPost Phys. 14 , 079 (2023), arXiv:2203.07460 [hep-ph]. [22] M. Leigh, D. Sengupta, G. Qu´ etant, J. A. Raine, K. Zoch, and T. Golling, PC-JeDi: Diffusion for particle cloud generation in high energy physics, SciPost Phys. 16 , 018 (2024), arXiv:2303.05376 [hep-ph]. [23] V. Mikuni, B. Nachman, and M. Pettee, Fast point cloud generation with diffusion models in high energy physics, Phys. Rev. D 108 , 036025 (2023), arXiv:2304.01266 [hep-ph]. [24] M. Leigh, D. Sengupta, J. A. Raine, G. Qu´ etant, and T. Golling, Pc-droid: Faster diffusion and improved qual-ity for particle cloud generation, Phys. Rev. D 109 ,012010 (2024), arXiv:2307.06836 [hep-ph]. [25] A. Butter, N. Huetsch, S. Palacios Schweitzer, T. Plehn, P. Sorrenson, and J. Spinner, Jet diffusion versus JetGPT – modern networks for the LHC, SciPost Phys. Core 8,026 (2025), arXiv:2305.10475 [hep-ph]. [26] E. Buhmann, C. Ewen, D. A. Faroughy, T. Golling, G. Kasieczka, M. Leigh, G. Qu´ etant, J. A. Raine, D. Sengupta, and D. Shih, EPiC-ly fast particle cloud generation with flow-matching and diffusion (2023), arXiv:2310.00049 [hep-ph]. [27] L. Favaro, A. Ore, S. P. Schweitzer, and T. Plehn, CaloDREAM – Detector response emulation via at-tentive flow matching, SciPost Phys. 18 , 088 (2025), arXiv:2405.09629 [hep-ph]. [28] F. Vaselli, F. Cattafesta, P. Asenov, and A. Rizzi, End-to-end simulation of particle physics events with flow match-ing and generator oversampling, Mach. Learn. Sci. Tech. 
+
+5, 035007 (2024), arXiv:2402.13684 [hep-ex]. [29] Z. Bogorad, I. Elsharkawy, Y. Kahn, A. J. Larkoski, and N. Levi, Generative models on phase space (2026), arXiv:2604.02415 [hep-ph]. [30] A. Hallin, Foundation models for high-energy physics, in 
+
+2nd European AI for Fundamental Physics Conference 
+
+(2025) euCAIFCon 2025 proceedings (2nd European AI for Fundamental Physics Conference); submitted to Sci-Post Phys. Proc., arXiv:2509.21434 [hep-ph]. [31] K. G. Barman et al. , Large physics models: towards a collaborative approach with large language models and foundation models, Eur. Phys. J. C 85 , 1066 (2025), arXiv:2501.05382 [physics.data-an]. [32] B. M. Dillon, G. Kasieczka, H. Olischlager, T. Plehn, P. Sorrenson, and L. Vogel, Symmetries, safety, and self-supervision, SciPost Phys. 12 , 188 (2022), arXiv:2108.04253 [hep-ph]. [33] T. Golling, L. Heinrich, M. Kagan, S. Klein, M. Leigh, M. Osadchy, and J. A. Raine, Masked particle modeling on sets: towards self-supervised high energy physics foun-dation models, Mach. Learn. Sci. Tech. 5, 035074 (2024), 34 
+
+arXiv:2401.13537 [hep-ph]. [34] J. Birk, A. Hallin, and G. Kasieczka, OmniJet-α: the first cross-task foundation model for particle physics, Mach. Learn. Sci. Tech. 5, 035031 (2024), arXiv:2403.05618 [hep-ph]. [35] V. Mikuni and B. Nachman, Solving key challenges in collider physics with foundation models, Phys. Rev. D 
+
+111 , L051504 (2025), arXiv:2404.16091 [hep-ph]. [36] W. Bhimji, C. Harris, V. Mikuni, and B. Nach-man, Foundation model framework for all tasks in-volving jet physics, Phys. Rev. D 113 , 032020 (2026), arXiv:2510.24066 [hep-ph]. [37] T.-H. Hsu et al. , EveNet: A Foundation Model for Par-ticle Collision Data Analysis (2026), arXiv:2601.17126 [hep-ex]. [38] A. Huang, Y. Melkani, P. Calafiura, A. Lazar, D. T. Mur-nane, M.-T. Pham, and X. Ju, A Language Model for Particle Tracking, in Connecting The Dots 2023 (2024) arXiv:2402.10239 [hep-ph]. [39] J. Spinner, V. Bres´ o, P. de Haan, T. Plehn, J. Thaler, and J. Brehmer, Lorentz-Equivariant Geometric Algebra Transformers for High-Energy Physics, in 38th confer-ence on Neural Information Processing Systems (2024) arXiv:2405.14806 [physics.data-an]. [40] O. Amram, L. Anzalone, J. Birk, D. A. Faroughy, A. Hallin, G. Kasieczka, M. Kr¨ amer, I. Pang, H. Reyes-Gonzalez, and D. Shih, Aspen open jets: unlocking LHC data for foundation models in particle physics, Mach. Learn. Sci. Tech. 6, 030601 (2025), arXiv:2412.10504 [hep-ph]. [41] M. Omana Kuttan, K. Zhou, J. Steinheimer, and H. Stoecker, Toward a foundation model for heavy-ion collision experiments based on point-cloud diffusion, Phys. Rev. C 112 , L051902 (2025), arXiv:2412.10352 [hep-ph]. [42] E. M. Metodiev, B. Nachman, and J. Thaler, Classifica-tion without labels: Learning from mixed samples in high energy physics, JHEP 10 , 174, arXiv:1708.02949 [hep-ph]. [43] J. H. Collins, K. Howe, and B. Nachman, Anomaly Detec-tion for Resonant New Physics with Machine Learning, Phys. Rev. Lett. 121 , 241803 (2018), arXiv:1805.02664 [hep-ph]. [44] B. Nachman and D. Shih, Anomaly Detection with Density Estimation, Phys. Rev. D 101 , 075042 (2020), arXiv:2001.04990 [hep-ph]. [45] A. Hallin, J. Isaacson, G. Kasieczka, C. Krause, B. Nach-man, T. Quadfasel, M. Schlaffer, D. Shih, and M. Som-merhalder, Classifying anomalies through outer den-sity estimation, Phys. Rev. D 106 , 055006 (2022), arXiv:2109.00546 [hep-ph]. [46] J. A. Raine, S. Klein, D. Sengupta, and T. Golling, CUR-TAINs for your sliding window: Constructing unobserved regions by transforming adjacent intervals, Front. Big Data 6, 899345 (2023), arXiv:2203.09470 [hep-ph]. [47] A. Andreassen, B. Nachman, and D. Shih, Simulation Assisted Likelihood-free Anomaly Detection, Phys. Rev. D 101 , 095004 (2020), arXiv:2001.05001 [hep-ph]. [48] T. Golling, S. Klein, R. Mastandrea, and B. Nach-man, Flow-enhanced transportation for anomaly detec-tion, Phys. Rev. D 107 , 096025 (2023), arXiv:2212.11285 [hep-ph]. [49] D. Sengupta, M. Leigh, J. A. Raine, S. Klein, and T. Golling, Improving new physics searches with diffu-sion models for event observables and jet constituents, JHEP 04 , 109, arXiv:2312.10130 [physics.data-an]. [50] P. Jawahar, T. Aarrestad, N. Chernyavskaya, M. Pierini, K. A. Wozniak, J. Ngadiuba, J. Duarte, and S. Tsan, Improving Variational Autoencoders for New Physics De-tection at the LHC With Normalizing Flows, Front. Big Data 5, 803685 (2022), arXiv:2110.08508 [hep-ph]. [51] K. Metzger, L. Xu, M. Sodini, T. K. Arrestad, K. Gov-orkova, G. Grosso, and P. Harris, Anomaly-preserving contrastive neural embeddings for end-to-end model-independent searches at the LHC, Phys. Rev. D 112 ,072011 (2025), arXiv:2502.15926 [hep-ex]. [52] G. Kasieczka et al. , The LHC Olympics 2020 a com-munity challenge for anomaly detection in high en-ergy physics, Rept. Prog. Phys. 84 , 124201 (2021), arXiv:2101.08320 [hep-ph]. [53] G. Karagiorgi, G. Kasieczka, S. Kravitz, B. Nachman, and D. Shih, Machine Learning in the Search for New Fundamental Physics, Nature Rev. Phys. 4, 399 (2022), arXiv:2112.03769 [hep-ph]. [54] V. Belis, P. Odagiu, and T. K. Aarrestad, Machine learn-ing for anomaly detection in particle physics, Rev. Phys. 
+
+12 , 100091 (2024), arXiv:2312.14190 [physics.data-an]. [55] G. Aad et al. (ATLAS), Dijet resonance search with weak supervision using √s = 13 TeV pp collisions in the ATLAS detector, Phys. Rev. Lett. 125 , 131801 (2020), arXiv:2005.02983 [hep-ex]. [56] G. Aad et al. (ATLAS), Search for New Phenomena in Two-Body Invariant Mass Distributions Using Un-supervised Machine Learning for Anomaly Detection at s=13 TeV with the ATLAS Detector, Phys. Rev. Lett. 
+
+132 , 081801 (2024), arXiv:2307.01612 [hep-ex]. [57] V. Chekhovsky et al. (CMS), Model-agnostic search for dijet resonances with anomalous jet substructure in pro-ton–proton collisions at √s = 13 TeV, Rept. Prog. Phys. 
+
+88 , 067802 (2025), arXiv:2412.03747 [hep-ex]. [58] R. T. Q. Chen and Y. Lipman, Flow Matching on Gen-eral Geometries, in International Conference on Learning Representations (2024) arXiv:2302.03660 [cs.LG]. [59] A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez, L. Kaiser, and I. Polosukhin, Attention Is All You Need, in Advances in Neural In-formation Processing Systems (2017) arXiv:1706.03762 [cs.CL]. [60] ATLAS Collaboration, ATLAS ROOT ntuple format Run 2 2015+2016 proton-proton collision data beta re-lease, 1LMET30 skim, CERN Open Data Portal (2025). [61] ATLAS Collaboration, ATLAS ROOT ntuple format Run 2 2015+2016 proton-proton collision data beta re-lease, 2to4lep skim, CERN Open Data Portal (2025). [62] S. Navas et al. (Particle Data Group), Review of particle physics, Phys. Rev. D 110 , 030001 (2024). [63] G. Aad et al. (ATLAS), Measurement of the differential cross-sections of inclusive, prompt and non-prompt J/ψ 
+
+production in proton-proton collisions at √s = 7 TeV, Nucl. Phys. B 850 , 387 (2011), arXiv:1104.3038 [hep-ex]. [64] G. Aad et al. (ATLAS), Measurement of upsilon produc-tion in 7 TeV pp collisions at ATLAS, Phys. Rev. D 87 ,052004 (2013), arXiv:1211.7255 [hep-ex]. [65] M. Aaboud et al. (ATLAS), Measurement of the Drell-Yan triple-differential cross section in pp collisions at √s = 8 TeV, JHEP 12 , 059, arXiv:1710.05167 [hep-ex]. [66] S. Weinberg, A Model of Leptons, Phys. Rev. Lett. 19 ,1264 (1967). 35 
+
+[67] L. V. Kantorovich, On the translocation of masses, Dokl. Akad. Nauk SSSR 37 , 199 (1942), english translation: J. Math. Sci. 133 (2006) 1381. [68] L. N. Vaserstein, Markov processes over denumerable products of spaces, describing large systems of automata, Probl. Peredachi Inf. 5, 64 (1969). [69] S. Kullback and R. A. Leibler, On information and suffi-ciency, Ann. Math. Statist. 22 , 79 (1951). [70] H. Jeffreys, Theory of Probability , 2nd ed. (Oxford Uni-versity Press, 1948). [71] J. R. Bray and J. T. Curtis, An ordination of the up-land forest communities of southern Wisconsin, Ecologi-cal Monographs 27 , 325 (1957). [72] R. Kansal, A. Li, J. Duarte, N. Chernyavskaya, M. Pierini, B. Orzari, and T. Tomei, Evaluating gener-ative models in high energy physics, Phys. Rev. D 107 ,076017 (2023), arXiv:2211.10295 [hep-ex]. [73] R. Das, L. Favaro, T. Heimel, C. Krause, T. Plehn, and D. Shih, How to understand limitations of generative net-works, SciPost Phys. 16 , 031 (2024), arXiv:2305.16774 [hep-ph]. [74] S. Grossi, M. Letizia, and R. Torre, Refereeing the refer-ees: evaluating two-sample tests for validating generators in precision sciences, Mach. Learn. Sci. Tech. 6, 015052 (2025), arXiv:2409.16336 [stat.ML]. [75] G. Aad et al. (ATLAS), Electron and photon energy cali-bration with the ATLAS detector using LHC Run 1 data, Eur. Phys. J. C 74 , 3071 (2014), arXiv:1407.5063 [hep-ex]. [76] G. Aad et al. (ATLAS), Muon reconstruction perfor-mance of the ATLAS detector in proton–proton collision data at √s =13 TeV, Eur. Phys. J. C 76 , 292 (2016), arXiv:1603.05598 [hep-ex]. [77] ATLAS Collaboration, The performance of missing transverse momentum reconstruction and its significance with the ATLAS detector using 140 fb −1 of √s = 13 TeV pp collisions, Eur. Phys. J. C 85 , 606 (2025), arXiv:2402.05858 [hep-ex]. [78] M. Aaboud et al. (ATLAS), Search for an invisibly de-caying Higgs boson or dark matter candidates produced in association with a Z boson in pp collisions at √s = 13 TeV with the ATLAS detector, Phys. Lett. B 776 , 318 (2018), arXiv:1708.09624 [hep-ex]. [79] J. C. Collins and D. E. Soper, Angular Distribution of Dileptons in High-Energy Hadron Collisions, Phys. Rev. D 16 , 2219 (1977). [80] A. M. Sirunyan et al. (CMS), Measurement of the weak mixing angle using the forward-backward asymmetry of Drell-Yan events in pp collisions at 8 TeV, Eur. Phys. J. C 78 , 701 (2018), arXiv:1806.00863 [hep-ex]. [81] A. Hayrapetyan et al. (CMS), Measurement of the Drell–Yan forward-backward asymmetry and of the ef-fective leptonic weak mixing angle in proton-proton col-lisions at s=13TeV, Phys. Lett. B 866 , 139526 (2025), arXiv:2408.07622 [hep-ex]. [82] M. Aaboud et al. (ATLAS), Measurement of the top quark mass in the t¯t → lepton+jets channel from √s = 8 TeV ATLAS data and combination with previous results, Eur. Phys. J. C 79 , 290 (2019), arXiv:1810.01772 [hep-ex]. [83] J. Erdmann, S. Guindon, K. Kroeninger, B. Lemmer, O. Nackenhorst, A. Quadt, and P. Stolte, A likelihood-based reconstruction algorithm for top-quark pairs and the KLFitter framework, Nucl. Instrum. Meth. A 748 ,18 (2014), arXiv:1312.5595 [hep-ex]. [84] G. Aad et al. (ATLAS), Search for Scalar Diphoton Reso-nances in the Mass Range 65 −600 GeV with the ATLAS Detector in pp Collision Data at √s = 8 T eV , Phys. Rev. Lett. 113 , 171801 (2014), arXiv:1407.6583 [hep-ex]. [85] T. Skwarnicki, A study of the radiative cascade transi-tions between the Upsilon-prime and Upsilon resonances ,Ph.D. thesis, Cracow, INP (1986). [86] G. Aad et al. (ATLAS), Higgs boson production cross-section measurements and their EFT interpretation in the 4 ℓ decay channel at √s =13 TeV with the AT-LAS detector, Eur. Phys. J. C 80 , 957 (2020), [Erratum: Eur.Phys.J.C 81, 29 (2021), Erratum: Eur.Phys.J.C 81, 398 (2021)], arXiv:2004.03447 [hep-ex]. [87] Y. Lipman, R. T. Q. Chen, H. Ben-Hamu, M. Nickel, and M. Le, Flow Matching for Generative Modeling, in Inter-national Conference on Learning Representations (2023) arXiv:2210.02747 [cs.LG]. [88] K. Shoemake, Animating Rotation with Quaternion Curves, in Proc. SIGGRAPH ’85: 12th annual conference on Computer graphics and interactive techniques (1985) pp. 245–254. [89] W. Peebles and S. Xie, Scalable Diffusion Models with Transformers, in Proceedings of the IEEE/CVF International Conference on Computer Vision (2023) arXiv:2212.09748 [cs.CV]. [90] B. Zhang and R. Sennrich, Root Mean Square Layer Nor-malization, in Advances in Neural Information Process-ing Systems (2019) arXiv:1910.07467 [cs.LG]. [91] P. J. Huber, Robust Estimation of a Location Parameter, Ann. Math. Statist. 35 , 73 (1964). [92] I. Loshchilov and F. Hutter, Decoupled Weight Decay Regularization, in International Conference on Learn-ing Representations (ICLR) (2019) arXiv:1711.05101 [cs.LG]. [93] G. Aad et al. (ATLAS), Software and computing for Run 3 of the ATLAS experiment at the LHC, Eur. Phys. J. C 
+
+85 , 234 (2025), arXiv:2404.06335 [hep-ex].

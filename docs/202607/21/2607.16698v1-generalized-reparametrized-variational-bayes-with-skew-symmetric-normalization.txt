@@ -1,0 +1,2248 @@
+Title: Generalized reparametrized variational Bayes with skew-symmetric normalization
+
+URL Source: https://arxiv.org/pdf/2607.16698v1
+
+Published Time: Tue, 21 Jul 2026 00:29:55 GMT
+
+Number of Pages: 48
+
+Markdown Content:
+# Generalized reparametrized variational Bayes with skew-symmetric normalization 
+
+Aoxiang Chen (aoxiang.chen@u.nus.edu) Department of Statistics and Data Science, National University of Singapore and Linda S. L. Tan ∗(statsll@nus.edu.sg) Department of Statistics and Data Science, National University of Singapore July 21, 2026 
+
+Abstract 
+
+Bayesian hierarchical models with high-dimensional latent structure require scalable posterior approximations that preserve key dependencies while remaining computationally tractable. Mean-field variational inference (MFVI) is efficient, but can be unreliable when local variables are strongly correlated or tightly coupled to global variables. We propose KNorm-RVB, a generalized reparametrized variational Bayes framework for latent Gaus-sian and latent non-Gaussian models with sparse local precision matrices. KNorm-RVB maps the conditional posterior of local variables toward a standard Gaussian via normal-ization followed by skewness reduction, enabled by a novel K-component skew-symmetric density representation. This reparametrization centers the transformed conditional local posterior at an optimized reflection point and decorrelates local and global variables, mak-ing MFVI much more effective. Under symmetry conditions, we show that MFVI recovers the local posterior mean and correlation matrix exactly, motivating KNorm-RVB’s nor-malization and symmetrization of the conditional local posterior before applying MFVI. We combine a Gaussian variational family for reparametrized local variables with a flexi-ble closed skew normal family for the remaining variables. Across generalized linear mixed models, mixed multinomial logit models, spatial autoregressive models, and stochastic volatility models, KNorm-RVB improves posterior approximation accuracy over existing methods. 
+
+Keywords: Hierarchical models, Mean-field variational inference, Reparametrization, Skew-symmetric density, Latent non-Gaussian models 
+
+> ∗
+
+Linda Tan’s research is supported by the Ministry of Education, Singapore, under its Academic Re-search Fund Tier 2 (Award MOE-T2EP20222-0002). 
+
+1arXiv:2607.16698v1 [stat.ME] 18 Jul 2026 1 Introduction 
+
+Bayesian hierarchical models are powerful tools for data analysis, combining global vari-ables that capture population-level structure with local latent variables representing sub-ject, area or time specific variation (Gelman & Hill 2006). They are widely used in polit-ical science (Park et al. 2004), epidemiology (Blangiardo et al. 2013) and ecology (Royle & Dorazio 2008), but posterior inference becomes challenging when latent variables are high-dimensional and strongly correlated. Markov chain Monte Carlo (MCMC) methods, including Hamiltonian Monte Carlo (HMC, Hoffman et al. 2014), provide asymptotically exact inference under standard regularity conditions (Robert & Casella 2004), yet can mix poorly in such settings. This motivates scalable posterior approximations, especially when models must be fit repeatedly for model selection. Integrated nested Laplace approximation (INLA, Rue et al. 2009, 2017) is widely used for latent Gaussian models. By exploiting Gaussian Markov random field sparsity and combining Laplace approximations with numerical integration over global variables, INLA can efficiently approximate posterior marginals, with recent work further improving its accuracy (Chiuchiolo et al. 2022, Van Niekerk & Rue 2024, Dutta et al. 2026). Variational inference (VI, Blei et al. 2017), by contrast, approximates the joint posterior with a tractable family and can scale to models with many global and local variables, though accuracy depends on how well the variational family matches the true posterior. Full-rank Gaussian VI is flexible but can be unstable or expensive in high dimensions (Ko et al. 2024), whereas mean-field VI (MFVI) scales well but imposes posterior independence among variables and often underestimates uncertainty (Neville et al. 2014). Structured variants, including sparse precision Gaussian VI (Tan & Nott 2018), conditionally structured VI (Tan et al. 2020), amortized VI (Agrawal & Domke 2021), hybrid VI (Loaiza-Maya et al. 2022) and partially factorized VI (Goplerud et al. 2025), aim to better balance accuracy and scalability. 2In this work, we improve the accuracy and efficiency of MFVI for hierarchical models through reparametrizations , which are known to accelerate MCMC by reshaping posterior geometry (Gelfand et al. 1995, 1996). Hierarchical models are often expressed in a centered parameterization, where local variables depend directly on global variables, or noncentered parameterization, where local variables are a priori independent of the global variables (Betancourt & Girolami 2015). The better choice is data dependent and hard to predict in advance. Partial noncentering interpolates between these extremes and can outperform both (Papaspiliopoulos et al. 2007, Bass & Sahu 2019). Related approaches include the ancillarity-sufficiency interweaving strategy (Yu & Meng 2011), and transport maps that decouple and Gaussianize the target prior to HMC sampling (Osmundsen et al. 2021). Reparametrization can similarly improve VI. Tan & Nott (2013) develop partial non-centering for generalized linear mixed models (GLMMs), improving both convergence and approximation accuracy. Tan (2021) propose reparametrized variational Bayes (RVB), a generalization of partial noncentering that applies MFVI after an affine transformation of the local variables to approximately normalize them (zero mean, identity covariance), and weaken posterior dependence on global variables. Marginally augmented variational Bayes (Goplerud 2022) goes beyond MFVI via Bayesian post-processing, inducing dependence by sampling expansion parameters introduced through random effects transformations. Chen & Liu (2025) perform MFVI in a rotated coordinate system, obtained by principal compo-nent analysis, to reduce posterior dependencies among variables. Here we generalize RVB by addressing two key limitations. First, the existing RVB is tailored to latent Gaussian models with conditionally independent local variables given the global variables, and it does not accommodate conditionally correlated local structure, or latent non-Gaussian models that can capture jumps or spikes. Second, transformed local variables may remain skewed after normalization, making the Gaussian approximation in RVB inadequate. We address both issues by extending RVB to a broader class of hierar-3chical models, augmenting normalization with skewness reduction, and using non-Gaussian variational families for the global variables to better represent asymmetric posteriors. Our contributions are fourfold. First, we develop a generalized RVB framework for la-tent Gaussian models with sparse precision matrices that allow conditional dependence among local variables, and extend it to latent non-Gaussian models by replacing Gaus-sian driving noise with a heavy-tail alternative (Cabral et al. 2024). Second, we propose KNorm-RVB, which reduces residual skewness after curvature-based normalization of the local variables, using a K-component skew-symmetric representation that generalizes the two-component formulation of Wang et al. (2004). We also derive a novel stochastic repre-sentation that allows simulation from the symmetrized density, enabling analytic evaluation of the reparametrized joint density. Third, we use a richer variational family, the closed skew normal (CSN) subclass (Tan & Chen 2025), for global and mixing variables, while retain-ing Gaussian approximation for transformed local variables. Fourth, we establish theory, showing that KNorm-RVB centers the transformed conditional local posterior at an opti-mized reflection point and decorrelates local and global variables, thereby improving the effectiveness of MFVI. Under symmetry conditions, MFVI also recovers the local posterior mean and correlation matrix exactly, motivating KNorm-RVB’s normalization and sym-metrization of the conditional local posterior before applying MFVI, and extending recent work on symmetry guarantees in VI (Margossian & Saul 2025 a,b, Marks et al. 2026). Section 2 reviews the RVB approach, and Section 3 extends it to latent Gaussian and latent non-Gaussian models. Section 4 generalizes the skew-symmetric density to the K-component setting, and shows how this representation improves the Gaussianization of normalized local variables by reducing residual skewness. Section 5 describes the varia-tional families and optimization algorithm. Section 6 studies the finite reflection symmetry induced by KNorm-RVB and its implications for mean recovery and posterior dependence structure. Section 7 reports experimental results and Section 8 concludes with a discussion. 42 Review of reparametrized variational Bayes 
+
+Consider a hierarchical model for observed data y = ( y⊤ 
+
+> 1
+
+, . . . , y ⊤ 
+
+> n
+
+)⊤, with global variables 
+
+θg and local (latent) variables b = ( b⊤ 
+
+> 1
+
+, . . . , b ⊤ 
+
+> n
+
+)⊤ ∈ RN , where bi is associated with yi for 
+
+i = 1 , . . . , n . Let θ = ( θ⊤ 
+
+> g
+
+, b ⊤)⊤ and suppose the joint density factorizes as 
+
+p(y, θ ) = p(θg)p(b | θg)
+
+> n
+
+Y
+
+> i=1
+
+p(yi | bi, θ g), (1) where p(θg) is the prior on θg, p(b | θg) is the conditional density of b given θg and p(yi | bi, θ g)is the likelihood of observing yi given bi and θg.The posterior p(θ | y) = p(y | θ)p(θ)/p (y) is often intractable because the marginal likelihood p(y) = R p(y | θ)p(θ) dθ has no closed form. VI approximates p(θ | y) with a more tractable density qλ(θ) from a variational family indexed by λ, chosen to minimize the Kullback-Leibler divergence (KLD), KL {qλ(θ)∥p(θ | y)} = R qλ(θ) log {qλ(θ)/p (θ | y)}dθ .Using the identity, log p(y) = L(λ) + KL {qλ(θ)∥p(θ | y)}, minimizing the KLD is equivalent to maximizing the evidence lower bound (ELBO), 
+
+L(λ) = E qλ(θ){log p(y, θ ) − log qλ(θ)},
+
+which avoids the intractable log p(y), and satisfies L(λ) ≤ log p(y) since KLD ≥ 0. For complex hierarchical models, L(λ) is rarely available in closed form, but it can be optimized by stochastic gradient ascent using updates, λ ← λ+ b∇λL(λ), where b∇λL(λ) is an unbiased estimator of ∇λL(λ). To reduce gradient variance, we use the reparametrization trick (Kingma & Ba 2015). Rather than sampling θ ∼ qλ(θ) directly, we set θ = t(ϵ, λ ) with 
+
+ϵ ∼ π(ϵ), where π(ϵ) is independent of λ and t(·, ·) is differentiable in λ. This yields L(λ) = Eπ(ϵ){log p (y, t (ϵ, λ )) − log qλ(t(ϵ, λ )) }. Under standard regularity conditions, ∇λL(λ) = Eπ(ϵ)[∇λθ {∇ θ log p(y, θ ) − ∇ θ log qλ(θ)}], and an unbiased estimator follows by sampling 
+
+ϵ ∼ π(ϵ) at each iteration and using automatic differentiation. We use the sticking-the-landing estimator (Roeder et al. 2017), which omits the score function term ∇λqλ(θ) with zero mean, and has desirable gradient variance properties (Kim et al. 2024). 5Tan (2021) further assumes that p(b | θg) = Qni=1 p(bi | θg). Although p(b | θg, y ) = 
+
+Qni=1 p(bi | θg, y i), the mean-field variational approximation q(θ) = q(θg) Qni=1 q(bi) can be overly restrictive as it cannot capture the typically strong posterior dependence be-tween each bi and θg. RVB mitigates this by applying an affine transformation on the local variables to reduce their posterior dependence on θg. Concretely, if p(bi | θg, y i) is well approximated by N( λi, Λi), with λi and Λ i depending on θg, and Λ i = LiL⊤ 
+
+> i
+
+is the Cholesky factorization, then the normalized variable ˜bi = L−1 
+
+> i
+
+(bi − λi) ≈ N(0 , I ). This suggests that ˜bi is approximately independent of θg a posteriori. A mean-field variational approximation for the reparametrized model, q(˜θ) = q(θg) Qni=1 q(˜bi), where ˜θ = ( θ⊤ 
+
+> g
+
+, ˜b⊤)⊤
+
+and ˜b = ( ˜b⊤ 
+
+> 1
+
+, . . . , ˜b⊤ 
+
+> n
+
+)⊤, is therefore less restrictive and more accurate. Tan (2021) apply RVB to GLMMs by constructing a Gaussian approximation to 
+
+p(bi | θg, y i), which determines how λi and Li depend on θg. They consider a second-order Taylor expansion of either (i) the likelihood p(yi | ηi) around an estimate ˆ ηi of the natural parameter ηi, or (ii) log p(bi | θg, y i) about an estimate ˆbi of bi. Empirically, the latter is more accurate when the data are weakly informative about the natural parame-ters. In their experiments, RVB converges rapidly and yields marginal posterior estimates comparable to INLA, while providing an explicit approximation to the full joint posterior. This performance is largely driven by the normalization step, which reparametrizes the local variables to have approximately mean zero with identity covariance a posteriori, simplifying initialization of local variational parameters and promoting fast, stable convergence. 
+
+# 3 Generalized reparametrized variational Bayes 
+
+Our model class is broader than that of Tan (2021), as we do not impose conditional independence of the local variables, p(b | θg) = Qni=1 p(bi | θg). Thus, (1) includes not only GLMMs but also models with structured dependence among the local variables, such as 6state space models (SSMs) and spatial autoregressive (SAR) models, which fall outside the scope of RVB. We first develop a generalized RVB framework for latent Gaussian models in Section 3.1, and then extend it to latent non-Gaussian models in Section 3.2. 
+
+3.1 Latent Gaussian models 
+
+In latent Gaussian models, we assume b ∼ N(0 , Q −1). Conditional independence among elements of b are encoded by the precision matrix Q, with Qij = 0 implying that the 
+
+ith and jth elements of b are conditionally independent given the remaining elements. We assume Q is a sparse matrix depending on θg, as is typical in SSMs and SAR models. As the local variables may be correlated a priori, p(b | θg, y ) may not factorize as 
+
+Qni=1 p(bi | θg, y i). A mean-field variational approximation q(θ) = q(θg) Qni=1 q(bi) is thus highly restrictive, as it ignores posterior dependence both between θg and b, and among the {bi} induced by Q. We address this limitation by reparametrizing the local variables to reduce these dependencies. In particular, 
+
+p(b | θg, y ) ∝ exp 
+
+( nX
+
+> i=1
+
+log p(yi | bi, θ g) − 12b⊤Qb 
+
+)
+
+, (2) which is generally non-Gaussian due to the likelihood terms, despite the Gaussian prior. To construct a transformation that normalizes b, we form a Gaussian approximation to p(b | θg, y ) that preserves the sparsity of Q and is accurate in regions of high posterior mass. A second-order Taylor expansion of log p(yi | bi, θ g) about an estimate ˆbi of bi gives log p(yi | bi, θ g) ≈ log p(yi | ˆbi, θ g) + ( bi − ˆbi)⊤gi(ˆbi) − (bi − ˆbi)⊤Hi(ˆbi)( bi − ˆbi)/2, (3) where gi(bi) = ∇bi log p(yi | bi, θ g) and Hi(bi) = −∇ 2 
+
+> bi
+
+log p(yi | bi, θ g). We further define 
+
+g(b) = ( g1(b1)⊤, . . . , g n(bn)⊤)⊤ and H(b) = blockdiag {H1(b1), . . . , H n(bn)}. (4) Let ˆb be the conditional posterior mode, satisfying ∇b log p(b | θg, y ) = g(b)−Qb = 0, which 7we compute using Newton’s method. Substituting (3) into (2) yields 
+
+p(b | θg, y ) ∝ exp 
+
+n
+
+b⊤g(ˆb) − b⊤H(ˆb)b/ 2 + b⊤H(ˆb)ˆb − b⊤Qb/ 2
+
+o
+
+= exp 
+
+h
+
+b⊤{Q + H(ˆb)}ˆb − b⊤{Q + H(ˆb)}b/ 2
+
+i
+
+,
+
+where the last line uses g(ˆb) = Qˆb. Hence 
+
+b | θg, y ∼ N
+
+ˆb, {Q + H(ˆb)}−1
+
+
+
+approximately .
+
+Importantly, the precision matrix Q + H(ˆb) remains sparse because H(ˆb) is block diagonal. Let Q + H(ˆb) = LL ⊤ be the Cholesky factorization, where L is lower triangular and inherits the sparsity of Q + H(ˆb). Define the affine transformation, ˜b = L⊤(b − ˆb) ≈ N(0 , I ),
+
+which suggests that ˜b is approximately independent of θg and uncorrelated across com-ponents a posteriori. For the reparametrized model with variables ˜θ = ( θ⊤ 
+
+> g
+
+, ˜b⊤)⊤ where ˜b = ( ˜b1, . . . , ˜bn)⊤, we consider the factorized variational approximation, 
+
+qλ(˜θ) = q(θg) Y
+
+> i
+
+q(˜bi).
+
+The joint density of the reparametrized model follows from a standard change of vari-ables. Conditional on θg, the inverse map is b = L−⊤ ˜b + ˆb with Jacobian ∂b/∂ ˜b = L−⊤ . It follows that p(˜b | θg) = p(b | θg)|∂b/∂ ˜b| = p(b | θg)|L|−1. Therefore log p(y, ˜θ) = log p(θg) + log p(b | θg) + 
+
+> n
+
+X
+
+> i=1
+
+log p(yi | bi, θ g) − log |L|, (5) where b = L−⊤ ˜b + ˆb is substituted on the right-hand side. We highlight two key differences from Tan (2021). First, since we do not assume 
+
+p(b | θg) = Qni=1 p(bi | θg), the latent field is normalized jointly in b to preserve its prior de-pendence structure. Second, to exploit sparsity in Q, the normalization is based on Cholesky factorization of the precision Q + H(ˆb), rather than per-subject covariance factorizations. 83.2 Latent non-Gaussian models 
+
+Latent Gaussian models can be inadequate for data with outliers or abrupt changes due to their light tails (Walder & Hanks 2020, Cabral et al. 2023). In such settings, Gaussian priors may oversmooth and inflate variance components, compromising uncertainty quantification, whereas heavy-tail priors provide robustness to extreme local deviations (e.g. sudden jumps or spikes). Following Cabral et al. (2024), we extend latent Gaussian models by replacing the Gaussian driving noise in the latent field with a heavy-tail alternative. Let bG ∼ N(0 , Q −1) with Q = D⊤D for a predetermined matrix D that depends on θg.Then Db G = Z for Z ∼ N(0 , I ). We obtain a non-Gaussian prior for b by replacing the Gaussian driving noise Z by ϵ so that Db = ϵ. We assume ϵ has independent components 
+
+ϵij , each following a symmetric normal-inverse Gaussian (NIG) distribution with mean 0, variance 1 and excess kurtosis 3 η, where η > 0 controls tail heaviness: η → 0 recovers Gaussian noise, and larger η yields heavier tails. Using the variance-mean mixture repre-sentation of the NIG distribution, ϵij | vij ∼ N(0 , v ij ) and vij | η ∼ IG(1 , η −1), where IG denotes the inverse Gaussian distribution, the induced prior for b can be expressed as 
+
+b | D, v ∼ N(0 , D −1diag( v)D−⊤ ), vij | η iid 
+
+∼ IG(1 , η −1).
+
+The mixing variables are v = ( v⊤ 
+
+> 1
+
+, . . . , v ⊤ 
+
+> n
+
+)⊤, where vij is the jth element of vi. We place an exponential prior on the tail parameter η ∼ Exp( αη) and set αη = 1 to mitigate overfitting (Cabral et al. 2023). This yields a robust latent non-Gaussian model that captures extreme local deviations, while retaining the efficiency of a sparse precision structure. Let θ = ( b⊤, θ ⊤ 
+
+> g
+
+, v ⊤, η )⊤ denote variables in the augmented latent non-Gaussian model, whose joint density factorizes as 
+
+p(y, θ ) = p(η)p(v | η)p(θg)p(b | θg, v )
+
+> n
+
+Y
+
+> i=1
+
+p(yi | bi, θ g).
+
+Cabral et al. (2024) develop MFVI for this model in R-INLA, using q(θ) = q(b, θ g)q(v)q(η)and maximizing the ELBO via coordinate ascent. A key advantage is that updating q(b, θ g)9amounts to fitting a latent Gaussian model in INLA. They also propose a collapsed variant that integrates out η via p(v) = R p(η)p(v | η)dη , yielding the approximation q(b, θ g)q(v). The MFVI scheme above enforces posterior independence between b and v, even though 
+
+b depends on v through p(b | θg, v ). To mitigate the mismatch, we adopt the RVB approach and reparametrize the local variables so that they are approximately independent of ( θg, v )a posteriori. For the latent non-Gaussian model, 
+
+p(b | θg, v, y ) ∝ exp 
+
+( nX
+
+> i=1
+
+log p(yi | bi, θ g) − 12b⊤QNG b
+
+)
+
+,
+
+where QNG = D⊤diag( v)−1D inherits sparsity from D. Let ˆbNG be the mode of p(b | θg, v, y )obtained by Newton’s method. A second-order Taylor expansion of log p(yi | bi, θ g) about ˆbNG as in Section 3.1 yields b | θg, v, y ∼ N( ˆbNG , {QNG + H(ˆbNG )}−1) approximately, with 
+
+H(·) defined in (4). Let LNG be the Cholesky factor of the precision QNG + H(ˆbNG ). Then ˜b = L⊤
+
+> NG
+
+ b − ˆbNG 
+
+ ≈ N(0 , I ),
+
+so ˜b is a posteriori independent of ( θg, v ) and has independent components approximately. For the reparametrized model with ˜θ = ( ˜b⊤, θ ⊤ 
+
+> g
+
+, v ⊤, η )⊤, we consider MFVI with 
+
+qλ(˜θ) = q(η)q(θg) Y
+
+> i
+
+q(˜bi) Y
+
+> j
+
+q(vij ),
+
+where ˜b = ( ˜b1, . . . , ˜bn)⊤. The log joint density of the reparametrized model follows from a standard change of variables, analogous to (5). In Cabral et al. (2024), q(θ) = q(b, θ g)q(v)q(η) implies q(v) = Q 
+
+> i,j
+
+q(vij ), and the optimal 
+
+q(η) and q(vij ) lie in the generalized inverse Gaussian family. Under our reparametrization, 
+
+v becomes non-separably coupled with other variables, so these results no longer apply. We therefore impose q(v) = Q 
+
+> i,j
+
+q(vij ) explicitly and specify tractable variational families for 
+
+q(vij ) and q(η) in Section 5. Although η can be marginalized as in Cabral et al. (2024), we do not do so for simplicity and optimization stability. Marginalizing η may further accelerate convergence and reduce underestimation of uncertainty. 10 4 Improving Gaussianization via skewness reduction 
+
+In hierarchical models, local conditional posteriors may remain non-Gaussian even as n
+
+grows, since each bi is informed mainly by yi. Non-Gaussian likelihoods, near-boundary data, and weak within-unit signal can further leave p(b | θg, y ) skewed or heavy-tailed. In Section 3.1, an affine transformation maps b to normalized variables ˜b that are closer to standard Gaussian, but residual skewness and tail mismatch may persist. Here, we further Gaussianize ˜b by reducing skewness, producing b∗. Specifically, we represent p(˜b | θg, y ) as a 
+
+K-component skew-symmetric density and derive a stochastic representation that enables simulation of b∗ from the symmetrized density. This yields a closed form reparametrized joint density, allowing ELBO optimization via the reparametrization trick. We refer to the approach as KNorm-RVB, as it augments RVB’s normalization with skewness reduction via a K-component skew-symmetric representation. We first review skew-symmetric densities, introduce the K-component extensions and then derive the reparametrized log joint density analytically. We present the method for latent Gaussian models, and the extension to latent non-Gaussian models follows by additionally conditioning on mixing variables v.
+
+4.1 Skew-symmetric representation and construction 
+
+Let ˆθ ∈ Rd be fixed. Wang et al. (2004) establish two complementary results on constructing and representing skew-symmetric densities. First, let fˆθ : Rd → R+ be a probability density function (pdf) that is symmetric about ˆθ, which means f (θ) = f (2 ˆθ − θ), and wˆθ : Rd →
+
+[0 , 1] be a skewing function satisfying wˆθ(θ) + wˆθ(2 ˆθ − θ) = 1. Then 
+
+g(θ) = 2 fˆθ(θ)wˆθ(θ),
+
+is a pdf obtained by a skew-symmetric construction , where skewness is introduced via wˆθ(·)without additional parameters. Independent samples from g can be obtained by a rejection-free sampler: draw x ∼ fˆθ and u ∼ Unif[0 , 1] independently, and set θ = x if u ≤ wˆθ(x), 11 and θ = 2 ˆθ − x otherwise. Second, any pdf g : Rd → R+ admits a unique skew-symmetric representation of the form g(θ) = 2 fˆθ(θ)wˆθ(θ), where fˆθ(θ) = {g(θ) + g(2 ˆθ − θ)}/2 is a pdf symmetric about ˆθ and wˆθ(θ) = g(θ)/{g(θ) + g(2 ˆθ − θ)} is a skewing function. 
+
+4.2 K-component extensions 
+
+The skew-symmetric representation of Wang et al. (2004) symmetrizes g by averaging two components, g(θ) and g(2 ˆθ − θ). We extend this idea to a K-component skew-symmetric representation by averaging over 2 ≤ K ≤ 2d components. This can be viewed as the finite group special case of the symmetry modulation framework (Jupp et al. 2016). Figure 1 (left) depicts θ and its point-reflection 2 ˆθ − θ for d = 2, along with two points obtained by reflecting θ about ˆθ in one coordinate while holding the other fixed. Averaging over these four reflections gives the four-component symmetrized density, 
+
+f4,ˆθ(θ) = 14
+
+g
+
+θ1
+
+θ2
+
+ + g
+
+2ˆθ1 − θ1
+
+θ2
+
+ + g
+
+ θ1
+
+2ˆθ2 − θ2
+
+ + g
+
+2ˆθ1 − θ1
+
+2ˆθ2 − θ2
+
+ .
+
+To illustrate the effect of increasing K, let g(θ) be a highly asymmetric CSN density (details in Section 5). Figure 1 (right) shows that f2,ˆθ = {g(θ) + g(2 ˆθ − θ)}/2 enforces only point symmetry about ˆθ. In contrast, f4,ˆθ also imposes coordinate-wise reflection symmetry about ˆθ, producing a shape closer to an elliptical Gaussian-like form. ( ෠𝜃 1, ෠𝜃 2)                 
+
+> (𝜃 1,𝜃 2)(2෠𝜃 1−𝜃 1,𝜃 2)
+> (2෠𝜃 1−𝜃 1,2෠𝜃 2−𝜃 2)(𝜃 1,2෠𝜃 2−𝜃 2)g
+
+( θ)      
+
+> 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.08 0.09 0.1 0.11 0.15
+> −3 −2 −1 012−2  −1  0 1 2 3
+> f2, θ^
+
+(θ)      
+
+> 0.01 0.02 0.03 0.04 0.05 0.06 0.08 0.1
+> −2 01234−4  −3  −2  −1  0 1 2
+> f4, θ^
+
+(θ)     
+
+> 0.01 0.02 0.03 0.04 0.05 0.06 0.07 0.09
+> −2 01234−4  −3  −2  −1  0 1 2
+
+Figure 1: Left: Blockwise reflections about ˆθ. Right: CSN density g(θ) with μθ = 0, Cθ = I2 and shape parameter γ = ( −5, 5) ⊤, and symmetrized densities f2,ˆθ(θ) and f4,ˆθ(θ). 
+
+12 More generally, let B1, . . . , B m be a partition of {1, . . . , d } and ε = ( ε1, . . . , ε m)⊤ with 
+
+εj ∈ {− 1, 1}. Define S(ε) = blockdiag( ε1I|B1|, . . . , ε mI|Bm|), where |Bj | denotes the size of block Bj . For m = 1 , . . . , d , the induced blockwise reflection group is 
+
+Gm = {S(ε) : ε ∈ {− 1, 1}m} = {S1, . . . , S K }, (6) a finite abelian group of orthogonal matrices under matrix multiplication, with identity I
+
+and cardinality K = |G m| = 2 m. We also define the trivial group G0 = {Id}. The reflections induced by Gm about ˆθ are 
+
+Tk, ˆθ(θ) = ˆθ + Sk(θ − ˆθ), k = 1 , . . . , K. 
+
+The set TGm,ˆθ = {T1,ˆθ, . . . , T K, ˆθ} is a finite abelian group of bijections under composition, where Tj, ˆθ ◦ Tk, ˆθ(θ) = ˆθ + Sj Sk(θ − ˆθ). A pdf f : Rd → R+ is said to be TGm,ˆθ-invariant if f {Tk, ˆθ(θ)} = f (θ) ∀ θ ∈ Rd and k = 1 , . . . , K . A function w : Rd → [0 , 1] is called a 
+
+K-component skewing function if PKk=1 w{Tk, ˆθ(θ)} = 1 ∀ θ ∈ Rd.
+
+Proposition 1 (K-component skew-symmetric construction) . Let fK, ˆθ : Rd → R+ be a pdf that is TGm,ˆθ-invariant for any ˆθ ∈ Rd and wK, ˆθ be a K-component skewing function. Then a function from Rd → R+ of the form g(θ) = Kf K, ˆθ(θ)wK, ˆθ(θ) is a pdf. 
+
+Proposition 2 (K-component skew-symmetric representation) . Let ˆθ be any point in Rd,
+
+Gm be defined in (6) and g : Rd → R+ be a pdf. Then g can be expressed as 
+
+g(θ) = Kf K, ˆθ(θ)wK, ˆθ(θ),
+
+where wK, ˆθ(θ) = g(θ)/ PKk=1 g{Tk, ˆθ(θ)} is a K-component skewing function, with wK, ˆθ(θ) = 1/K if PKk=1 g{Tk, ˆθ(θ)} = 0 and fK, ˆθ(θ) = 1
+
+> K
+
+PKk=1 g{Tk, ˆθ(θ)} is a TGm,ˆθ-invariant pdf. This representation is unique on the support of g.
+
+Propositions 1 and 2 extend Propositions 1 and 3 of Wang et al. (2004) to K compo-nents. Proposition 1 shows that a TGm,ˆθ-invariant pdf multiplied by a K-component skewing 13 function and rescaled by K is a valid pdf. Proposition 2 establishes the converse. Given Gm
+
+and ˆθ, any pdf admits a unique K-component skew-symmetric representation. The Wang et al. (2004) results are recovered when m = 1 and G1 = {I, −I}, while m = d gives K = 2 d,which is typically prohibitive for large d. Section 4.4 discusses practical choices of m.Proposition 3 provides rejection-free samplers for (i) the K-component skew-symmetric density and (ii) its symmetrized TGm,ˆθ-invariant density, generalizing as well as reversing the scheme of Wang et al. (2004). To approximate a generic posterior π(θ) = p(θ, y )/p (y)using a K-component skew-symmetric density, Theorem 1 characterizes the K-component skewing function that minimizes the KLD, extending results in Pozza et al. (2026) from the 2-component to the general K-component case. 
+
+Proposition 3 (Stochastic representations) . Let g(θ) = Kf K, ˆθ(θ)wK, ˆθ(θ) be the K-component skew-symmetric density constructed in Proposition 1. (i) Sample x ∼ fK, ˆθ. Conditional on x, draw J ∈ { 1, . . . , K } with Pr( J = k | x) = 
+
+wK, ˆθ{Tk, ˆθ(x)} for k = 1 , . . . , K . Then θ = TJ, ˆθ(x) has pdf g.(ii) Draw θ ∼ g and U ∼ Unif {1, . . . , K } independently. Then x = TU, ˆθ(θ) has pdf fK, ˆθ.
+
+Theorem 1 (Optimal skewing function) . Given reflection point ˆθ, blockwise reflection group Gm and TGm,ˆθ-invariant pdf ¯qK, ˆθ(θ), π(θ) = p(θ, y )/p (y) is approximated by qK, ˆθ(θ) = 
+
+K ¯qK, ˆθ(θ)wK, ˆθ(θ), where wK, ˆθ(θ) is a K-component skewing function. The K-component skewing function minimizing KL( π∥qK, ˆθ) is 
+
+w∗
+
+> K, ˆθ
+
+(θ) = p(θ, y )
+
+PKk=1 p{Tk, ˆθ(θ), y }.
+
+4.3 Reducing skewness in normalized local conditional posterior 
+
+In Section 3.1, we normalize the local variables via ˜b = L⊤(b − ˆb), where ˆb is the mean of a Gaussian approximation to p(b | θg, y ) with precision Q + H(ˆb) = LL ⊤. Here, we seek to re-duce residual skewness in ˜b by leveraging the K-component skew-symmetric representation 14 Procedure 1 KNorm-RVB (normalization and K-component skewness reduction)  
+
+> 1:
+
+Normalization: ˜b = L⊤(b − ˆb), where ˆb is mode of p(b | θg, y ) and LL ⊤ = Q + H(ˆb).  
+
+> 2:
+
+Skewness reduction: Sample S∗ ∼ Unif( Gm) and set b∗ = c + S∗(˜b − c), for reflection point c and blockwise reflection group Gm.of p(˜b | θg, y ) ensured by Proposition 2, for some reflection point c and blockwise reflection group Gm. Proposition 3 (ii) then yields a draw b∗ from the corresponding TGm,c -invariant density, and we later show that b∗ is closer to N( c, I ) than ˜b.Adapting Section 4.2 with θ replaced by ˜b, let B1, . . . , B m be a partition of {1, . . . , N }
+
+and c ∈ RN denote the reflection point, whose choice is discussed in Section 5. Procedure 1 summarizes the construction of b∗ from b. Step 1 is deterministic and maps b to ˜b via the affine transformation of Section 3.1. Step 2 is stochastic and targets residual skewness. It treats ˜b as a draw from a K-component skew symmetric density as in Proposition 2, and applies Proposition 3 to sample from the TGm,c -invariant pdf, 1
+
+> K
+
+PKk=1 p˜b|θg ,y {Tk,c (˜b)}, where 
+
+pX (·) denotes the pdf of X. Concretely, step 2 samples S∗ uniformly from Gm and applies the corresponding reflection to ˜b. We refer to Procedure 1 as KNorm-RVB, since it augments normalization with skewness reduction induced by a K-component skew-symmetric repre-sentation. The generalized RVB method of Section 3 is recovered when Gm = G0 = {IN }.Theorem 2 derives (i) the conditional density of b∗ and (ii) the reparametrized log joint density, by integrating out the uniformly distributed reflection index in step 2 of Procedure 1. These analytic expressions enable gradient computation by automatic differentiation and ELBO optimization via the reparametrization trick. Part (iii) shows that larger blockwise reflection groups yield stronger skewness reduction, as b∗ becomes closer to N( c, I ) in KLD, where ϕ(· | μ, Σ) denotes the pdf of N( μ, Σ). This motivates using a larger K and aligns with Figure 1, where averaging over four rather than two components produces a symmetrized density that is more nearly Gaussian. Part (iv) is a special case of (iii) and guarantees 15 improvement from skewness reduction, showing that b∗ is always closer to N( c, I ) than ˜b.
+
+Theorem 2 (Effects of skewness reduction) . Let b∗ be obtained from b via Procedure 1. (i) p(b∗ | θg, y ) = 1
+
+> K|L|
+
+PKk=1 pb|θg ,y [ˆb + L−⊤ {c + Sk(b∗ − c)}].(ii) Let θ∗ = ( b∗⊤ , θ ⊤ 
+
+> g
+
+)⊤.
+
+log p(y, θ ∗) = log p(θg) + log 1
+
+K|L|
+
+> K
+
+X
+
+> k=1
+
+pb,y |θg [ˆb + L−⊤ {c + Sk(b∗ − c)}, y ]
+
+!
+
+(7) 
+
+(iii) Let H and G be blockwise reflections groups acting on ˜b with reflection point c, with H ≤ G (H is a subgroup of G). Define pG (z | θg, y ) = 1
+
+> |G|| L|
+
+P 
+
+> S∈G
+
+pb|θg ,y [ˆb+L−⊤ {c+S(z −c)}].Then KL {ϕ(· | c, I ) ∥ pG (· | θg, y )} ≤ KL {ϕ(· | c, I ) ∥ pH(· | θg, y )}, with strict inequality unless pH(· | θg, y ) is TG,c -invariant. (iv) KL {ϕ(b∗ | c, I ) ∥ p(b∗ | θg, y )} ≤ KL {ϕ(˜b | c, I ) ∥ p(˜b | θg, y )}. The inequality is strict unless p˜b|θg ,y (z) = p˜b|θg ,y {c + Sk(z − c)} ∀ k = 1 , . . . , K .
+
+Theorem 2 extends directly to the latent non-Gaussian model by additionally condi-tioning on the mixing variables v, and replacing ˆb with the mode ˆbNG of p(b | θg, v, y ) and L
+
+with the Cholesky factor LNG of QNG + H(ˆbNG ). The log joint density of the reparametrized latent non-Gaussian model with variables θ∗ = ( b∗⊤ , θ ⊤ 
+
+> g
+
+, v ⊤, η )⊤ is log p(y, θ ∗) = log 1
+
+K|LNG |
+
+> K
+
+X
+
+> k=1
+
+pb,y |v,θ g [ˆbNG + L−⊤ 
+
+> NG
+
+{c + Sk(b∗ − c)}, y ]
+
+!
+
+(8) + log p(θg) + log p(v | η) + log p(η).
+
+To illustrate the gains from skewness reduction, we simulate data from a Bernoulli GLMM with linear predictor ηij = −5 + 2 xij + bi, where xij ∼ Bernoulli(0 .5) and bi ∼
+
+N(0 , 32), for i = 1 , . . . , 500, j = 1 , . . . , 3. Figure 2(a) shows that the 2-component skew-symmetric approximation of p(b1 | θg, y ) based on Theorem 1 substantially improves on the Gaussian approximation in Section 3.1. Figure 2(b) compares 10,000 draws of ˜b1 and 
+
+b∗ 
+
+> 1
+
+from Procedure 1, taking c = 0. The Q-Q plot aligns with Theorem 2(iv), showing that skewness reduction yields b∗ 
+
+> 1
+
+much closer to a standard Gaussian than normalized-only ˜b1.16 −10 −5 0 5 10 0.00  0.05  0.10  0.15      
+
+> Conditional posterior
+> b1
+> True posterior Gaussian Skew−symmetric
+> (a)
+> −4 −2 024−4  −2  0 2 4
+> Normal Q−Q plot
+> Theoretical quantiles Sample quantiles
+> b~1b1*
+> (b)
+
+Figure 2: Bernoulli GLMM. (a) Conditional posterior p(b1 | θg, y ) and its Gaussian and skew-symmetric approximations. (b) Q-Q plot of draws of ˜b1 and b∗
+
+> 1
+
+.
+
+A closely related approach is GLOSS-VA (Kock et al. 2026) for latent Gaussian mod-els with conditionally independent local variables. It builds on a conditionally structured Gaussian variational family, q(θg) Q 
+
+> i
+
+p(bi | θg) (Tan et al. 2020), and introduces skewness via skewing functions for skew-symmetric densities, optimizing these jointly with the base-line variational parameters rather than as a post hoc correction (Pozza et al. 2026). While GLOSS-VA injects skewness and samples from skew-symmetric densities via the stochastic representation of Wang et al. (2004), we instead remove skewness, using Proposition 3 to sample from the symmetrized density and Theorem 2 to marginalize the auxiliary sampling variables. A key distinction is that GLOSS-VA remains sensitive to parametrization, while the KNorm-RVB normalization can be viewed as a generalization of partial noncentering, which effectively eliminates the need to choose a parametrization. 
+
+4.4 Choice of blockwise reflection group 
+
+The blockwise reflection group Gm is defined by a partition B1, . . . , B m of {1, . . . , N } with 1 ≤ m ≤ N , which induces K = 2 m blockwise reflections. While Theorem 2 favors large 
+
+m and hence large K for stronger skewness reduction, this can be computationally pro-hibitive, because evaluating the reparametrized log joint density in (7) and its gradients via automatic differentiation scales linearly in K, which is exponential in m.17 A key exception arises when the conditional posterior factorizes, p(b | θg, y ) = Qni=1 p(bi |
+
+θg, y ), e.g., in GLMMs with conditionally independent subject-level random effects. In this case, the Cholesky factor L = blockdiag( L1, . . . , L n)⊤. Taking m = n with subjectwise blocks B1, . . . , B n yields K = 2 n blockwise reflections, but from Theorem 2(i) and (6), log p(b∗ | θg, y ) = log 
+
+ 1
+
+|L|2n
+
+X 
+
+> ε∈{− 1,1}n
+
+pb|θg ,y [ˆb + L−⊤ {c + S(ε)( b∗ − c)}]
+
+
+
+= log 
+
+ 1
+
+|L|2n
+
+X
+
+> ε∈{− 1,1}n
+
+Y ni=1 pbi|θg ,y [ˆbi + L−⊤  
+
+> i
+
+{ci + εi(b∗ 
+
+> i
+
+− ci)}]
+
+
+
+=
+
+> n
+
+X
+
+> i=1
+
+log 
+
+h
+
+pbi|θg ,y (ˆbi + L−⊤  
+
+> i
+
+b∗ 
+
+> i
+
+) + pbi|θg ,y {ˆbi + L−⊤  
+
+> i
+
+(2 ci − b∗ 
+
+> i
+
+)}
+
+i
+
+−
+
+> n
+
+X
+
+> i=1
+
+log |Li| − n log 2 .
+
+Thus, the computational cost grows linearly in n rather than exponentially. When Q is not block diagonal, the conditional posterior does not factorize across sub-jects, so m = n will require K = 2 n reflections and quickly becomes infeasible. We therefore partition {1, . . . , N } into m ≪ n nearly equal blocks of sizes s1, . . . , s m, keeping each sub-ject’s observations within one block. Setting m = 1 recovers the standard skew-symmetric representation, while 1 < m ≪ n improves Gaussianization with manageable cost. 
+
+# 5 Variational families and optimization algorithm 
+
+This section specifies variational families for the local and global variables, as well as for the tail parameter and mixing variables in the latent non-Gaussian model. We then present the ELBO optimization algorithm for both model classes. Incorporating the skewness reduction from Section 4.3, we work with reparametrized variables θ∗. For the latent Gaussian model, 
+
+θ∗ = ( b∗⊤ , θ ⊤ 
+
+> g
+
+)⊤ and qλ(θ∗) = q(θg) Q 
+
+> i
+
+q(b∗ 
+
+> i
+
+), whereas for the latent non-Gaussian model, 
+
+θ∗ = ( b∗⊤ , θ ⊤ 
+
+> g
+
+, v ⊤, η )⊤ and qλ(θ∗) = q(η)q(θg) Q 
+
+> i
+
+q(b∗ 
+
+> i
+
+) Q 
+
+> j
+
+q(vij ). We use the same mean-field variational approximations as in Section 3 with ˜bi replaced by b∗ 
+
+> i
+
+.Since KNorm-RVB makes ˜b and b∗ approximately Gaussian, we take q(˜bi) and q(b∗ 
+
+> i
+
+) as N( μi, C iC⊤ 
+
+> i
+
+). In contrast, the posteriors of θg, η and vij may be skewed or heavy-tailed, 18 motivating richer variational families. We map any constrained variables to R, e.g., ℓη =log( η) and ℓvij = log( vij ), and adopt the CSN subclass (Tan & Chen 2025) for q(θg), 
+
+q(ℓη) and q(ℓvij ). This subclass captures skewness while remaining tractable, and admits a bounding line in each dimension. It reduces to the skew normal (SN, Azzalini & Capitanio 1999) in one dimension. More flexible choices, such as skew-t families or normalizing flows (Papamakarios et al. 2021), can likewise be paired with KNorm-RVB. As the CSN subclass is only recently introduced in VI, we briefly summarize the key properties used here. For x ∈ Rd, write x = ( xi) and let Dx = diag( x). The CSN subclass is defined by an affine transformation of normalized independent univariate SN random variables. Let ri ∼ SN(0 , 1, γ i) independently for i = 1 , . . . , d , where γi ∈ R is the shape parameter, and define r = ( ri) and γ = ( γi). Then E( r) = c0δ and Cov( r) = D2 
+
+> τ
+
+, where 
+
+c0 = p2/π , δ = ( δi) with δi = γi/p1 + γ2 
+
+> i
+
+and τ = ( τi) with τi = p1 − c20δ2 
+
+> i
+
+. We normalize 
+
+r via z = D−1 
+
+> τ
+
+(r − c0δ) and define ϑ = μϑ + Cϑz, so that E( ϑ) = μϑ and Cov( ϑ) = CϑC⊤
+
+> ϑ
+
+(with invertible Cϑ). By change of variables from r to ϑ,log q(ϑ) = d log(2) − d
+
+2 log(2 π) − r⊤r
+
+2 − log |Cϑ| +
+
+> d
+
+X
+
+> i=1
+
+{log Φ( γiri) + log τi},
+
+where r = Dτ C−1 
+
+> ϑ
+
+(ϑ − μϑ) + c0δ and Φ( ·) is the standard normal distribution function. To use the reparametrization trick in ELBO optimization, write ϑ = μϑ + Cϑ(Dκw2 +
+
+Dα ew1), where w1, w 2
+
+> iid
+
+∼ N(0 , I d), ew1 = |w1| − c01, κ = ( κi) with κi = {1 + (1 − c20)γ2 
+
+> i
+
+}−1/2
+
+and α = ( αi) with αi = δi/τ i. Tan & Chen (2025) note that the CSN subclass ELBO has a stationary point at γ = 0 which can hinder optimization, and propose a centered parametrization in terms of μϑ, Cϑ and α3 = ( α3 
+
+> i
+
+) (Pearson’s index of skewness) instead of γ.They also argue that restricting Cϑ to a lower triangular Cholesky factor limits permissible rotations, and can reduce the ability of q(ϑ) to capture posterior asymmetries. Instead, they recommend an LU decomposition to preserve invertibility during stochastic optimization. Accordingly, we set Cϑ = LϑUϑ, where Lϑ is lower triangular and Uϑ is upper triangular 19 Algorithm 1 Stochastic optimization of ELBO in KNorm-RVB 
+
+Input: Variational parameter λ, stepsize {ρs}Ts=1 , and blockwise reflection group Gm 
+
+> 1:
+
+for s = 1 , . . . , T do  
+
+> 2:
+
+b∗ 
+
+> i
+
+= μi + Cizi for zi ∼ N(0 , I ) ∀ i and set c = ( μ⊤ 
+
+> 1
+
+, . . . , μ ⊤ 
+
+> n
+
+)⊤ 
+
+> 3:
+
+Latent Gaussian Latent non-Gaussian  
+
+> 4:
+
+Draw ϵ ∼ π(ϵ) and θg ← t(ϵ, λ ) Draw ϵ ∼ π(ϵ) and ( θg, v, η ) ← t(ϵ, λ ) 
+
+> 5:
+
+θ∗ ← (b∗⊤ , θ ⊤ 
+
+> g
+
+)⊤ θ∗ ← (b∗⊤ , θ ⊤ 
+
+> g
+
+, v ⊤, η )⊤ 
+
+> 6:
+
+Evaluate log p(y, θ ∗) using (7) Evaluate log p(y, θ ∗) using (8)  
+
+> 7:
+
+Compute an ELBO estimate bL ← log p(y, θ ∗) − log qλ(θ∗) 
+
+> 8:
+
+Update λ ← λ + ρs b∇λL, where b∇λL ← ∇ λθ∗ {∇ θ∗ log p(y, θ ∗) − ∇ θ∗ log qλ(θ∗)} 
+
+> 9:
+
+end for 
+
+with unit diagonal, and optimize {μϑ, L ϑ, U ϑ, α 3} as the variational parameters of q(ϑ). Algorithm 1 summarizes stochastic optimization of the ELBO for KNorm-RVB in a gen-eral setting, where q(θg), q(ℓη) and q(ℓvij ) need not lie in the CSN subclass. We collect all variational parameters in λ and form an unbiased estimate of ∇λL using the reparametriza-tion trick with sticking-the-landing (see section 2). The reflection point c is set to the mean (μ⊤ 
+
+> 1
+
+, . . . , μ ⊤ 
+
+> n
+
+)⊤ of the Gaussian variational approximation for b∗, so c is updated jointly with the other variational parameters in Algorithm 1. Although q(θ∗) is defined in terms of b∗, posterior draws of original local variables b can be recovered using Theorem 1 and Proposition 3(i), and the sampling algorithm is given in Procedure S1 in the supplement. 
+
+# 6 Exact recovery of mean and correlation matrix 
+
+Given a reflection point c and the blockwise reflection group Gm (m ≥ 1), KNorm-RVB (Procedure 1) normalizes local variables and reduces skewness, yielding b∗, which is closer to N( c, I ) than ˜b from RVB by Theorem 2(iv). We next study the symmetries of b∗ induced 20 by KNorm-RVB. Following Margossian et al. (2024), we analyze VI robustness to mis-specification (when the true posterior lies outside the variational family) in settings where 
+
+p(b∗ | θg, y ) satisfies symmetry properties and q(b∗) is a symmetry-preserving location-scale family. These results quantify KNorm-RVB’s gains over RVB, inform the choice of q(θ∗), and guarantee recovery of the true posterior mean and correlation matrix under regularity conditions. We focus on the latent Gaussian model with θ∗ = ( b∗⊤ , θ ⊤ 
+
+> g
+
+), and extensions to latent non-Gaussian models follow by additionally conditioning on the mixing variables. We begin by defining the variational family and relevant symmetry notions. Throughout, we assume q(θ∗) = q(b∗)q(θg), and let Q denote the variational family for q(b∗). For the analysis, we assume p(b∗ | θg, y ) is differentiable, log p(b∗ | θg, y ) and all q ∈ Q satisfy regularity conditions permitting differentiating under the integral sign, each q ∈ Q has finite moments of all orders, and ∥∇ b∗ log p(b∗ | θg, y )∥ is bounded by a polynomial in ∥b∗∥.
+
+Definition 1. Let q0 be a base pdf on RN . A location-scale family contains densities of the form qν,S (x) = q0
+
+ S−1/2(x − ν) |S|−1/2 ∀ x ∈ RN , for any location ν ∈ RN and positive definite scale matrix S ∈ RN ×N .
+
+Definition 2. A function f : RN → R is even-symmetric about ν ∈ RN if f (ν + x) = 
+
+f (ν − x) ∀ x ∈ RN , and odd-symmetric about ν ∈ RN if f (ν + x) = −f (ν − x) ∀ x ∈ RN .
+
+Definition 3. A pdf f on RN is spherically symmetric if f (x) depends on x only through 
+
+∥x∥. That is, if ∥x1∥ = ∥x2∥, then f (x1) = f (x2).
+
+Definition 4. A pdf f on RN is elliptically symmetric about ν ∈ RN if ∃ a positive definite matrix M ∈ RN ×N such that the pdf of M −1/2(x − ν) is spherically symmetric for x ∼ f .Note: Cor( xi, x j ) = Mij /pMii Mjj , so M determines the correlation matrix. 
+
+Theorem 3 highlights how KNorm-RVB’s skewness reduction induces TGm,c -invariance in 
+
+p(b∗ | θg, y ). The resulting even-symmetry about c forces the local posterior mean to equal c
+
+21 and the local-global posterior cross-covariance to be exactly zero whenever these moments exist. This is stronger than RVB’s normalization, which yields ˜b that is only approximately standard Gaussian. These results motivate the variational factorization q(θ∗) = q(b∗)q(θg). and the setting of c to be the local variational mean. 
+
+Theorem 3. The conditional posterior p(b∗ | θg, y ) is TGm,c -invariant and even-symmetric about c. This implies that E (b∗ | θg, y ) = E(b∗ | y) = c and Cov( b∗, θ g | y) = 0 provided these moments exist. 
+
+Theorem 4 (Exact recovery of mean) . Let qν,λ (θ∗) = qλb∗ (b∗ − ν)qλg (θg), where qλb∗ is a pdf on RN that is even-symmetric about the origin and ν ∈ RN is a location parameter. For any given λ = ( λ⊤ 
+
+> b∗
+
+, λ ⊤ 
+
+> g
+
+)⊤, KL {qν,λ (θ∗)∥p(θ∗ | y)} has a stationary point at ν = c, which is unique if log p(b∗ | θg, y ) is concave on RN almost everywhere (a.e.) with respect to qλg and strictly concave on a nonempty open set with positive probability under qλg .
+
+Theorem 4 shows that under a location variational family Q with even-symmetry, MFVI recovers the mean of p(b∗ | θg, y ) exactly. This supports using a Gaussian variational family for b∗. Correlation recovery requires stronger symmetry. Theorem 5 shows that under a location-scale variational family Q, MFVI recovers the covariance matrix up to a scale factor and therefore recovers the correlation matrix when p(b∗ | θg, y ) is elliptically symmetric about c. The proofs of Theorems 4 and 5 follow Theorems 8 and 10 of Margossian & Saul (2025 b) and rely on their Lemma 13. 
+
+Theorem 5 (Exact recovery of correlation matrix) . Let qν,S,λ g (θ∗) = qν,S (b∗)qλg (θg), where 
+
+Q = {qν,S } is the location-scale family (Definition 1) with a spherically symmetric base pdf 
+
+q0. If p(b∗ | θg, y ) is elliptically symmetric about c with fixed scale matrix M a.e. with respect to qλg , and log p(b∗ | θg, y ) is concave on RN a.e. with respect to qλg and strictly concave on a nonempty open set with positive probability under qλg , then KL {qν,S,λ g (θ∗)∥p(θ∗ | y)}
+
+has a unique minimizer at ν = c and S = γ2M for some γ > 0 for any given λg.
+
+22 By Theorem 3, KNorm-RVB’s skewness reduction enforces even-symmetry about c in 
+
+p(b∗ | θg, y ). This suffices for MFVI to recover the mean exactly when Q is restricted to even-symmetric densities (Theorem 4). However, exact recovery of the correlation matrix requires the stronger property that p(b∗ | θg, y ) be elliptically symmetric about c for a location-scale family Q (Theorem 5), which KNorm-RVB does not guarantee. Nevertheless, KNorm-RVB’s normalization and skewness reduction tend to steer the distribution of b∗
+
+toward N( c, I ), and thus toward elliptical symmetry. Theorem 2(iii) further suggests that this Gaussianizing effect strengthens as the blockwise reflection group grows. Thus, when 
+
+p(b∗ | θg, y ) is close to N( c, I ), a Gaussian approximation centered at c recovers the true center and can approximate the correlation structure well. Remaining discrepancy may be due to residual scale mismatch, tail behavior, or higher-order departures from Gaussianity. 
+
+# 7 Applications 
+
+We evaluate Algorithm 1 on GLMMs, mixed multinomial logit (MMNL) models, SAR models, and stochastic volatility models, covering both Gaussian and non-Gaussian latent fields. We compare KNorm-RVB (normalization plus skewness reduction) with RVB (nor-malization only), INLA for latent Gaussian models, structured variational inference (SVI, Cabral et al. 2024) for latent non-Gaussian models, and GLOSS-VA for latent Gaussian models with conditionally independent local variables. For RVB and KNorm-RVB, the suffix -G or -CSN indicates whether the variational family for non-local variables is Gaussian or from the CSN subclass. For KNorm-RVB, the blockwise reflection group size K is shown in parentheses. For GLMMs and MMNL models, the conditional local posterior factorizes, so K = 2 n unless stated otherwise. We run RVB and KNorm-RVB for 50,000 iterations, using Adam (Kingma & Ba 2015) with default settings. For a warm start, CSN variational parameters are initialized from a 23 fitted Gaussian variational approximation. As a gold standard, we run MCMC using the No-U-Turn Sampler in RStan using two parallel chains of 50,000 iterations each, discarding the first half of each chain as burn-in. All experiments are run on a 16GB Apple M1 machine using R and Python 3.14.3 with JAX 0.92. Multivariate accuracy relative to MCMC is assessed by the maximum mean discrepancy (MMD) criterion (Zhou et al. 2023). We define M ∗ = − log {max(MMD 2
+
+> u
+
+, 0) + 10 −5}, where MMD 2 
+
+> u
+
+= 1
+
+m(m − 1) 
+
+> m
+
+X
+
+> i̸=j
+
+h
+
+k x(i) 
+
+> v
+
+, x(j)
+
+> v
+
+ + k x(i) 
+
+> g
+
+, x(j)
+
+> g
+
+ − k x(i) 
+
+> v
+
+, x(j)
+
+> g
+
+ − k x(j) 
+
+> v
+
+, x(i)
+
+> g
+
+i
+
+is an unbiased estimate of the squared MMD. Here x(i) 
+
+> v
+
+and x(i) 
+
+> g
+
+denote draws from the variational approximation and MCMC respectively, and k(·, ·) is the radial basis function kernel. We set m = 1000 and compute M ∗ over 50 repetitions, with larger values indicating closer agreement with the target. We do not report M ∗ for SVI because INLA would need to refit the model and generate ( θg, b ) draws for each sampled v, which is computation-ally intensive. Alternatively, we report two marginal diagnostics, the absolute difference in posterior means and ratio of posterior standard deviations, both relative to MCMC. The mean Monte Carlo ELBO estimate, ¯L, computed from 1000 simulations, also serves as a diagnostic for how well different variational methods approximate the true posterior. 
+
+7.1 Generalized linear mixed model 
+
+Let yi = ( yi1, . . . , y in i )⊤ denote the observations for subject i, i = 1 , . . . , n . In a GLMM, 
+
+yij follows an exponential family distribution, and g(E( yij )) = ηij = X⊤ 
+
+> ij
+
+β + Z⊤ 
+
+> ij
+
+bi, where 
+
+g(·) is a link function, Xij ∈ Rp and Zij ∈ Rr are covariates, β ∈ Rp are fixed effects and 
+
+biiid 
+
+∼ N(0 , B −1) are random effects. Stacking b = ( b⊤ 
+
+> 1
+
+, . . . , b ⊤ 
+
+> n
+
+)⊤ gives b ∼ N(0 , Q −1) with Q =blockdiag( B, . . . , B ). For unconstrained optimization, we use the Cholesky factorization 
+
+B = LB L⊤ 
+
+> B
+
+, where LB is lower triangular with positive diagonal. Let L∗ 
+
+> B
+
+satisfy L∗ 
+
+> B,ii
+
+=log LB,ii and L∗ 
+
+> B,ij
+
+= LB,ij for i̸ = j, and define ζ = vech( L∗ 
+
+> B
+
+). The global variables are 24 −5.5 −5.0 −4.5 −4.0 −3.5 −3.0 0.0  0.2  0.4  0.6  0.8  1.0  1.2  1.4  Intercept              
+
+> −0.5 0.0 0.5 1.0 1.5 0.0  0.2  0.4  0.6  0.8  1.0  1.2  1.4  Gender
+> −2.0 −1.5 −1.0 −0.5 0.0 0.5 0.0  0.2  0.4  0.6  0.8  1.0  1.2  Race
+> 4 6 8 10
+> M*
+> 010000 30000 50000 −1000  −960  −920
+> ELBO
+> RVB−G KNorm−RVB−G(2) KNorm−RVB−G
+> MCMC RVB−G KNorm−RVB−CSN GLOSS−VA INLA
+> RVB−G KNorm−RVB−G(2) KNorm−RVB−G RVB−CSN KNorm−RVB−CSN GLOSS−VA INLA
+
+Figure 3: Polypharmacy latent Gaussian model. Marginal posteriors for selected global variables, boxplot for M ∗ and ELBO averaged over every 1000 iterations. 
+
+θg = ( β⊤, ζ ⊤)⊤, with prior N(0 , 100 I). For the latent non-Gaussian extension, Q = D⊤D
+
+with D = blockdiag( L⊤ 
+
+> B
+
+, . . . , L ⊤ 
+
+> B
+
+). The polypharmacy data set (Hosmer et al. 2013) follows 500 subjects annually for 7 years, yielding 7 binary drug-use responses per subject. Covariates include gender (male = 1, female = 0), race (non-White = 1, White = 0), log(age/10), outpatient mental health visit indicators (MHV1 = 1 for 1–5 visits, MHV2 = 1 for 6–14 visits, MHV3 = 1 for ≥ 15 visits; 0 otherwise), and an indicator for any inpatient mental health visits (yes=1, no=0). We fit a logistic random intercept model and consider KNorm-RVB with K ∈ { 2, 2n},corresponding to the standard and subjectwise skew-symmetric representations. Figure 3 summarizes results for the latent Gaussian model. In the first three marginal posterior plots, KNorm-RVB-CSN matches the MCMC benchmark most closely, improving on INLA, RVB-G and GLOSS-VA. The boxplots of M ∗ show that KNorm-RVB improves slightly on RVB when K = 2 and substantially when K = 2 n. Replacing the Gaussian varia-tional approximation for the global variables with the CSN subclass yields a further modest gain in M ∗. Overall, KNorm-RVB-G and KNorm-RVB-CSN achieve markedly higher M ∗
+
+than GLOSS-VA and INLA. The accuracy gains from RVB to KNorm-RVB by increasing 
+
+K from 1 to 2 to 2 n are also reflected in the ELBO trace plots for the Gaussian variant. For the latent non-Gaussian model, the first two panels of Figure 4 show that the nor-25 0.0  0.1  0.2  0.3    
+
+> Absolute mean difference
+> RVB−G KNorm−RVB−G(2) KNorm−RVB−G RVB−CSN KNorm−RVB−CSN SVI
+> 0.5  0.6  0.7  0.8
+> SD ratio
+> RVB−G KNorm−RVB−G(2) KNorm−RVB−G RVB−CSN KNorm−RVB−CSN SVI
+> 4.0  4.5  5.0  5.5  6.0  6.5
+> M*
+> RVB−G KNorm−RVB−G(2) KNorm−RVB−G RVB−CSN KNorm−RVB−CSN
+> 010000 30000 50000 −600  −550  −500  −450  ELBO
+> RVB−G KNorm−RVB−G(2) KNorm−RVB−G
+
+Figure 4: Polypharmacy latent non-Gaussian model. Boxplots of absolute mean difference, standard deviation ratios for log( v), and ELBO averaged over every 1000 iterations. malization used in RVB and KNorm-RVB, which renders the transformed local variables approximately independent of the mixing variables v, improves estimation of the marginal posterior mean, and especially the variance, of log( v) relative to SVI. Increasing the block-wise reflection group size from K from 2 to 2 n yields further accuracy gains, which are also evident in the M ∗ and ELBO plots. Overall, KNorm-RVB-CSN attains the highest M ∗,with KNorm-RVB-G a close second, highlighting the benefit of combining normalization with skewness reduction. 
+
+7.2 Mixed multinomial logit model 
+
+Let yit ∈ {1, . . . , J } denote the alternative chosen by subject i on choice occasion 
+
+t for i = 1, . . . , n and t = 1, . . . , T . In the MMNL model, P( yit = j | bi, β ) =exp( Uitj )/ PJk=1 exp( Uitj ), with Uitj = X⊤ 
+
+> itj
+
+β + Z⊤ 
+
+> itj
+
+bi, where β are fixed effects and bi are subject-specific random effects. We consider the latent Gaussian model with biiid 
+
+∼ N(0 , B −1)with the prior by Huang & Wand (2013), where β ∼ N(0 , v 0I), B−1 | a1, . . . , a r ∼
+
+IW {ν+r−1, 2νdiag( a1, . . . , a r)} and aℓ ∼ Gamma(1 /2, 1/A 2) for ℓ = 1 , . . . , r . Here, IW( ·, ·)denotes the inverse Wishart distribution, and we set v0 = 10 6, ν = 2 and A = 10 3. For un-26 −0.85 −0.80 −0.75 −0.70 −0.65 0 5 10  15  fixed price              
+
+> 0.95 1.00 1.05 1.10 1.15 1.20 1.25 0 2 4 6 8
+> well−known company
+> −7.2 −7.0 −6.8 −6.6 −6.4 −6.2 −6.0 0.0  0.5  1.0  1.5  2.0
+> time−of−day
+> 4 6 8 10
+> M*
+> MCMC RVB−G KNorm−RVB−CSN GLOSS−VA
+> RVB−G KNorm−RVB−G RVB−CSN KNorm−RVB−CSN GLOSS−VA
+
+Figure 5: Latent Gaussian model for electricity data. Marginal posteriors for selected global variables, boxplot for M ∗.
+
+constrained optimization, write B = LB L⊤ 
+
+> B
+
+and define ζ = vech( L∗ 
+
+> B
+
+), where L∗ 
+
+> B,ii
+
+= log LB,ii 
+
+and L∗ 
+
+> B,ij
+
+= LB,ij for i̸ = j. The global variables are θg = ( β⊤, ζ ⊤, log a1, . . . , log ar)⊤.We analyze the Electricity data from the mlogit R package (see e.g., Tan 2017), com-prising n = 361 residential customers and T = 4308 choice occasions in total. For each occasion t, the response yit records the selected supplier among J = 4 alternatives. Sup-plier attributes include fixed price, contract length, indicators for local and well-known suppliers, and time-of-day and seasonal rates. We include all attributes as fixed effects in the MMNL model, and allow a random effect for fixed price to capture heterogeneous price sensitivity. Since the conditional local posterior factorizes by respondent, we adopt a subjectwise reflection group with K = 2 n.For the latent Gaussian model, we compare RVB-G, RVB-CSN, KNorm-RVB-G and KNorm-RVB-CSN against MCMC, and include GLOSS-VA as an additional benchmark. We omit INLA because applying it to the MMNL likelihood will require a Poisson-trick rep-resentation (Baker 1994), which expands the data into alternative-level pseudo-observations and is substantially slower than the variational methods. Figure 5 shows that RVB-G and KNorm-RVB-CSN tack the MCMC marginal posteriors more closely than GLOSS-VA. The 
+
+M ∗ results are consistent with these plots, showing that RVB and KNorm-RVB outper-form GLOSS-VA, and KNorm-RVB improves upon RVB for both the Gaussian and CSN 27 Data RVB-G KNorm-RVB-G RVB-CSN KNorm-RVB-CSN Electricity −3951 .02 −3949 .57 −3950 .91 −3949 .51 SIDS 1044.24 1044.84 1048.63 1049.34 GBP 1109.87 1110.08 1109.98 1110.17 Table 1: Estimated ELBO, averaged over 1000 Monte Carlo simulations ( ¯L) for the latent non-Gaussian models. KNorm-RVB uses the largest K considered in each example. subclass variants, reflecting the benefit of the additional skewness reduction step. Table 1 shows that, for the latent non-Gaussian model, KNorm-RVB achieves higher mean Monte Carlo ELBO ¯L than RVB for both the Gaussian and CSN subclass variants. We do not report accuracy relative to MCMC because obtaining a reliable MCMC benchmark for this model is substantially more challenging and computationally intensive. 
+
+7.3 Spatial autoregressive model 
+
+Here we analyze the sudden infant death syndrome (SIDS) data (Cressie 2015), comprising the counts {yi} of SIDS across the n = 100 counties of North Carolina (1974–1978). We model yi | ηi ∼ Poisson( Eiηi), where Ei is the expected count (overall SIDS rate times births in county i) and log( ηi) = X⊤ 
+
+> i
+
+β + bi for i = 1 , . . . , n . The covariates Xi include an intercept and the proportion of non-White births (standardized to have mean 0 and variance 1). Here β are fixed effects and bi is a latent spatial effect. For an autoregressive prior (Kissling & Carl 2008, Ver Hoef et al. 2018) on b, let W be the row-standardized adjacency matrix (each entry is divided by its row sum) and define D = In − ρW with ρ ∈ (−1, 1). In the latent Gaussian case, Db = Z with Z ∼ N(0 , I ), implying b ∼ N(0 , Q −1) where Q = D⊤D.We reparametrize ρ = tanh( ϕ) and assign the prior θg = ( β⊤, ϕ )⊤ ∼ N(0 , 100 I). The latent non-Gaussian extension replaces the Gaussian driving noise Z by ϵ whose components are 28 6 7 8 9 10  11 
+
+M *    
+
+> −1.0 −0.5 0.0 0.5 1.0 0.0  0.5  1.0  1.5
+
+b30      
+
+> −0.6 −0.4 −0.2 0.0 0.2 0.4 0.0  0.5  1.0  1.5  2.0  2.5  3.0
+
+β0    
+
+> 0.0 0.2 0.4 0.6 0.8 0.0  0.5  1.0  1.5  2.0  2.5  3.0
+
+β1
+
+MCMC RVB−G KNorm−RVB−CSN(256) INLA 
+
+> RVB−G KNorm−RVB−G(2) KNorm−RVB−G(16) KNorm−RVB−G(256) RVB−CSN KNorm−RVB−CSN(256) INLA
+
+Figure 6: SIDS latent Gaussian model: Boxplots of M ∗ and marginal posteriors for b30 , β0
+
+and β1.independent NIG as in Section 3.2. Figure 6 shows that KNorm-RVB-G (2) achieves a higher M ∗ than RVB-G, and that M ∗
+
+increases further as the blockwise reflection group size grows from K = 2 to K = 256 for the latent Gaussian model. This suggests improved variational approximation under richer blockwise symmetrization, consistent with Theorem 2(iii). Moreover, all RVB and KNorm-RVB methods outperform INLA in terms of M ∗, indicating better multivariate accuracy. The marginal posterior plots of b30 , β0 and β1 also show that RVB-G and KNorm-RVB-CSN (256) are closer to MCMC than INLA. For the latent non-Gaussian model, we report only the best-performing KNorm-RVB variant with K = 256. The first panel in Figure 7 shows that RVB-G and KNorm-RVB-−4 −2 0 20.0  0.1  0.2  0.3  0.4 
+
+log (v1 )
+
+> 0.0  0.2  0.4  0.6  0.8  1.0  1.2
+> Absolute mean difference
+> 0.7  0.8  0.9  1.0  1.1  SD ratio
+
+MCMC RVB−G KNorm−RVB−CSN(256) SVI 
+
+> RVB−G KNorm−RVB−G(256) RVB−CSN KNorm−RVB−CSN(256) SVI
+> RVB−G KNorm−RVB−G(256) RVB−CSN KNorm−RVB−CSN(256) SVI
+
+Figure 7: SIDS latent non-Gaussian model: Marginal distributions of the mixing variable log( v1), together with boxplots of the absolute mean differences, standard deviation ratios for log( v). 
+
+29 CSN (256) track the marginal posterior log( v1) more closely than INLA, and that the CSN variant improves on the Gaussian approximation by capturing posterior skewness. The absolute mean differences and standard deviation ratios for log( v) indicate that RVB and KNorm RVB outperform SVI, producing posterior means and standard deviations closer to MCMC. Table 1 also shows that KNorm-RVB achieves higher ¯L values than RVB for both the Gaussian and CSN subclass, suggesting that the addition of the skewness reduction step improves the overall variational fit. 
+
+7.4 Stochastic volatility model 
+
+In the stochastic volatility model, which is widely used for financial time series, the ob-servations are conditionally Gaussian with zero mean and time-varying variance: yt | bt ∼
+
+N (0 , exp( λ + σb t)) for t = 1 , . . . , n , where λ ∈ R and σ > 0. The latent log-volatility {bt}
+
+follows a stationary AR(1) process, with b1 ∼ N(0 , (1 − ϕ2)−1), 
+
+bt | bt−1 ∼ N( ϕ b t−1, 1) , t = 2 , . . . , n, 
+
+and persistence parameter 0 < ϕ < 1. Hence b = ( b1, . . . , b n)⊤ ∼ N(0 , Q −1), where Q is symmetric tridiagonal, with diagonal (1 , 1 + ϕ2, . . . , 1 + ϕ2, 1) ⊤ and off-diagonal entries −ϕ.For unconstrained optimization, we reparametrize σ = log(1+ eα) and ϕ = {1+exp( −ψ)}−1,and collect the global variables as θg = ( α, λ, ψ )⊤, with prior θg ∼ N(0 , 10 I). For the latent non-Gaussian extension, Q = D⊤D where D is lower triangular, with diagonal (p1 − ϕ2, 1, . . . , 1) ⊤, first lower diagonal ( −ϕ, . . . , −ϕ)⊤, and all remaining entries zero. We consider the Garch dataset from the R package Ecdat , containing daily USD/GBP exchange rates from 1 October 1981 to 15 March 1984. For exchange-rate series {rt}, define 
+
+yt = 100 log( rt/r t−1) − 1
+
+> n
+
+Pni=1 log( ri/r i−1) for t = 1 , . . . , n , where n = 619. For the latent Gaussian model, we consider KNorm-RVB with K = 2 and K = 256. Figure 8 shows that KNorm-RVB-CSN(256) returns marginal posterior estimates for b100 
+
+30 −6 −4 −2 0 2 4 60.00  0.05  0.10  0.15  0.20 
+
+b100     
+
+> −4 −3 −2 −1 00.0  0.2  0.4  0.6  0.8
+
+α  
+
+> −1.4 −1.0 −0.6 0.0  1.0  2.0  3.0
+
+λ    
+
+> −2 02460.0  0.1  0.2  0.3  0.4  0.5
+
+ψ
+
+> 5.0  5.5  6.0  6.5  7.0
+
+M*
+
+MCMC RVB−G KNorm−RVB−CSN(256) INLA 
+
+> RVB−G KNorm−RVB−G(2) KNorm−RVB−G(256) RVB−CSN KNorm−RVB−CSN(256) INLA
+
+Figure 8: GBP latent Gaussian model. Marginal posteriors for b100 and θg, and boxplots of 
+
+M ∗.and the global parameters that are closer to MCMC than INLA and RVB-G. The M ∗
+
+results further indicate that KNorm-RVB improves upon RVB for both the Gaussian and CSN subclass. In particular, KNorm-RVB-CSN(256) attains a substantially higher M ∗ than other competing methods, demonstrating the benefits of applying skewness reduction after normalizing the local variables, and highlighting the added flexibility of the CSN subclass. For the latent non-Gaussian model, the marginal posterior plots for log( v100 ) and log( v300 ) in Figure 9 show that RVB and KNorm-RVB markedly outperform SVI, which severely underestimates the posterior variance. For log( v), all methods yield small abso-lute mean differences, with SVI performing slightly better on this metric. However, RVB and KNorm-RVB deliver more accurate standard deviation ratios. Table 1 further shows −2 −1 0 1 20.0  0.5  1.0  1.5  2.0  2.5  3.0 
+
+log (v100 )    
+
+> −2 −1 0120.0  0.5  1.0  1.5  2.0  2.5  3.0
+
+log (v300 )
+
+> 0.00  0.02  0.04  0.06  0.08  Absolute mean difference
+> 0.2  0.3  0.4  0.5
+> SD ratio
+> MCMC RVB−G KNorm−RVB−CSN(256) SVI
+> RVB−G KNorm−RVB−G(256) RVB−CSN KNorm−RVB−CSN(256) SVI
+> RVB−G KNorm−RVB−G(256) RVB−CSN KNorm−RVB−CSN(256) SVI
+
+Figure 9: GBP latent non-Gaussian model: Marginal distributions of log( v100 ) and log( v300 ), and boxplots of absolute mean differences and standard deviation ratios for log( v). 31 that KNorm-RVB achieves higher ELBO values than RVB for both the Gaussian and CSN subclass, with the best result achieved by KNorm-RVB-CSN (256). 
+
+# 8 Conclusion 
+
+This article develops KNorm-RVB, a reparametrization method that improves MFVI for hierarchical models. It generalizes RVB beyond GLMMs to latent Gaussian models with sparse local dependence, and latent non-Gaussian models with heavy-tailed noise. KNorm-RVB combines curvature-based normalization which makes local conditional posteriors ap-proximately standard Gaussian, with skewness reduction via a novel K-component skew-symmetric representation. By enabling simulation from a blockwise symmetrized density, we derive an analytic reparametrized density, and show that Gaussianization strengthens as the blockwise reflection group grows. Our theory quantifies gains over RVB by proving that transformed local variables are centered at the reflection point and have zero posterior covariance with global variables. We also show that, under symmetry conditions on the variational family and conditional local posterior, MFVI recovers the exact local mean and correlation matrix. Although KNorm-RVB enforces even-symmetry rather than full ellip-tical symmetry, these results motivate normalization and symmetrization before MFVI, Gaussian approximations for transformed local variables, and setting the reflection point to the variational mean. Flexible CSN variational families are used for global and mixing variables, where skewness may remain. Across a range of models, KNorm-RVB improves posterior approximation accuracy over existing methods. Our results suggest several promising directions for future work. The current reflection groups for skewness reduction exclude rotations, and incorporating rotation groups (e.g. Jupp et al. 2016) may further improve Gaussianization. Rather than selecting blockwise reflection partitions based on model structure and empirical performance, an adaptive rule 32 driven by estimated local skewness may also improve efficiency. To scale KNorm-RVB to large datasets, the Taylor expansion centers used in Gaussian approximation of local con-ditional posteriors can be treated as auxiliary variational parameters which are updated infrequently without optimization, as in Zhang et al. (2026). Since KNorm-RVB primarily targets skewness, combining it with methods that address residual tail behavior may yield further gains. The K-component skew-symmetric representation may also be useful for constructing variational approximations directly. Finally, establishing convergence guaran-tees for the stochastic optimization algorithm in the spirit of Ko et al. (2024) remains an important open problem. 
+
+# 9 Disclosure statement 
+
+There are no competing interests to declare. 
+
+SUPPLEMENTARY MATERIAL 
+
+Technical supplement: The proofs of all propositions and theorems are provided in the supplementary material. 
+
+# References 
+
+Agrawal, A. & Domke, J. (2021), Amortized variational inference for simple hierarchical models, in ‘Ad-vances in Neural Information Processing Systems 34 (NeurIPS 2021)’, pp. 21388–21399. Azzalini, A. & Capitanio, A. (1999), ‘Statistical applications of the multivariate skew normal distribution’, 
+
+Journal of the Royal Statistical Society. Series B (Statistical Methodology) 61 , 579–602. Baker, S. G. (1994), ‘The multinomial-Poisson transformation’, Journal of the Royal Statistical Society: Series D (The Statistician) 43 (4), 495–504. Bass, M. R. & Sahu, S. K. (2019), ‘Dynamically updated spatially varying parameterizations of hierarchical bayesian models for spatial data’, Journal of Computational and Graphical Statistics 28 (1), 105–116. Betancourt, M. & Girolami, M. (2015), ‘Hamiltonian monte carlo for hierarchical models’, Current trends in Bayesian methodology with applications 79 (30), 2–4. Blangiardo, M., Cameletti, M., Baio, G. & Rue, H. (2013), ‘Spatial and spatio-temporal models with R-INLA’, Spatial and spatio-temporal epidemiology 4, 33–49. Blei, D. M., Kucukelbir, A. & McAuliffe, J. D. (2017), ‘Variational inference: A review for statisticians’, 
+
+Journal of the American Statistical Association 112 , 859–877. Cabral, R., Bolin, D. & Rue, H. (2023), ‘Controlling the flexibility of non-Gaussian processes through shrinkage priors’, Bayesian Analysis 18 (4), 1223–1246. 
+
+33 Cabral, R., Bolin, D. & Rue, H. (2024), ‘Fitting latent non-Gaussian models using variational Bayes and Laplace approximations’, Journal of the American Statistical Association 119 (548), 2983–2995. Chen, Y. & Liu, S. (2025), ‘Rotated mean-field variational inference and iterative Gaussianization’. Chiuchiolo, C., van Niekerk, J. & Rue, H. (2022), ‘An extended simplified Laplace strategy for approximate bayesian inference of latent Gaussian models using R-INLA’. Cressie, N. (2015), Statistics for spatial data , John Wiley & Sons. Dutta, S., van Niekerk, J. & Rue, H. (2026), ‘Scalable skewed Bayesian inference for latent Gaussian models using INLA and variational Bayes’, Journal of Computational and Graphical Statistics 0, 1–25. Gallian, J. A. (2025), Contemporary Abstract Algebra , 11th edn, Chapman and Hall/CRC. Gelfand, A. E., Sahu, S. K. & Carlin, B. P. (1995), ‘Efficient parametrisations for normal linear mixed models’, Biometrika 82 , 479–488. Gelfand, A. E., Sahu, S. K. & Carlin, B. P. (1996), Efficient parametrisations for generalized linear mixed models, in J. M. Bernardo, J. O. Berger, A. P. Dawid & A. F. M. Smith, eds, ‘Bayesian Statistics 5’, Oxford University Press, New York, pp. 165–180. Gelman, A. & Hill, J. (2006), Data Analysis Using Regression and Multilevel/Hierarchical Models , Analyt-ical Methods for Social Research, Cambridge University Press. Goplerud, M. (2022), ‘Fast and accurate estimation of non-nested binomial hierarchical models using variational inference’, Bayesian Analysis 17 (2), 623–650. Goplerud, M., Papaspiliopoulos, O. & Zanella, G. (2025), ‘Partially factorized variational inference for high-dimensional mixed models’, Biometrika 112 (2), asae067. Hoffman, M. D., Gelman, A. et al. (2014), ‘The no-u-turn sampler: adaptively setting path lengths in hamiltonian monte carlo.’, J. Mach. Learn. Res. 15 (1), 1593–1623. Hosmer, D. W., Lemeshow, S. & Sturdivant, R. X. (2013), Applied Logistic Regression , 3rd edn, John Wiley & Sons, Inc., Hoboken, NJ. Huang, A. & Wand, M. P. (2013), ‘Simple marginally noninformative prior distributions for covariance matrices’. Jupp, P. E., Regoli, G. & Azzalini, A. (2016), ‘A general setting for symmetric distributions and their relationship to general distributions’, Journal of Multivariate Analysis 148 , 107–119. Kim, K., Ma, Y. & Gardner, J. (2024), Linear convergence of black-box variational inference: Should we stick the landing?, in S. Dasgupta, S. Mandt & Y. Li, eds, ‘Proceedings of The 27th International Conference on Artificial Intelligence and Statistics’, Vol. 238 of Proceedings of Machine Learning Research , PMLR, pp. 235–243. Kingma, D. P. & Ba, J. (2015), Adam: A method for stochastic optimization, in Y. Bengio & Y. LeCun, eds, ‘Proceedings of the 3rd International Conference on Learning Representations’. Kissling, W. D. & Carl, G. (2008), ‘Spatial autocorrelation and the selection of simultaneous autoregressive models’, Global Ecology and Biogeography 17 (1), 59–71. Ko, J., Kim, K., Kim, W. C. & Gardner, J. R. (2024), ‘Provably scalable black-box variational inference with structured variational families’. Kock, L., Tan, L. S. L., Bansal, P. & Nott, D. J. (2026), ‘Variational inference for hierarchical models with conditional scale and skewness corrections’, Journal of Computational and Graphical Statistics (to appear). Loaiza-Maya, R., Smith, M. S., Nott, D. J. & Danaher, P. J. (2022), ‘Fast and accurate variational inference for models with many latent variables’, Journal of Econometrics 230 , 339–362. Margossian, C. C., Pillaud-Vivien, L. & Saul, L. K. (2024), Variational inference for uncertainty quantifi-cation: An analysis of trade-offs, in G. Camps-Valls, F. J. R. Ruiz & I. Valera, eds, ‘Proceedings of the 27th International Conference on Artificial Intelligence and Statistics’, Vol. 206, PMLR, pp. 1234–1245. Margossian, C. C. & Saul, L. K. (2025 a), ‘Generalized guarantees for variational inference in the presence of even and elliptical symmetry’. Margossian, C. C. & Saul, L. K. (2025 b), Variational inference in location-scale families: Exact recovery of the mean and correlation matrix, in ‘Proceedings of the 28th International Conference on Artificial Intelligence and Statistics (AISTATS)’, Vol. 258, PMLR, Mai Khao, Thailand. Marks, D., Paccagnan, D. & van der Wilk, M. (2026), ‘Symmetry guarantees statistic recovery in variational inference’. Neville, S. E., Ormerod, J. T. & Wand, M. P. (2014), ‘Mean field variational Bayes for continuous sparse signal shrinkage: Pitfalls and remedies’, Electronic Journal of Statistics 8(1), 1113–1151. 
+
+34 Osmundsen, K. K., Kleppe, T. S. & Liesenfeld, R. (2021), ‘Importance sampling-based transport map hamiltonian monte carlo for Bayesian hierarchical models’, Journal of Computational and Graphical Statistics 30 (4), 906–919. Papamakarios, G., Nalisnick, E., Rezende, D. J., Mohamed, S. & Lakshminarayanan, B. (2021), ‘Normal-izing flows for probabilistic modeling and inference’, Journal of Machine Learning Research 22 , 1–64. Papaspiliopoulos, O., Roberts, G. O. & Sk¨ old, M. (2007), ‘A general framework for the parametrization of hierarchical models’, Statist. Sci. 22 , 59–73. Park, D. K., Gelman, A. & Bafumi, J. (2004), ‘Bayesian multilevel estimation with poststratification: State-level estimates from national polls’, Political Analysis 12 (4), 375–385. Pozza, F., Durante, D. & Szab´ o, B. (2026), ‘Skew-symmetric approximations of posterior distributions’, 
+
+Journal of the Royal Statistical Society: Series B (Statistical Methodology) (to appear). Robert, C. P. & Casella, G. (2004), Monte Carlo Statistical Methods , 2nd edn, Springer-Verlag, New York. Roeder, G., Wu, Y. & Duvenaud, D. K. (2017), Sticking the landing: Simple, lower-variance gradient estimators for variational inference, in I. Guyon, U. Luxburg, S. Bengio, H. Wallach, R. Fergus, S. Vish-wanathan & R. Garnett., eds, ‘Advances in Neural Information Processing Systems 30’. Royle, J. A. & Dorazio, R. M. (2008), Hierarchical modeling and inference in ecology: the analysis of data from populations, metapopulations and communities , Elsevier. Rue, H., Martino, S. & Chopin, N. (2009), ‘Approximate Bayesian inference for latent Gaussian models by using integrated nested Laplace approximations’, Journal of the Royal Statistical Society: Series B (Statistical Methodology) 71 , 319–392. Rue, H., Riebler, A., Sørbye, S. H., Illian, J. B., Simpson, D. P. & Lindgren, F. K. (2017), ‘Bayesian computing with INLA: A review’, Annual Review of Statistics and Its Application 4(1), 395–421. Tan, L. S. (2017), ‘Stochastic variational inference for large-scale discrete choice models using adaptive batch sizes’, Statistics and Computing 27 (1), 237–257. Tan, L. S., Bhaskaran, A. & Nott, D. J. (2020), ‘Conditionally structured variational Gaussian approxima-tion with importance weights’, Statistics and Computing 30 (5), 1255–1272. Tan, L. S. & Chen, A. (2025), ‘Variational inference based on a subclass of closed skew normals’, Journal of Computational and Graphical Statistics 34 (2), 422–436. Tan, L. S. L. (2021), ‘Use of model reparametrization to improve variational Bayes’, Journal of the Royal Statistical Society Series B: Statistical Methodology 83 , 30–57. Tan, L. S. L. & Nott, D. J. (2013), ‘Variational inference for generalized linear mixed models using partially non-centered parametrizations’, Statistical Science 28 , 168–188. Tan, L. S. L. & Nott, D. J. (2018), ‘Gaussian variational approximation with sparse precision matrices’, 
+
+Statistics and Computing 28 , 259–275. Van Niekerk, J. & Rue, H. (2024), ‘Low-rank variational Bayes correction to the Laplace method’, Journal of Machine Learning Research 25 (62), 1–25. Ver Hoef, J. M., Peterson, E. E., Hooten, M. B., Hanks, E. M. & Fortin, M.-J. (2018), ‘Spatial autoregressive models for statistical inference from ecological data’, Ecological Monographs 88 (1), 36–59. Walder, A. & Hanks, E. M. (2020), ‘Bayesian analysis of spatial generalized linear mixed models with Laplace moving average random fields’, Computational Statistics & Data Analysis 144 , 106861. Wang, J., Boyer, J. & Genton, M. G. (2004), ‘A skew-symmetric representation of multivariate distribu-tions’, Statistica Sinica pp. 1259–1270. Yu, Y. & Meng, X.-L. (2011), ‘To center or not to center: That is not the question—An ancillarity-sufficiency interweaving strategy (ASIS) for boosting MCMC efficiency’, Journal of Computational and Graphical Statistics 20 , 531–570. Zhang, W., Loaiza-Maya, R., Smith, M. S. & Maneesoonthorn, W. (2026), ‘Conjugating variational infer-ence for large mixed multinomial logit models and consumer choice’. Zhou, J., Ormerod, J. T. & Grazian, C. (2023), ‘Fast expectation propagation for heteroscedastic, lasso-penalized, and quantile regression’, Journal of Machine Learning Research 24 , 1–39. 
+
+35 Supplementary Material S1 Proofs for Section 4 
+
+In this section, we present the proofs of Propositions 1, 2 and 3 for the construction, representation and stochastic representations of the K-component skew-symmetric density. We also provide the proofs of Theorems 1 and 2 on the optimal skewing function and effects of skewness reduction respectively. 
+
+S1.1 Proposition 1: K-component skew-symmetric construction 
+
+Proof. Let g(θ) = Kf K, ˆθ(θ)wK, ˆθ(θ). It is straightforward to see that g(θ) ≥ 0, and it remains to show that R g(θ) dθ = 1. As each Tk, ˆθ is a reflection (affine transformation) with absolute value of the Jacobian determinant ( |Sk|) equal to one, by change of variables, 
+
+Z
+
+g(θ) dθ = K
+
+Z
+
+fK, ˆθ(θ)wK, ˆθ(θ) dθ 
+
+=
+
+> K
+
+X
+
+> k=1
+
+Z
+
+fK, ˆθ{Tk, ˆθ(θ)}wK, ˆθ{Tk, ˆθ(θ)} dθ 
+
+=
+
+Z
+
+fK, ˆθ(θ)
+
+> K
+
+X
+
+> k=1
+
+wK, ˆθ{Tk, ˆθ(θ)} dθ 
+
+=
+
+Z
+
+fK, ˆθ(θ) dθ = 1 .
+
+The third equality uses the TGm,ˆθ-invariance of fK, ˆθ, where fK, ˆθ{Tk, ˆθ(θ)} = fK, ˆθ(θ) ∀ θ ∈ Rd
+
+and k = 1 , . . . , K . The last equality uses the property of wK, ˆθ as a K-component skewing function, where PKk=1 wK, ˆθ{Tk, ˆθ(θ)} = 1. Hence g(θ) is a pdf. 36 S1.2 Proposition 2: K-component skew-symmetric representa-tion 
+
+Proof. First, we show that fK, ˆθ = 1
+
+> K
+
+PKk=1 g{Tk, ˆθ(θ)} is a TGm,ˆθ-invariant pdf. As each Tk, ˆθ is a reflection (affine transformation) with absolute value of the Jacobian determinant ( |Sk|)equal to one, by change of variables, 
+
+Z
+
+fK, ˆθ(θ) dθ = 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+Z
+
+g{Tk, ˆθ(θ)}dθ = 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+Z
+
+g(θ)dθ = 1 .
+
+Hence fK, ˆθ is a pdf. Note that Tk, ˆθ(Tj, ˆθ(θ)) = Tk, ˆθ{ˆθ + Sj (θ − ˆθ)} = ˆθ + SkSj (θ − ˆθ) and 
+
+SkSj ∈ G m since Gm is a finite abelian group closed under matrix multiplication. Hence 
+
+Tk, ˆθ ◦ Tj, ˆθ is a reflection induced by Gm about ˆθ for any j, k = 1 , . . . , K . Thus for any fixed 
+
+j = 1 , . . . , K , {Tk, ˆθ ◦ Tj, ˆθ | k = 1 , . . . , K } = {Tk, ˆθ | k = 1 , . . . , K }. It follows that 
+
+fK, ˆθ{Tj, ˆθ(θ)} = 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+g{Tk, ˆθ(Tj, ˆθ(θ)) }
+
+= 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+g{Tk, ˆθ(θ)} = fK, ˆθ(θ)for any j = 1 , . . . , K and θ ∈ Rd. Thus fK, ˆθ is a TGm,ˆθ-invariant pdf. Next, we show that wK, ˆθ(θ) = g(θ)/PKk=1 g{Tk, ˆθ(θ)} is a K-component skewing function, with wK, ˆθ(θ) = 1 /K if PKk=1 g{Tk, ˆθ(θ)} = 0. First, if PKk=1 g{Tk, ˆθ(θ)} > 0, 
+
+> K
+
+X
+
+> j=1
+
+wK, ˆθ(Tj, ˆθ(θ)) = 
+
+> K
+
+X
+
+> j=1
+
+g(Tj, ˆθ(θ)) 
+
+PKk=1 g(Tk, ˆθ(Tj, ˆθ(θ))) =
+
+> K
+
+X
+
+> j=1
+
+g(Tj, ˆθ(θ)) 
+
+PKk=1 g(Tk, ˆθ(θ)) =
+
+PKj=1 g(Tj, ˆθ(θ)) 
+
+PKk=1 g(Tk, ˆθ(θ)) = 1 .
+
+If PKk=1 g{Tk, ˆθ(θ)} = 0, then PKk=1 g{Tk, ˆθ(Tj, ˆθ(θ)) } = PKk=1 g{Tk, ˆθ(θ)} = 0 for any j =1, . . . , K . Hence PKj=1 wK, ˆθ(Tj, ˆθ(θ)) = PKj=1 1/K = 1 for any j = 1 , . . . , K . Therefore, 
+
+wK, ˆθ(θ) is a K-component skewing function. 37 For any pdf g : Rd → R+, if PKk=1 g{Tk, ˆθ(θ)} > 0, we can write 
+
+g(θ) = 
+
+"
+
+1
+
+K
+
+> K
+
+X
+
+> k=1
+
+g{Tk, ˆθ(θ)}
+
+#
+
+Kg (θ)
+
+PKk=1 g{Tk, ˆθ(θ)} = Kf K, ˆθ(θ)wK, ˆθ(θ),
+
+If PKk=1 g{Tk, ˆθ(θ)} = 0, then wK, ˆθ(θ) = 1 /K while fK, ˆθ = 1
+
+> K
+
+PKk=1 g{Tk, ˆθ(θ)} = 0, which im-plies Kf K, ˆθ(θ)wK, ˆθ(θ) = 0. On the other hand, PKk=1 g{Tk, ˆθ(θ)} = 0 implies g{Tk, ˆθ(θ)} = 0 
+
+∀ k = 1 , . . . , K . Among {Tk, ˆθ | k = 1 , . . . , K }, there exists an identity map Tr corresponding to the identity map Sr in Gm such that Tr(θ) = ˆθ+Sr(θ− ˆθ) = θ. Thus g{Tr(θ)} = g(θ) = 0. Thus both sides are zero, and the representation also holds when PKk=1 g{Tk, ˆθ(θ)} = 0. The above argument also shows that PKk=1 g{Tk, ˆθ(θ)} > 0 on the support of g.To show uniqueness on the support of g, suppose there exist another TGm,ˆθ-invariant pdf ˜f and K-component skewing function ˜ w such that 
+
+g(θ) = K ˜f (θ) ˜ w(θ).
+
+Averaging over Tk, ˆθ(θ) for k = 1 , . . . , K , gives 
+
+fK, ˆθ(θ) = 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+g{Tk, ˆθ(θ)} =
+
+> K
+
+X
+
+> k=1
+
+˜f (Tk, ˆθ(θ)) ˜ w(Tk, ˆθ(θ)) = ˜f (θ)
+
+> K
+
+X
+
+> k=1
+
+˜w(Tk, ˆθ(θ)) = ˜f (θ).
+
+In addition, PKk=1 g{Tk, ˆθ(θ)} > 0 on the support of g. Thus, we obtain ˜w(θ) =
+
+g(θ)/{K ˜f (θ)} = wK, ˆθ(θ), and the representation is unique on the support of g.
+
+S1.3 Proposition 3: Stochastic representations 
+
+Proof. For (i), let f (θ) denote the pdf of θ = TJ, ˆθ(x). Note that T −1 
+
+> k, ˆθ
+
+= Tk, ˆθ and 
+
+|dT k, ˆθ(θ)/dθ | = 1. By the law of total probability, 
+
+f (θ) = 
+
+> K
+
+X
+
+> k=1
+
+fK, ˆθ{Tk, ˆθ(θ)} Pr( J = k | x = Tk, ˆθ(θ)) dT k, ˆθ(θ)
+
+dθ 
+
+=
+
+> K
+
+X
+
+> k=1
+
+fK, ˆθ(θ)wK, ˆθ(θ)38 = Kf K, ˆθ(θ)wK, ˆθ(θ) = g(θ).
+
+In the second line, we use the TGm,ˆθ-invariant property of fK, ˆθ, where fK, ˆθ{Tk, ˆθ(θ)} = fK, ˆθ(θ)for k = 1 , . . . , K . In addition, Pr( J = k | x = Tk, ˆθ(θ)) = wK, ˆθ{Tk, ˆθ(Tk, ˆθ(θ)) } = wK, ˆθ(θ) since 
+
+T −1 
+
+> k, ˆθ
+
+= Tk, ˆθ. Hence θ ∼ g.For (ii), let h(x) denote the pdf of x = TU, ˆθ(θ). By the law of total probability, 
+
+h(x) = 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+g{Tk, ˆθ(x)} dT k, ˆθ(x)
+
+dx 
+
+= 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+Kf K, ˆθ{Tk, ˆθ(x)}wK, ˆθ{Tk, ˆθ(x)}
+
+= fK, ˆθ(x)
+
+> K
+
+X
+
+> k=1
+
+wK, ˆθ{Tk, ˆθ(x)} = fK, ˆθ(x).
+
+In the first line, dT k, ˆθ(x)/dx = |Sk| = 1, while in the third and fourth lines, we used the properties that fK, ˆθ{Tk, ˆθ(θ)} = fK, ˆθ(θ) for k = 1 , . . . , K and PKk=1 wK, ˆθ{Tk, ˆθ(θ)} = 1. 
+
+S1.4 Theorem 1: Optimal skewing function 
+
+Proof. Let q∗ 
+
+> K, ˆθ
+
+= K ¯qK, ˆθ(θ)w∗
+
+> K, ˆθ
+
+(θ). We have KL( π∥qK, ˆθ) − KL( π∥q∗
+
+> K, ˆθ
+
+) = 
+
+Z
+
+π(θ) log q∗
+
+> K, ˆθ
+
+(θ)
+
+qK, ˆθ(θ)dθ 
+
+=
+
+Z
+
+π(θ) log w∗
+
+> K, ˆθ
+
+(θ)
+
+wK, ˆθ(θ)dθ 
+
+= K
+
+Z
+
+¯πK, ˆθ(θ)w∗
+
+> K, ˆθ
+
+(θ) log w∗
+
+> K, ˆθ
+
+(θ)
+
+wK, ˆθ(θ)dθ (S1) =
+
+> K
+
+X
+
+> k=1
+
+Z
+
+¯πK, ˆθ(θ)w∗
+
+> K, ˆθ
+
+{Tk, ˆθ(θ)} log w∗
+
+> K, ˆθ
+
+{Tk, ˆθ(θ)}
+
+wK, ˆθ{Tk, ˆθ(θ)}dθ (S2) =
+
+Z
+
+¯πK, ˆθ(θ)
+
+( KX
+
+> k=1
+
+w∗
+
+> K, ˆθ
+
+{Tk, ˆθ(θ)} log w∗
+
+> K, ˆθ
+
+{Tk, ˆθ(θ)}
+
+wK, ˆθ{Tk, ˆθ(θ)}
+
+)
+
+dθ ≥ 0.
+
+(S3) In (S1), we substitute the unique representation, π(θ) = K ¯πK, ˆθ(θ)w∗
+
+> K, ˆθ
+
+(θ) from Propo-sition 2, where ¯ πK, ˆθ(θ) = 1
+
+> K
+
+PKk=1 π{Tk, ˆθ(θ)} is a TGm,ˆθ-invariant pdf. In (S2), we make 39 the change in variable θ → Tk, ˆθ(θ) for each of the K integrals for k = 1, . . . , K .Note that T −1 
+
+> j, ˆθ
+
+= Tj, ˆθ and the Jacobian is one. In addition, as ¯ πK, ˆθ is TGm,ˆθ-invariant, ¯πK, ˆθ(Tk, ˆθ(θ)) = ¯ πK, ˆθ(θ) for k = 1 , . . . , K . Finally, in (S3), the term in curly brackets is the KLD between ( w∗
+
+> K, ˆθ
+
+{T1,ˆθ(θ)}, . . . , w ∗
+
+> K, ˆθ
+
+{Tk, ˆθ(θ)})⊤ and ( wK, ˆθ{T1,ˆθ(θ)}, . . . , w K, ˆθ{Tk, ˆθ(θ)})⊤
+
+for each θ. Each of these vectors can be considered as a probability vector as their entries sum to one due to the property of K-component skewing functions. Moreover, ¯ πK, ˆθ(θ) ≥ 0, and hence KL( π∥q∗
+
+> K, ˆθ
+
+) ≤ KL( π∥qK, ˆθ).
+
+Equality holds if and only if the KLD in (S3) is zero almost everywhere, that is, if and only if wK, ˆθ{Tk, ˆθ(θ)} = w∗
+
+> K, ˆθ
+
+{Tk, ˆθ(θ)} for k = 1 , . . . , K almost everywhere. 
+
+S1.5 Theorem 2: Effects of skewness reduction 
+
+Proof. For (i), p(˜b | θg, y ) = pb|θg ,y (ˆb + L−⊤ ˜b)/|L| from step 1 of Procedure 1. In addition, 
+
+Tk,c = T −1 
+
+> k,c
+
+and |Tk,c | = 1 for each k = 1 , . . . , K . From step 2 of Procedure 1, 
+
+p(b∗ | θg, y ) = 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+p˜b|θg ,y {Tk,c (b∗)} = 1
+
+K|L|
+
+> K
+
+X
+
+> k=1
+
+pb|θg ,y [ˆb + L−⊤ {c + Sk(b∗ − c)}].
+
+For (ii), p(y, θ ∗) = p(b∗, y | θg)p(θg). Applying the same argument as in (i) gives 
+
+p(b∗, y | θg) = 1
+
+K|L|
+
+> K
+
+X
+
+> k=1
+
+pb,y |θg [ˆb + L−⊤ {c + Sk(b∗ − c)}, y ].
+
+Multiplying by p(θg) and taking logarithms gives (7). For (iii), since KL {ϕ(· | c, I )∥pG (· | θg, y )} = E ϕ(z|c,I ){log ϕ(z | c, I ) − log pG (z | θg, y )},it suffices to show that E ϕ(z|c,I ) log pG (z | θg, y ) ≥ Eϕ(z|c,I ) log pH(z | θg, y ). Let u = z − c
+
+and f (u) = pb|θg ,y {ˆb + L−⊤ (c + u)} so that pG (z | θg, y ) = 1
+
+> |G|| L|
+
+P 
+
+> S∈G
+
+f (Su ). Since H ≤ G ,
+
+G can be written as a disjoint union of the right cosets of H such that G = F 
+
+> r∈R
+
+Hr,where R is a set of right coset representatives (Gallian 2025). By Lagrange’s theorem, 40 |G| = |H\G||H| = |R||H| . Hence 
+
+pG (c + u | θg, y ) = 1
+
+|L||G| 
+
+X
+
+> S∈G
+
+f (Su )= 1
+
+|L||G| 
+
+X
+
+> r∈R
+
+X
+
+> H∈H
+
+f (Hru )= 1
+
+|R|
+
+X
+
+> r∈R
+
+"
+
+1
+
+|L||H| 
+
+X
+
+> H∈H
+
+f {H(ru )}
+
+#
+
+= 1
+
+|R|
+
+X
+
+> r∈R
+
+pH(c + ru | θg, y ).
+
+As z ∼ N( c, I ), u = z − c ∼ N (0 , I). Moreover, each r ∈ R is orthogonal, so ru ∼ N(0 , I ). By Jensen’s inequality, Eϕ(z|c,I ) log pG (z | θg, y ) = E ϕ(u) log 
+
+(
+
+1
+
+|R|
+
+X
+
+> r∈R
+
+pH(c + ru | θg, y )
+
+)
+
+≥ 1
+
+|R|
+
+X
+
+> r∈R
+
+Eϕ(u) log pH(c + ru | θg, y )= 1
+
+|R|
+
+X
+
+> r∈R
+
+Eϕ(u) log pH(c + u | θg, y )= E ϕ(z|c,I ) log pH(z | θg, y ).
+
+The inequality is strict unless pH(c + ru | θg, y ) is constant ∀ r ∈ R. In this case, for any 
+
+G ∈ G ,
+
+pH{TG,c (z) | θg, y } = 1
+
+|L||H| 
+
+X
+
+> H∈H
+
+f {H(c + G(z − c) − c)}
+
+= 1
+
+|L||H| 
+
+X
+
+> H∈H
+
+f (HG (z − c)) = 1
+
+|L||H| 
+
+X
+
+> H∈H
+
+f (Hr G(z − c)) = 1
+
+|L||H| 
+
+X
+
+> H∈H
+
+f (Hr 0(z − c)) = 1
+
+|L||H| 
+
+X
+
+> H∈H
+
+f {H(z − c)} = pH(z | θg, y ).
+
+The third line holds because for any G ∈ G , there exists rG ∈ R such that HrG = HG. In 41 the special case of the identity element I ∈ G , there also exist r0 in R such that Hr0 = H,leading to the 5th equality. Hence equality holds only if pH(· | θg, y ) is TG,c -invariant. For (iv), taking H = {I} (the trivial group), pH(z | θg, y ) = 1 
+
+> |L|
+
+pb|θg ,y (ˆb + L−⊤ z) which is the pdf of ˜b | θg, y . Taking G = Gm yields the pdf of b∗ | θg, y in Theorem 2(i). Hence, we obtain the KLD inequality in (iv). The equality occurs when p(˜b | θg, y ) is TGm,c -invariant. 
+
+# S2 Posterior draws of original local variables 
+
+In KNorm-RVB, the original local variables b are mapped deterministically to ˜b via nor-malization and then stochastically to b∗ via skewness reduction. VI is performed on the reparametrized model in terms of b∗. For downstream inference, it may be desirable to ob-tain posterior draws of b from the fitted variational approximation. Procedure S1 generates such draws by sampling θ∗ ∼ q(θ∗) and then applying reverse mappings, using Proposition 3(i) and Theorem 1. Given some blockwise reflection group Gm and reflection point c, Procedure 1 treats ˜b
+
+as a draw from the K-component skew-symmetric density representation of p˜b,y |θg (˜b) based on Proposition 2, that is 
+
+p˜b,y |θg (˜b) = Kf K,c (˜b)wK,c (˜b), (S4) 
+
+fK,c (˜b) = 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+p˜b|y,θ g {Tk,c (˜b)}, w K,c (˜b) = p˜b|y,θ g (˜b)
+
+PKk=1 p˜b|y,θ g {Tk,c (˜b)} = p˜b,y |θg (˜b, y )
+
+PKk=1 p˜b,y |θg {Tk,c (˜b), y }.
+
+(S5) Unlike the TGm,c -invariant pdf fK,c (˜b), the K-component skewing function wK,c (˜b) is tractable to evaluate because the intractable normalizing constant of p˜b|y,θ g cancels. In VI, we approximate the intractable fK,c by q(b∗) = N( μb∗ , Σb∗ ), with c = μb∗ as reflection point. As Σ b∗ is a block diagonal matrix with blocks corresponding to each subject, it can 42 be verified that q(b∗) is TGm,c -invariant, provided the partitioning of Gm ensures that all observations for each subject stay within a single block. Theorem 1 then implies that the optimal K-component skewing function is the one given in (S5). Hence, we obtain a K-component skew-symmetric density approximating p˜b,y |θg (˜b) by replacing the TGm,c -invariant pdf fK,c (˜b) in (S4) with q(b∗), and a draw from this density then follows from Proposition 3(i). Finally, we recover b from ˜b by inverting the normalization. This procedure is summarized in Procedure S1 for latent Gaussian models and can be extended easily to latent non-Gaussian models by conditioning additionally on the mixing variables and replacing ˆb, L and Q by ˆbNG , LNG and QNG .
+
+Procedure S1 Generate posterior draws of original local variables b from q(θ∗) 
+
+> 1:
+
+Draw θ∗ = ( b∗⊤ , θ ⊤ 
+
+> g
+
+)⊤ ∼ q(θ∗).  
+
+> 2:
+
+For k = 1 , . . . , K , compute Pr( S∗ = Sk | b∗, θ g, y ) = wK,c {Tk,c (b∗)} = p˜b,y |θg {Tk,c (b∗), y }
+
+PKk=1 p˜b,y |θg {Tk,c (b∗), y }.
+
+Sample S∗ from Gm = {S1, . . . , S K } according to above probabilities and set ˜b =
+
+T∗,c (b∗) = c + S∗(b∗ − c), where c = μb∗ . 
+
+> 3:
+
+Invert the normalization: b = ˆb+L−⊤ ˜b, where ˆb is mode of p(b | θg, y ) and L is Cholesky factor of Q + H(ˆb). 
+
+# S3 Proofs of Section 6 
+
+In this section, we present the proofs in Section 6. 43 S3.1 Proof of Theorem 3 
+
+Proof. By Theorem 2(i), p(b∗ | θg, y ) = 1
+
+> K|L|
+
+PKk=1 pb|θg ,y [ˆb + L−⊤ {c + Sk(b∗ − c)}]. Hence, 
+
+p{TS,c (b∗) | θg, y } = 1
+
+K|L|
+
+> K
+
+X
+
+> k=1
+
+pb|θg ,y [ˆb + L−⊤ {c + SkS(b∗ − c)}] = p(b∗ | θg, y ), ∀ S ∈ G m,
+
+because {SkS | k = 1 , . . . , K } = Gm as Gm is a group. Hence p(b∗ | θg, y ) is TGm,c -invariant about c. Since Gm contains −I for m ≥ 1, which corresponds to ε1 = · · · = εm = −1. Taking S = −I gives 
+
+p(2 c − b∗ | θg, y ) = p(b∗ | θg, y ),
+
+which implies p(c − b∗ | θg, y ) = p(c + b∗ | θg, y ). Hence p(b∗ | θg, y ) is even-symmetric about 
+
+c. If E( ∥b∗ − c∥ | θg, y ) < ∞, then using u = b∗ − c and a change of variables, E( b∗ − c | θg, y ) = 
+
+Z
+
+up (c + u | θg, y )du (S6) =
+
+Z
+
+(−u)p(c − u | θg, y )du (S7) = −
+
+Z
+
+up (c + u | θg, y )du = −E( b∗ − c | θg, y ) (S8) implies E( b∗ | θg, y ) = c. From the Law of total expectation, E( b∗ | y) = E {E( b∗ | θg, y )} = c
+
+and Cov( b∗ − c, θ g | y) = E(( b∗ − c)θ⊤ 
+
+> g
+
+| y) − 0= E[E {(b∗ − c)θ⊤ 
+
+> g
+
+| θg, y } | y]= E[E {(b∗ − c) | θg, y }θ⊤ 
+
+> g
+
+| y] = 0 .
+
+Thus Cov( b∗, θ g | y) = 0. 
+
+S3.2 Proof of Theorem 4 (Exact recovery of mean) 
+
+Proof. Since qν,λ (θ∗) = qλb∗ (b∗ − ν)qλg (θg), 
+
+Kλ(ν) = KL {qν,λ (θ∗)∥p(θ∗ | y)}
+
+44 =
+
+Z
+
+qν,λ (θ∗) log qν,λ (θ∗)
+
+p(θ∗ | y)dθ ∗
+
+=
+
+Z
+
+qλb∗ (b∗ − ν)qλg (θg) log qλb∗ (b∗ − ν)qλg (θg)
+
+p(b∗ | θg, y )p(θg | y)db ∗dθ g
+
+=
+
+Z
+
+qλb∗ (ζ)qλg (θg) log qλb∗ (ζ)qλg (θg)
+
+pb∗|θg ,y (ν + ζ)p(θg | y)dζdθ g
+
+= −
+
+Z
+
+qλg (θg)
+
+Z 
+
+qλb∗ (ζ) log pb∗|θg ,y (ν + ζ)dζ 
+
+
+
+dθ g + C(λ),
+
+where a change of variable ζ = b∗ − ν is made in the 4th line and C(λ) is independent of the location parameter ν. Differentiating with respect to ν gives 
+
+∇ν Kλ(ν) = −
+
+Z
+
+qλg (θg)
+
+Z 
+
+qλb∗ (ζ)∇b∗ log pb∗|θg ,y (ν + ζ)dζ 
+
+
+
+dθ g. (S9) By Theorem 3, p(b∗ | θg, y ) is even-symmetric about c, that is pb∗|θg ,y (c + ζ) = pb∗|θg ,y (c − ζ)
+
+∀ζ ∈ RN . It follows that ∇b∗ log p(c + ζ | θg, y ) = −∇ b∗ log p(c − ζ | θg, y ). Therefore 
+
+∇b∗ log p(c + ζ | θg, y ) is odd-symmetric about c and it is also an odd function in ζ. At 
+
+ν = c, the inner integrand in (S9) is the product of an odd function of ζ and the even pdf 
+
+qλb∗ (ζ). Hence the inner integral over ζ ∈ RN vanishes, and ∇ν Kλ(c) = 0. Thus ν = c is a stationary point for any given λ.It remains to show that the stationary point is unique for any given λ. Define 
+
+Sλ(ν) = 
+
+Z
+
+qλg (θg)Kθg ,λ b∗ (ν)dθ g, Kθg ,λ b∗ (ν) = −
+
+Z
+
+qλb∗ (ζ) log pb∗|θg ,y (ν + ζ)dζ, (S10) and A = {θg | p(· | θg, y ) is strictly concave on a nonempty open set }, where P (A) > 0. From Lemma 13 of Margossian & Saul (2025 b), Kθg ,λ b∗ (ν) is strictly convex on RN for 
+
+θg ∈ A. In addition, Kθg ,λ b∗ (ν) is convex on RN for θg ∈ Ac. This is because the concavity of log p(b∗ | θg, y ) implies that − log pb∗|θg ,y (ν + ζ) is convex in ν given ζ. Applying the definition of convexity to − log pb∗|θg ,y (ν + ζ) in ν given ζ, and integrating with respect to 
+
+qλb∗ (ζ) preserves the convexity. Thus for any ν1̸ = ν2 in RN and t ∈ (0 , 1), we have 
+
+Kθg ,λ b∗ (tν 1 + (1 − t)ν2) < tK θg ,λ b∗ (ν1) + (1 − t)Kθg ,λ b∗ (ν2) for θg ∈ A, 
+
+45 Kθg ,λ b∗ (tν 1 + (1 − t)ν2) ≤ tK θg ,λ b∗ (ν1) + (1 − t)Kθg ,λ b∗ (ν2) for θg ∈ Ac.
+
+Therefore, 
+
+Sλ(tν 1 + (1 − t)ν2) = 
+
+Z
+
+qλg (θg)Kθg ,λ b∗ (tν 1 + (1 − t)ν2)dθ g
+
+=
+
+Z
+
+> A
+
+qλg (θg)Kθg ,λ b∗ (tν 1 + (1 − t)ν2)dθ g +
+
+Z
+
+> Ac
+
+qλg (θg)Kθg ,λ b∗ (tν 1 + (1 − t)ν2)dθ g
+
+<
+
+Z
+
+> A
+
+qλg (θg){tK θg ,λ b∗ (ν1) + (1 − t)Kθg ,λ b∗ (ν2)}dθ g
+
++
+
+Z
+
+> Ac
+
+qλg (θg){tK θg ,λ b∗ (ν1) + (1 − t)Kθg ,λ b∗ (ν2)}dθ g
+
+=
+
+Z
+
+qλg (θg){tK θg ,λ b∗ (ν1) + (1 − t)Kθg ,λ b∗ (ν2)}dθ g
+
+= tS λ(ν1) + (1 − t)Sλ(ν2).
+
+Note that the strict inequality holds on the third line because P (A) > 0. Hence Sλ(ν) is strictly convex. Since C(λ) is independent of ν, it follows that Kλ(ν) = Sλ(ν) + C(λ) is strictly convex in ν for any given λ. A strictly convex function has at most one stationary point, so the stationary point at ν = c is unique. 
+
+S3.3 Proof of Theorem 5 (Exact recovery of correlation matrix) 
+
+Proof. Since qν,S,λ g (θ∗) = qν,S (b∗)qλg (θg), and Q = {qν,S } is the location-scale family (Def-inition 1) with a spherically symmetric base pdf q0, we can write qν,S (b∗) = q0(ζ)|S|−1/2,where ζ = S−1/2(b∗ − ν). Then KL {qν,S,λ g (θ∗)∥p(θ∗ | y)} =
+
+Z
+
+qν,S (b∗)qλg (θg) log qν,S (b∗)qλg (θg)
+
+p(b∗ | θg, y )p(θg | y)db ∗dθ g
+
+= E qλg (θg )KL {qν,S (b∗)∥p(b∗ | θg, y )} + KL {qλg (θg)∥p(θg | y)}.
+
+Since we are minimizing with respect to ( ν, S ) for a fixed λg, the second term is a constant and we can focus only on the first term. Making a change of variable, ζ = S−1/2(b∗ − ν), KL {qν,S (b∗)∥p(b∗ | θg, y )} =
+
+Z
+
+q0(ζ) log q0(ζ)|S|−1/2
+
+p(S1/2ζ + ν | θg, y )dζ 
+
+46 = −H (q0) − 12 log |S| − 
+
+Z
+
+q0(ζ) log pb∗|θg ,y (S1/2ζ + ν)dζ, 
+
+where H(q0) = − R q0(ζ) log q0(ζ)dζ denotes the entropy. Hence it suffices to find ( ν, S )that minimizes 
+
+fλg (ν, S ) = −12 log |S| − Eqλg (θg )q0(ζ){log pb∗|θg ,y (S1/2ζ + ν)}.
+
+Observe that the second term is similar to Sλ(ν) in (S10), where the only differences are that 
+
+qλb∗ (ζ) is replaced by q0(ζ) and ζ is replaced by S1/2ζ in the argument of log pb∗|θg ,y (·). As in Theorem 4, q0 is even-symmetric about 0 as it is spherically symmetric, and log p(b∗ | θg, y )satisfy the same conditions of being concave on RN almost everywhere (a.e.) with respect to qλg and strictly concave on a nonempty open set with positive probability under qλg .Therefore we can conclude that the second term is strictly convex with respect to ν and it has a unique stationary point at ν = c for any given λg as in Theorem 4. Setting ν = c, our objective function simplifies to 
+
+fλg (c, S ) = −12 log |S| − 
+
+Z
+
+qλg (θg)
+
+Z 
+
+q0(ζ) log pb∗|θg ,y (S1/2ζ + c)dζ 
+
+
+
+dθ g.
+
+Let A denote the set of θg where p(b∗ | θg, y ) is log-concave and elliptically symmetric about c with scale matrix M . Then there exists a spherically symmetric pdf p0,θ g such that 
+
+pb∗|θg ,y (b∗) = p0,θ g {M −1/2(b∗ − c)}| M |−1/2 for each θg ∈ A. Substituting this in fλg (c, S ), we have 
+
+fλg (c, S ) = fλg (J) = − log |J| − 
+
+Z
+
+> A
+
+qλg (θg)
+
+Z
+
+q0(ζ) log p0,θ g (Jζ )dζdθ g,
+
+where J = M −1/2S1/2 since the integral over Ac is equal to zero. It suffices to minimize 
+
+fλg (J) with respect to J. Note that fλg (J) is strictly convex in J and hence any stationary point will correspond to a unique global minimizer. Following Margossian & Saul (2025 b), we will show that such a stationary point occurs at J = γI for some γ > 0. The strict concavity property of fλg (J) follows from the strict concavity of log |J| and the assumptions that p(b∗ | θg, y ) and hence p0,θ g are log-concave for θg ∈ A.47 Since p0,θ g and q0 are spherically symmetric, we can define the functions g1,θ g and g2
+
+such that log p0,θ g (Jζ ) = g1,θ g (∥Jζ ∥) and q0(ζ) = g2(∥ζ∥). Then 
+
+fλg (J) = − log |J| − 
+
+Z
+
+> A
+
+qλg (θg)
+
+Z
+
+g2(∥ζ∥)g1,θ g (∥Jζ ∥)dζdθ g,
+
+∇vec( J)fλg (J) = −vec 
+
+
+
+J−⊤ +
+
+Z
+
+> A
+
+qλg (θg)
+
+Z 
+
+g2(∥ζ∥)g′ 
+
+> 1,θ g
+
+(∥Jζ ∥)Jζζ ⊤
+
+∥Jζ ∥ dζ 
+
+
+
+dθ g
+
+
+
+.
+
+Suppose a minimizer exists at J = γI for some γ > 0, then the gradient is zero at this point, which means 
+
+γ−1I = −
+
+Z
+
+> A
+
+qλg (θg)
+
+Z 
+
+g2(∥ζ∥)g′ 
+
+> 1,θ g
+
+(γ∥ζ∥)ζζ ⊤
+
+∥ζ∥ dζ 
+
+
+
+dθ g
+
+Margossian & Saul (2025 b) show that the expression in () is a scalar multiple of the identity matrix in their Theorem 10’s proof. As both sides of the equations are scalar multiples of the identity matrix, we can solve for γ by equating their traces. As P 
+
+> i
+
+ζ2 
+
+> i
+
+= ∥ζ∥2, We have 
+
+N/γ = −
+
+Z
+
+> A
+
+qλg (θg)
+
+Z 
+
+g2(∥ζ∥)g′ 
+
+> 1,θ g
+
+(γ∥ζ∥)∥ζ∥dζ 
+
+
+
+dθ g
+
+=
+
+Z
+
+> A
+
+qλg (θg)
+
+
+
+− 2πN/ 2
+
+Γ( N/ 2) 
+
+Z
+
+g2(r)g′ 
+
+> 1,θ g
+
+(γr )rN dr 
+
+
+
+dθ g,
+
+where the last line is evaluated using spherical coordinates as in Margossian & Saul (2025 b). In addition, they showed that the term in the last line in parentheses is a positive increasing function of γ. This holds for each θg ∈ A, and integration with respect to qλg preserves this property. Hence we conclude that a unique solution J = γI exists, which implies S = γ2M .Note that γ depends on λg. Since q0 is spherically symmetric, Cov q0 (ζ) = κI for some 
+
+κ > 0, so at the minimizer Cov qν,S (b∗) = κS = κγ 2M and the correlation matrix implied by M is recovered exactly. 48

@@ -1,0 +1,1538 @@
+Title: Semi-Supervised Conditional Diffusion via Label Augmentation
+
+URL Source: https://arxiv.org/pdf/2607.16685v1
+
+Published Time: Tue, 21 Jul 2026 00:34:33 GMT
+
+Number of Pages: 34
+
+Markdown Content:
+# Semi-Supervised Conditional Diffusion via Label Augmentation 
+
+Jin Su a, Yuan Gao b, Yong Zhou c, and Jian Huang a,d∗
+
+> a
+
+Department of Applied Mathematics, The Hong Kong Polytechnic University, Hong Kong, China 
+
+> b
+
+School of Statistics and Data Science, Nankai University, Tianjin, China 
+
+> c
+
+School of Statistics, East China Normal University, Shanghai, China 
+
+> d
+
+Department of Data Science and AI, The Hong Kong Polytechnic University, Hong Kong, China 
+
+July 21, 2026 
+
+Abstract 
+
+Conditional diffusion models have become a powerful and flexible framework for learning complex conditional distributions from labeled data. In practice, however, acquiring high-quality labels is costly and time-consuming, leaving large volumes of unlabeled data unused. To address this, we introduce label -augmented conditional diffusion (LACD), a simple and effective approach that incorporates unlabeled exam-ples by assigning them a designated trivial label and performing joint denoising score matching over the augmented dataset. We provide sufficient conditions guaranteeing population - level identifiability of the target conditional distribution under this scheme. Moreover, we establish rigorous statistical guarantees: when sufficiently many unla-beled samples are available, the sampling distribution produced by LACD converges strictly faster than the purely supervised estimator in total variation distance, and at least as fast in Wasserstein - 1 distance. Extensive experiments on synthetic, image, and tabular benchmarks corroborate our theory and show substantial gains in sample efficiency and generative performance compared with the purely supervised estimator. 
+
+Keywords: Semi-supervised learning, diffusion models, conditional distribution, gener-ative modeling, shared embedding 
+
+> ∗
+
+Corresponding author. 
+
+1arXiv:2607.16685v1 [stat.ML] 18 Jul 2026 1 Introduction 
+
+Estimating the conditional distribution is a central problem in statistics and machine learning. Beyond finite-dimensional functionals (e.g. summary statistics or regression parameters) and predictive objects (e.g. conditional mean or quantile), modeling the distribution can capture more complex data structures. This capability drives modern advancements in representation learning (Sohn et al., 2015; Khemakhem et al., 2020; Preechakul et al., 2022), data augmentation (Shin et al., 2018; Tian and Shen, 2026), and privacy-preserving synthetic data generation (Beaulieu-Jones et al., 2019; Daum et al., 2024). Furthermore, it provides a principled approach for resolving statistical problems, including missing data imputation (Yoon et al., 2018; Mattei and Frellsen, 2019; Ipsen et al., 2021), counterfactual reasoning (Wu et al., 2024, 2025; Chen et al., 2025), and nonparametric regression (Song et al., 2025). Let ( X, Y ) be a pair of random variables. The existing methods, including kernel smoothing (Nadaraya, 1964; Watson, 1964; Wasserman, 2006) and other parametric and nonparametric approaches (McLachlan et al., 2019; Chac´ on and Duong, 2018), seek to estimate the functional form of the conditional density of Y given X. However,in multivariate and high-dimensional settings, these methods exhibit high estimation variance when labeled samples are scarce and are inadequate for characterizing the complex, multimodal distributions encountered in modern applications. While generative approaches, such as conditional diffusion models (Ho and Salimans, 2022; Nichol et al., 2022; Rombach et al., 2022; Bansal et al., 2023; Zhang et al., 2023), relax these structural restrictions and achieve minimax optimality under the supervised setting (Fu et al., 2024; Tang et al., 2025), their performance remains limited by the available paired data. Consequently, when paired data ( X, Y ) is scarce, these models suffer from overfitting (Giannone et al., 2022; Carlini et al., 2023; Jeon et al., 2025). To mitigate the dependence on labeled data, semi-supervised learning (SSL) offers a natural solution. In practice, acquiring paired observations is often 2expensive or restricted by privacy concerns, whereas unlabeled data are abundant and readily available. This data imbalance motivates an SSL setting with a labeled dataset Dl = {(Xi, Y i)}Nℓ 
+
+> i=1
+
+and a larger unlabeled dataset Du =
+
+{Xi}Ni=Nℓ+1 , where Nu = N − Nℓ ≫ Nℓ. The theoretical properties of SSL have been extensively explored for discriminative tasks, particularly in finite-dimensional parameter estimation (Chakrabortty and Cai, 2018; Zhang et al., 2019; Zhang and Bradic, 2021; Azriel et al., 2022; Angelopoulos et al., 2023; Deng et al., 2024; Song et al., 2024; Kallus and Mao, 2025) and nonparametric regression (Wasserman and Lafferty, 2007; Ding et al., 2025). In those works, unlabeled observations are usually used for Y -related targets: X is treated as covariates, Y is the response or label, and the goal is typically the conditional distribution PY |X or a Y -related functional of this conditional distribution. A key insight is that unlabeled observations improve statistical efficiency when the marginal distribution provides structural information for target estimands. Our problem has the same observed data structure but a different target. We study semi-supervised conditional generation, where X is the object to be generated and the target is PX|Y . Thus, unlabeled observations of X provide direct information about the marginal distribution of the generated object, while the labeled pairs identify how this distribution varies with Y . Several related lines of work address neighboring aspects of this problem but do not cover this setting. Semi-supervised or auxiliary-data methods for distributional estimation provide efficiency gains for marginal densities or conditional distribution functions (Cannings and Fan, 2022; Wen et al., 2024). Related generative-learning work studies transfer learning from source models (Tian and Shen, 2025) or empirical semi-supervised diffusion through pseudo-labeling (You et al., 2023). Despite these developments, existing work leaves open how unlabeled observations of X
+
+can be used to improve estimation of PX|Y in conditional generation. In this work, we propose a label-augmentation method for learning conditional distributions with diffusion models in a semi-supervised setting. We assume 3that the conditional distributions PX|Y =y share a common baseline component across all conditions y ∈ Y . This allows unlabeled data to inform estimation of the shared component, while labeled pairs identify the condition-specific components. To implement this, unlabeled observations are assigned a trivial label, augmenting the conditioning space to eY = Y ∪ { ∅} and integrating the marginal distribution and the conditional distributions within a single probability space. Here ∅ corresponds to unlabeled X. We employ score-based diffusion models (Song and Ermon, 2019; Song et al., 2020), where the score function is estimated via denoising score matching on the augmented dataset, and samples from PX|Y =y are obtained by simulating the reverse process conditioned on 
+
+y ∈ Y . Finite-sample convergence rates in total variation (TV) and Wasserstein-1 ( W1) distances are established, showing strict improvement over the supervised counterpart in TV distance, and in W1 distance when the covariate structure is not too simple. These theoretical results are corroborated by extensive empirical studies across synthetic and real datasets. The remainder of this paper is organized as follows. Section 2 presents the methodology, Section 3 establishes convergence analysis, Section 4 reports experimental results, and Section 5 concludes. 
+
+# 2 Methodology 
+
+In this section, we describe the proposed Label-Augmented Conditional Diffusion (LACD) model. 
+
+2.1 Problem Setup and Augmented Probability Space 
+
+Let X ∈ X ⊆ Rdx and Y ∈ Y = {0, 1, . . . , K − 1} be the covariate and label, respectively. Consider N samples where only a small fraction are labeled. Let 
+
+D ∈ { 0, 1} be a missing indicator, where D = 1 if the label is observed and 
+
+D = 0 otherwise. We assume that D is independent of ( X, Y ) with observation 4probability πN = P(D = 1) . Define an augmented variable eY ∈ eY := Y ∪ { ∅}
+
+by 
+
+eY := 
+
+
+
+Y, D = 1 ,
+
+∅, D = 0 ,
+
+where ∅ represents the unlabeled state. Our dataset D = {(Xi, eYi)}Ni=1 consists of N independent observations from the joint distribution of ( X, eY ). This naturally partitions into a labeled dataset Dl = {(Xi, Y i) : eYi = Yi ∈ Y} with size Nℓ, and an unlabeled dataset Du = {(Xi, ∅) : eYi = ∅} with size Nu, where 
+
+Nℓ + Nu = N . Our goal is to learn the conditional distribution PX|Y from observed data. 
+
+Remark 1 In the missing data literature, missing completely at random (MCAR) is defined as the indicator D being independent of (X, Y ), i.e., P (D = 1 | X, Y ) = 
+
+P (D = 1) (Little and Rubin, 2019). While MCAR settings typically assume “positive overlap” with a fixed labeling probability P (D = 1) = c > 0, SSL settings generalize this by introducing a vanishing label proportion. Specifically, SSL settings allows Nℓ/N → 0 (equivalently πN = P (D = 1) → 0) as N → ∞ ,provided that N π N → ∞ (Song et al., 2024; Kallus and Mao, 2025). This setup ensures labeled data availability in finite samples and asymptotic growth in absolute size despite vanishing relative proportion, with generality to revert to balanced cases via fixed πN = c > 0.
+
+Under the SSL setting described above, it can be shown that the conditional distribution PX| eY =˜ y satisfies 
+
+PX| eY =˜ y =
+
+
+
+PX|Y =y if ˜ y = y ∈ Y ,PX if ˜ y = ∅,
+
+so that the conditional probability PX| eY =˜ y in the augmented space identifies 5PX|Y and PX , respectively. We establish this identification result through a measure-theoretic construction. Consider the original probability space (Ω , F, P ) with random variables 
+
+X(ω) : Ω → X and Y (ω) : Ω → Y . The joint distribution of ( X, Y ) is 
+
+P ◦ (X, Y )−1 ∈ P (X × Y ), where P(X × Y ) denotes the set of all probability measures defined on X × Y .We construct an augmented probability space through a product measure space (Ω ∗, F∗, P ∗) = (Ω × { 0, 1}, F ⊗ 2{0,1}, P ⊗ μN ),
+
+where μN is a Bernoulli measure on {0, 1} with μN (1) = πN . For ω∗ = ( ω, d ) ∈ Ω∗
+
+with d ∈ { 0, 1}, let X∗(ω∗) = X(ω), Y ∗(ω∗) = Y (ω) and D(ω∗) = d. The joint distribution of ( X∗, Y ∗) is P ∗ ◦ (X∗, Y ∗)−1. This augmentation preserves the joint distribution of ( X, Y ), as formalized below. 
+
+Lemma 2.1 P ∗ ◦ (X∗, Y ∗)−1 = P ◦ (X, Y )−1 ∈ P (X × Y ).
+
+Define the augmented variable eY : Ω ∗ → eY as eY (ω∗) = Y ∗(ω∗), if D(ω∗) = 1 and eY (ω∗) = ∅ if D(ω∗) = 0. Note that since D ⊥ (X, Y ), for any measurable set A,
+
+P ∗(X∗ ∈ A| eY = ˜ y) = P ∗(X∗ ∈ A| eY = y)= P ∗(X∗ ∈ A, D = 1 , Y ∗ = y)
+
+P ∗(D = 1 , Y ∗ = y)= πN · P (X ∈ A, Y = y)
+
+πN · P (Y = y) = P (X ∈ A|Y = y), ˜y = y ∈ Y ,P ∗(X∗ ∈ A| eY = ˜ y) = P ∗(X∗ ∈ A| eY = ∅)= P ∗(X∗ ∈ A, D = 0) 
+
+P ∗(D = 0) = (1 − πN ) · P (X ∈ A)1 − πN
+
+= P (X ∈ A), ˜y = ∅.
+
+This confirms the identification. We hereafter denote P ∗ simply by P , and write 
+
+PX| eY for the conditional distribution of X given eY .62.2 Model Specification 
+
+We represent each label y by its one-hot encoding ey ∈ RK . Consider the function h : eY → Rdh defined by 
+
+h(˜ y) = b0 + Φ 0ey · 1{˜y = y ∈ Y} , (1) where b0 ∈ K ⊆ Rdh , Φ 0 ∈ W ⊆ Rdh×K , with ∥Φ0ey∥ > 0 for all y ∈ Y .We assume that the conditional density takes the form pX| eY =˜ y(x|˜y) = 
+
+p(x; h(˜ y)) for all ˜ y ∈ ˜Y. In particular, 
+
+pX (x) = p(x; b0), pX|Y (x|y) = p(x; b0 + Φ 0ey), ∀ y ∈ Y . (2) This formulation allows abundant unlabeled observations to directly inform the estimation of the shared function p(·; ·), while limited labeled pairs identify the specific conditional dependence through Φ 0.
+
+2.3 Label-Augmented Conditional Diffusion 
+
+We employ a score-based diffusion model (Song and Ermon, 2019; Song et al., 2020), formulated as a continuous-time stochastic process based on the Ornstein-Uhlenbeck (OU) process (Uhlenbeck and Ornstein, 1930), to learn PX| eY =˜ y for all ˜ y ∈ eY simultaneously. Given eY = ˜ y, the forward process stochastic differential equation (SDE) is dXt(˜ y) = −12βtXt(˜ y)d t + pβtdWt, with X0(˜ y) ∼ PX| eY =˜ y, t ∈ [0 , T ], (3) where βt is the time-dependent diffusion coefficient, Wt is a standard Wiener process. Here and below, T > 0 is a terminal time that can depend on the sample size and diverge to infinity. Denote the corresponding marginal conditional density function of Xt( ˜y) = ( Xt| eY = ˜y) at t by pt(x|˜y). It can be shown that 7the conditional distribution of Xt(˜ y)|X0(˜ y) is Gaussian with 
+
+E[Xt(˜ y)|X0(˜ y) = x0(˜ y)] = αtx0(˜ y), Cov( Xt(˜ y)|X0(˜ y) = x0(˜ y)) = σ2 
+
+> t
+
+Idx ,
+
+where αt = exp( − R t 
+
+> 0
+
+βs ds/ 2) and σ2 
+
+> t
+
+= 1 − α2 
+
+> t
+
+. So we can represent Xt as 
+
+Xt(˜ y) = αtX0(˜ y) + σtϵ, ϵ ∼ N (0 , I dx ), (4) This expression makes the computation of the forward process (3) straightfor-ward. The corresponding backward process ( Xt( ˜y)) t∈[0 ,T ] = ( XT −t( ˜y)) t∈[0 ,T ] is given by (Anderson, 1982) 
+
+dX t(˜ y) = 12βT −t
+
+Xt(˜ y) + 2 ∇xt log pT −t(Xt|˜y) dt + pβT −tdW t,
+
+where X0( ˜y) ∼ pT (·| ˜y), ∇xt log pt(xt|˜y) is the conditional score function, and W t
+
+is a time-reversed Wiener process. Let Qt( ˜y) denote the distribution of Xt( ˜y). By the time-reversal theorem (Anderson, 1982), XT (˜ y) ∼ PX| eY =˜ y.Under the model specification in Section 2.2, the forward diffusion process induces the time-t density 
+
+pt(xt|˜y) = pt(xt; h(˜ y)) = 
+
+Z
+
+ϕt(xt|x)p(x; h(˜ y)) dx, 
+
+where ϕt(xt|x) is the Gaussian transition kernel with ∇ log ϕt(xt|x) = −(xt −
+
+αtx)/σ 2 
+
+> t
+
+, αt = exp {− R t 
+
+> 0
+
+βsds/ 2}, and σ2 
+
+> t
+
+= 1 − α2 
+
+> t
+
+. We therefore define the true score function as s(xt, h ( ˜y), t ) := ∇xt log pt(xt; h( ˜y)). Substituting (1) , the marginal and conditional score functions are s(xt, b 0, t ) and s(xt, b 0 + Φ 0ey, t ), respectively. We parameterize the score network as sθ(x, h b, Φ( ˜y), t ) : Rdx × Rdh × [0 , T ] →
+
+Rdx , where sθ is a score network with parameter θ and hb, Φ( ˜y) = b + Φ ey · 1{˜y =
+
+y ∈ Y} consists of parameter Φ ∈ Rdh×K and b ∈ Rdh .8The parameters ( θ, b, Φ) are estimated by minimizing the denoising score matching (DSM; Vincent 2011; Song et al. 2020) objective E[ℓ(X, ˜Y ; θ, b, Φ)], where 
+
+ℓ(x, ˜y; θ, b, Φ) = 
+
+Z Tτ
+
+EXt∼N (αtx,σ 2  
+
+> tIdx )
+
+"
+
+sθ(Xt, h b, Φ(˜ y), t ) + Xt − αtxσ2
+
+> t
+> 2
+
+#
+
+dt. 
+
+Here τ is an early-stopping time, which can depend on the sample size and converge to zero in our theoretical analysis. Given the i.i.d. copies {(Xi, eYi), i = 1 , . . . , N }, one can minimize the empirical loss 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+ℓ(Xi, eYi; θ, b, Φ) = Nℓ
+
+N · 1
+
+NℓNℓX
+
+> i=1
+
+ℓ(Xi, Y i; θ, b, Φ) + Nu
+
+N · 1
+
+N
+
+> Nu
+
+X
+
+> i=1
+
+ℓ(Xi, ∅; θ, b ),
+
+(5) where the unlabeled loss depends only on ( θ, b ) since hb, Φ(∅) = b does not involve Φ. The empirical minimizer ( ˆθ, ˆb, ˆΦ) provides the learned score function ˆs(x, ˆh(˜ y), t ) := sˆθ(x, ˆhˆb, ˆΦ(˜ y), t ). Given the learned score function, we generate samples by running the reverse process. As pT (·| ˜y) is well approximated by N (0 , I dx ) when T is large, the approximate backward process is d bXt(˜ y) = 12βT −t
+
+n bXt(˜ y) + 2ˆ s( bXt(˜ y), ˆh(˜ y), T − t)
+
+o
+
+dt + pβT −tdW t, t ∈ [0 , T ),
+
+(6) with bX0( ˜y) ∼ N (0 , I dx ), terminated at time T − τ , yielding the output distribu-tion bQT −τ (˜ y). For conditional generation from PX|Y =y, we set ˜ y = y.
+
+2.4 Examples of conditional models 
+
+The additive structure (2) encompasses a broad range of distribution families. We illustrate this with the following three representative examples. These examples 9are not mutually exclusive; for instance, the Gaussian family simultaneously instantiates all three structures. Let pY (·) denote the marginal distribution of 
+
+Y .
+
+2.4.1 Location Family 
+
+Consider the location family p(x|y) = f (x − μy), where μy ∈ Rdx is the location parameter and pY (y) = 1 /K for y ∈ { 0, . . . , K − 1}.Take dh = K + 1 and set b0 = (1 , 0, . . . , 0) ⊤ ∈ RK+1 and Φ 0 = ( −1⊤ 
+
+> K
+
+, I ⊤ 
+
+> K
+
+)⊤ ∈
+
+R(K+1) ×K , where 1K is the K-vector of ones and IK is the K ×K identity matrix. Writing h = ( h1, . . . , h K+1 )⊤, define 
+
+p(x; h) = h1 · 1
+
+K
+
+> K−1
+
+X
+
+> y=0
+
+f (x − μy) + 
+
+> K−1
+
+X
+
+> y=0
+
+hy+2 · f (x − μy).
+
+Since b0 + Φ 0ey = (0 , . . . , 0, 1, 0, . . . , 0) ⊤ with 1 in position y + 2, we have 
+
+p(x; b0) = 1
+
+> K
+
+PK−1 
+
+> y=0
+
+f (x − μy) = pX (x) and p(x; b0 + Φ 0ey) = f (x − μy) = p(x|y). 
+
+2.4.2 Exponential family 
+
+Consider the exponential family p(x|y) = exp  ⟨ηy, T (x)⟩ − A(ηy), where ηy ∈
+
+Rdη is the natural parameter and T (·) is a fixed sufficient statistic. The marginal 
+
+pX (x) is a mixture of exponential family members. Similarly, we can construct 
+
+p(x; h) satisfying (2) by the embedding procedure used for the location family. 
+
+2.4.3 Latent variable model 
+
+Consider two types of latent variable models. (i) h in the prior. Let p(x|y) = 
+
+R p(x|z)p(z|y)d z. Define the parameterized model p(x; h) = R p(x|z)p(z; h)d z,and set p(z; b0 + Φ 0ey) = p(z|y) and p(z; b0) = K−1 PK−1 
+
+> y=0
+
+p(z|y) = p(z). Then (2) is directly satisfied without additional embedding. (ii) h in the decoder. Let 
+
+p(x|y) = R p(x|z, η y)p(z)d z, where ηy is the condition-specific parameter. The marginal distribution simplifies to pX (x) = K−1 PK−1
+
+> y=0
+
+R p(x|z, η y)p(z)d z. We 10 can apply the same embedding method used for the location family. 
+
+Remark 2 The construction of b0 and Φ0 satisfying (2) is not unique. For instance, in the location family example above, taking dh = K + 1 gives the construction in Section 2.4.1; taking dh = K + 2 with b0 = (1 , 0, . . . , 0) ⊤ ∈ RK+2 
+
+and Φ0 augmented by an additional zero row also satisfies (2) . More generally, any dh ≥ K + 1 admits a valid construction. 
+
+# 3 Convergence Analysis 
+
+This section establishes finite-sample convergence rates for the LACD estimator in Wasserstein-1 ( W1) and total variation (TV) distances. We begin by introduc-ing the necessary notations and function classes, followed by the assumptions and main results. 
+
+Notations and Metrics. Let ∥ · ∥ be the Euclidean norm. For two probability distributions ν1 and ν2 on Rd, define 
+
+W1(ν1, ν 2) = inf  
+
+> γ∈Π( ν1,ν 2)
+
+E(Z,Z ′)∼γ [∥Z − Z′∥], and TV( ν1, ν 2) = sup 
+
+> A
+
+|ν1(A) − ν2(A)|,
+
+where Π( ν1, ν 2) is the set of all joint distributions whose marginals are ν1 and 
+
+ν2 respectively, and the supremum is taken over all measurable sets A ⊂ Rd.Let ∥v∥∞ = max j |vj | for v ∈ Rd; ∥B∥0 = P 
+
+> i,j
+
+1{Bij ̸ =0 } and ∥B∥∞ =max i,j |Bij | for matrix B; and ∥f ∥∞ = sup z ∥f (z)∥ for measurable map f (·). We write an ≲ bn (or an = O(bn)) if an ≤ Cb n for some constant C > 0 independent of n, and write an ≳ bn if bn ≲ an. We denote an ≍ bn (or an = Θ( bn)) if 
+
+an ≲ bn ≲ an. Based on these, eO(bn) (resp. eΘ(bn)) represents O(bn log k n) (resp. Θ( bn log k n)) for some k ≥ 0. For a, b ∈ R, we write a ∨ b = max {a, b } and 
+
+a ∧ b = min {a, b }.
+
+Neural Network Classes. The score network sθ introduced in Section 2.2 is instantiated as ReLU neural network. We formalize the neural network classes 11 below. 
+
+Definition 1 (ReLU Neural Network Function Class) Consider the func-tions f : Rdin → Rdout with the compositional structure 
+
+f (z) = ( ALσ(·) + bL) ◦ · · · ◦ (A2σ(·) + b2) ◦ (A1z + b1),
+
+where σ(x) = max {0, x } is the ReLU activation applied element-wise, Ai ∈
+
+Rdi×di−1 and bi ∈ Rdi for i = 1 , . . . , L with d0 = din and dL = dout , subject to the constraints max i=0 ,...,L di ≤ W , sup z∈Rdin ∥f (z)∥∞ ≤ S, max i=1 ,...,L (∥Ai∥∞ ∨∥bi∥∞) ≤ D, and PLi=1 (∥Ai∥0 + ∥bi∥0) ≤ R. Denote the set of such functions by 
+
+Φ( din , d out , L, W, S, D, R ).
+
+3.1 Error Decomposition 
+
+The analysis relies on the following function classes and network architectures. We write Fβ (U, Rdo , B ) = {f : U → Rdo | ∥ f ∥Fβ ≤ B} as the H¨ older function class. The score function estimator is assumed to belong to a time-varying neural network class Γ, as specified below. Γ = 
+
+n
+
+sθ(x, h b, Φ(˜ y), t ) = 
+
+> J
+
+X
+
+> i=1
+
+sθ,i (x, h b, Φ(˜ y), t ) · 1(ti−1 ≤ t < t i) : 
+
+sθ,i ∈ Φ( dx + dh + 1 , d x, L i, W i, S i, D i, R i) for i ∈ [J],hb, Φ(˜ y) = b + Φ ey · 1{˜y = y ∈ Y} , Φ ∈ W , b ∈ K 
+
+o
+
+,
+
+where τ = t0 < t 1 < · · · < t J = T with ti+1 /t i = 2 for all i ∈ { 0, 1, . . . , J − 1}
+
+and τ = 2 −J T .The key to establishing convergence rates is to control the score estimation error. By a SDE error propagation argument (see SM), combined with Jensen’s 12 inequality, 
+
+ED
+
+EY [W1(PX|Y , bQT −τ (Y ))]  ≲ e−T + √τ +
+
+> J − 1
+
+X
+
+> i=0
+
+p(ti log N ) ∧ 1 ·
+
+q
+
+ED[Lc,i (ˆθ, ˆb, ˆΦ)] ,
+
+ED
+
+EY [TV( PX|Y , bQT −τ (Y ))]  ≲ e−T + ED
+
+EY [TV( QT (Y ), Q T −τ (Y ))]  +
+
+> J − 1
+
+X
+
+> i=0
+
+q
+
+ED[Lc,i (ˆθ, ˆb, ˆΦ)] ,
+
+where 
+
+Lc,i (θ, b, Φ) := 
+
+Z ti+1 
+
+> ti
+
+EXt,Y 
+
+ sθ(Xt, b + Φ eY , t ) − ∇ xt log pt(Xt|Y ) 2 dt (7) is the conditional score matching loss over [ ti, t i+1 ]. Second, we bound ED[Lc,i ( ˆθ, ˆb, ˆΦ )] by decomposing it into statistical and approximation errors, and balance these errors. Denote the Fisher divergence as 
+
+L(θ, b, Φ) = 
+
+Z Tτ
+
+EXt, eY [∥sθ(Xt, h b, Φ( eY ), t ) − ∇ xt log pt(Xt| eY )∥2]d t (8) =πN Lc(θ, b, Φ) + (1 − πN )Lm(θ, b ),
+
+where Lc(θ, b, Φ) = PJ 
+
+> i=1
+
+Lc,i (θ, b, Φ), Lm(θ, b ) = PJ 
+
+> i=1
+
+Lm,i (θ, b ). Here 
+
+Lm,i (θ, b ) = 
+
+Z ti+1 
+
+> ti
+
+EXt
+
+∥sθ(Xt, b, t ) − ∇ xt log pt(Xt)∥2 dt. 
+
+Recall that ˆs(x, ˆh( ˜y), t ) = sˆθ(x, ˆhˆb, ˆΦ( ˜y), t ) and the parameters ( ˆθ, ˆb, ˆΦ) are esti-mated by minimizing empirical DSM objective (5) . By the equivalence of score matching objectives (Vincent, 2011), minimizing the DSM objective is equivalent to minimizing the Fisher divergence (8). Therefore, our first goal is to bound 
+
+ED[Lc,i (ˆθ, ˆb, ˆφ)] , for each i ∈ [J ].
+
+Define ( ¯θ, ¯b, ¯Φ ) ∈ arg min Γ L(θ, b, Φ). For any shared parameter ( θ, b ), define 13 the profile minimizer ¯Φθ,b ∈ arg min  
+
+> Φ∈W
+
+Lc(θ, b, Φ) .
+
+Denote ∆ c(θ, b ) = Lc(θ, b, ¯Φθ,b ) and ∆ m(θ, b ) = Lm(θ, b ). Let H := {h(y) : y ∈Y} denote the range of h(·) over Y.We now state the assumptions for the theoretical analysis. 
+
+Assumption 1 (Compact Support) The sets X , W and K are compact. 
+
+Assumption 2 (Density Regularity) 
+
+(H1) pX (x) ∈ F βx (X , R, B xh ) and p(x; h) ∈ F βx (X , R, B xh ) uniformly over 
+
+h ∈ H , for some Bxh > 0 and βx > 0.(H2) There exist 0 < p min ≤ pmax < ∞ such that pmin ≤ p(x; h( ˜y)) ≤ pmax for all 
+
+x ∈ X and ˜y ∈ eY.
+
+Assumption 3 (Structural Consistency) There exists a constant c1 > 0
+
+such that for all (θ, b ): |∆c(θ, b ) − ∆c(¯θ, ¯b)| ≤ c1|∆m(θ, b ) − ∆m(¯θ, ¯b)|.
+
+Assumption 4 (Diffusion Schedule) The schedule βt is continuous, non-decreasing, and bounded by some β, ¯β > 0 such that for any t ∈ [0 , T ], β ≤ βt ≤
+
+¯β.
+
+Assumption 1 is a standard regularity condition ensuring the boundedness of the support. Assumption 2 imposes smoothness on the data-generating process. Assumption 3 formalizes task alignment by requiring the conditional performance gap ∆ c(θ, b ) to be controlled by the marginal discrepancy ∆ m(θ, b ), ensuring that a near-optimal shared parameter ( θ, b ) provides a sufficient foundation for conditional distribution estimation. This condition parallels structural assump-tions in multi-task and transfer learning (Tripuraneni et al., 2020; Chen et al., 2025; Tian and Shen, 2025). Assumption 4 is standard in the diffusion model literature. Several common scheduling options, including constant schedule, linear schedule (Ho et al., 2020), and cosine schedule (Nichol and Dhariwal, 2021), satisfy this condition. 14 We decompose Lc,i (ˆθ, ˆb, ˆΦ) into three components: 
+
+Lc,i (ˆθ, ˆb, ˆΦ) = Eemb ,i + Eshared ,i + Eapprox ,i , (9) where 
+
+Eemb ,i := Lc,i (ˆθ, ˆb, ˆΦ) − L c,i (ˆθ, ˆb, ¯Φˆθ, ˆb),
+
+Eshared ,i := Lc,i (ˆθ, ˆb, ¯Φˆθ, ˆb) − L c,i (¯θ, ¯b, ¯Φ¯θ, ¯b),
+
+Eapprox ,i := Lc,i (¯θ, ¯b, ¯Φ¯θ, ¯b).
+
+Here Eemb ,i captures the estimation error of the embedding matrix Φ given fixed shared parameters ( ˆθ, ˆb); Eshared ,i captures the estimation error of the shared parameters ( θ, b ); and Eapprox ,i is the approximation error measuring the best achievable loss within Γ. Denote the statistical complexity terms as 
+
+CΦ := dhK log NNℓ
+
+, and Cθ,b,i := (log N )2 RiLi log( Li(Di ∨ 1) WiN )
+
+Nu
+
+.
+
+The following lemma bounds Eemb ,i .
+
+Lemma 3.1 Under Assumptions 1–3, with probability at least 1 − 1/N ℓ, for all 
+
+i ∈ [J ],
+
+Eemb ,i ≲ CΦ + Eapprox ,i + |L m,i (ˆθ, ˆb) − L m,i (¯θ, ¯b)|. (10) By Assumption 3, Eshared ,i satisfies |E shared ,i | ≤ c1|L m,i ( ˆθ, ˆb) − L m,i ( ¯θ, ¯b)|. The following lemma bounds Eshared ,i .
+
+Lemma 3.2 Under Assumptions 1–3, with probability at least 1 − 1/N u, for all 
+
+i ∈ [J ],
+
+Eshared ,i ≲ Cθ,b,i + Lm,i (¯θ, ¯b). (11) 15 Lemma 3.3 bounds the approximation errors Eapprox ,i and Lm,i ( ¯θ, ¯b), which measure the best approximation of the true score achievable within Γ. 
+
+Lemma 3.3 Under Assumptions 1–3, let δ > 0 be a target precision, and let 
+
+t∗ = δ2/β x / log N , Λ = Θ( log N · log δ−1), Λτ = Θ( log N · log τ −1). There exists 
+
+¯s ∈ Γ with score network parameters for each i ∈ [J ]:(i) If t∗ ≤ ti ≤ T : Li = Θ(Λ 2 + log 2 N ), Wi = eΘ(t−dx/2 
+
+> i
+
+Λ3), Di = exp (Θ(Λ 2)) ∨
+
+O(log N ·t−1 
+
+> i
+
+)∨exp (Θ( log N )) , Si = Θ( plog N/ (ti ∧ 1) ), Ri = eΘ(t−dx/2 
+
+> i
+
+Λ4),(ii) If τ ≤ ti ≤ t∗: Li = Θ(Λ 2 
+
+> τ
+
++log 2 N ), Wi = eΘ(δ−dx/β x Λ3 
+
+> τ
+
+), Di = exp (Θ(Λ 2 
+
+> τ
+
+)) ∨
+
+O(log N · δ−2/β x ) ∨ exp (Θ( log N )) , Si = Θ( plog N/t i), Ri = eΘ(δ−dx/β x Λ4 
+
+> τ
+
+),such that 
+
+Eapprox ,i = eO(δ2), Lm,i (¯θ, ¯b) = eO(δ2). (12) Using the error decomposition (9) , (10) , (11) , and (12) , and balancing the re-sulting statistical and approximation terms, we control the two score-error sums appearing in the SDE error-propagation inequalities: PJ − 1
+
+> i=0
+
+p(ti log N ) ∧ 1 ·
+
+pED[Lc,i ] and PJ − 1
+
+> i=0
+
+pED[Lc,i ] . Recall that bQT −τ ( ˜y) denotes the output dis-tribution of the practical backward process in (6) . For conditional generation, we write the resulting estimator as bPX|Y , with bPX|Y (· | y) = bQT −τ (y) for y ∈ Y .The following theorem gives its convergence rates. 
+
+Theorem 3.1 Suppose Assumptions 1–4 hold. Let T = Θ( log N ) and τ =
+
+N −2(1+1 /β x)/(2+ dx/β x) 
+
+> u
+
+, there exists ˆs ∈ Γ with network configuration 
+
+Li = Θ(log 4 N ), Di = exp  Θ(log 4 N ), Si = Θ( plog N/ (ti ∧ 1)) ,Wi = Ri = eΘ( t−dx/2 
+
+> i
+
+∧ N (dx/β x)/(2+ dx/β x) 
+
+> u
+
+). (13) 16 Then 
+
+ED[EY [W1(PX|Y , bPX|Y )]] = eO
+
+
+
+N − 12 
+
+> ℓ
+
++ N − 12 
+
+> u
+
++ N − 1+ βx 
+
+> 2βx +dx
+> u
+
+
+
+,
+
+ED[EY [TV( PX|Y , bPX|Y )]] = eO
+
+
+
+N − 12 
+
+> ℓ
+
++ N − βx 
+
+> 2βx +dx
+> u
+
+
+
+.
+
+If we only use labeled data, we have the following results. 
+
+Corollary 3.1 (Supervised counterpart) Under Assumptions 1–4, with T =Θ( log Nℓ) and τ = N −2(1+1 /β x)/(2+ dx/β x) 
+
+> ℓ
+
+, there exists ˆssup ∈ Γ with network con-figuration 
+
+Li = Θ(log 4 Nℓ), Di = exp  Θ(log 4 Nℓ), Si = Θ( plog Nℓ/(ti ∧ 1)) ,Wi = Ri = eΘ( t−dx/2 
+
+> i
+
+∧ N (dx/β x)/(2+ dx/β x) 
+
+> ℓ
+
+). (14) 
+
+Let bP sup  
+
+> X|Y
+
+denote the corresponding output conditional distribution of the reverse process. Then 
+
+EDl [EY [W1(PX|Y , bP sup  
+
+> X|Y
+
+)]] = eO
+
+
+
+N − 12 
+
+> ℓ
+
++ N − 1+ βx 
+
+> 2βx +dx
+> ℓ
+
+
+
+,
+
+EDl [EY [TV( PX|Y , bP sup  
+
+> X|Y
+
+)]] = eO
+
+
+
+N − 12 
+
+> ℓ
+
++ N − βx 
+
+> 2βx +dx
+> ℓ
+
+
+
+.
+
+To quantify the gain from unlabeled data, we compare the convergence rates of LACD with those of its supervised counterpart. Table 1 summarizes the dominant rates. Metric/regime Supervised counterpart LACD 
+
+W1 N − 12 
+
+> ℓ
+
++ N − 1+ βx  
+
+> 2βx +dx
+> ℓ
+
+N − 12 
+
+> ℓ
+
++ N − 12 
+
+> u
+
++ N − 1+ βx 
+
+> 2βx +dx
+> u
+
+TV N − 12 
+
+> ℓ
+
++ N − βx  
+
+> 2βx +dx
+> ℓ
+
+N − 12 
+
+> ℓ
+
++ N − βx 
+
+> 2βx +dx
+> u
+
+Table 1: Dominant convergence rates for LACD and its supervised counterpart, with logarithmic factors suppressed. When dx > 2, the supervised W1 rate is dominated by N −(1+ βx)/(2 βx+dx) 
+
+> ℓ
+
+.17 Under Nℓ ≲ Nu, we have N −(1+ βx)/(2 βx+dx) 
+
+> u
+
+≲ N −(1+ βx)/(2 βx+dx) 
+
+> ℓ
+
+. Moreover, for dx > 2, N −1/2 
+
+> u
+
+≲ N −1/2 
+
+> ℓ
+
+≲ N −(1+ βx)/(2 βx+dx) 
+
+> ℓ
+
+. Hence the convergence rate of LACD is no slower than that of the supervised counterpart. If further 
+
+Nℓ/N u → 0, then all three terms in the LACD W1 bound are of smaller order than the supervised dominant term, and the convergence rate of LACD is strictly faster. When dx ≤ 2, the supervised W1 rate is dominated by N −1/2 
+
+> ℓ
+
+. Under Nℓ ≲ Nu,we have N −1/2 
+
+> u
+
+≲ N −1/2 
+
+> ℓ
+
+. Moreover, since dx ≤ 2, N −(1+ βx)/(2 βx+dx) 
+
+> u
+
+≲ N −1/2 
+
+> u
+
+≲
+
+N −1/2 
+
+> ℓ
+
+. Hence the convergence rate of LACD is no slower than that of the supervised counterpart. For the TV distance, the convergence rate of supervised counterpart is dominated by N −βx/(2 βx+dx) 
+
+> ℓ
+
+. Using similar arguments, the convergence rate of LACD is no slower than that of the supervised counterpart when Nℓ ≲ Nu, and is strictly faster when Nℓ/N u → 0. The above results provide theoretical support for the benefits of using un-labeled data in our proposed method. We also extend our results to the case where Y is continuous. 
+
+# 4 Numerical Experiments 
+
+We evaluate the proposed LACD method through simulation studies on synthetic datasets (Section 4.2), image benchmarks (Sections 4.3 and 4.4), and a tabular EEG benchmark (Section 4.5). The general algorithm is presented in Section 4.1. 
+
+4.1 Implementation 
+
+Algorithm 1 describes the LACD procedure used in simulation and tabular experiments. For image experiments, we adopt the EDM framework (Karras et al., 2022); the label augmentation scheme and score estimation objective remain identical, while the sampler follows the EDM implementation. 18 Algorithm 1 Label-Augmented Conditional Diffusion (LACD). 
+
+1: Input: D = {(Xi, eYi)}Ni=1 : training data. 
+
+2: Input: βt: diffusion schedule, T : terminal time, τ : early-stopping time, {ζk}Kk=0 :stepsizes with PKk=0 ζk = T − τ , and rk = Pk−1 
+
+> j=0
+
+ζj with r0 = 0. 
+
+3: Input: Target label y ∈ Y : the condition for generating new samples. 
+
+4: Score Function Estimation: Minimize the empirical DSM objective: (ˆθ, ˆb, ˆΦ) ∈ arg min  
+
+> θ, b, Φ
+
+1
+
+N
+
+> N
+
+X
+
+> i=1
+
+ℓ(Xi, eYi; θ, b, Φ) ,
+
+yielding the learned score function ˆ s(· , ˆh(˜ y), ·) := sˆθ(· , ˆhˆb, ˆΦ(˜ y), ·). 
+
+5: Sampling Procedure: 
+
+6: Initialize: ˘Xr0 (y) = Z ∼ N (0 , I dx ). 
+
+7: for k = 0 , . . . , K − 1 do 
+
+8: Set tk+1 = Pkj=0 ζj .
+
+9: Update: ˘Xrk+1 (y) = ˘Xrk (y) + γ1,k 
+
+n ˘Xrk (y) + 2ˆ s
+
+ ˘Xrk (y), ˆh(y), T − rk
+
+o 
+
++ √γ2,k Zk,
+
+where γ1,k = exp 
+
+nR T −rk  
+
+> T−rk+1
+
+βs ds/ 2
+
+o
+
+− 1, γ2,k = exp 
+
+nR T −rk  
+
+> T−rk+1
+
+βs ds 
+
+o
+
+− 1. 
+
+10: end for 
+
+11: return ˘XrK (y). 19 4.2 Simulation Studies 
+
+We consider nine synthetic two-dimensional datasets (Grathwohl et al., 2019; Gao et al., 2022) with covariates X ∈ R2 and discrete labels Y ∈ { 0, 1, . . . , K −1}. For all nine datasets, we fix Nℓ = 200 while varying Nu ∈ { 0, 200 , . . . , 1,000 , 2,000 }.Generation quality is evaluated by generating ng,y = 2 ,000 samples per class and computing three class-conditional metrics: Total Variation (TV), Maximum Mean Discrepancy (MMD), and Wasserstein-1 ( W1) distance, each averaged across classes as Metric = K−1 P 
+
+> y∈Y
+
+Metric (y), For each configuration, we report the best value attained during training. The metrics are defined as follows: (a) Total Variation distance TV (y): TV (y) = R |pr(x|y) − pg(x|y)| dx/ 2, where 
+
+pr(x|y) and pg(x|y) are estimated via two-dimensional Gaussian kernel density estimation with numerical integration. (b) Maximum Mean Discrepancy MMD (y): MMD 2(y) = Krr + Kgg − 2Krg ,where Krr = 1
+
+> n(n−1)
+
+P 
+
+> i̸=j
+
+k(x(y) 
+
+> r,i
+
+, x (y) 
+
+> r,j
+
+), Kgg = 1
+
+> m(m−1)
+
+P 
+
+> i̸=j
+
+k(x(y) 
+
+> g,i
+
+, x (y) 
+
+> g,j
+
+), and 
+
+Krg = 1
+
+> nm
+
+P 
+
+> i,j
+
+k(x(y) 
+
+> r,i
+
+, x (y) 
+
+> g,j
+
+). Here, k(·, ·) is a radial basis function (RBF) kernel, and {x(y) 
+
+> r,i
+
+}ni=1 , {x(y) 
+
+> g,j
+
+}mj=1 denote real and generated samples for class 
+
+y, respectively. (c) Wasserstein-1 distance W1(y): W1(y) = inf γ∈Π( pr(x|y), p g(x|y)) E(x,z )∼γ [∥x−z∥], where Π( ·, ·) denotes the set of couplings. We use the sliced Wasser-stein approximation (Rabin et al., 2011) with random projections to one-dimensional spaces. Here we report three representative examples, large 4gaussians , rings , and 
+
+2spirals , which cover well-separated multimodal clusters, concentric nonlinear structures, and intertwined curved manifolds, respectively. Complete results for all nine synthetic datasets, closed-form conditional densities. Figure 1 displays the target distributions together with generated samples across different values of Nu, while Figure 2 reports the corresponding distance 20 curves. As Nu increases, generated samples better recover the target geometry: the Gaussian clusters become more compact and well separated, the concentric rings become more clearly delineated, and the two spiral arms become more distinct. The corresponding TV, MMD, and W1 curves generally decrease as 
+
+Nu increases, with mild fluctuations in some cases. For large 4gaussians , TV, MMD, and W1 decrease by approximately 40.3%, 42.7%, and 35.6%, respec-tively, as Nu grows from 0 to 2 ,000. The rings and 2spirals examples also show overall decreasing trends, but the reductions are more modest than for 
+
+large 4gaussians .4 2 0 2 4                                                        
+
+> 4
+> 3
+> 2
+> 1
+> 0
+> 1
+> 2
+> 3
+> 4
+> Target
+> 42024
+> 4
+> 3
+> 2
+> 1
+> 0
+> 1
+> 2
+> 3
+> 4
+> Nu=0
+> TV=0.1077
+> 42024
+> 4
+> 3
+> 2
+> 1
+> 0
+> 1
+> 2
+> 3
+> 4
+> Nu=200
+> TV=0.0988
+> 42024
+> 4
+> 3
+> 2
+> 1
+> 0
+> 1
+> 2
+> 3
+> 4
+> Nu=1000
+> TV=0.0771
+> 42024
+> 4
+> 3
+> 2
+> 1
+> 0
+> 1
+> 2
+> 3
+> 4
+> Nu=2000
+> TV=0.0643
+> Large_4gaussians 42024
+> 4
+> 3
+> 2
+> 1
+> 0
+> 1
+> 2
+> 3
+> 4
+> Target
+> 42024
+> 4
+> 3
+> 2
+> 1
+> 0
+> 1
+> 2
+> 3
+> 4
+> Nu=0
+> W1=0.2112
+> 42024
+> 4
+> 3
+> 2
+> 1
+> 0
+> 1
+> 2
+> 3
+> 4
+> Nu=200
+> W1=0.2038
+> 42024
+> 4
+> 3
+> 2
+> 1
+> 0
+> 1
+> 2
+> 3
+> 4
+> Nu=1000
+> W1=0.1772
+> 42024
+> 4
+> 3
+> 2
+> 1
+> 0
+> 1
+> 2
+> 3
+> 4
+> Nu=2000
+> W1=0.1765
+> Rings 42024
+> 4
+> 3
+> 2
+> 1
+> 0
+> 1
+> 2
+> 3
+> 4
+> Target
+> 42024
+> 4
+> 3
+> 2
+> 1
+> 0
+> 1
+> 2
+> 3
+> 4
+> Nu=0
+> MMD=0.0743
+> 42024
+> 4
+> 3
+> 2
+> 1
+> 0
+> 1
+> 2
+> 3
+> 4
+> Nu=200
+> MMD=0.0716
+> 42024
+> 4
+> 3
+> 2
+> 1
+> 0
+> 1
+> 2
+> 3
+> 4
+> Nu=1000
+> MMD=0.0682
+> 42024
+> 4
+> 3
+> 2
+> 1
+> 0
+> 1
+> 2
+> 3
+> 4
+> Nu=2000
+> MMD=0.0676
+> 2spirals
+
+Figure 1: Target distributions and generated samples for large 4gaussians , rings , and 
+
+2spirals as Nu increases. Different colors represent different classes. For each example, 
+
+Nℓ = 200 with varying Nu ∈ { 0, 200 , . . . , 1,000 , 2,000 }.These findings reflect the convergence bounds. The TV reductions align with the guaranteed strict improvement for discrete Y . For W1, although unlabeled observations do not improve the asymptotic rate at dx = 2, the finite-sample bound still contains terms decreasing with Nu, consistent with the observed downward trends. 21 0 200 400 600 800 1000 2000 
+
+Number of Unlabeled Samples ( Nu)    
+
+> 0.050
+> 0.075
+> 0.100
+> 0.125
+> 0.150
+> 0.175
+> 0.200
+> 0.225
+> Distance Value
+> 0.1077
+> 0.0988
+> 0.0876 0.0832 0.0849 0.0771
+> 0.0643
+> 0.1835
+> 0.1612
+> 0.1445
+> 0.1367 0.1354
+> 0.1223
+> 0.1052
+> 0.2070
+> 0.1952
+> 0.1723
+> 0.1580
+> 0.1737
+> 0.1567
+> 0.1333
+
+Large_4gaussians        
+
+> TV Distance
+> MMD Distance
+> W1Distance 0200 400 600 800 1000 2000
+
+Number of Unlabeled Samples ( Nu)      
+
+> 0.10
+> 0.12
+> 0.14
+> 0.16
+> 0.18
+> 0.20
+> 0.22
+> Distance Value
+> 0.1164
+> 0.1150
+> 0.1140 0.1129
+> 0.1094 0.1016 0.1084 0.1169 0.1198 0.1184
+> 0.1111 0.1111
+> 0.1010
+> 0.1070
+> 0.2112
+> 0.2038
+> 0.1922
+> 0.1986
+> 0.1843
+> 0.1772 0.1765
+
+Rings        
+
+> TV Distance
+> MMD Distance
+> W1Distance 0200 400 600 800 1000 2000
+
+Number of Unlabeled Samples ( Nu)      
+
+> 0.06
+> 0.08
+> 0.10
+> 0.12
+> 0.14
+> Distance Value
+> 0.0763
+> 0.0758
+> 0.0750
+> 0.0685 0.0692
+> 0.0699 0.0722
+> 0.0743
+> 0.0716 0.0709
+> 0.0635
+> 0.0692
+> 0.0682 0.0676
+> 0.1403
+> 0.1445
+> 0.1294 0.1258
+> 0.1316 0.1313
+> 0.1249
+
+2spirals  
+
+> TV Distance
+> MMD Distance
+> W1Distance
+
+Figure 2: Class-averaged TV, MMD, and W1 distances on large 4gaussians , rings ,and 2spirals versus Nu. For each example, Nℓ = 200 with varying Nu ∈{0, 200 , . . . , 1,000 , 2,000 }.
+
+4.3 CIFAR-10 Dataset 
+
+CIFAR-10 1 (Krizhevsky and Hinton, 2009) comprises nr = 60 ,000 color images (x ∈ R32 ×32 ×3) across K = 10 classes with nr,y = 6 ,000 images per class. We consider Nℓ ∈ { 1,000 , 2,000 , 5,000 } labeled samples, with labels selected ap-proximately uniformly across the ten classes, and unlabeled-to-labeled ratios 
+
+{0, 1, 2, 3, 4, 5, 10 }. The model architecture is a UNet with DDPM++ configura-tion under the EDM framework (Karras et al., 2022). Generation quality is assessed via the Fr´ echet Inception Distance (FID) on 
+
+ng = 60 ,000 generated images ( ng,y = 6 ,000 per class). FID evaluates image quality and diversity by comparing the feature distributions of real and generated images extracted from a pre-trained Inception network (Heusel et al., 2017). We report two variants: overall FID, FID = ∥μr − μg∥22 + Tr  Σr + Σ g − 2(Σ rΣg)1/2,where μr, μ g and Σ r, Σg are the means and covariances of real and generated features; and class-averaged FID, FID ca = P
+
+y∈Y FID (y)/K , where FID (y)applies the above formula using class-specific statistics μr,y , μ g,y , Σr,y , Σg,y . For each configuration, we report the best FID value attained during training. Figure 3 presents the best FID values achieved across different experimental configurations. Both class-averaged and overall FID generally decrease as Nu
+
+increases, with some fluctuations at small Nu for Nℓ = 1 ,000. The largest gains occur when unlabeled data are first added. Class-averaged FID decreases from 
+
+1https://www.cs.toronto.edu/ kriz/cifar.html 
+
+22 0 1 2 3 4 5 10 
+
+Unlabeled-to-Labeled Ratio ( Nu/Nl)            
+
+> 10.0
+> 12.5
+> 15.0
+> 17.5
+> 20.0
+> 22.5
+> 25.0
+> 27.5
+> 30.0
+> Average FID
+> 28.75 29.27
+> 24.44
+> 21.02
+> 19.73
+> 18.02
+> 14.94
+> 23.71
+> 18.84
+> 15.29
+> 14.12
+> 13.19 13.12
+> 11.84
+> 15.32
+> 12.29
+> 11.36 10.78 10.20 10.34 10.09
+> Nl=1000
+> Nl=2000
+> Nl=5000 01234510
+
+Unlabeled-to-Labeled Ratio ( Nu/Nl)     
+
+> 2
+> 3
+> 4
+> 5
+> 6
+> 7
+> 8
+> 9
+> 10
+> Overall FID
+> 9.33
+> 9.75 10.00
+> 7.76
+> 7.10
+> 6.01
+> 4.13
+> 7.32 7.14
+> 4.95
+> 4.28
+> 3.60 3.57
+> 2.83
+> 5.50
+> 3.48
+> 2.98
+> 2.65
+> 2.32 2.32 2.13
+> Nl=1000
+> Nl=2000
+> Nl=5000
+
+Figure 3: CIFAR-10: class-averaged FID (left) and overall FID (right) versus Nu/N ℓ for 
+
+Nℓ ∈ { 1,000 , 2,000 , 5,000 }.28.75 to 14.94 (48.0%) for Nℓ = 1 ,000, from 23.71 to 11.84 (50.1%) for Nℓ = 2 ,000, and from 15.32 to 10.09 (34.1%) for Nℓ = 5 ,000. Overall FID decreases by 55.7%, 61.3%, and 61.3%, respectively. Even at Nℓ = 5 ,000, additional unlabeled data further improve both FID measures. Unlabeled data can also compensate for limited labeled samples: Nℓ = 1 ,000 with Nu = 10 ,000 (Class-averaged FID: 14.94) matches Nℓ = 5 ,000 alone (15.32), and Nℓ = 2 ,000 with Nu = 20 ,000 (11.84) outperforms Nℓ = 5 ,000 with 
+
+Nu = 5 ,000 (12.29), consistent with the theoretical prediction that unlabeled data improve estimation through the shared parameter. Notably, the fully supervised EDM baseline uses all 50,000 training images (Overall FID: 1.68, Class-averaged FID: 8.44), yet our method with only 10% labels ( Nℓ = 5 ,000) and Nu = 50 ,000 achieves Overall FID 2.13, Class-averaged FID: 10.09, closing most of this gap. 23 Figure 4: CIFAR-10 generated samples conditioned on the class “bird” under Nℓ = 1 ,000. Left: Nu = 0; right: Nu = 10 ,000. Since some limited-label configurations achieve competitive FID scores, we further examine whether these scores are accompanied by visually meaningful generation rather than potential memorization of the labeled training samples. Figure 4 shows generated samples conditioned on the class “bird” under Nℓ =1,000, comparing Nu = 0 with Nu = 10 ,000. With labeled data alone, the generated samples contain more repeated shapes and less varied backgrounds (e.g., the third sample in the fourth row and the second sample in the seventh row have very similar elongated bird silhouettes), whereas adding unlabeled data produces more diverse poses, colors, and backgrounds. As additional diagnostics, we also examine t-SNE projections of Inception V3 features and FID training curves. The t-SNE visualization compares real data, fully supervised (FS), and semi-supervised (SS) outputs for the class “horse”, showing that the SS embeddings better cover the regions occupied by real-data embeddings across all Nℓ settings. The training curves show that, in settings with adequate data, larger datasets tend to reach their minimum FID values later (measured in kimg, i.e., thousands of processed images), reflecting the larger number of training images processed. In contrast, several low-label configurations show less regular training behavior: the FID curves either keep decreasing over the recorded 24 0 1 2 3 4 5 10           
+
+> Unlabeled-to-Labeled Ratio ( Nu/Nl)
+> 17
+> 18
+> 19
+> 20
+> 21
+> 22
+> 23
+> 24
+> 25
+> Average FID
+> 23.51
+> 24.88
+> 22.64
+> 21.17
+> 19.86 19.86
+> 18.69
+> 23.20
+> 19.77
+> 18.37
+> 17.78
+> 17.35 17.24
+> Nl=1200
+> Nl=2400 01234510
+> Unlabeled-to-Labeled Ratio ( Nu/Nl)
+> 7
+> 8
+> 9
+> 10
+> 11
+> 12
+> Overall FID
+> 9.55
+> 12.52
+> 10.81
+> 9.36
+> 8.60 8.44
+> 7.15
+> 11.77
+> 8.78
+> 7.62
+> 7.03 6.96
+> 6.64
+> Nl=1200
+> Nl=2400
+
+Figure 5: Intel Scenes: class-averaged FID (left) and overall FID (right) versus Nu/N ℓ for 
+
+Nℓ ∈ { 1,200 , 2,400 }.training window or attain a minimum and then rise, including Nℓ = 1 ,000 with 
+
+Nu ∈ { 0, 1,000 , 2,000 } and Nℓ = 2 ,000 with Nu = 0. Together, these diagnostics suggest that unlabeled data improve feature-space coverage and reduce the memorization in low-label regimes. 
+
+4.4 Intel Scenes Dataset 
+
+The Intel Scenes dataset 2(Bansal, 2019) comprises nr = 17 ,034 natural land-scape images ( x ∈ R64 ×64 ×3) across K = 6 categories: buildings (2,628), forest (2,745), glacier (2,957), mountain (3,037), sea (2,784), and street (2,883). With higher resolution and more diverse scene categories, ranging from natural land-scapes to urban environments, Intel Scenes presents a distinct challenge from CIFAR-10. We consider Nℓ ∈ { 1,200 , 2,400 } with unlabeled-to-labeled ratios 
+
+{0, 1, 2, 3, 4, 5, 10 } for Nℓ = 1 ,200 and {0, 1, 2, 3, 4, 5} for Nℓ = 2 ,400, generating 
+
+ng,y = 3 ,000 images per category and evaluating the generated samples using FID as defined in Section 4.3. Figure 5 presents FID results on Intel Scenes. Both metrics generally decrease as the unlabeled-to-labeled ratio increases. Specifically, the class-averaged FID decreases from 23.51 to 18.69 (20.5%) for Nℓ = 1 ,200 and from 20.31 to 15.12 (25.6%) for Nℓ = 2 ,400. The overall FID shows similar decreases, from 9.55 to 7.15 (25.1%) for Nℓ = 1 ,200 and from 7.62 to 5.49 (28.0%) for Nℓ = 2 ,400. At 
+
+> 2
+
+https://www.kaggle.com/datasets/puneet6060/intel-image-classification 
+
+25 Nℓ = 1 ,200, both metrics fluctuate at small Nu before declining more steadily once Nu ≥ 2,400. We further examine sample similarity using a CLIP-based nearest-neighbor analysis. Generated and training images are embedded with CLIP, and each generated image is paired with its nearest training-set match by feature inner product. Figure 6 complements the FID analysis. At Nℓ = 1 ,200 with Nu = 0, generated images closely resemble training samples, whereas the corresponding samples with unlabeled data show greater visual variation. At 
+
+Nℓ = 2 ,400 with Nu = 0, generated images already differ more noticeably from their nearest training neighbors, consistent with the more stable FID decreases for Nℓ = 2 ,400. 
+
+Figure 6: Intel Scenes: CLIP-based nearest-neighbor analysis for generated images. Gen-erated images (red borders) and their closest training-set matches are shown. Left to right: (Nℓ = 1 ,200 , N u = 0), ( Nℓ = 1 ,200 , N u = 6 ,000), ( Nℓ = 2 ,400 , N u = 0), (Nℓ = 2 ,400 , N u = 12 ,000). 
+
+4.5 Bangalore EEG Epilepsy Dataset 
+
+The Bangalore EEG Epilepsy Dataset (BEED) 3 (Najmusseher and P. K., 2025) is a tabular dataset comprising 8 ,000 samples with 16-dimensional EEG feature vectors, evenly distributed across four epilepsy-related classes (2,000 per class): healthy (0), generalized seizures (1), focal seizures (2), and seizure events (3). We partition the data into training (75%), validation (10%), and test (15%) sets. From the training set, we use Nℓ = 800 labeled samples and vary 
+
+> 3https://www.kaggle.com/datasets/mdnaim/eeg-epilepsy-beed
+
+26 Nu ∈ { 0, 800 , 1600 , 2400 , 3200 , 4000 , 5000 } unlabeled samples. We also include a fully supervised reference with Nℓ = 6 ,000, corresponding to all training samples being labeled. The best model is selected by sliced W1 distance on the validation set. For final evaluation, we generate samples matching the test-set class sizes. We use the following four evaluation metrics. (a) Feature-wise Wasserstein-1 distance: averages the one-dimensional Wasser-stein distances over the 16 features. (b) Sliced Wasserstein-1 distance: measures overall distributional similarity through random one-dimensional projections; see Section 4.2 for the defini-tion. (c) KS Complement: Measures marginal distribution alignment for each feature dimension, KSComp = 1
+
+d
+
+> d
+
+X
+
+> j=1
+
+
+
+1 − sup 
+
+> t
+
+|Fr,j (t) − Fg,j (t)|
+
+
+
+∈ [0 , 1] ,
+
+where d = 16 is the feature dimension and Fr,j , Fg,j are empirical CDFs of real and generated data for feature j.(d) Boundary Adherence (BA): Measures whether generated samples fall within the value ranges of real data, BA = 1
+
+d
+
+> d
+
+X
+
+> j=1
+
+1
+
+ngng
+
+X
+
+> i=1
+
+1
+
+n
+
+xg,i,j ∈ [min  
+
+> k
+
+xr,k,j , max  
+
+> k
+
+xr,k,j ]
+
+o
+
+∈ [0 , 1] ,
+
+where {xr,k }nr 
+
+> k=1
+
+are real samples and {xg,i }ng 
+
+> i=1
+
+are generated samples. Each metric is computed class-conditionally and then averaged across the four classes. Results are reported as mean ± standard deviation over five random seeds. Figure 7 shows an overall improvement as Nu increases. The two W1 metrics decrease, indicating that the generated distribution becomes closer to the real data distribution. At the same time, increases in KSComp and BA indicate 27 0 800 1,600 2,400 3,200 4,000 5,000                       
+
+> Number of Unlabeled Samples Nu
+> 7.5
+> 10.0
+> 12.5
+> 15.0
+> 17.5
+> 20.0
+> 22.5
+> 25.0
+> W1 Distance (Featurewise)
+> 0800 1,600 2,400 3,200 4,000 5,000
+> Number of Unlabeled Samples Nu
+> 7.5
+> 10.0
+> 12.5
+> 15.0
+> 17.5
+> 20.0
+> 22.5
+> 25.0
+> W1 Distance (Sliced)
+> 0800 1,600 2,400 3,200 4,000 5,000
+> Number of Unlabeled Samples Nu
+> 0.76
+> 0.78
+> 0.80
+> 0.82
+> 0.84
+> KSComplement Score
+> 0800 1,600 2,400 3,200 4,000 5,000
+> Number of Unlabeled Samples Nu
+> 0.725
+> 0.750
+> 0.775
+> 0.800
+> 0.825
+> 0.850
+> 0.875
+> 0.900
+> Boundary Adherence
+
+Figure 7: BEED results with Nℓ = 800. Curves and error bars show mean ± standard deviation over five random seeds. Grey dashed lines indicate the reference obtained by using all training samples as labeled data. Arrows in the axis labels indicate the favorable direction. better agreement in the marginal feature distributions and a reduced tendency to generate implausible feature values, respectively. More specifically, the amount of improvement is not uniform across the range of Nu, with larger gains at smaller values of Nu and more gradual changes thereafter. This suggests diminishing marginal gains from additional unlabeled samples. Relative to the fully supervised reference, the results with Nℓ = 800 move closer to the reference levels as Nu increases, although a gap remains. In this sense, adding unlabeled covariates partly offsets the degradation caused by having far fewer labeled samples. Together, these results provide a tabular-data example in which unlabeled covariates improve conditional generation under label scarcity. 28 5 Conclusion 
+
+In this paper, we propose LACD, a semi-supervised diffusion model for condi-tional generation via label augmentation. We establish finite-sample convergence rates in W1 and TV distances, demonstrating theoretical improvements over the supervised counterpart. Numerical experiments on synthetic, image, and tabular benchmarks support these theoretical properties and show that unlabeled data can improve finite-sample performance in conditional generative modeling. Several promising directions deserve further investigation. On the theoretical side, establishing minimax lower bounds to complement the upper bounds would confirm whether the proposed rates are optimal. Furthermore, under scenarios where X or Y admits a low-dimensional structure such as a manifold, deriving sharper rates that replace the ambient dimension with the intrinsic dimension offers a compelling theoretical extension. Beyond these theoretical questions, relaxing the data assumptions to allow label missingness to depend on X or Y
+
+would broaden the practical scope of the framework. On the methodological front, adapting the shared-parameter design to other generative frameworks, such as normalizing flows or GANs, could broaden the approach’s applicability. Finally, using large language models to generate pseudo-labels for unlabeled data is a promising direction for future work. 
+
+# Competing interests 
+
+No competing interest is declared. 
+
+# References 
+
+Anderson, B. D. O. (1982). Reverse-time diffusion equation models. Stochastic Processes and their Applications , 12(3):313–326. Angelopoulos, A. N., Bates, S., Fannjiang, C., Jordan, M. I., and Zrnic, T. (2023). Prediction-powered inference. Science , 382(6671):669–674. 29 Azriel, D., Brown, L. D., Sklar, M., Berk, R., Buja, A., and Zhao, L. (2022). Semi-supervised linear regression. Journal of the American Statistical Association ,117(540):2238–2251. Bansal, A., Chu, H.-M., Schwarzschild, A., Sengupta, S., Goldblum, M., Geiping, J., and Goldstein, T. (2023). Universal guidance for diffusion models. In 
+
+Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) Workshops , pages 843–852. IEEE. Bansal, P. (2019). Intel image classification. Kaggle. https://www.kaggle.com/ datasets/puneet6060/intel-image-classification . Accessed: 2025-09-10. Beaulieu-Jones, B. K., Wu, Z. S., Williams, C., Lee, R., Bhavnani, S. P., Byrd, J. B., and Greene, C. S. (2019). Privacy-preserving generative deep neural networks support clinical data sharing. Circulation: Cardiovascular Quality and Outcomes , 12(7):e005122. Cannings, T. I. and Fan, Y. (2022). The correlation-assisted missing data estimator. Journal of Machine Learning Research , 23(41):1–49. Carlini, N., Hayes, J., Nasr, M., Jagielski, M., Sehwag, V., Tram` er, F., Balle, B., Ippolito, D., and Wallace, E. (2023). Extracting training data from diffusion models. In Proceedings of the 32nd USENIX Conference on Security Symposium , SEC ’23, USA. USENIX Association. Chac´ on, J. E. and Duong, T. (2018). Multivariate kernel smoothing and its applications . Chapman and Hall/CRC, Boca Raton. Chakrabortty, A. and Cai, T. (2018). Efficient and adaptive linear regression in semi-supervised settings. The Annals of Statistics , 46(4):1541–1572. Chen, L., Shen, X., and Pan, W. (2025). Enhancing causal effect estimation with diffusion-generated data. arXiv preprint arXiv:2504.03630 .Daum, D., Osuala, R., Riess, A., Kaissis, G., Schnabel, J. A., and Di Folco, M. (2024). On differentially private 3d medical image synthesis with controllable latent diffusion models. In MICCAI Workshop on Deep Generative Models ,pages 139–149. Springer. Deng, S., Ning, Y., Zhao, J., and Zhang, H. (2024). Optimal and safe estimation for high-dimensional semi-supervised learning. Journal of the American Statistical Association , 119(548):2748–2759. Ding, Z., Duan, C., Jiao, Y., and Yang, J. Z. (2025). Semi-supervised deep sobolev regression: Estimation and variable selection by requ neural network. 
+
+IEEE Transactions on Information Theory , 71(4):2955–2981. 30 Fu, H., Yang, Z., Wang, M., and Chen, M. (2024). Unveil conditional diffusion models with classifier-free guidance: A sharp statistical theory. arXiv preprint arXiv:2403.11968 .Gao, Y., Huang, J., Jiao, Y., Liu, J., Lu, X., and Yang, Z. (2022). Deep generative learning via euler particle transport. In Proceedings of the 2nd Mathematical and Scientific Machine Learning Conference , pages 336–368. PMLR. Giannone, G., Nielsen, D., and Winther, O. (2022). Few-shot diffusion models. 
+
+arXiv preprint arXiv:2205.15463 .Grathwohl, W., Chen, R. T. Q., Bettencourt, J., and Duvenaud, D. (2019). Scalable reversible generative models with free-form continuous dynamics. In 
+
+International Conference on Learning Representations . OpenReview.net. Heusel, M., Ramsauer, H., Unterthiner, T., Nessler, B., and Hochreiter, S. (2017). GANs trained by a two time-scale update rule converge to a local nash equilibrium. In Advances in Neural Information Processing Systems , pages 6626–6637. Curran Associates, Inc. Ho, J., Jain, A., and Abbeel, P. (2020). Denoising diffusion probabilistic models. In Advances in Neural Information Processing Systems , pages 6840–6851. Curran Associates, Inc. Ho, J. and Salimans, T. (2022). Classifier-free diffusion guidance. arXiv preprint arXiv:2207.12598 .Ipsen, N. B., Mattei, P.-A., and Frellsen, J. (2021). not-MIWAE: Deep generative modelling with missing not at random data. In International Conference on Learning Representations . OpenReview.net. Jeon, D., Kim, D., and No, A. (2025). Understanding and mitigating mem-orization in generative models via sharpness of probability landscapes. In 
+
+International Conference on Machine Learning . PMLR. Kallus, N. and Mao, X. (2025). On the role of surrogates in the efficient estimation of treatment effects with limited outcome data. Journal of the Royal Statistical Society Series B: Statistical Methodology , 87(2):480–509. Karras, T., Aittala, M., Aila, T., and Laine, S. (2022). Elucidating the design space of diffusion-based generative models. In Advances in Neural Information Processing Systems , pages 26565–26577. Curran Associates, Inc. Khemakhem, I., Kingma, D., Monti, R., and Hyvarinen, A. (2020). Variational autoencoders and nonlinear ica: A unifying framework. In Proceedings of the Twenty Third International Conference on Artificial Intelligence and Statistics ,pages 2207–2217. PMLR. 31 Krizhevsky, A. and Hinton, G. (2009). Learning multiple layers of features from tiny images. Technical report, University of Toronto. Little, R. J. and Rubin, D. B. (2019). Statistical analysis with missing data ,volume 793. John Wiley & Sons. Mattei, P.-A. and Frellsen, J. (2019). MIWAE: Deep generative modelling and imputation of incomplete data sets. In International Conference on Machine Learning , pages 4413–4423. PMLR. McLachlan, G. J., Lee, S. X., and Rathnayake, S. I. (2019). Finite mixture models. Annual review of statistics and its application , 6(1):355–378. Nadaraya, E. A. (1964). On estimating regression. Theory of Probability & Its Applications , 9(1):141–142. Najmusseher and P. K., N. B. (2025). BEED: Bangalore EEG epilepsy dataset. UCI Machine Learning Repository. https://archive.ics.uci.edu/ dataset/1134/beed+bangalore+eeg+epilepsy+dataset . Accessed: 2025-10-18. Nichol, A. Q. and Dhariwal, P. (2021). Improved denoising diffusion probabilistic models. In International Conference on Machine Learning , pages 8162–8171. PMLR. Nichol, A. Q., Dhariwal, P., Ramesh, A., Shyam, P., Mishkin, P., McGrew, B., Sutskever, I., and Chen, M. (2022). GLIDE: Towards photorealistic image generation and editing with text-guided diffusion models. In International Conference on Machine Learning , pages 16784–16804. PMLR. Preechakul, K., Chatthee, N., Wizadwongsa, S., and Suwajanakorn, S. (2022). Diffusion autoencoders: Toward a meaningful and decodable representation. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 10619–10629. IEEE. Rabin, J., Peyr´ e, G., Delon, J., and Bernot, M. (2011). Wasserstein barycenter and its application to texture mixing. In Scale Space and Variational Methods in Computer Vision , pages 435–446. Springer. Rombach, R., Blattmann, A., Lorenz, D., Esser, P., and Ommer, B. (2022). High-resolution image synthesis with latent diffusion models. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,pages 10684–10695. IEEE. Shin, H.-C., Tenenholtz, N. A., Rogers, J. K., Schwarz, C. G., Senjem, M. L., Gunter, J. L., Andriole, K. P., and Michalski, M. (2018). Medical image syn-thesis for data augmentation and anonymization using generative adversarial networks. In International Workshop on Simulation and Synthesis in Medical Imaging , pages 1–11. Springer. 32 Sohn, K., Lee, H., and Yan, X. (2015). Learning structured output representation using deep conditional generative models. In Advances in Neural Information Processing Systems , pages 3483–3491. Curran Associates, Inc. Song, S., Lin, Y., and Zhou, Y. (2024). A general M-estimation theory in semi-supervised framework. Journal of the American Statistical Association ,119(546):1065–1075. Song, S., Wang, T., Shen, G., Lin, Y., and Huang, J. (2025). Wasserstein gener-ative regression. Journal of the Royal Statistical Society Series B: Statistical Methodology , 88(1):330–351. Song, Y. and Ermon, S. (2019). Generative modeling by estimating gradients of the data distribution. In Advances in Neural Information Processing Systems ,pages 11895–11907. Curran Associates, Inc. Song, Y., Sohl-Dickstein, J., Kingma, D. P., Kumar, A., Ermon, S., and Poole, B. (2020). Score-based generative modeling through stochastic differential equations. arXiv preprint arXiv:2011.13456 .Tang, R., Lin, L., and Yang, Y. (2025). Conditional diffusion models are minimax-optimal and manifold-adaptive for conditional distribution estimation. In 
+
+International Conference on Learning Representations . OpenReview.net. Tian, X. and Shen, X. (2025). Enhancing accuracy in generative models via knowledge transfer. arXiv preprint arXiv:2405.16837 .Tian, X. and Shen, X. (2026). Conditional data synthesis augmentation. Journal of the American Statistical Association , 0(0):1–13. Tripuraneni, N., Jordan, M., and Jin, C. (2020). On the theory of transfer learning: The importance of task diversity. In Advances in Neural Information Processing Systems , pages 7852–7862. Curran Associates, Inc. Uhlenbeck, G. E. and Ornstein, L. S. (1930). On the theory of the brownian motion. Physical Review , 36(5):823. Vincent, P. (2011). A connection between score matching and denoising autoen-coders. Neural computation , 23(7):1661–1674. Wasserman, L. (2006). All of nonparametric statistics . Springer. Wasserman, L. and Lafferty, J. (2007). Statistical analysis of semi-supervised regression. In Advances in Neural Information Processing Systems , pages 801–808. Curran Associates, Inc. Watson, G. S. (1964). Smooth regression analysis. Sankhy¯ a: The Indian Journal of Statistics, Series A , pages 359–372. 33 Wen, M., Jia, Y., Ren, H., Wang, Z., and Zou, C. (2024). Semi-supervised distribution learning. Biometrika , 112(1):asae056. Wu, D., Inouye, D. I., and Xie, Y. (2025). PO-Flow: Flow-based generative models for sampling potential outcomes and counterfactuals. arXiv preprint arXiv:2505.1605 .Wu, Y., McConnell, L., and Iriondo, C. (2024). Counterfactual generative modeling with variational causal inference. arXiv preprint arXiv:2410.12730 .Yoon, J., Jordon, J., and van der Schaar, M. (2018). GAIN: Missing data imputation using generative adversarial nets. In International Conference on Machine Learning , pages 5689–5698. PMLR. You, Z., Zhong, Y., Bao, F., Sun, J., Li, C., and Zhu, J. (2023). Diffusion models and semi-supervised learners benefit mutually with few labels. In Advances in Neural Information Processing Systems , pages 43479–43495. Curran Associates, Inc. Zhang, A., Brown, L. D., and Cai, T. T. (2019). Semi-supervised inference: General theory and estimation of means. The Annals of Statistics , 47(5):2538– 2566. Zhang, L., Rao, A., and Agrawala, M. (2023). Adding conditional control to text-to-image diffusion models. In Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) , pages 3836–3847. IEEE. Zhang, Y. and Bradic, J. (2021). High-dimensional semi-supervised learning: in search of optimal inference of the mean. Biometrika , 109(2):387–403. 34

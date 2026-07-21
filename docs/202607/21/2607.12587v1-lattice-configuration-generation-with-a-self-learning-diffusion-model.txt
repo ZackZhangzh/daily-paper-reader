@@ -1,0 +1,965 @@
+Title: Lattice Configuration Generation with a Self-Learning Diffusion Model
+
+URL Source: https://arxiv.org/pdf/2607.12587v1
+
+Published Time: Wed, 15 Jul 2026 12:01:34 GMT
+
+Number of Pages: 36
+
+Markdown Content:
+Prepared for submission to JHEP 
+
+# Lattice Configuration Generation with a Self-Learning Diffusion Model 
+
+Akio Tomiya a,b,c aDepartment of Information and Mathematical Sciences, Tokyo Woman’s Christian Uni-versity, Tokyo 167-8585, Japan 
+
+> b
+
+Department of Physics, Kyoto University, Kyoto 606-8502, Japan 
+
+> c
+
+RIKEN Center for Computational Science, Kobe 650-0047, Japan 
+
+Abstract: We show that a diffusion sampler for lattice-field configurations can be trained without preparing training data by an external Monte Carlo calculation. Starting from exactly sampled configurations at β = 0 , we construct a self-bootstrap sampler, SLDiffusion, in which periodic Gaussian proposals with a fixed learned score are Metropolis–Hastings corrected, at each β, against the same physical target at every noise level, and only replay configurations from the resulting chain are used to train the score at the next stage. In the two-dimensional compact XY model, self-training proceeds from β = 0 .30 to 0.50 at L = 4 . At β = 0 .5, the energy and vortex densities for L = 4 , 6, 8, 12 agree with independent Hybrid Monte Carlo calculations within 1.35 σ. Volume-native retraining at L = 8 and 12 improves both the proposal displacement and autocorrelation. The integrated autocorrelation times of the energy and vortex densities remain below two for all volumes studied. These results demonstrate that a Metropolis-corrected diffusion sampler can be self-trained without configurations drawn in advance from the target coupling. 
+
+Keywords: Lattice field theory, diffusion models, Markov chain Monte Carlo, self-learning Monte Carlo arXiv:2607.12587v1 [hep-lat] 14 Jul 2026 Contents 
+
+1 Introduction 12 Two-dimensional compact XY model 43 Method 6
+
+3.1 Exactly sampleable beta=0 distribution 63.2 Score training 73.3 SLDiffusion-MAALA proposal 73.4 Replay selection 93.5 Post-training configuration generation 10 
+
+4 Numerical setup 10 
+
+4.1 Separation from HMC data 10 4.2 Neural network and training setup 11 
+
+5 Results 11 
+
+5.1 Self-bootstrap beta ladder at L=4 11 5.2 Control with the analytic action force 14 5.3 High-statistics validation at beta=0.5 14 5.4 Volume transfer and volume-native retraining 16 5.5 Histograms and autocorrelation functions at representative points 18 
+
+6 Discussion 18 
+
+6.1 Propagation of the distribution through self-generated replay 18 6.2 Learned drift and the equilibrium distribution 19 6.3 Diffusion proposals and autocorrelation 20 6.4 Difference from direct reweighting 21 6.5 Increasing volume and volume-native retraining 21 6.6 Relation to flow-based methods 21 
+
+7 Conclusion 22 A HMC used for validation 23 B Implementation details of SLDiffusion 24 
+
+B.1 Fourier–FiLM periodic equivariant convolution 24 B.2 Training and generation 25 B.3 Comparison with the original noise-conditioned MAALA 26 B.4 Control with the analytic action force 27 – i – B.5 Observables and replay-promotion criteria 28 
+
+C Invariance and ergodicity of the fixed transition kernel 29 
+
+C.1 Invariance of the fixed transition kernel 29 C.2 Ergodicity 30 
+
+## 1 Introduction 
+
+In strongly coupled quantum field theories, vacuum structure, bound states, and finite-temperature phase transitions cannot in general be determined from perturba-tion theory alone. Confinement, hadron masses, and the phase structure of quantum chromodynamics (QCD) at finite temperature and density are prominent examples. Lattice field theory regularizes spacetime on a lattice and defines the Euclidean path integral as a finite-dimensional statistical integral [1, 2]. Many nonperturbative cal-culations therefore reduce to generating field configurations ϕ from the Boltzmann distribution 
+
+π(ϕ) = 1
+
+Z exp[ −S(ϕ)] (1.1) specified by an action S, and estimating observables by Monte Carlo averages. Hybrid Monte Carlo (HMC), which combines global molecular-dynamics propos-als with a Metropolis correction, is a standard lattice algorithm [3]. As the lattice spacing is reduced or the volume is increased, slow modes of the Markov chain can persist and increase the integrated autocorrelation time. Near a critical point this behavior is commonly written as τint ∝ ξz , where the dynamic critical exponent z
+
+depends on the theory, update algorithm, and observable [4–6]. Freezing of topolog-ical degrees of freedom is another important issue toward the continuum limit [7, 8]. These difficulties motivate new proposal mechanisms that move correlated degrees of freedom while preserving the known target distribution. Self-learning Monte Carlo (SLMC) was introduced as a framework in which an effective model learned from preliminary simulations generates global candidates, while an acceptance test using the original model preserves exactness [9, 10]. In self-learning Hybrid Monte Carlo (SLHMC), molecular-dynamics trajectories are generated using a neural potential, corrected by a Metropolis test with the origi-nal first-principles energy, and the potential is updated from accepted configurations [11]. This idea has been extended to SLMC for non-Abelian lattice gauge theory with dynamical fermions, SLHMC with gauge-covariant neural networks, and SLMC with equivariant Transformers [12–14]. In these self-learning architectures, a neural surrogate supplies efficient proposals and an exact MCMC acceptance step preserves – 1 – the target distribution. The accepted chain can thus produce its own subsequent training data without requiring a separate, precomputed data set. The present work transfers this principle to a score-based diffusion proposal. Neural samplers based on normalizing flows, diffusion models, and equivariant neural networks have recently been introduced in lattice field theory [15–20]. Equiv-ariant neural architectures for lattice systems and applications to lattice gauge fixing have also been developed [21, 22]. Denoising diffusion probabilistic models and score-based generative models, originally developed for image generation [23–25], primarily approximate an unknown data distribution. In lattice field theory, by contrast, the unnormalized weight exp[ −S(ϕ)] can be evaluated for every configuration even when the partition function Z is unknown. A learned generator can therefore be supple-mented by a Metropolis–Hastings (MH) correction based on the known action and proposal density, rather than being used directly for measurements. Lattice samplers based on normalizing flows evaluate a model density from an invertible map and its Jacobian, and use it in independence MH or reweighting [15– 17, 26–34]. Related approaches approximate a trivializing map by a flow [35–39], or use forward-to-reverse path ratios in a stochastic normalizing flow [40, 41]. The noise-conditioned MAALA of Zhu et al. starts from a standard-normal prior, uses the high-noise region as unadjusted annealed Langevin transport, and applies MH correction only to the final low-noise steps [42]. In contrast, SLDiffusion-MAALA starts from the current physical configuration and applies an MH test against the same physical target at every noise level. We refer to this construction as the fully Metropolized MAALA variant. Its noise ladder changes the proposal drift and vari-ance while keeping the invariant distribution fixed, rather than transporting configu-rations between intermediate noised distributions. This distinction does not by itself establish which construction mixes faster, nor does it establish a general alleviation of critical slowing down. Diffusion and MAALA samplers for lattice field theory have combined a noise-conditioned score, annealed Langevin proposals, forward and reverse proposal prob-abilities, and MH correction [18, 19, 42–45]. The score is the gradient of a log prob-ability density and plays a role analogous to the HMC force or Langevin drift. For finite-step MALA or MAALA, preservation of the target distribution is ensured by the MH ratio, including the reverse proposal probability, rather than by the accuracy of the score approximation [46]. Previous lattice diffusion samplers have trained the score on reference config-urations produced by an external Monte Carlo calculation at the target coupling [18, 19, 42–44]. The near-critical and cross-volume study of Ref. [19], for example, uses reference ensembles from HMC, Fourier-accelerated HMC, and Wolff updates [47]. This strategy requires a sufficiently large, equilibrated sample from the target distribution before the neural sampler can be trained. Repeating that preparation for every coupling and volume leaves a substantial part of the configuration-generation – 2 – task in the training-data pipeline. Moreover, if the reference chain does not ade-quately cover a slow mode, the learned proposal can inherit that deficiency. Starting without external target-distribution samples and updating the training data from the generated chain itself removes this circular requirement. To this end, we propose the self-learning diffusion sampler SLDiffusion. Our aim here is not to demonstrate a general solution to critical slowing down, but to establish a bootstrap mechanism for applying diffusion models, which are promising tools for mitigating it, to lattice configuration generation without external training configurations. We start from the exactly sampleable distribution at β = 0 . At each nearby value of β, a MAALA chain is generated with a fixed neural score, and only unweighted replay configurations from the MH-corrected chain are used to train the score at the next stage. The provenance of every training configuration can therefore be traced back to β = 0 . The novelty lies not in MAALA or the MH correction themselves, but in this self-bootstrap beta ladder, which removes the need for external training configurations at the target coupling. As a proof of concept, we study the high-temperature phase of the two-dimensional compact XY model. In our action convention, the Berezinskii– Kosterlitz–Thouless (BKT) transition occurs at βBKT ≃ 1.12 [48]. We advance the beta ladder from β = 0 .30 to 0.50 at L = 4 , and at β = 0 .5 study L = 6 , 8, 12 .We test whether training can continue using only self-generated replay, whether observables measured after MH correction agree with an independent calculation, and whether volume-native retraining controls autocorrelation. For L = 4 , 6, 8, 12 ,the integrated autocorrelation times of the energy and vortex densities, measured in units of saved trajectories, are shorter than those of HMC; at L = 12 , the corresponding autocorrelation functions also decay faster in the same units. One SLDiffusion-MAALA trajectory, however, contains 32 full-lattice updates and score evaluations, whereas the HMC comparison uses ϵ = 0 .5, two leapfrog steps, and trajectory length one at every volume without volume-specific retuning. This is therefore a comparison of correlations along saved trajectories, not of computational efficiency. The representational capacity and run time of diffusion models near criticality are separate from the self-training mechanism addressed here. Section 2 defines the model and observables. Section 3 describes the self-bootstrap beta ladder and the SLDiffusion-MAALA transition kernel. Sections 4 and 5 present the numerical setup and results, and Sec. 6 discusses volume depen-dence and the scope of the method. Invariance and ergodicity of the fixed transition kernel are summarized in App. C. – 3 – 2 Two-dimensional compact XY model 
+
+We consider the compact XY model on an L×L square lattice with periodic boundary conditions. An angular variable 
+
+θx ∈ (−π, π ] (2.1) is assigned to each site x, and the action is 
+
+Sβ (θ) = −β X
+
+> x
+> 2
+
+X
+
+> μ=1
+
+cos( θx+ˆ μ − θx). (2.2) Expectation values are defined by 
+
+⟨O⟩ β,L = 1
+
+Zβ,L 
+
+Z Y
+
+> x
+
+dθx
+
+2π O[θ] exp[ −Sβ (θ)] . (2.3) The two-dimensional XY model has a continuous symmetry and no conventional long-range order at finite temperature [49, 50]. Quasi-long-range order at low temper-ature and vortex unbinding at high temperature are separated by the Berezinskii– Kosterlitz–Thouless (BKT) transition [51–54]. In the convention of Eq. (2.2), the transition occurs at βBKT ≃ 1.1199 [48]. The range β = 0 .30 –0.50 considered here lies on the high-temperature side, away from the BKT point. We do not extract BKT critical exponents. Instead, this compact model with vortices is used to test whether a MAALA kernel containing a self-bootstrapped learned drift produces a chain with the correct invariant distribution and whether retraining improves its movement. We define the energy density by 
+
+E[θ] = − 1
+
+L2
+
+X
+
+> x
+> 2
+
+X
+
+> μ=1
+
+cos( θx+ˆ μ − θx). (2.4) Angular differences are measured on the principal branch, 
+
+∆μθx = wrap( θx+ˆ μ − θx) ∈ (−π, π ]. (2.5) The vortex charge of plaquette p is 
+
+qp[θ] = 12π
+
+X
+
+> ℓ∈∂p
+
+∆ℓθ ∈ Z, (2.6) and the vortex density is 
+
+ρv[θ] = 1
+
+L2
+
+X
+
+> p
+
+|qp[θ]|. (2.7) – 4 – We also measure the helicity modulus, which is sensitive to long-distance phase stiffness. In direction μ it is 
+
+Υμ[θ] = 1
+
+L2
+
+X
+
+> x
+
+cos(∆ μθx) − β
+
+(X
+
+> x
+
+sin(∆ μθx)
+
+)2 , Υ = Υ1 + Υ 2
+
+2 . (2.8) This definition follows Ref. [54]. For configurations θ and θ′ before and after one trajectory, we define the mean squared jumping distance (MSJD), corresponding to the expected squared jumping distance [55], by 
+
+MSJD = 
+
+*
+
+1
+
+L2
+
+X
+
+> x
+
+[wrap( θ′ 
+
+> x
+
+− θx)] 2
+
++
+
+. (2.9) It measures the actual displacement produced by one trajectory, including MH rejec-tions. For comparisons at fixed target distribution, trajectory definition, and compu-tational work, a larger MSJD indicates greater accepted movement and is therefore preferable. Across different noise schedules or computational costs, however, MSJD alone does not establish efficiency and must be considered together with acceptance and observable-dependent autocorrelation times. Following the lattice estimator based on Schwinger–Dyson identities in Ref. [56], we define 
+
+C(θ) = X
+
+> x
+> 2
+
+X
+
+> μ=1
+
+cos( θx+ˆ μ − θx), Fx(θ) = ∂C (θ)
+
+∂θ x
+
+,A(θ) = − X
+
+> x
+
+∂F x(θ)
+
+∂θ x
+
+, D(θ) = X
+
+> x
+
+Fx(θ)2. (2.10) Integration by parts gives ⟨A − βD ⟩ = 0 in the target distribution. We therefore define the Schwinger–Dyson thermometer 
+
+βSD = ⟨A⟩⟨D⟩. (2.11) This diagnostic tests consistency with the effective coupling specified by the action; by itself it does not establish thermalization or transitions between modes. Our autocorrelation notation and error analysis follow Refs. [5, 57, 58]. For a time series Oi with mean O, the normalized autocorrelation function is 
+
+ρO(t) = ΓO(t)ΓO(0) , ΓO(t) = 1
+
+N − t 
+
+> N−t
+
+X
+
+> i=1
+
+(Oi − O )( Oi+t − O ). (2.12) – 5 – The integrated autocorrelation time is estimated as 
+
+τint = 12 +
+
+> W
+
+X
+
+> t=1
+
+ρO(t), (2.13) where W is selected using a positive window and a Sokal-type window condition. For its statistical uncertainty we use the Madras–Sokal approximation [5, 57], 
+
+δτ int = τint 
+
+r4W + 2 
+
+N , (2.14) with the same window W as in Eq. (2.13). Figures that compare the shapes of auto-correlation functions display lags 0, . . . , 10 for both methods on the same horizontal axis. 
+
+## 3 Method 
+
+3.1 Exactly sampleable β = 0 distribution 
+
+In the two-dimensional XY model the action vanishes at β = 0 . Independent angles drawn as 
+
+θx ∼ Uniform( −π, π ] (3.1) therefore provide exact samples from πβ=0 . SLDiffusion uses this distribution as the origin of its training configurations. Consider a sequence of couplings 
+
+0 = β0 < β 1 < · · · < β K . (3.2) The “ kth stage” below denotes one self-bootstrap cycle from βk to βk+1 . A stage comprises training the score on configurations at βk, freezing the trained network, generating an MH-corrected chain whose target is βk+1 , and saving configurations for the next training stage. It is therefore distinct from both a single Markov-chain update and a noise level inside the diffusion-noise ladder of a SLDiffusion-MAALA proposal. For every stage with k ≥ 1, the only training data are replay configurations saved from the preceding MH-corrected chain. Here, replay means a set of configurations saved from the MH-corrected Markov chain and reused to train the score network at the next stage. We write the replay buffer at βk as 
+
+Rk =
+
+n
+
+θ(n)
+
+> k
+
+oNk
+
+> n=1
+
+. (3.3) The initial buffer R0 consists of independent, exact β = 0 samples from Eq. (3.1). For k ≥ 1, Rk contains configurations saved from a thermalized MH-corrected chain targeting βk that has passed the selection criteria described below. – 6 – At stage k, the score is trained on Rk. The network is then frozen and a SLDiffusion-MAALA chain targeting βk+1 is generated. Configurations are saved from the thermalized, MH-corrected chain, and a chain that satisfies the tempera-ture, stationarity, autocorrelation, and replay-diversity criteria is promoted to Rk+1 .Repeated states produced by rejections remain part of the saved chain. We call this recursion the self-bootstrap beta ladder. 
+
+3.2 Score training 
+
+A replay configuration θ is perturbed by periodic Gaussian noise, 
+
+eθ = wrap( θ + σz ), z ∼ N (0 , I ), (3.4) and the wrapped-Gaussian transition density is denoted by pσ(eθ | θ). The score network is a vector field sϕ(eθ, σ ; β) conditioned on the noise scale σ. It minimizes the denoising score-matching objective [25, 59] 
+
+L(ϕ) = E
+
+
+
+σs ϕ(eθ, σ ; β) − σ∇eθ log pσ(eθ | θ) 22
+
+
+
+. (3.5) The factors of σ reduce the scale imbalance caused by the large target score at small noise [25]. During training, σ is drawn from 
+
+{0.05 , 0.08 , 0.12 , 0.18 , 0.27 , 0.40 , 0.60 , 0.80 }. (3.6) The wrapped-Gaussian score is evaluated after mapping angular differences to (−π, π ]
+
+and summing images n = −3, . . . , 3. This range makes the omitted probability mass smaller than 10 −14 even at the largest variance used here. The same rule is used in training and generation. The Fourier–FiLM periodic equivariant convolutional architecture is detailed in App. B.1. When training on replay at βk, the coupling βk is also supplied as an input chan-nel. For a βk → βk+1 bridge, this network is frozen and evaluated at the same condi-tioning value βk used in training, while the action and MH ratio use the target value 
+
+βk+1 . After retraining on replay promoted from the bridge, the score is conditioned and evaluated at βk+1 . Thus the score is not extrapolated to an unseen coupling during a bridge; the change in distribution is performed by the MH-corrected chain. 
+
+3.3 SLDiffusion-MAALA proposal 
+
+With the score network fixed, wrapped-Gaussian proposals are applied along a noise ladder 
+
+σ1 > σ 2 > · · · > σ M . (3.7) – 7 – Each calculation uses a fixed geometric ladder, 
+
+σi = gstart 
+
+ gend 
+
+gstart 
+
+(i−1) /(M −1) 
+
+, Di = σ2
+
+> i
+
+2 , (3.8) selected before measurement. We use gstart = 0 .80 and gend = 0 .05 , so the generation noise scales interpolate within the range in Eq. (3.6). Writing the total step scale as 
+
+A, the coefficient per noise level is 
+
+a = AM . (3.9) Numerical values are given in App. B.2. At level i, the proposal is 
+
+θ′ = wrap 
+
+h
+
+θ + aD i sϕ(θ, σ i; β) + p2aD i η
+
+i
+
+, η ∼ N (0 , I ). (3.10) This is the Euler discretization of an overdamped Langevin proposal, but it is not used without correction. The Gaussian transition density on angular variables is the wrapped Gaussian 
+
+qi(θ′ | θ) = Y
+
+> x
+
+X
+
+> nx∈Z
+
+1
+
+√4πaD i
+
+exp 
+
+"
+
+−(θ′ 
+
+> x
+
+− θx − aD isϕ,x (θ, σ i; β) + 2 πn x)2
+
+4aD i
+
+#
+
+. (3.11) For every variance used in measurement, the implementation imposes a deterministic image sum or tail bound such that the omitted probability mass is below 10 −14 . The same rule is used for both directions. Given the current configuration θ, the candidate θ′ is accepted at level i with probability 
+
+P (i)acc (θ′ | θ) = min 
+
+
+
+1, exp {− Sβ (θ′) + Sβ (θ)}qi(θ | θ′)
+
+qi(θ′ | θ)
+
+
+
+. (3.12) Both proposal densities in Eq. (3.12) are evaluated with the fixed network and the same noise level. One trajectory consists of the successive application of these MH-corrected transitions. Observables are measured only after the neural network and all generation parameters have been fixed. The test at each noise level is a stan-dard Metropolis-adjusted Langevin construction, and the level-wise MH kernels and their composition preserve the target distribution πβ [4, 46]. The noise-conditioned MAALA of Zhu et al. instead starts from a standard-normal prior, uses the high-noise region for unadjusted transport, and applies MH correction only to the final low-noise steps [42]. Our implementation starts from the current physical configura-tion and MH-corrects every noise level against the physical target πβ . It is therefore a fully Metropolized MAALA variant, not the same generation algorithm as the orig-inal construction. Equation (3.7) changes the drift and variance of proposal kernels with the same invariant distribution rather than transporting between intermediate – 8 – Exact source 
+
+β0 = 0 
+
+Training replay 
+
+Rk
+
+Score training 
+
+sϕ(θ, σ ; βk)
+
+Fixed diffusion proposal 
+
+βk+1 : σ1 → · · · → σM
+
+MH correction at each noise level 
+
+Promoted replay 
+
+Rk+1 
+
+Measurement chain with a fixed transition kernel      
+
+> freeze network
+> next β:k←k+ 1
+> final target
+
+self-bootstrap beta ladder: β0 → β1 → · · · → βK
+
+Figure 1 . The two ladders in SLDiffusion. The self-bootstrap beta ladder constructs training data from the exact β = 0 distribution by promoting MH-corrected replay. Here Rk
+
+is the training replay at βk defined in Eq. (3.3); only R0 is generated directly from the exact 
+
+β = 0 distribution. The diffusion-noise ladder is the noise schedule within one SLDiffusion -MAALA proposal. Every noise level is MH-corrected against the same physical target; the ladder is not used as unadjusted transport between intermediate noised distributions. Physics measurements are made on an MH-corrected chain with a fixed transition kernel. 
+
+distributions. Our main contribution is not this placement of the correction, but the procedure that begins from the exact β = 0 distribution and continues train-ing along the beta ladder using only corrected replay. An algorithmic comparison with the original noise-conditioned MAALA is given in App. B.3. Invariance and convergence conditions are discussed in App. C. 
+
+3.4 Replay selection 
+
+A replay chain must satisfy at least the following conditions before it is used for the next training stage: sufficient statistics; finite and suitably small τint for the energy and vortex densities; consistency of the Schwinger–Dyson temperature with the tar-get β; no significant drift in the energy or vortex density after the post-thermalization series is divided into three consecutive intervals; and traceable provenance of the saved replay back to the preceding stage. The three-way split tests for residual non-stationary evolution within the measurement window after thermalization. Passing it means that no evidence for insufficient thermalization is observed for the tested quantities at the available precision; it does not by itself prove complete thermaliza-tion or ergodicity. The diagnostics are defined in App. B.5. Acceptance is not used to decide whether the replay distribution is correct. A low acceptance rate reduces efficiency but does not change the invariant distribution of an MH-corrected chain. Acceptance and MSJD thresholds are, however, imposed before advancing to the next coupling, as specified in App. B.5. For the fixed network used – 9 – in measurement, we also examine acceptance, MSJD, autocorrelation, temperature, stationarity, and the score error on validation data. Comparisons with HMC are performed only after these conditions have been fixed. 
+
+3.5 Post-training configuration generation 
+
+In the fully Metropolized variant used here, after training and replay selection have been completed at the target coupling β = βK , we fix the score-network parameters, the β input, the noise ladder, the step scale, and the image sum for the wrapped Gaussian. Let θ(n) denote the current Markov state, and start from θ0 = θ(n). At each noise level i = 1 , . . . , M , a candidate eθi is generated using Eq. (3.10). If it is accepted according to Eq. (3.12), we set θi = eθi; otherwise, we retain the preceding state, θi = θi−1. After one complete pass through the noise ladder, the next Markov state is 
+
+θ(n+1) = θM . (3.13) These M updates constitute one trajectory. Repeating this trajectory generates the SLDiffusion-MAALA measurement chain. For the measurement chain, a prespecified thermalization interval is discarded, after which the states θ(n) are saved at the prescribed interval. In this paper, “gen-erated configurations” are the configurations saved from this post-thermalization, MH-corrected chain. During measurement, we do not retrain the network, mod-ify the transition kernel by adding replay, use HMC for any correction, or perform reweighting. The trained network therefore does not produce independent configu-rations from noise. Instead, a fixed MH-corrected transition kernel containing the neural drift generates a Markov chain whose invariant distribution is the target dis-tribution. 
+
+## 4 Numerical setup 
+
+4.1 Separation from HMC data 
+
+Configuration generation with SLDiffusion and the comparison HMC calculations are performed independently. HMC configurations, observables, and autocorrelation times are not used for SLDiffusion training, replay generation or selection, neural network selection, generation-parameter selection, or stopping decisions. HMC re-sults are used only to compare observables after the SLDiffusion training procedure, generation parameters, and analysis have been fixed. The HMC algorithm and its representative parameters are given in App. A. At L = 4 , we examine a beta ladder over β ∈ [0 .30 , 0.50] . At β = 0 .5, we perform a high-statistics measurement at L = 6 and analyze volume transfer and volume-native retraining at L = 8 and 12 .– 10 – Item Setting Network Fourier–FiLM periodic current network Channel width / depth 48 /4
+
+Noise-conditioned residual blocks 8
+
+Conditioning β as a constant channel; log σ through Fourier–FiLM Training noise 0.05 , 0.08 , 0.12 , 0.18 , 0.27 , 0.40 , 0.60 , 0.80 
+
+Optimizer Adam Learning rate 10 −3 by default; checkpoint selected by validation loss Batch size 64 by default; fixed according to replay size and volume Training passes 100 full passes over replay Validation set Fixed replay–noise pairs Parameter selection Checkpoint with minimum validation loss Generation 32-level MAALA; geometric σ : 0 .80 → 0.05 ,
+
+A = 64 , a = A/ 32 = 2 
+
+Wrapped density Image index n = −3, . . . , 3; omitted probability < 10 −14 
+
+Table 1 . Neural-network, training, and generation settings. Here A is the step scale for a full trajectory and a = A/ 32 is the coefficient used at one noise level. 
+
+4.2 Neural network and training setup 
+
+All results use the Fourier–FiLM periodic equivariant convolutional network de-scribed in App. B.1. The principal training settings are summarized in Table 1. For volume transfer and volume-native retraining, the architecture and noise sched-ule are held fixed; the only difference is whether the network is retrained on the same MH-corrected replay. 
+
+## 5 Results 
+
+5.1 Self-bootstrap beta ladder at L = 4 
+
+The score network at β = 0 .30 was trained using only exact β = 0 configurations. At every subsequent target coupling, a SLDiffusion-MAALA chain was generated and only promoted MH-corrected replay was used for the next training stage. Table 2 lists diagnostics from chains generated with the retrained network fixed at each value of β.The β = 0 .30 point is the first stage trained solely on exact β = 0 configurations. Its value βSD = 0 .2942(35) lies within 1.7σ of the target and satisfies the prespecified – 11 – β Acceptance MSJD τint (E) τint (ρv) βSD 
+
+0.30 0.817 2.848 0.557(19) 0.567(25) 0.2942(35) 
+
+0.35 0.788 2.704 0.694(29) 0.595(22) 0.3513(27) 
+
+0.40 0.778 2.575 0.740(31) 0.679(29) 0.4009(27) 
+
+0.45 0.746 2.422 0.82(4) 0.739(31) 0.4533(26) 
+
+0.50 0.742 2.210 1.00(5) 0.87(4) 0.5018(27) 
+
+Table 2 . Chain diagnostics for retrained networks along the L = 4 self-bootstrap ladder. MSJD denotes the mean squared jumping distance. Uncertainties in τint are evaluated using Eq. (2.14). The Schwinger–Dyson effective coupling βSD is defined by Eq. (2.11); parentheses give the statistical uncertainty in the final digits. 
+
+β transition Acceptance MSJD τint (E) τint (ρv) βSD 
+
+0.30 → 0.35 0.795 2.687 0.700(26) 0.645(27) 0.3513(26) 0.35 → 0.40 0.768 2.526 0.789(33) 0.689(26) 0.4020(25) 0.40 → 0.45 0.756 2.386 0.885(27) 0.765(23) 0.4471(19) 0.45 → 0.50 0.728 2.228 1.02(4) 0.857(26) 0.5004(19) 
+
+Table 3 . Chains bridging adjacent values of β at L = 4 . They are used to construct replay for the next training stage, and every stage is MH corrected. Uncertainties in τint 
+
+are evaluated using Eq. (2.14). 
+
+consistency condition. No systematic accumulation of deviations in one direction is observed at neighboring stages. Table 3 shows the chains that bridge adjacent values of β. These chains construct training replay for the next stage and are kept distinct from the measurement chains. Acceptance remains finite at every stage, and the Schwinger–Dyson temperature is consistent with the target value. Figure 2 summarizes the same results as functions of β. As β increases, accep-tance and MSJD decrease gradually, while the integrated autocorrelation times of the energy and vortex densities increase. Both autocorrelation times nevertheless remain below 1.1 through β = 0 .50 .Table 4 reports observables obtained with the retrained networks. We show 
+
+β ≥ 0.35 , for which a common block analysis was applied. These expectation values are not direct outputs of the neural network; they are measured from the MH-corrected Markov chain defined by Eq. (3.12). Figure 3 displays the improvement in score loss on validation data, arepresentative loss history, and the improvement at each noise scale. The maximum improvements at β = 0.30 , 0.35 , 0.40 , 0.45 , 0.50 are respectively 
+
+3.46% , 5.31% , 7.29% , 10 .83% , 11 .62% . Thus retraining reduces the validation loss at each stage. – 12 – 0.30 0.35 0.40 0.45 0.50             
+
+> target beta
+> 0.72
+> 0.75
+> 0.78
+> 0.81
+> level acceptance
+> retrained
+> bridge
+> 0.30 0.35 0.40 0.45 0.50
+> target beta
+> 2.00
+> 2.25
+> 2.50
+> 2.75
+> 3.00
+> MSJD
+> retrained
+> bridge
+> 0.30 0.35 0.40 0.45 0.50
+> target beta
+> 0.6
+> 0.7
+> 0.8
+> 0.9
+> 1.0
+> integrated autocorrelation  energy
+> vortex density
+> 0.30 0.35 0.40 0.45 0.50
+> target beta
+> 0.30
+> 0.35
+> 0.40
+> 0.45
+> 0.50
+> Schwinger-Dyson beta
+> target
+> SLDiffusion
+
+Figure 2 . Acceptance, MSJD, integrated autocorrelation times, and Schwinger–Dyson temperature along the L = 4 self-bootstrap ladder. Solid lines in the upper panels denote networks retrained at each β; dashed lines denote bridges used to construct replay for the next stage. The lower-left panel shows the two observables for the retrained chains. Autocorrelation-time uncertainties are evaluated using Eq. (2.14). 
+
+β E τint (E) ρv τint (ρv)
+
+0.35 −0.3815(35) 0.694(29) 0.2410(14) 0.595(22) 
+
+0.40 −0.4502(35) 0.740(31) 0.2214(14) 0.679(29) 
+
+0.45 −0.531(4) 0.82(4) 0.1983(14) 0.739(31) 
+
+0.50 −0.608(5) 1.00(5) 0.1763(17) 0.87(4) 
+
+Table 4 . Observables measured from MH-corrected SLDiffusion-MAALA chains at L = 4 .Uncertainties in expectation values include autocorrelation through block analysis; those in 
+
+τint are evaluated using Eq. (2.14). 
+
+– 13 – 0.30 0.35 0.40 0.45 0.50        
+
+> target beta
+> 0
+> 2
+> 4
+> 6
+> 8
+> 10
+> 12
+> improvement (%)
+> 025 50 75 100
+> full replay pass
+> 0.89
+> 0.90
+> 0.91
+> 0.92
+> loss
+> train
+> held-out
+> 0.2 0.4 0.6 0.8
+> noise sigma
+> 0.0
+> 2.5
+> 5.0
+> 7.5
+> 10.0
+> improvement (%)
+> L=4
+> L=6 native
+> L=8 native
+
+Figure 3 . Score-training diagnostics. Left: maximum improvement of the validation mean squared error (MSE) over noise scales at each β on the L = 4 ladder. Center: loss history at L = 4 , β = 0 .50 . Right: validation MSE improvement at each noise scale for β = 0 .5.
+
+5.2 Control with the analytic action force 
+
+At L = 4 , β = 0 .30 , we replace the self-trained score by the analytic action force 
+
+−∇ Sβ in a 32-level MAALA trajectory and in a one-step Wrapped MALA trajec-tory. These controls separate the learned drift from the multilevel noise ladder. The 32-level analytic-force MAALA gives acceptance 0.939 , τint (E) = 0 .550(8) , and 
+
+τint (ρv) = 0 .529(6) , close to 0.817 , 0.557(19) , and 0.567(25) with the self-trained score. The complete settings and the one-step comparison are given in App. B.4. A 32-level trajectory contains 32 full-lattice updates, however, and after normalizing by the number of updates, the one-step MALA is more efficient at this coupling in both MSJD and autocorrelation time. The control therefore does not establish a performance advantage for the multilevel noise ladder. 
+
+5.3 High-statistics validation at β = 0 .5
+
+We next examine a SLDiffusion-MAALA chain at L = 6 , β = 0 .5, constructed by the same self-training procedure. We discard 20,000 trajectories for thermalization and measure the following 50,000 trajectories. The neural network, generation pa-rameters, and analysis are fixed during measurement. The results are summarized in Table 5. After the SLDiffusion generation and analysis procedures were fixed, we com-pared the resulting observables with independent HMC chains at L = 4 , 6, 8, 12 
+
+(Table 6 and Fig. 4). The energy and vortex densities agree within 1.35 σ at all four volumes. At L = 6 , the helicity moduli differ by 0.57 σ, and their autocorrela-tion times are 0.791(15) for SLDiffusion-MAALA and 1.872(17) for HMC. Figure 4 uses 50,000 measurements for SLDiffusion-MAALA and 500,000 for HMC. Although HMC has the longer τint , its effective sample size Neff ≃ N/ (2 τint ) is approximately 
+
+3.7–3.8 times larger, which accounts for its smaller statistical uncertainties. – 14 – Quantity Value Note Acceptance 0.642 Mean over noise levels MSJD 1.936 Per trajectory 
+
+E −0.5552(14) τint = 1 .207(30) 
+
+ρv 0.1941(5) τint = 0 .948(20) Υ 0.0187(16) τint = 0 .791(15) 
+
+βSD 0.4998(9) Target β = 0 .5
+
+Maximum three-way-split z 0.839 Measurement series split into thirds 
+
+Table 5 . High-statistics SLDiffusion-MAALA measurement at L = 6 , β = 0 .5. A total of 50,000 trajectories are measured after 20,000 thermalization trajectories. Here Υ is the helicity modulus in Eq. (2.8). 
+
+L Observable SLDiffusion-MAALA HMC |∆|/σ comb 
+
+4 E −0.608(4) −0.6056(12) 0.57 4 ρv 0.1763(14) 0.1783(4) 1.35 6 E −0.5552(14) −0.5540(7) 0.76 6 ρv 0.1941(5) 0.19465(26) 0.97 6 Υ 0.0187(16) 0.0177(9) 0.57 8 E −0.5451(26) −0.5475(5) 0.90 8 ρv 0.1975(9) 0.19704(19) 0.52 12 E −0.5471(8) −0.5482(4) 1.29 12 ρv 0.19680(26) 0.19683(14) 0.09 
+
+Table 6 . Comparison of observables with independent HMC calculations at β = 0 .5. The helicity modulus Υ is defined in Eq. (2.8). Here σcomb is the standard error obtained by adding the statistical variances of the two methods. SLDiffusion HMC  
+
+> -0.5565
+> -0.5560
+> -0.5555
+> -0.5550
+> -0.5545
+> energy density
+> SLDiffusion HMC
+> 0.19375
+> 0.19400
+> 0.19425
+> 0.19450
+> 0.19475
+> vortex density
+
+Figure 4 . Comparison of observables at L = 6 , β = 0 .5. Error bars show 1σ statistical uncertainties. SLDiffusion-MAALA uses 50,000 measurements and the independent HMC calculation uses 500,000. The smaller HMC uncertainties result from an effective sample size approximately 3.7–3.8 times larger. 
+
+– 15 – 4 6 8 12    
+
+> L
+> 1
+> 2
+> 3
+> 4
+> integrated autocorrelation time
+> energy density
+> SLDiffusion
+> HMC
+> 46812
+> L
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> 3.0
+> 3.5
+> integrated autocorrelation time
+> vortex density
+> SLDiffusion
+> HMC
+
+Figure 5 . Volume dependence of the integrated autocorrelation time at β = 0 .5. The left and right panels show the energy and vortex densities, respectively, for SLDiffusion-MAALA and HMC at L = 4 , 6, 8, 12 . One unit on the horizontal trajectory index corresponds to one saved trajectory of each method. A SLDiffusion-MAALA trajectory contains 32 full-lattice updates, whereas an HMC trajectory has length one. Error bars are evaluated using Eq. (2.14). 
+
+5.4 Volume transfer and volume-native retraining 
+
+The proposal can be retrained from MH-corrected replay after changing the volume. Following the type of scaling analysis in Ref. [15], Fig. 5 shows the integrated auto-correlation times of the energy and vortex densities as functions of L at β = 0 .5. The same observables are measured with independent HMC chains at L = 4 , 6, 8, 12 . Af-ter volume-native retraining, both autocorrelation times remain below two through 
+
+L = 12 , and are smaller than their HMC values in units of saved trajectories at all four volumes. At L = 8 , transfer without retraining and subsequent volume-native retraining can be compared using the same measurement procedure. The results are shown in Table 7 and Fig. 6. Directly transferring the L = 4 network without retraining reduces acceptance to 0.374 and MSJD to 0.914 . Retraining at L = 8 on replay from that MH-corrected chain increases them to 0.549 and 1.532 , respectively. The integrated autocorrelation time decreases from 2.66(20) to 1.54(9) for the energy density and from 1.90(12) to 1.17(6) for the vortex density. At L = 12 , β = 0 .5, the replay likewise descends from the exact β = 0 distribu-tion. The L = 8 → L = 12 transfer chain passes the replay-selection criteria, and that replay alone is used to retrain the L = 12 network. The results in Table 8 show that acceptance increases from 0.430 to 0.500 and MSJD from 1.029 to 1.262 . The autocorrelation time decreases from 2.26(16) to 1.52(4) for the energy density and from 1.63(10) to 1.165(27) for the vortex density. – 16 – Score model Acceptance MSJD τint (E) τint (ρv)
+
+L = 4 → L = 8 volume transfer 0.374 0.914 2.66(20) 1.90(12) 
+
+L = 8 volume-native retraining 0.549 1.532 1.54(9) 1.17(6) 
+
+Table 7 . Transfer without retraining and volume-native retraining at L = 8 , β = 0 .5.Uncertainties in τint are evaluated using Eq. (2.14). For the volume-native network, the maximum three-way-split statistic is z = 0 .611 , the validation score-loss improvement at 
+
+σ = 0 .8 is 10 .70% , and βSD = 0 .4973(14) .transfer native self-training  
+
+> 0.35
+> 0.40
+> 0.45
+> 0.50
+> 0.55
+> acceptance
+> transfer native self-training
+> 1.0
+> 1.2
+> 1.4
+> 1.6
+> mean squared jump distance
+
+Figure 6 . Transfer without retraining and volume-native retraining at L = 8 , 12 , β = 0 .5.The left and right panels show acceptance and MSJD; each line connects results at the same volume. A larger MSJD is preferable when the generation settings are fixed. Retraining on the same MH-corrected replay increases both acceptance and actual displacement at both volumes. Score model Acceptance MSJD τint (E) τint (ρv) βSD 
+
+L = 8 → L = 12 transfer 0.430 1.029 2.26(16) 1.63(10) 0.4991(14) 
+
+L = 12 native retraining 0.500 1.262 1.52(4) 1.165(27) 0.4994(6) 
+
+Table 8 . Transfer without retraining and volume-native retraining at L = 12 , β = 0 .5.Uncertainties in τint are evaluated using Eq. (2.14). For the volume-native network, 50,000 trajectories are measured after 20,000 thermalization trajectories, and the maximum dif-ference between thirds of the measurement series is 0.556 σ.
+
+– 17 – -1.5 -1.0 -0.5 0.0 0.5       
+
+> energy density
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> 1.2
+> probability density
+> 0.0 0.1 0.2 0.3 0.4 0.5 0.6
+> vortex density
+> 0
+> 1
+> 2
+> 3
+> 4
+> 5
+> probability density
+
+Figure 7. Histograms of the energy and vortex densities from the MH-corrected SLDiffusion-MAALA chain at L = 4 , β = 0 .50 . Bins for the vortex density are cen-tered on the discrete spacing 1/L 2 = 1 /16 .
+
+The 50,000 measurements with the volume-native network give 
+
+⟨E⟩ = −0.5471(8) , ⟨ρv⟩ = 0 .19680(26) . (5.1) With block size 100 in the primary analysis, βSD = 0 .4994(6) , a difference of 1.05 σ
+
+from the target. For block sizes 50, 100, and 200, the statistical uncertainty of the energy density lies in (7 .1–7.5) × 10 −4 and that of the vortex density in (2 .4–
+
+2.6) × 10 −4, demonstrating stability under changes of block size. 
+
+5.5 Histograms and autocorrelation functions at representative points 
+
+Figure 7 shows conventional bar histograms from the MH-corrected chain generated by the retrained network at L = 4 , β = 0 .50 . The energy density has a unimodal dis-tribution, while the vortex density takes the discrete values allowed at finite volume. These histograms provide a direct view of the sampled distribution shapes. Figure 8 compares autocorrelation functions for the same observables and lags 
+
+0–10 between SLDiffusion-MAALA and HMC at L = 12 , β = 0 .5. In units of saved trajectories, the initial decay is faster for SLDiffusion-MAALA for both the energy and vortex densities. 
+
+## 6 Discussion 
+
+6.1 Propagation of the distribution through self-generated replay 
+
+The self-bootstrap beta ladder passes an MH-corrected chain at one stage to the training distribution at the next. At β = 0 , exact independent configurations are drawn from the uniform distribution. Every subsequent stage uses unweighted replay saved after thermalization. The approximate distribution represented by the score – 18 – 0 1 2 3 4 5 6 7 8 9 10           
+
+> lag t
+> 0.00
+> 0.25
+> 0.50
+> 0.75
+> 1.00
+> rho(t)
+> energy density
+> SLDiffusion
+> HMC
+> 012345678910
+> lag t
+> 0.00
+> 0.25
+> 0.50
+> 0.75
+> 1.00
+> rho(t)
+> vortex density
+> SLDiffusion
+> HMC
+
+Figure 8 . Autocorrelation functions for SLDiffusion-MAALA and HMC at L = 12 , β =0.50 . The left and right panels show the energy and vortex densities, respectively; the horizontal axis is lag in units of saved trajectories. The estimates use 50,000 SLDiffusion -MAALA measurements and 500,000 HMC measurements. 
+
+network is therefore not treated as the teacher distribution; the training distribution is defined by a Markov chain with a fixed MH kernel. Methods based on external samples from the target distribution must generate a sufficient training ensemble before learning begins. Where a conventional sampler is slow, this burden remains in the construction of the training data. SLDiffusion reverses that order by alternating MH-corrected sampling and score training from an exact initial distribution. Thermalization, stationarity, and coverage of modes must nevertheless be examined at every stage. 
+
+6.2 Learned drift and the equilibrium distribution 
+
+A SLDiffusion-MAALA trajectory consists of one learned-score proposal and one MH test at each noise level. Each test uses the action difference and the forward and reverse proposal probabilities. The drift changes the direction and distance of chain movement, and its effect appears in acceptance, MSJD, thermalization time, and integrated autocorrelation time. The MH test keeps the equilibrium distribution of the fixed kernel equal to the target Boltzmann distribution. The test at each noise level is the standard MALA correction [46]. Whereas the MAALA of Zhu et al. corrects the final low-noise steps, the variant used here corrects every level [42, 44]. This difference changes the transport mechanism, while invariance of the fixed production kernel follows from the level-wise MH ratios. The unadjusted high-noise transport of Zhu et al. provides a mechanism for large moves, whereas our high-noise proposals are also subject to the MH test against the physical action. Their relative mixing depends on the theory, volume, score, and noise schedule. This construction difference alone establishes neither a general ordering of their mixing nor a general improvement of critical slowing down. A detailed comparison is given – 19 – in App. B.3. A finite chain must therefore be assessed not only through detailed balance but also through thermalization and transitions between modes. For finite chains, we combine the Schwinger–Dyson temperature, the three-way split of the measurement series, histograms, and autocorrelation functions. These nu-merical diagnostics do not replace the invariance argument; they test thermalization and mixing for specific observables. 
+
+6.3 Diffusion proposals and autocorrelation 
+
+Autocorrelation is not determined by the use of diffusion alone. It is governed by the eigenmodes of the complete Markov kernel, which includes the fixed score network, noise ladder, step scale, and MH test [4, 5]. For a reversible kernel Pϕ, let λn denote its nonconstant eigenvalues. Formally, the autocorrelation function of an observable 
+
+O can be written as 
+
+ρO(t) = X
+
+> n≥1
+
+cn(O)λtn, τint (O) = 12 + X
+
+> n≥1
+
+cn(O) λn
+
+1 − λn
+
+, (6.1) where cn(O) is the overlap of the observable with each eigenmode. The learned score changes Pϕ through the proposal probability, and can therefore modify the mixing encoded in λn and cn(O) without changing the equilibrium distribution after MH correction. Autocorrelation can increase when the target distribution differs substantially from the replay distribution. This occurs, for example, when the beta increment is too large, a small-volume network is transferred directly to a larger volume, or replay underrepresents a mode. The resulting mismatch between the learned drift and the target score can increase rejected self-transitions or fail to propose transitions along a slow mode. Conversely, steps that are too small can produce high acceptance but low MSJD. Acceptance, MSJD, and the observable-dependent τint must therefore be considered together, especially for infrared modes, vortices, and winding sectors [55]. Retraining the score reduces the mismatch in the proposal drift. With generation parameters fixed, volume-native retraining at L = 8 and 12 increases acceptance and MSJD and decreases the estimated autocorrelation times of both observables. Thus autocorrelation is not an intrinsic limitation of the diffusion form; it can be changed by a neural drift trained on MH-corrected replay. A network alone need not remove every slow mode, however. Its receptive field, the modes represented in replay, and the resolution of both the beta and noise ladders also matter. Even with the fixed architecture used here, retraining reduces the autocorrelation increase observed under volume transfer. – 20 – 6.4 Difference from direct reweighting 
+
+Direct reweighting from β = 0 to a target β is formally possible [60]. With wβ (θ) = exp[ −Sβ (θ)] , the relative effective sample size under the β = 0 distribution is 
+
+rESS( β) = ⟨wβ ⟩20
+
+⟨w2 
+
+> β
+
+⟩0
+
+= Z(β)2
+
+Z(0) Z(2 β). (6.2) When the free-energy-density difference is finite, Eq. (6.2) decreases exponentially with volume. This is the standard overlap problem of reweighting [61]. Exact samples at β = 0 are therefore not sufficient by themselves. Rather than estimating weighted averages, SLDiffusion constructs an MH-corrected Markov chain at each β and uses its unweighted replay at the next stage. The beta ladder divides the overlap problem into multiple training stages. 
+
+6.5 Increasing volume and volume-native retraining 
+
+At L = 8 and 12 , β = 0 .5, transferring the learned drift from a smaller volume with-out retraining lowers acceptance and MSJD and increases autocorrelation times. Retraining on MH-corrected replay at the target volume improves all three diagnos-tics. Continuing self-training from the target-volume chain, rather than ending with zero-shot transfer, is therefore effective in restoring proposal performance. For proposals that move the full lattice at once, local score errors and action differences can accumulate with volume. The asymptotic analysis of MALA for in-dependent components gives a known V −1/3 scaling of the step-size-like proposal variance [62]. This exponent cannot be transferred directly to a correlated lattice system with multilevel MAALA, but it provides a guide for jointly adjusting the per-level coefficient a = A/M , the number of levels M , and the noise range as the volume grows. The overlap between adjacent Boltzmann distributions is also controlled ap-proximately by (∆ β)2 Var( C). Where Var( C) ∝ V , maintaining comparable overlap suggests ∆β ∝ V −1/2. The initial β = 0 → 0.30 interval used at L = 4 should therefore not automatically be retained at larger volume; the beta ladder should be subdivided according to acceptance, MSJD, βSD , and effective sample size. The same score-network architecture is used at every volume. Our results concern the self-training mechanism and the measured observables, not a ranking of the representational capacity of diffusion models. An application near the BKT point would require separate tests of infrared quantities, including the helicity modulus, winding sectors, the zero mode, and long-wavelength Fourier modes. 
+
+6.6 Relation to flow-based methods 
+
+An independence proposal based on a normalizing flow evaluates a normalized model density and Jacobian for use in an independent Metropolis test or direct estima-tor [15, 16]. In contrast, SLDiffusion-MAALA is a state-dependent local Gaussian – 21 – transition and uses the forward and reverse transition probabilities at every step. Stochastic normalizing flows correct endpoints using nonequilibrium path weights or work [40, 41]; here, each MAALA transition is MH corrected and observables are measured from the resulting unweighted Markov chain. SLDiffusion thus uses a fixed MH-corrected Markov kernel rather than a global generative density. 
+
+## 7 Conclusion 
+
+We have proposed SLDiffusion, a method for self-training a Metropolis-corrected diffusion sampler without external training configurations from the target coupling. The procedure begins at the exactly sampleable β = 0 distribution, generates a chain with a fixed SLDiffusion-MAALA kernel at each coupling, and trains the next score using only replay from the MH-corrected chain. During physics measurements, the network and generation parameters are fixed, and the Markov chain includes an MH correction with both forward and reverse wrapped-Gaussian proposal densities. For the two-dimensional compact XY model, self-training continues from β =0.30 to 0.50 at L = 4 . At L = 4 , 6, 8, 12 and β = 0 .5, the energy and vortex densities from thermalized measurement chains agree within statistical uncertainties with independent HMC calculations. Proposal performance decreases when trans-ferring to L = 8 and 12 , but volume-native retraining on the MH-corrected replay increases acceptance and MSJD and reduces the integrated autocorrelation times. The Schwinger–Dyson temperature, split-series tests, histograms, and autocorrela-tion functions reveal no anomaly in the self-trained chains over the range studied. In the analytic-action-force controls, the 32-level trajectory has acceptance and auto-correlation comparable to or better than the learned-score trajectory, while one-step MALA is more efficient per full-lattice update. The contribution here is therefore not a performance advantage of the learned score, but its construction without external target training configurations. Denoising score matching, noise-conditioned Langevin proposals, and the MH correction of MALA or MAALA are established methods [25, 42, 44, 46, 59]. The measurement kernel used here is a fully Metropolized MAALA variant based on the noise-conditioned construction of Zhu et al. It differs from their generation algorithm, which leaves high-noise transport unadjusted and corrects the final low-noise steps. The distinguishing feature of SLDiffusion is that its score is trained on self-generated replay descending from an exact initial distribution, removing the preliminary step of preparing teacher configurations at the target coupling. Applications to larger volumes and the vicinity of the BKT transition will require volume-adapted beta and noise ladders together with direct tests of infrared observables and winding-sector mixing. – 22 – Data and code availability 
+
+The numerical data and the simulation, analysis, and plotting codes supporting the findings of this study are available from the corresponding author upon reasonable request. 
+
+## Acknowledgments 
+
+This work was supported by JSPS KAKENHI Grants No. 20K14479, No. 22H05111, No. 22K03539, No. 22H05112, and JST BOOST Grant No. JPMJBY24F1. Ope-nAI ChatGPT and Codex, and Anthropic Claude, were used to assist with writing code and tests, managing numerical experiments, preparing numerical-analysis and Julia/Plots visualization scripts, organizing candidate references, and drafting and editing the manuscript. The author tested the generated code, checked the numerical results against the primary data, and verified citations against the original sources. The author reviewed and assumes full responsibility for all scientific claims, algo-rithms, numerical results, figures, citations, and the final manuscript. 
+
+## A HMC used for validation 
+
+The separation between SLDiffusion and HMC is specified in Sec. 4. This appendix records the HMC algorithm and numerical parameters used for the comparison. For the XY field θ = {θx}, introduce an independent momentum px at each site. The HMC Hamiltonian is 
+
+H(θ, p ) = Sβ (θ) + 12
+
+X
+
+> x
+
+p2
+
+> x
+
+. (A.1) At the beginning of each trajectory, px is drawn from a standard normal distribution, and a candidate (θ′, p ′) is generated by leapfrog integration. The action gradient is 
+
+[∇Sβ (θ)] x = β
+
+> 2
+
+X
+
+> μ=1
+
+[sin( θx − θx+ˆ μ) + sin( θx − θx−ˆμ)] . (A.2) Angular variables are wrapped to (−π, π ] after each position update. The acceptance probability is 
+
+Pacc = min [1 , exp {− [H(θ′, p ′) − H(θ, p )] }] . (A.3) On rejection, the original θ is retained. The principal validation points are listed in Table 9. Autocorrelation times use a Madras–Sokal-type window and the uncertainty in Eq. (2.14) [5, 57]. Statistical – 23 – uncertainties are rounded to one or two significant digits according to their leading digit, and central values are rounded to the same decimal place.                                         
+
+> Lβϵnlf τtraj Ntraj Ntherm Acceptance Seed 40.5 0.5 21.0 500000 20000 0.883 270714450 60.5 0.5 21.0 500000 20000 0.825 270714650 80.5 0.5 21.0 500000 20000 0.765 270714850 12 0.5 0.5 21.0 500000 20000 0.651 2707141250
+
+Table 9 . HMC parameters used for the comparisons in the main text. Here ϵ is the leapfrog step size and nlf is the number of leapfrog steps. 
+
+## B Implementation details of SLDiffusion 
+
+SLDiffusion, the validation HMC calculations, numerical analysis, and figure gener-ation were implemented in Julia [63]. 
+
+B.1 Fourier–FiLM periodic equivariant convolution 
+
+The score network is a Fourier–FiLM-conditioned periodic equivariant convolutional network. It combines Fourier features used in noise-conditioned score networks [25], feature-wise linear modulation (FiLM) [64], and Group Normalization [65] with equivariant convolutions on a periodic lattice. The inputs include sin(∆ μθx),
+
+cos(∆ μθx), and local quantities derived from them. These are invariant under the global transformation θx 7 → θx + α. The target coupling β is supplied as a constant channel across the lattice. The noise scale is encoded by the Gaussian Fourier embedding of log σ,
+
+γ(σ) = [sin(2 πB log σ), cos(2 πB log σ)] . (B.1) Within each residual block, coefficients aγ and bγ derived from this embedding im-plement FiLM as 
+
+h′ = (1 + aγ ) ⊙ GroupNorm( h) + bγ . (B.2) The network outputs link currents jx,μ in the two lattice directions, and the site score is their lattice divergence, 
+
+sϕ,x =
+
+> 2
+
+X
+
+> μ=1
+
+(jx,μ − jx−ˆμ,μ ) . (B.3) The output therefore has no zero mode, is equivariant under lattice translations, respects periodic boundary conditions and angular periodicity, and is invariant under the global U (1) shift. Table 10 summarizes the architecture. – 24 – Item Setting Architecture Periodic, translation-equivariant convolutional residual network Channel width 48 Depth 4Noise-conditioned residual blocks 8Conditioning β as a constant channel; log σ through Fourier embedding and FiLM Boundary conditions Periodic in both directions Output Two link currents and their lattice divergence as the score Parameter count 690,194 Parameter selection Checkpoint with minimum score loss on validation replay 
+
+Table 10 . Score-network architecture used in the calculations. 
+
+B.2 Training and generation 
+
+The loss is denoising score matching on angular fields perturbed by wrapped Gaussian noise [25, 59]. At each stage, the MH-corrected replay promoted from the preceding stage is divided into training and validation sets, and the network is trained for 100 full passes over replay. We use Adam [66], with a default learning rate of 10 −3. The mini-batch size is chosen according to replay size and volume. Parameters at the checkpoint with minimum validation loss are used for the measurement kernel. Training noise is selected from the eight values in Eq. (3.6). Generation uses a 32-level noise-scale ladder geometrically interpolated from 0.80 to 0.05 , with one wrapped-Gaussian MALA proposal at each level and an MH test against the same physical target. Both forward and reverse proposal densities are evaluated in the MH test of Eq. (3.12). The wrapped-Gaussian infinite sum is evaluated after mapping angular differences to the principal branch and summing images n = −3, . . . , 3. The same image range is used for the training score and both generation densities, and the omitted probability is below 10 −14 at the largest variance used. The beta ladder is the sequence of couplings along which self-training proceeds; the noise ladder changes the proposal drift and variance within one trajectory. It is not unadjusted transport between intermediate noised distributions.                                            
+
+> Case and score model Thermalization Measurement MAa=A/M Seed
+> L= 6 , β = 0 .520000 50000 32 64 2260712201
+> L= 8 , β = 0 .5volume-native 5000 10000 32 64 2260712301
+> L= 12 , β = 0 .5transfer 20000 10000 32 64 2260712303
+> L= 12 , β = 0 .5volume-native 20000 50000 32 64 2260712306
+
+Table 11 . Principal SLDiffusion-MAALA generation settings for the volume comparison. The implementation parameter A is the step scale for a full trajectory, and the coefficient at one level in Eq. (3.10) is a = A/M . For the L = 4 beta ladder, the network is fixed at each stage and the chains are analyzed with the measurement counts of Table 2. 
+
+– 25 – The volume-native network at L = 12 , β = 0 .5 is trained for 100 full replay passes with learning rate 2×10 −4 and batch size 64; the checkpoint with minimum validation loss is selected. Generation uses 32 noise levels, total step scale A = 64 , and per-level coefficient a = 2 . With seed 260712306, 20,000 trajectories are discarded for thermalization and the following 50,000 are measured. The uncertainty of βSD is obtained by delete-one-block jackknife with primary block size 100 trajectories and stability checks at 50 and 200 trajectories. 
+
+B.3 Comparison with the original noise-conditioned MAALA 
+
+The SLDiffusion-MAALA kernel used here builds on the noise-conditioned score and noise ladder of the DM–MAALA of Zhu et al. [42], but it is not the same Markov-kernel construction. Zhu et al. present DM–MAALA as Algorithm 2. Its initial distribution and noise-ladder settings inherit those of Algorithm 1, so it starts from a standard-normal prior, performs NA = 1000 annealed Langevin updates at each of 
+
+NT = 100 noise levels, and applies the MH test against the physical action only in the final low-noise region ( NC = 35 levels). Our chain is not reinitialized from a prior for each trajectory. Let θ(n) be the angular configuration retained after the preceding trajectory. The next 32-level tra-jectory starts from θ0 = θ(n), makes one wrapped-Gaussian MALA proposal at each level with an MH test against the same πβ , and returns θ(n+1) = θM . Thus the “current Markov state” in Table 12 means the configuration carried forward by the chain from the preceding trajectory. – 26 – Item Noise-conditioned MAALA of Zhu et al. Fully Metropolized MAALA variant used here Initial state High-noise state drawn from a standard-normal prior Angular configuration θ(n) retained after the preceding trajectory and used as θ0
+
+for the next 32-level trajectory High-noise region Annealed Langevin transport without an MH test against the physical action MH test against the physical target πβ at every level Low-noise region MALA against the physical action in the final low-noise levels The same MALA test against πβ as at high noise Role of noise ladder Sequence of intermediate noised distributions transporting the prior toward the target region Sequence of proposal drift and variance scales with invariant distribution fixed to 
+
+πβ
+
+Invariance Each MALA kernel in the final corrected region preserves πβ
+
+Every level kernel and their composition preserve πβ
+
+Finite-chain checks Relaxation in the corrected region and dependence on the incoming distribution must be assessed A single pass does not map an arbitrary initial distribution to πβ ; thermalization and inter-mode mixing must be assessed Global moves Unadjusted high-noise transport provides a mechanism for making large moves before the corrected region Large high-noise proposals are also subject to the MH test and are constrained by their acceptance Replay Use of configurations after the final corrected region requires checking relaxation there Configurations are stored from the thermalized fixed-kernel chain and promoted only after the criteria in Sec. 3 Generation settings 100 levels, 1,000 updates per level, with MH correction in the final 35 levels 32 levels, one proposal per level, with the action difference and both qi directions evaluated throughout 
+
+Table 12 . Comparison between the noise-conditioned MAALA of Zhu et al. and the fully Metropolized MAALA variant used here. Both use noise-conditioned Langevin proposals, but the roles of the noise ladder and MH correction differ. 
+
+In either construction, an MH-corrected fixed kernel preserves its target distri-bution; this fact does not imply that an arbitrary initial distribution is mapped to the target in finitely many steps. The original construction provides a mechanism for global motion through unadjusted high-noise transport, whereas the present con-struction is a composition of kernels with the same invariant distribution. Their relative mixing depends on the theory, volume, score, and noise schedule. Neither a general ordering of their mixing nor their critical-slowing-down behavior follows from Table 12 alone. We use the fully Metropolized MAALA variant to make the boundary at which self-generated replay is promoted to training data explicit. 
+
+B.4 Control with the analytic action force 
+
+At L = 4 , β = 0 .30 , we construct controls in which the self-trained score is replaced by −∇ Sβ , evaluated analytically from the XY action. Here the analytic action force is the gradient of the target action; it is not the exact score of a distribution smoothed at a finite noise scale. The 32-level control uses the same number and range of noise levels, total step scale, and number of updates per trajectory as the learned-score MAALA. We also compare a Wrapped MALA trajectory that applies the same analytic action force once. The learned-score MAALA is measured for – 27 – 5,000 trajectories after 1,000 thermalization trajectories; both analytic-force controls are measured for 50,000 trajectories after 20,000 thermalization trajectories. Seed 260714401 is used for the 32-level analytic-force MAALA. Table 13 gives the results.                                  
+
+> Proposal MAcceptance MSJD EρvβSD τint (E)τint (ρv)
+> Self-trained-score MAALA 32 0.817 2.848 −0.313(4) 0.2572(20) 0.2942(35) 0.557(19) 0.567(25)
+> Action-force MAALA 32 0.939 2.942 −0.3186(12) 0.2573(6) 0.3000(11) 0.550(8) 0.529(6)
+> Action-force Wrapped MALA 10.770 0.613 −0.3159(29) 0.2581(11) 0.2975(23) 2.94(10) 2.15(7)
+
+Table 13 . Controls with the self-trained score and analytic action force at L = 4 , β = 0 .30 .For the 32-level rows, acceptance is averaged over MH decisions at all levels; for one-step MALA it is the acceptance of one update. Parentheses for E, ρv, and βSD denote statistical uncertainties from block analysis, while those for τint are from Eq. (2.14). 
+
+The three kernels agree within 1.4σ for both E and ρv. Their values of βSD are 
+
+0.2942(35) , 0.3000(11) , and 0.2975(23) for the learned-score MAALA, action-force MAALA, and one-step MALA, respectively. For the one-step MALA, the central value remains 0.297483 for block sizes 50, 100, and 200, with uncertainties 0.00229, 0.00226, and 0.00211. The difference from the target is therefore 1.10 –1.19 σ and is stable under the block-size change. We do not use resampling that treats correlated configurations as independent. Per saved trajectory, the 32-level MAALA has larger MSJD and shorter τint , but each trajectory contains 32 full-lattice updates. MSJD per update is 0.089, 0.092, and 0.613 for learned-score MAALA, action-force MAALA, and one-step MALA, respectively. In update units, the corresponding τint (E) values are 17 .8(6) , 17 .59(25) ,and 2.94(10) , and τint (ρv) values are 18 .1(8) , 16 .93(19) , and 2.15(7) . At this coupling, one-step MALA is more efficient per update, and we draw no conclusion about a benefit of the multilevel construction from this control. For the one-step analytic-action-force Wrapped MALA, we scan 
+
+h ∈ { 0.02 , 0.05 , 0.10 , 0.20 , 0.40 , 0.80 }. (B.4) Each candidate uses 5,000 thermalization and 10,000 measurement trajecto-ries. We restrict acceptance to [0 .4, 0.9] and select the value that maximizes 
+
+1/ max {τint (E), τ int (ρv)}, fixing h = 0 .40 . A confirmation run with independent seed 260725410 then uses 20,000 thermalization and 50,000 measurement trajectories. Both controls use only the analytic action force and the forward and reverse wrapped-Gaussian densities. 
+
+B.5 Observables and replay-promotion criteria 
+
+Physics observables are measured from a SLDiffusion-MAALA chain with the net-work fixed. The recorded quantities are the energy density E, vortex density ρv,helicity modulus Υ, MH acceptance, MSJD, Schwinger–Dyson temperature βSD from – 28 – Eq. (2.11), autocorrelation functions, and integrated autocorrelation times. Uncer-tainties of expectation values and βSD are evaluated by block jackknife. The uncer-tainty of an autocorrelation time is evaluated using Eq. (2.14) with the window W
+
+selected from the full measurement series and its length N . Because βSD is a ratio of two sample sums along a correlated Markov chain, we do not resample individual configurations as if they were independent. The primary delete-one-block jackknife uses blocks of 100 trajectories, with stability checks at 50 and 200 trajectories. For the three-way split diagnostic, the post-thermalization measurement series is divided chronologically into three contiguous intervals. For O ∈ { E, ρ v}, let Oa and 
+
+δOa denote the block-jackknife mean and uncertainty in interval a. The difference between intervals (a, b ) is measured by 
+
+zab (O) = Oa − O b
+
+q
+
+(δOa)2 + ( δOb)2
+
+. (B.5) The “maximum three-way-split z” reported in the tables is the largest zab (O) over the two observables and three pairs of intervals. Replay is promoted to the next training stage if the chain contains at least 5,000 measurements; τint ≤ 5 for both the energy and vortex densities; the effective sample size is at least 1,000 for each; the difference between βSD and the target is within 3σ;and the maximum three-way-split statistic in Eq. (B.5) is at most 2.5. Advancing the beta ladder to a new target additionally requires mean acceptance over noise levels of at least 0.5 and MSJD of at least one. These conditions decide whether replay can be promoted; they are not used to select a physics measurement window after examining the results. For the high-statistics chains, thermalization and measurement counts are fixed before execution, and the simulations are not repeated in response to the three-way split. The mean acceptance of the high-statistics L = 12 chain lies slightly below the prespecified threshold; the threshold is not changed, and the resulting measurement series is reported as generated. For a fixed network used in physics measurements, acceptance, MSJD, and score loss on validation data are also checked. In volume comparisons, generation settings are fixed between transfer without retraining and volume-native retraining, so that only the presence or absence of retraining changes. 
+
+## C Invariance and ergodicity of the fixed transition kernel 
+
+C.1 Invariance of the fixed transition kernel 
+
+Invariance and convergence conditions for the Metropolis-adjusted Langevin algo-rithm (MALA) are standard results in Markov chain Monte Carlo theory [4, 46]. Noise-conditioned Langevin proposals with Metropolis correction have also been used – 29 – in lattice diffusion samplers [42, 44]. Zhu et al. leave the high-noise transport un-adjusted and correct the final low-noise steps. Here we impose the detailed balance relation below at every noise level, with the same πβ as the invariant distribution of each level. For physics measurements, the trained network, noise ladder, step scale, and wrapped-density evaluation are fixed. The transition at level i then satisfies 
+
+πβ (θ)qi(θ′ | θ)P (i)acc (θ′ | θ) = πβ (θ′)qi(θ | θ′)P (i)acc (θ | θ′). (C.1) The level-wise MH kernels and their composition therefore preserve πβ .This invariance does not assume that the learned score equals the true score. Score errors change acceptance, MSJD, thermalization time, and autocorrelation time, but not the invariant distribution as long as the correct forward and reverse densities are used in the MH ratio. Invariance alone does not establish that a finite thermalization reaches equilibrium or that the resulting samples are independent. 
+
+C.2 Ergodicity 
+
+The configuration space of the two-dimensional XY model is an L2-dimensional torus. The wrapped Gaussian noise in Eq. (3.10) has nonzero variance in every degree of freedom and gives a positive proposal density on the finite-volume torus. Standard MH theory therefore implies πβ -irreducibility, while rejection supplies self-transitions that make the kernel aperiodic [4, 46]. Reachability does not imply sufficiently rapid mixing at finite time. Unit tests check consistency of the forward and reverse proposal probabilities. We further combine the Schwinger–Dyson temperature, the three-way split of the measurement series, histograms, and autocorrelation functions, and compare representative ob-servables with independent HMC. No anomaly is observed in these diagnostics over the measured range, and the integrated autocorrelation times of the energy and vor-tex densities are below two at L = 4 , 6, 8, 12 , β = 0 .5. These are finite-statistics diagnostics for the measured observables, not a statement of uniform convergence of every mode or in the critical region. 
+
+## References              
+
+> [1] K.G. Wilson, Confinement of Quarks ,Phys. Rev. D 10 (1974) 2445. [2] M. Creutz, Monte Carlo Study of Quantized SU(2) Gauge Theory ,Phys. Rev. D 21
+> (1980) 2308. [3] S. Duane, A.D. Kennedy, B.J. Pendleton and D. Roweth, Hybrid Monte Carlo ,Phys. Lett. B 195 (1987) 216. [4] A.D. Sokal, Monte Carlo methods in statistical mechanics: foundations and new algorithms , in Functional Integration: Basics and Applications , C. DeWitt-Morette,
+
+– 30 – P. Cartier and A. Folacci, eds., vol. 361 of NATO ASI Series B , (Boston), Springer (1997), DOI. [5] N. Madras and A.D. Sokal, The pivot algorithm: A highly efficient Monte Carlo method for the self-avoiding walk , J. Stat. Phys. 50 (1988) 109. [6] A.D. Kennedy and B. Pendleton, Cost of the generalized hybrid Monte Carlo algorithm for free field theory , Nucl. Phys. B 607 (2001) 456 [ hep-lat/0008020 ]. [7] ALPHA collaboration, Critical slowing down and error analysis in lattice QCD simulations , Nucl. Phys. B 845 (2011) 93 [ 1009.5228 ]. [8] C. Bonati and M. D’Elia, Topological critical slowing down: variations on a toy model , Phys. Rev. E 98 (2018) 013308 [ 1709.10034 ]. [9] J. Liu, Y. Qi, Z.Y. Meng and L. Fu, Self-learning Monte Carlo method , Phys. Rev. B 
+
+95 (2017) 041101 [ 1610.03137 ]. [10] J. Liu, H. Shen, Y. Qi, Z.Y. Meng and L. Fu, Self-learning Monte Carlo method and cumulative update in fermion systems , Phys. Rev. B 95 (2017) 241104 [ 1611.09364 ]. [11] Y. Nagai, M. Okumura, K. Kobayashi and M. Shiga, Self-learning Hybrid Monte Carlo: A first-principles approach , Phys. Rev. B 102 (2020) 041124 [ 1909.02255 ]. [12] Y. Nagai, A. Tanaka and A. Tomiya, Self-learning Monte Carlo for non-Abelian gauge theory with dynamical fermions , Phys. Rev. D 107 (2023) 054501 [2010.11900 ]. [13] Y. Nagai and A. Tomiya, Gauge covariant neural network for quarks and gluons ,
+
+Phys. Rev. D 111 (2025) 074501 [ 2103.11965 ]. [14] Y. Nagai and A. Tomiya, Self-learning Monte Carlo with equivariant Transformer , J. Phys. Soc. Jap. 93 (2024) 114007 [ 2306.11527 ]. [15] M.S. Albergo, G. Kanwar and P.E. Shanahan, Flow-based generative models for Markov chain Monte Carlo in lattice field theory , Phys. Rev. D 100 (2019) 034515 [1904.12072 ]. [16] G. Kanwar, M.S. Albergo, D. Boyda, K. Cranmer, D.C. Hackett, S. Racanière et al., 
+
+Equivariant flow-based sampling for lattice gauge theory , Phys. Rev. Lett. 125 (2020) 121601 [ 2003.06413 ]. [17] M.S. Albergo, D. Boyda, D.C. Hackett, G. Kanwar, K. Cranmer, S. Racanière et al., 
+
+Introduction to Normalizing Flows for Lattice Field Theory , 2101.08176 .[18] L. Wang, G. Aarts and K. Zhou, Diffusion models as stochastic quantization in lattice field theory , JHEP 05 (2024) 060 [ 2309.17082 ]. [19] Y.-y. Tan, G. Aarts, D.E. Habibi, B. Lucini and L. Wang, Diffusion Models for Sampling Near Criticality in Lattice Field Theories , 2607.08505 .[20] A. Tomiya, Machine Learning for Lattice QCD , J. Phys. Soc. Jap. 94 (2025) 031006. [21] Y. Nagai, H. Ohno and A. Tomiya, CASK: A Gauge Covariant Transformer for Lattice Gauge Theory , PoS LATTICE2024 (2025) 030 [ 2501.16955 ]. 
+
+– 31 – [22] H. Hsiao, B.J. Choi, H. Ohno and A. Tomiya, A Machine Learning Approach for Lattice Gauge Fixing , in 42nd International Symposium on Lattice Field Theory ,2026 [ 2602.23731 ]. [23] J. Sohl-Dickstein, E.A. Weiss, N. Maheswaranathan and S. Ganguli, Deep Unsupervised Learning using Nonequilibrium Thermodynamics , in Proceedings of the 32nd International Conference on Machine Learning , vol. 37 of Proceedings of Machine Learning Research , pp. 2256–2265, 2015. [24] J. Ho, A. Jain and P. Abbeel, Denoising Diffusion Probabilistic Models , in Advances in Neural Information Processing Systems , vol. 33, pp. 6840–6851, 2020 [2006.11239 ]. [25] Y. Song, J. Sohl-Dickstein, D.P. Kingma, A. Kumar, S. Ermon and B. Poole, 
+
+Score-Based Generative Modeling through Stochastic Differential Equations , in 
+
+International Conference on Learning Representations , 2021 [ 2011.13456 ]. [26] D.J. Rezende, G. Papamakarios, S. Racanière, M.S. Albergo, G. Kanwar, P.E. Shanahan et al., Normalizing Flows on Tori and Spheres , 2002.02428 .[27] P. de Haan, C. Rainone, M.C.N. Cheng and R. Bondesan, Scaling Up Machine Learning For Quantum Field Theory with Equivariant Continuous Flows ,
+
+2110.02673 .[28] A. Singha, D. Chakrabarti and V. Arora, Conditional normalizing flow for Markov chain Monte Carlo sampling in the critical region of lattice field theory , Phys. Rev. D 
+
+107 (2023) 014512 [ 2207.00980 ]. [29] Dinesh P. R., Locality-constrained autoregressive cum conditional normalizing flow for lattice field theory simulations , 2304.01798 .[30] R. Abbott et al., Normalizing flows for lattice gauge theory in arbitrary space-time dimension , 2305.02402 .[31] J. Komijani and M.K. Marinkovic, Normalizing flows for SU(N) gauge theories employing singular value decomposition , PoS LATTICE2024 (2025) 050 [2501.18288 ]. [32] R. Abbott, D. Boyda, G. Kanwar, F. Romero-López, D.C. Hackett, P.E. Shanahan et al., Progress in Normalizing Flows for 4d Gauge Theories , PoS LATTICE2024 
+
+(2025) 066 [ 2502.00263 ]. [33] R. Abbott, D. Boyda, Y. Fu, D.C. Hackett, G. Kanwar, F. Romero-López et al., 
+
+Variance reduction in lattice QCD observables via normalizing flows , 2603.02984 .[34] M.C.N. Cheng and N. Stratikopoulou, Lecture notes on normalizing flows for lattice quantum field theories , SciPost Phys. Lect. Notes 110 (2026) 1 [ 2504.18126 ]. [35] M. Luscher, Trivializing maps, the Wilson flow and the HMC algorithm , Commun. Math. Phys. 293 (2010) 899 [ 0907.5491 ]. [36] L. Del Debbio, J.M. Rossney and M. Wilson, Efficient modeling of trivializing maps 
+
+– 32 – for lattice ϕ4 theory using normalizing flows: A first look at scalability , Phys. Rev. D 
+
+104 (2021) 094507 [ 2105.12481 ]. [37] S. Bacchio, P. Kessel, S. Schaefer and L. Vaitl, Learning trivializing gradient flows for lattice gauge theories , Phys. Rev. D 107 (2023) L051504 [ 2212.08469 ]. [38] D. Albandea, L. Del Debbio, P. Hernández, R. Kenway, J. Marsh Rossney and A. Ramos, Learning trivializing flows , Eur. Phys. J. C 83 (2023) 676 [ 2302.08408 ]. [39] D. Albandea, L. Del Debbio, P. Hernández, R. Kenway, J.M. Rossney and A. Ramos, 
+
+Learning Trivializing Flows in a ϕ4 theory from coarser lattices , PoS 
+
+LATTICE2023 (2024) 013 [ 2310.03381 ]. [40] H. Wu, J. Köhler and F. Noé, Stochastic Normalizing Flows , in Advances in Neural Information Processing Systems , vol. 33, pp. 5933–5944, 2020 [ 2002.06707 ]. [41] M. Caselle, E. Cellini, A. Nada and M. Panero, Stochastic normalizing flows as non-equilibrium transformations , JHEP 07 (2022) 015 [ 2201.08862 ]. [42] Q. Zhu, G. Aarts, W. Wang, K. Zhou and L. Wang, Physics-conditioned diffusion models for lattice gauge theory , JHEP 03 (2026) 111 [ 2502.05504 ]. [43] Q. Zhu, G. Aarts, W. Wang, K. Zhou and L. Wang, Diffusion models for lattice gauge field simulations , in Postponed: Machine Learning and the Physical Sciences: Workshop at NeurIPS 2024 , 10, 2024 [ 2410.19602 ]. [44] G. Aarts, D.E. Habibi, A. Ipp, D.I. Müller, T.R. Ranner, L. Wang et al., 
+
+Generalizable Equivariant Diffusion Models for Non-Abelian Lattice Gauge Theory ,
+
+2601.19552 .[45] J. Komijani, M.K. Marinkovic and L. Turgut, Diffusion model for SU(N) gauge theories , 2605.06134 .[46] G.O. Roberts and R.L. Tweedie, Exponential convergence of Langevin distributions and their discrete approximations , Bernoulli 2 (1996) 341. [47] U. Wolff, Collective Monte Carlo Updating for Spin Systems , Phys. Rev. Lett. 62 
+
+(1989) 361. [48] M. Hasenbusch, The Two dimensional XY model at the transition temperature: A High precision Monte Carlo study , J. Phys. A 38 (2005) 5869 [ cond-mat/0502556 ]. [49] N.D. Mermin and H. Wagner, Absence of ferromagnetism or antiferromagnetism in one-dimensional or two-dimensional isotropic Heisenberg models , Phys. Rev. Lett. 17 
+
+(1966) 1133. [50] P.C. Hohenberg, Existence of Long-Range Order in One and Two Dimensions , Phys. Rev. 158 (1967) 383. [51] V.L. Berezinskii, Destruction of Long-range Order in One-dimensional and Two-dimensional Systems having a Continuous Symmetry Group I. Classical Systems , Sov. Phys. JETP 32 (1971) 493. 
+
+– 33 – [52] J.M. Kosterlitz and D.J. Thouless, Ordering, metastability and phase transitions in two-dimensional systems , J. Phys. C 6 (1973) 1181. [53] J.M. Kosterlitz, The critical properties of the two-dimensional xy model , J. Phys. C 
+
+7 (1974) 1046. [54] P. Minnhagen, The two-dimensional Coulomb gas, vortex unbinding, and superfluid-superconducting films , Rev. Mod. Phys. 59 (1987) 1001. [55] C. Pasarica and A. Gelman, Adaptively scaling the Metropolis algorithm using expected squared jumped distance , Statistica Sinica 20 (2010) 343. [56] P. Boyle, T. Izubuchi, L. Jin, C. Jung, C. Lehner, N. Matsumoto et al., Use of Schwinger-Dyson equation in constructing an approximate trivializing map , PoS 
+
+LATTICE2022 (2023) 229 [ 2212.11387 ]. [57] M. Luscher, Schwarz-preconditioned HMC algorithm for two-flavour lattice QCD ,
+
+Comput. Phys. Commun. 165 (2005) 199 [ hep-lat/0409106 ]. [58] U. Wolff, Monte Carlo errors with less errors , Comput. Phys. Commun. 156 (2004) 143 [ hep-lat/0306017 ]. [59] P. Vincent, A Connection Between Score Matching and Denoising Autoencoders ,
+
+Neural Computation 23 (2011) 1661. [60] A.M. Ferrenberg and R.H. Swendsen, New Monte Carlo Technique for Studying Phase Transitions , Phys. Rev. Lett. 61 (1988) 2635. [61] R. Iwami, S. Ejiri, K. Kanaya, Y. Nakagawa, D. Yamamoto and T. Umeda, 
+
+Multipoint reweighting method and its applications to lattice QCD , Phys. Rev. D 92 
+
+(2015) 094507 [ 1508.01747 ]. [62] G.O. Roberts and J.S. Rosenthal, Optimal Scaling of Discrete Approximations to Langevin Diffusions , J. Roy. Statist. Soc. B 60 (1998) 255. [63] J. Bezanson, S. Karpinski, V.B. Shah and A. Edelman, Julia: A Fast Dynamic Language for Technical Computing , 1209.5145 .[64] E. Perez, F. Strub, H. de Vries, V. Dumoulin and A. Courville, FiLM: Visual Reasoning with a General Conditioning Layer , in Proceedings of the Thirty-Second AAAI Conference on Artificial Intelligence , vol. 32, pp. 3943–3951, 2018, DOI [1709.07871 ]. [65] Y. Wu and K. He, Group Normalization , in Proceedings of the European Conference on Computer Vision , pp. 3–19, 2018, DOI [ 1803.08494 ]. [66] D.P. Kingma and J. Ba, Adam: A Method for Stochastic Optimization , in 
+
+International Conference on Learning Representations , 2015 [ 1412.6980 ]. 
+
+– 34 –

@@ -1,0 +1,2242 @@
+Title: Sticky Jump Diffusions: A Unifying View of Masked, Continuous, and Hybrid Diffusion
+
+URL Source: https://arxiv.org/pdf/2607.10951v1
+
+Published Time: Tue, 14 Jul 2026 01:32:51 GMT
+
+Number of Pages: 32
+
+Markdown Content:
+# Sticky Jump Diffusions: A Unifying View of Masked, Continuous, and Hybrid Diffusion 
+
+Pascal Jutras-Dubé 
+
+Department of Computer Science Purdue University 
+
+pjutrasd@purdue.edu 
+
+Patrick Pynadath 
+
+Department of Computer Science Purdue University 
+
+ppynadat@purdue.edu 
+
+Jeremy Lu 
+
+Department of Computer Science Purdue University 
+
+lu1008@purdue.edu 
+
+Yuan Gao 
+
+Department of Mathematics Purdue University 
+
+gao662@purdue.edu 
+
+Ruqi Zhang 
+
+Department of Computer Science Purdue University 
+
+ruqiz@purdue.edu 
+
+## Abstract 
+
+We introduce Sticky Jump Diffusions (SJDs), continuous-time Markov processes on 
+
+Rd whose discrete anchors are token embeddings. In forward time, anchors release their mass at a hazard rate and the released mass diffuses in the continuous ambient space; time reversal couples a score-driven SDE with a sticky jump kernel whose rate and destination are fixed by flux balance with the forward law. We estimate the score and the per-anchor reverse hazards from a single denoising classifier via 
+
+Denoising Hazard Matching , the hazard analogue of denoising score matching, with simulation-free cross-entropy training. SJD recovers masked diffusion, continuous diffusion, and hybrid diffusion as limits. Its reversal explains features that each family treats as given: the mask of masked diffusion carries no evidence about the source token because the unsticking kernel of every anchor collapses to the same absorbing point; the terminal projection of continuous diffusion is required due to the absence of atoms in its forward marginal, without which flux balance yields no reverse jumps; and the update rules of hybrid diffusion (commit rate, destination, and drift) all follow from flux balance rather than from separate design. Beyond these limits, the unsticking kernel becomes a design space: a cross-position blending corrupts each position toward a blend of its neighbors’ clean values or embeddings, turning dependency structure such as spatial locality or a constraint graph into an inductive bias of the corruption itself, and improves over the identity-kernel hybrid on CIFAR-10, Text8, and Sudoku. Our code is available at https: //github.com/PascalJD/sticky-jump-diffusions .
+
+## 1 Introduction 
+
+Diffusion-based generative modeling has been extended from continuous data [Sohl-Dickstein et al., 2015, Song and Ermon, 2019, Ho et al., 2020, Song et al., 2021, Karras et al., 2022] to discrete sequences such as text. Two families dominate the discrete setting. Masked diffusion operates on the token space and outputs valid tokens by construction, but each position is mapped to a single                          
+
+> Preprint. arXiv:2607.10951v1 [cs.LG] 12 Jul 2026 0.0 0.2 0.4 0.6 0.8 1.0
+> reverse time ¿
+> -2
+> -1
+> 0
+> 1
+> 2
+> MASK
+> Masked diffusion
+> ✗Uses Continuous Gradients
+> ✓Outputs Discrete Tokens
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> reverse time ¿
+> -2
+> -1
+> 0
+> 1
+> 2
+> Continuous diffusion
+> projection required
+> ✓Uses Continuous Gradients
+> ✗Outputs Discrete Tokens
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> reverse time ¿
+> -2
+> -1
+> 0
+> 1
+> 2
+> Sticky Jump Diffusion
+> jump
+> ✓Uses Continuous Gradients
+> ✓Outputs Discrete Tokens
+> 0.0 0.5
+> Data PMF
+
+Figure 1: Reverse-time trajectories over each model’s path space. Masked diffusion is discrete but gradient-free; continuous diffusion is gradient-based but requires a terminal projection; SJD couples ambient gradients with sticky jumps onto anchors. absorbing token, and the per-position factorization erases graded information about how close the corruption is to a candidate token [Austin et al., 2021, Sahoo et al., 2024, Shi et al., 2024, Lou et al., 2024]. Continuous diffusion operates on token embeddings and uses standard score-based learning, but its terminal state lies off the discrete support and must be mapped back by a projection step external to the dynamics [Li et al., 2022, Dieleman et al., 2022, Chen et al., 2023]. Recent hybrid diffusion pairs the two: a masked chain decides which positions are committed, and a continuous latent carries graded information for the masked ones [Zheng et al., 2026, Pynadath et al., 2026, Zhou et al., 2026]. A review of these three families is given in Section B. We define Sticky Jump Diffusions (SJDs), a class of continuous-time Markov processes on a continuous state space X = Rd with a finite or countable set of anchors A ⊂ Rd identified with token embeddings. All three families above arise as limits of SJDs. In forward time, data start on anchors; an anchor releases its mass at a hazard rate ⃗ λt into the continuous region XA, where the trajectory diffuses by a standard SDE. The marginal pt splits into a continuous density on XA and atoms on A, generalizing the classical sticky-boundary diffusions of a single absorbing point on the half-line [Feller, 1952, 1954, Itô and McKean, 1963] to anchor sets of vocabulary size living in Rd. Figure 1 visually compares SJD with masked and continuous diffusion. Time reversal of an SJD produces a generative process with two coupled mechanisms: a score-driven SDE on XA and a sticky jump kernel that commits mass to anchors. The per-anchor reverse intensities are fixed by flux balance [Conforti and Léonard, 2022], so the choice of where to commit and at what rate is determined by the forward law. Token commitment is therefore a reverse-time jump event of the stochastic process, with a rate and a destination that the dynamics specify, rather than a hand-designed schedule applied at sampling time. To turn the reverse-time identity into a usable generative model, we introduce Denoising Hazard Matching (DHM), the hazard analogue of denoising score matching [Vincent, 2011]: the reverse hazard equals the conditional expectation of a forward-known target under the SJD corruption. Combined with a denoising classifier Pθ , DHM yields both the score and the per-anchor reverse intensities from the same network, by an analytic reweighting of Pθ that is Rao–Blackwellized and needs no separate hazard head. Training is plain cross-entropy on SJD-corrupted pairs and is simulation-free under standard conditions on the forward dynamics. The same construction places existing model classes inside SJD, and each limit inherits an explanation from the reversal. In masked diffusion, the unsticking kernel collapses to the absorbing token, and commitment is forced to be time-only. In hybrid diffusion, the kernel matches the forward perturbation kernel: commit rate, destination, and drift follow from flux balance. In continuous diffusion, there is no sticking jump: without atoms in the forward marginal, there are no reverse jumps, so a terminal projection outside the dynamics is needed. The intermediate regime is the one we study empirically: the unsticking kernel there carries a cross-position blending toward a weighted combination of neighbors’ clean values or embeddings, which improves over the identity-kernel hybrid on CIFAR-10, Text8, and Sudoku. 2Contributions. 
+
+(i) The SJD process class. We introduce Sticky Jump Diffusions, continuous-time jump-diffusions on Rd whose forward marginal splits into a density on a continuous off-anchor region and atoms on a discrete anchor set identified with token embeddings. (ii) Reverse dynamics from a single classifier. We derive the time reversal process of SJD: a score-driven SDE coupled with a sticky jump kernel whose per-anchor rates are fixed by flux balance. Both the score and the reverse hazard are estimated by a denoising classifier through Denoising Hazard Matching, the hazard analogue of denoising score matching, an analytic Rao-Blackwellized reweighting that needs no second network and trains by cross-entropy. (iii) A unifying view of masked, continuous, and hybrid diffusion. SJD recovers absorbing-state masked diffusion, hybrid diffusion, and continuous diffusion as limits. Where these families assemble the reverse sampler by hand, SJD makes the discrete and continuous coordinates one reversed state: commit rate, destination token, and drift all follow from the forward corruption by flux balance. (iv) The jump kernel yields a new design space. We empirically study cross-position jump kernels: each position’s corruption is centered on a blend of the other positions’ clean values or embeddings rather than its own embedding alone. We instantiate this on three data types whose structure it can express, encoding spatial locality on CIFAR-10, local sequential correlation on Text8, and the row/column/box constraint graph on Sudoku; it improves FID, valid-word generation, and board completion over the identity-kernel hybrid under matched settings. 
+
+## 2 Sticky Jump Diffusion (SJD) Models 
+
+Let the state space be X = Rd and let A = {ak}Kk=1 ⊂ Rd be a finite (or countable) set of anchors. We write XA := Rd \ A for the continuous region and allow the law pt of Xt to have an absolutely continuous part on XA and atoms on A. Notation and assumptions are introduced throughout the text and reiterated in Section A. Proofs are in Section C. 
+
+2.1 Forward Noising Dynamics: Unsticking 
+
+SJDs are defined for a single particle in what follows; a running example lifts the construction to sequences and is carried throughout the paper. 
+
+Definition 2.1 (Forward (noising) process) . Fix a terminal time T > 0. The forward process 
+
+(⃗ Xt)t∈[0 ,T ] starts at an anchor, ⃗ X0 = a ∈ A with a ∼ pdata , and evolves as follows. While stuck at its anchor, ⃗ Xt = a, it waits and with hazard ⃗ λt, unsticks to a new state Y ∼ Rt(· | a). (1) Here Rt(· | a) is a fixed unsticking kernel supported on XA; when it is absolutely continuous we write 
+
+Rt(d y | a) = rt(y | a)d y. Once ⃗ Xt ∈ XA, it diffuses according to: 
+
+d⃗Xt =⃗ bt(⃗Xt)d t + gtd⃗Wt. (2) The diffusion coefficient gt > 0 is a scalar, ⃗ bt is a drift, d⃗Wt is a Wiener increment. There are no forward jumps into anchors, so once a trajectory unsticks, it never returns to A.In words: data start at anchors, wait at their anchor for a hazard-governed amount of time, then unstick into the continuous region and diffuse. Intuitively, the forward process transports mass from the discrete anchor set into the continuous ambient space. The third panel of Figure 1 shows an SJD trajectory. The following construction is used in all of our experiments. It introduces two parameters: a blending matrix W , the axis our experiments vary, and a variance ratio η, which we keep at η = 1 , the width of the hybrid perturbation kernel (Section 4.3). 
+
+Example 2.2 (VP-matched sequence SJD with non-local jump kernel) . In practice, ⃗ X0 is typically a sequence of anchors ⃗ X0 = ( a(1) , . . . , a (L)) ∈ A L (e.g. a sentence). The unsticking kernel at a position may depend on the whole clean sequence, not on that position’s anchor alone. We realize 3this here through a blending matrix W ∈ RL×L that couples the positions. With VP coefficients 
+
+α(t), σ (t) and an embedding E : A → Rd, define the blended mean at position i,
+
+μi(⃗ X0) :=  W E (⃗X0) 
+
+> i
+
+=
+
+> L
+
+X
+
+> j=1
+
+Wij E(a(j)), (3) where E(⃗X0) ∈ RL×d stacks the per-position embeddings. Position i is corrupted toward μi rather than its own embedding only. At W = I we recover μi = E(a(i)) and the positions’ jumps are independent. Position i then unsticks to 
+
+rt
+
+ y | i,⃗ X 0
+
+ = N
+
+
+
+y; α(t)μi(⃗X0), η 2σ2(t)I
+
+
+
+, η ∈ (0 , 1] . (4) The single-particle kernel rt(· | a) of Theorem 2.1 has become rt(· | i,⃗ X 0), now depending on the whole initial sequence. It departs from the usual VP perturbation kernel in its mean, set by W , and the variance, set by η ∈ (0 , 1] . Figure 4 shows the effect of η.
+
+Remark 2.3 (Mass split) . At each t, the law pt decomposes as pt = pac  
+
+> t
+
++ pat  
+
+> t
+
+, where pac  
+
+> t
+
+is an absolutely continuous density on XA and pat  
+
+> t
+
+= P 
+
+> a∈A
+
+mt(a)δa is an atomic density with anchor mass mt(a) ∈ [0 , 1] . The anchor mass mt(a) decays deterministically given ⃗ λt when the diffusion does not re-attach to anchors in forward time. 
+
+Remark 2.4 (Conditional law is a mixture over unstick times) . Conditioned on ⃗ X0 = a, a particle that has already unstuck by time t did so at some random time τ ∈ (0 , t ), and its continuous density at t
+
+is the convolution of the unsticking kernel at τ with the diffusion semigroup from τ to t. Integrating over τ against the hazard-survival density gives 
+
+pac  
+
+> t
+
+(y | a) = 
+
+Z t
+
+> 0
+
+⃗ λτ (a)Sa(τ ) rτ (· | a) ∗ Kτ →t
+
+(y)d τ, 
+
+where Sa(τ ) = exp   − R τ
+
+> 0
+
+⃗ λs(a)d s is the anchor survival function and Kτ →t is the forward diffusion semigroup. In general, pac  
+
+> t
+
+(· | a) is therefore a mixture and not a single Gaussian, even when both rτ (· | a) and Kτ →t are. Two particles that started at the same anchor but unstuck at different times carry different accumulated variances, and pac  
+
+> t
+
+(· | a) averages over these. 
+
+Remark 2.5 (Terminal prior) . In Theorem 2.2, when the VP coefficients α(T ) → 0 and σ(T ) → 1
+
+and every anchor loses its mass by T (i.e. Sa(T ) = 0 for all a, so pat  
+
+> T
+
+= 0 ), every mixture component of Theorem 2.4 converges to N (0 , I d) regardless of τ , η, or the blending matrix W .
+
+2.2 Reverse-Time Generative Dynamics: Sticking 
+
+Intuitively, if the forward process jumps off anchors, then the reverse-time process must jump into anchors. We state this formally below. 
+
+Theorem 2.6 (Time reversal for jump-diffusions) . Under mild regularity assumptions, the reverse-time process (⃗ Xτ )τ ∈[0 ,T ] with τ = T − t is Markov on Rd and admits: 
+
+d⃗Xτ =  ⃗ bt(⃗Xτ )dτ + gtd⃗W τ on XA, (5) ⃗bt(x) = −⃗bt(x) + g2 
+
+> t
+
+∇ log pt(x), x ∈ XA, (6) 
+
+and a jump kernel that sticks to anchors, uniquely defined by the flux equation 
+
+pt(d y)⃗Jt(y, dx) = pt(d x)⃗ Jt(x, dy). (7) 
+
+In particular, for y ∈ XA and x = a ∈ A ,⃗Jt(y, {a}) = pt({a})
+
+pt(y)⃗ λtrt(y | a). (8) 
+
+## 3 Learning Sticky Dynamics 
+
+To turn Theorem 2.6 into a usable generative model we need to evaluate, at every (y, t ), the reverse drift (6) and the sticky-jump rates (8) . Both involve the SJD marginal pt, which we cannot evaluate 4in closed form: the off-anchor conditional pac  
+
+> t
+
+(· | a) is the mixture over unstick times of Theorem 2.4, and the marginal pt(y) = P 
+
+> a∈A
+
+p0(a)pac  
+
+> t
+
+(y | a) averages this mixture across anchors. Our strategy is to learn the time-reversed SJD by training a single object: a denoising classifier 
+
+Pθ (a | y, t ) fit by cross-entropy on SJD-corrupted pairs. We will show that an analytic reweighting of Pθ recovers both the score and the reverse hazard exactly — so that no separate hazard head is needed — and that the whole training pipeline is simulation-free under standard conditions on the forward dynamics. 
+
+3.1 When and Where to Stick 
+
+By Theorem 2.6, the sticky jump law has per-anchor backward intensities 
+
+Λ⋆t (a | y) ≡⃗ Jt(y, {a}) = mt(a)
+
+pt(y)⃗ λtrt(y | a), y ∈ XA, a ∈ A . (9) Summing over anchors gives the hazard at which y commits, regardless of the destination, ⃗λ⋆t (y) := X
+
+> a∈A
+
+Λ⋆t (a | y) = ⃗ λt
+
+P 
+
+> a∈A
+
+mt(a)rt(y | a)
+
+pt(y) , (10) and normalizing gives the allocation probability over destinations, conditional on a sticky jump, 
+
+π⋆t (a | y) := Λ⋆t (a | y)
+
+P 
+
+> b∈A
+
+Λ⋆t (b | y) = mt(a)rt(y | a)
+
+P 
+
+> b∈A
+
+mt(b)rt(y | b) . (11) These are the reverse sampler’s two decisions: when and where to commit, and together they fully factorize the sticky jump law: 
+
+Λ⋆t (a | y) = ⃗ λ⋆t (y)π⋆t (a | y), X
+
+> a∈A
+
+π⋆t (a | y) = 1 . (12) Crucially, pt(y) cancels from the allocation (11) ; so does the forward hazard whenever it is anchor-agnostic , i.e. ⃗ λt(a) ≡⃗ λt. The reverse hazard (10) thus carries all of the dependence on the unknown 
+
+pt(y) that we still need to eliminate. 
+
+3.2 Denoising Posterior and Classifier Training 
+
+Define the SJD denoising posterior 
+
+pt(a | y) := Pr  ⃗ X0 = a⃗ Xt = y = p0(a)pac  
+
+> t
+
+(y | a)
+
+pt(y) , a ∈ A , y ∈ XA, (13) where pac  
+
+> t
+
+(· | a) is the mixture from Theorem 2.4. With paired samples (⃗X0,⃗ X t) drawn ⃗ X0 ∼ p0 and ⃗Xt ∼ pac  
+
+> t
+
+(· | ⃗ X0), we train a classifier Pθ (a | y, t ) by the standard cross-entropy 
+
+L(θ) := E
+
+h
+
+− log Pθ
+
+ ⃗ X0⃗ Xt, t i
+
+, (14) whose Bayes-optimal predictor is exactly (13). The classifier sees y and t but not the latent unstick time τ that produced ⃗ Xt from ⃗ X0 which is the same information pattern available to the reverse sampler at inference. This is by design: the time-reversal theorem operates on pt, not on trajectories, and has already integrated out τ by flux balance. 
+
+3.3 Denoising Hazard Matching (DHM) 
+
+The reverse hazard ⃗ λ⋆t (y) (10) still contains the unknown marginal pt(y). We eliminate it by writing ⃗λ⋆t as a conditional expectation of a forward-known quantity. 5Definition 3.1 (DHM target) . For ⃗ X0 ∈ A and y ∈ XA, define 
+
+bλt(y,⃗ X 0) := ⃗ λt(⃗X0)S⃗ X0 (t)rt(y |⃗ X0)
+
+pac  
+
+> t
+
+(y |⃗ X0) , (15) where S⃗ X0 (t) = exp   − R t
+
+> 0
+
+⃗ λs(⃗X0)d s is the survival. The target involves only forward-specified quantities: the forward hazard, its survival, the unsticking density at the current time, and the off-anchor conditional from Theorem 2.4. It contains no intractable marginal pt(y).
+
+Theorem 3.2 (Denoising Hazard Matching) . Let (⃗X0,⃗ X t) be paired by the SJD forward law, ⃗ X0 ∼
+
+p0 and ⃗ Xt ∼ pac  
+
+> t
+
+(· | ⃗ X0). Then 
+
+E
+
+hbλt(⃗Xt,⃗ X 0)⃗ Xt = y
+
+i
+
+=⃗ λ⋆t (y) for almost every y ∈ XA. (16) Theorem 3.2 is the hazard analogue of denoising score matching [Vincent, 2011]: the reverse hazard, like the score, is an intractable functional of the marginal that nonetheless equals a tractable conditional expectation under the same forward corruption used for training. 
+
+3.4 Plug-In: One Classifier, No Hazard Head 
+
+Because ⃗ X0 is discrete, (16) expands as a finite sum, ⃗λ⋆t (y) = X
+
+> a∈A
+
+bλt(y, a )pt(a | y), (17) which substitutes a known weighting against an unknown distribution. Replacing pt(· | y) with the trained classifier Pθ yields the Rao–Blackwellized plug-ins 
+
+Λplug ,θ (a | y, t ) := bλt(y, a )Pθ (a | y, t ), λplug ,θ (y, t ) := X
+
+> a∈A
+
+Λplug ,θ (a | y, t ). (18) Both ingredients of the factorization (12) are now in hand: the total commit rate is λplug ,θ (y, t ), and the anchor allocation at a jump is 
+
+πplug ,θ (a | y, t ) = Λplug ,θ (a | y, t )
+
+λplug ,θ (y, t ) ∝ bλt(y, a )Pθ (a | y, t ). (19) If Pθ (· | y, t ) = softmax( ℓθ (·; y, t )) , sampling the destination anchor reduces to a softmax over reweighted logits ℓθ (a; y, t ) + log bλt(y, a ). Training is plain cross-entropy; all SJD-specific structure enters at inference through the analytic reweighting bλt. Section C.3 describes three properties that justify (18). 
+
+3.5 Simulation-Free Training 
+
+Sampling ⃗ Xt ∼ pac  
+
+> t
+
+(· | ⃗ X0) is simulation-free under three conditions on the forward process. (i) Closed-form survival. The survival Sa(τ ) should be available in closed form so that an unstick time τ can be drawn by inverse CDF on (0 , t ). For hazards of the form ⃗ λτ (a) = β(τ )w(a) with 
+
+β elementary (e.g. constant, linear, polynomial, piecewise-constant), Sa is a single exponential. (ii) Gaussian closure of the convolution. The convolution rτ (· | a) ∗ Kτ →t should be Gaussian in closed form. This holds whenever rτ is Gaussian and the forward SDE is linear-Gaussian. (iii) One-sample unbiasedness. A single draw (τ,⃗ X t) is an unbiased sample from pac  
+
+> t
+
+(· | ⃗ X0). The cross-entropy loss therefore receives an unbiased gradient from one sample per step; we never need to evaluate the mixture density pac  
+
+> t
+
+(y | a) during training. 
+
+Example 2.2, continued. Theorem 2.2 satisfies all three conditions. The VP-SDE is linear-Gaussian; for an anchor-agnostic hazard ⃗ λt(⃗X0) ≡⃗ λ(t), the survival S(t) = exp   − R t
+
+> 0
+
+⃗ λ(s)d s is a single 6Algorithm 1 SJD simulation-free training. 
+
+Require: Prior p0;⃗ λt, Sa, rτ , Kτ →t; embed-ding E and blending matrix W ; Pθ ; T . 
+
+> 1:
+
+while not converged do  
+
+> 2:
+
+Sample ⃗ X0 ∼ p0, t ∼ Unif(0 , T ). 
+
+> 3:
+
+Compute μ ← W E (⃗ X0) ∈ RL×d. 
+
+> 4:
+
+Sample u ∼ Unif(0 , 1) . 
+
+> 5:
+
+if u < S ⃗X0 (t) then continue  
+
+> 6:
+
+Sample τ ∼⃗ λτ (⃗X0)S⃗X0 (τ )/(1 −S⃗ X0 (t)) . 
+
+> 7:
+
+Sample ⃗ Xt ∼ (rτ ∗ Kτ →t)( · | ⃗ X0, i ) at each unstuck position i, using (20).  
+
+> 8:
+
+Step θ on − log Pθ (⃗ X0 |⃗ Xt, t ). 
+
+> 9:
+
+end while Algorithm 2 SJD predictor sampling. 
+
+Require: Pθ ;⃗ bt, gt,⃗ λt, rt; T , ∆τ . 
+
+> 1:
+
+y ∼ pT ; τ ← 0; mark all sites active.  
+
+> 2:
+
+while τ < T and any site is active do  
+
+> 3:
+
+t ← T − τ . 
+
+> 4:
+
+One forward pass: Pθ (· | y, t ), sθ (y, t ). 
+
+> 5:
+
+Evaluate bλt(y, a ) for a ∈ A by (58).  
+
+> 6:
+
+Form λplug ,θ , π plug ,θ by (18).  
+
+> 7:
+
+Drift: y ← y + ( −⃗bt(y) + g2 
+
+> t
+
+sθ )∆ τ +
+
+gt
+
+√∆τ ξ . 
+
+> 8:
+
+Jump: per active site, with prob. 1 −
+
+e−λplug ,θ ∆τ , draw a ∼ πplug ,θ , freeze site at a. 
+
+> 9:
+
+τ ← τ + ∆ τ . 
+
+> 10:
+
+end while  
+
+> 11:
+
+return y.exponential and τ is sampled by inverse CDF in closed form. The convolution evaluates to a single Gaussian whose mean is the blended mean and whose variance vt(τ ) (Section D.1): 
+
+(rτ ∗Kτ →t)( · | ⃗ X0, i ) = N
+
+
+
+·; α(t)μi(⃗X0), v t(τ )Id
+
+
+
+, vt(τ ) = σ2(t)−(1 −η2) α2(t)  
+
+> α2(τ)
+
+σ2(τ ). (20) Sampling ⃗ Xt given (⃗ X0, τ ) is a single Gaussian draw at each position, with the per-position mean 
+
+α(t)μi(⃗ X0) obtained from one L × L matmul μ = W E (⃗ X0).Algorithm 1 ties the pieces together. In practice, it is vectorized across a minibatch: the never-unstuck branch is implemented as a loss mask. Section D.4 and Algorithm 2 describe how to sample from a trained SJD. When W̸ = I, W enters the sampler only through the reverse drift: at η = 1 the classifier-induced score evaluates the residual to the blended posterior mean at the cost of one blending product per reverse step, while the commit rates and allocation are unchanged (Section D.3). 
+
+Cost. Despite the added machinery, SJD trains and samples at the same cost as existing hybrids. Training is one classifier forward–backward pass per step on a cross-entropy loss, the same as a masked or hybrid baseline, because all SJD-specific structure enters through the jump corruption: closed-form draws of (τ,⃗ X t) and one L × L blending product per minibatch. At sampling, each reverse step is one forward pass through Pθ plus the analytic reweighting, an Nτ -point quadrature at 
+
+O(Nτ |A| d) that runs one to two orders of magnitude below the network pass (Section D.2). 
+
+## 4 Connections to Existing Diffusions 
+
+The SJD construction of Section 2 unifies several existing model classes by varying three forward-process levers: the unsticking kernel ra, the forward hazard ⃗ λt, and, in the VP-matched family of Theorem 2.2, the blending matrix W and off-anchor variance ratio η. Different limits of these quantities recover absorbing-state discrete diffusion, pure continuous diffusion, and recently-proposed hybrid diffusion. We make these correspondences precise below. 
+
+4.1 Masked Diffusion as a Degenerate-Kernel Limit 
+
+Masked diffusion models (MDMs) [Austin et al., 2021, Sahoo et al., 2024, Shi et al., 2024] are the SJD whose off-anchor region collapses to a single absorbing point. Identify A = {e(v) : v ∈ V} 
+
+with the embedded vocabulary, fix a mask location m / ∈ A , and set 
+
+ra(·, t ) ≡ δm, gt ≡ 0,⃗ λt(a) = β(t) := − ˙αt/α t. (21) Then pac  
+
+> t
+
+(· | a) = (1 − αt)δm, and the plug-in (19) at y = m reduces to πplug ,θ (a | m, t ) ∝
+
+Pθ (a | m, t ) with commit rate β(t)αt/(1 − αt), the standard MDM step. SJD strictly contains 7this limit and additionally provides an absolutely continuous off-anchor region whenever ra has a Lebesgue density. This limit makes the “information void” of Zheng et al. [2026] structural: because every anchor unsticks to the same point, the conditional law pac  
+
+> t
+
+(·| a) = (1 − αt)δm is anchor-independent, so the corrupted state at a masked position carries no evidence about its source token. Correspondingly, the spatial factor of the DHM target (15) reduces to the constant 1/(1 − αt): the commit rate is time-only, and the allocation can be informed only from context, through the classifier (Section 4.5). 
+
+4.2 Continuous Diffusion as the No-Jump Limit 
+
+Setting ⃗ λt ≡ 0 shuts off jumps and reduces (2) to a standard SDE; Theorem 2.6 reduces to the classical score-based time-reversal of Song et al. [2021]. For discrete data, three external mechanisms appear in the literature. (i) Decoder: train a continuous diffusion in latent space and push samples through a separately-trained decoder [Li et al., 2022, Dieleman et al., 2022, Lovelace et al., 2023]. (ii) Quantization: Bit Diffusion [Chen et al., 2023] thresholds the terminal state. (iii) Doob’s h-transform: Liu et al. [2023] bias the SDE by the gradient of a singular log-density so its terminal law lands on a discrete set. A recent wave of embedding-and one-hot-space models closes the gap to discrete diffusion [Yang et al., 2026, Hu et al., 2026, Chen et al., 2026, Lee et al., 2026]; in all of them, discreteness is still restored by a step outside the dynamics, whether a decoder, a readout, or an argmax. SJD instead enforces discreteness through the dynamics: anchors are absorbing in reverse time as a direct consequence of (7). 
+
+4.3 Hybrid Diffusion 
+
+Hybrid diffusion models such as CADD [Zheng et al., 2026], CANDI [Pynadath et al., 2026], and CCDD [Zhou et al., 2026] couple a masked chain with a continuous latent that carries graded information at masked positions. The VP-matched SJD of Theorem 2.2 at (W, η ) = ( I, 1) recovers this construction exactly. With W = I, the unsticking kernel reduces to the per-anchor form rτ (· | a),with η = 1 it coincides with the VP perturbation kernel ( rτ = qτ ), and the semigroup property collapses Theorem 2.4 to 
+
+pac  
+
+> t
+
+(y | a) = (1 − S(t)) N  y; α(t)a, σ 2(t)I. (22) 
+
+Proposition 4.1 (The plain hybrid coincides with CADD) . Consider the VP-matched SJD of The-orem 2.2 at (W, η ) = ( I, 1) with anchor-agnostic hazard ⃗ λ(t) and survival S(t), and CADD with masking survival αt, continuous kernel N (√¯γtE(x0), (1 −¯γt)Id) at masked positions, and a common embedding map E. Identify S(t) ↔ αt and (α(t), σ 2(t)) ↔ (√¯γt, 1 − ¯γt). Then: (i) the time-t laws of the corrupted state given the data coincide for every t, and the SJD cross-entropy objective of Algorithm 1 equals CADD’s cross-entropy objective; (ii) the reverse process of Theorem 2.6 reduces to a commit rate ⃗ λ(t)S(t)/(1 − S(t)) shared across anchors, an allocation equal to the classifier posterior, and a reverse SDE whose score is the residual to the posterior-mean embedding; (iii) CADD’s sampler is a first-order discretization of (ii), so the two generative laws coincide in the small-step limit. 
+
+The sampler that hybrids assemble component by component thus arise jointly as the time reversal of one forward process, with rate, destination, and drift fixed by flux balance (7) . This turns the unsticking kernel into a new design space: the continuous coordinate is reversed state rather than conditioning information, so any forward kernel yields exact reverse dynamics through Theorem 2.6. 
+
+4.4 Sticky Boundaries: A Classical Antecedent 
+
+SJD’s theoretical antecedent is the classical theory of sticky-boundary diffusions [Feller, 1952, 1954, Itô and McKean, 1963]. A one-dimensional sticky diffusion holds at the boundary for an exponential time and re-enters the interior according to a fixed jump-out measure; its law splits as an interior density plus a boundary atom [Bou-Rabee and Holmes-Cerfon, 2020]. SJD lifts this model to a multi-anchor, high-dimensional setting: A replaces the boundary point, ⃗ λt replaces the sticky coefficient, and Ra replaces the jump-out measure, with Theorem 2.3 as the corresponding mass split. 84.5 Commitment Schedules and Token Ordering 
+
+The DHM target (15) factors into temporal and spatial components: 
+
+bλt(y,⃗ X 0) = ⃗ λt(⃗X0)S⃗X0 (t)
+
+| {z }
+
+> temporal
+
+· rt(y |⃗ X0)
+
+pac  
+
+> t
+
+(y |⃗ X0)
+
+| {z }
+
+> spatial
+
+.
+
+At (W, η ) = ( I, 1) , (22) forces the spatial factor to 1/(1 − S(t)) and the allocation (19) reduces to the classifier posterior, recovering the time-only schedule of MDM-style samplers. Choosing 
+
+η < 1 introduces a per-anchor mixture over unstick times whose density depends on proximity 
+
+∥y − α(t)E(a(i))∥2; W̸ = I then replaces the per-anchor distance with a cross-position distance to the blended mean μi(⃗ X0), so the hazard ratio at one position depends on the configuration of its neighbors. This gives a process-level reading of adaptive ordering [Kim et al., 2025, Chao et al., 2025]: at (I, 1) the state carries no timing signal, so a planner can only rank positions by classifier confidence, an ordering imposed at sampling time. State-dependent forward hazards ⃗ λt(a), in the spirit of MD4’s GenMD4 [Shi et al., 2024], are a further axis (See Section C.5). We fix η = 1 in all experiments and recommend it as the practical default: the kernel then coincides with the perturbation kernel, so the identity-blend member is exactly CADD (Theorem 4.1), and the commit rate and allocation are closed-form and identical for every W (Section D.3). 
+
+## 5 Experiments 
+
+The cross-position structure in Theorem 2.2 and Section 4.3 should be exploitable whenever positions are statistically dependent under a known incidence structure, so that a fixed linear functional of a position’s neighbors is itself diagnostic of that position’s value. Such structure is common in real-world data, and we instantiate three examples: spatial locality on CIFAR-10 through a value-space blur, local sequential correlation on Text8, and the row/column/box constraint graph on Sudoku. 
+
+5.1 Image Generation 32 64 128 256 
+
+NFE 
+
+> 15
+> 20
+> 30
+> 50
+> 70
+> 100
+> FID (  ↓ )
+> σB
+> 0 (CADD)
+> 1.5
+> 2.0
+> 2.5
+
+Figure 2: CIFAR-10 FID ( ↓) across sampling bud-gets as a function of the value-space blur band-width σB . σB =0 is the plain hybrid, which co-incides with CADD [Zheng et al., 2026] (Theo-rem 4.1); σB ∈ { 1.5, 2.0, 2.5} are SJD. Figure 2 sweeps σB ∈ { 1.5, 2.0, 2.5}, the spa-tial correlation length of the corruption, against the σB = 0 endpoint across sampling budgets. The identity kernel, the point at which existing hybrids sit, is the weakest member of the sweep: the corruption geometry is a substantive degree of freedom on images as well. Full settings are in Section E.1. At the full budget of 256 NFE, Table 2 compares the best bandwidth from the sweep, σB =2 .5, with masked, continuous, and hybrid baselines under matched settings: SJD attains the best FID overall, 1.3 points below the identity-kernel hybrid, with DDPM the closest external baseline. 
+
+5.2 Text Generation 
+
+Setting W to a 1D Gaussian convolution of band-width σW replaces a token with a noisy blend of a local neighborhood. This is a natural inductive bias for characters, where adjacent characters are correlated, so a blended window ties each position’s corruption to its local context. Figure 3 reports valid-word counts at length thresholds ≥ 5 and 
+
+≥ 6 for NFE budgets of 32, 64, and 128. For σW ≥ 1.0 SJD surpasses both CANDI [Pynadath et al., 2026] and MDLM [Sahoo et al., 2024], with a larger margin at the ≥ 6 threshold than at ≥ 5
+
+and gains that hold at NFE = 128 . Figure 5 further emphasizes this finding with quality–diversity frontiers on Text8, by NFE. Full settings are in Section E.2. 90.5 1.0 1.5 2.0 2.5                 
+
+> 0.100
+> 0.125
+> 0.150
+> 0.175
+> 0.200
+> Valid words
+> NFE =32
+> 0.5 1.0 1.5 2.0 2.5
+> NFE =64
+> 0.5 1.0 1.5 2.0 2.5
+> NFE =128
+> Blending bandwidth W
+> 56
+> SJD
+> CANDI
+> MDLM
+
+Figure 3: Text8 valid-word counts at length thresholds ≥ 5 and ≥ 6, as a function of the blending-kernel bandwidth σW , across NFE budgets. CANDI corresponds to σW = 0 (W = I); MDLM is the degenerate-kernel limit. Table 1: Sudoku board accuracy and conver-gence. Acc. is exact-match board accuracy. Take-off is the average training step at which seeds first begin to solve complete boards. 
+
+Method Acc. (%) ↑ Takeoff ↓
+
+Autoregressive [Shah et al., 2024] 
+
+Left-to-right 9.73 NA Solver order 87.18 NA 
+
+Masked Diffusion [Kim et al., 2025] 
+
+MDM 89.49 NA 
+
+Hybrid Diffusion 
+
+CADD [ (W ,η )=( I, 1) ] 47.12 ± 47.12 203k SJD ( σW =1 .5) 95.65 ± 00.30 50k 
+
+Table 2: FID on CIFAR-10 32 ×32 for uncon-ditional generation; all methods sampled at 256 NFE. 
+
+Method FID ↓
+
+Hybrid Diffusion 
+
+CADD [ (W ,η )=( I, 1) ] 15.88 SJD ( σB =2 .5) 14.57 
+
+Masked Diffusion 
+
+MD4 [Shi et al., 2024] 17.43 MDLM [Sahoo et al., 2024] 18.11 
+
+Continuous Diffusion 
+
+Bit Diff. [Chen et al., 2023] 19.82 DDPM [Ho et al., 2020] 14.66 
+
+5.3 Solving Sudokus 
+
+Sudoku probes the blending axis W when the governing structure is a hard combinatorial constraint graph. The task is to complete a 9 × 9 grid so that every row, column, and 3 × 3 box is a permutation of {1, . . . , 9}, which requires the model to honor board-level constraints rather than local statistics. We encode those constraints directly into the unsticking kernel. The full construction is given in Section E.3. We then ask whether this constraint-aware corruption helps the model learn the board’s logic. Table 1 isolates three effects of W . Across 6 seeds CADD is bimodal: several runs collapse to near-chance performance. SJD never collapses. Moreover, by board takeoff (the training step at which a seed first resolves complete boards) SJD takes off roughly 4× sooner; even the CADD seeds that avoid collapse begin solving boards far later. Finally, SJD’s mean board accuracy exceeds CADD’s and the autoregressive solver granted the oracle solving order. 
+
+## 6 Conclusion 
+
+Sticky Jump Diffusions place masked, continuous, and hybrid diffusion inside a single jump-diffusion process, fit by plain cross-entropy via Denoising Hazard Matching. Because the reverse process is the genuine time reversal of the forward law, the hazard rate and destination token are fixed by flux balance, not a hand-tuned schedule. The same forward law turns the reverse hazard into a conditional expectation that a single denoising classifier estimates, with no second network. Where previous hybrids hold the unsticking kernel fixed, our framework treats it as an explicit design space. We empirically study the cross-position axis of that space, centering each position’s corruption on a weighted combination of its neighbors’ embeddings, a coupling that a per-position kernel cannot express. We hope this process-level account makes masked, continuous, and hybrid diffusion easier to extend: new corruptions, schedules, and commitment rules can be specified as forward dynamics and obtained in reverse for free. 10 References 
+
+Brian D. O. Anderson. Reverse-time diffusion equation models. Stochastic Processes and their Applications , 12, 1982. Jacob Austin, Daniel D. Johnson, Jonathan Ho, Daniel Tarlow, and Rianne van den Berg. Structured denoising diffusion models in discrete state-spaces. In Advances in Neural Information Processing Systems , 2021. Joe Benton, Yuyang Shi, Valentin De Bortoli, George Deligiannidis, and Arnaud Doucet. From denoising diffusions to denoising Markov models. Journal of the Royal Statistical Society Series B: Statistical Methodology , 86, 2024. Nawaf Bou-Rabee and Miranda C. Holmes-Cerfon. Sticky Brownian motion and its numerical solution. SIAM Review , 62, 2020. Andrew Campbell, William Harvey, Christian Weilbach, Valentin De Bortoli, Tom Rainforth, and Arnaud Doucet. Trans-dimensional generative modeling via jump diffusion models. In Advances in Neural Information Processing Systems , 2023. Chen-Hao Chao, Wei-Fang Sun, Hanwen Liang, Chun-Yi Lee, and Rahul G. Krishnan. Beyond masked and unmasked: Discrete diffusion models via partial masking. In Advances in Neural Information Processing Systems , 2025. Ting Chen, Ruixiang Zhang, and Geoffrey Hinton. Analog bits: Generating discrete data using diffusion models with self-conditioning. In International Conference on Learning Representations ,2023. Yuxin Chen, Chumeng Liang, Hangke Sui, Ruihan Guo, Chaoran Cheng, Jiaxuan You, and Ge Liu. LangFlow: Continuous diffusion rivals discrete in language modeling. arXiv preprint arXiv:2604.11748 , 2026. Giovanni Conforti and Christian Léonard. Time reversal of Markov processes with jumps under a finite entropy condition. Stochastic Processes and their Applications , 2022. Prafulla Dhariwal and Alexander Nichol. Diffusion models beat GANs on image synthesis. In 
+
+Advances in Neural Information Processing Systems , 2021. Sander Dieleman, Laurent Sartran, Arman Roshannai, Nikolay Savinov, Yaroslav Ganin, Pierre H. Richemond, Arnaud Doucet, Robin Strudel, Chris Dyer, Conor Durkan, et al. Continuous diffusion for categorical data. arXiv preprint arXiv:2211.15089 , 2022. William Feller. The parabolic differential equations and the associated semi-groups of transformations. 
+
+Annals of Mathematics , 55, 1952. William Feller. Diffusion processes in one dimension. Transactions of the American Mathematical Society , 77, 1954. Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilistic models. In Advances in Neural Information Processing Systems , 2020. Peter Holderrieth, Marton Havasi, Jason Yim, Neta Shaul, Itai Gat, Tommi Jaakkola, Brian Karrer, Ricky T. Q. Chen, and Yaron Lipman. Generator matching: Generative modeling with arbitrary Markov processes. In International Conference on Learning Representations , 2025. Keya Hu, Linlu Qiu, Yiyang Lu, Hanhong Zhao, Tianhong Li, Yoon Kim, Jacob Andreas, and Kaiming He. ELF: Embedded language flows. arXiv preprint arXiv:2605.10938 , 2026. Aapo Hyvärinen. Estimation of non-normalized statistical models by score matching. Journal of Machine Learning Research , 6, 2005. Kiyosi Itô and Henry P. McKean, Jr. Brownian motions on a half line. Illinois Journal of Mathematics ,7, 1963. 11 Tero Karras, Miika Aittala, Timo Aila, and Samuli Laine. Elucidating the design space of diffusion-based generative models. In Advances in Neural Information Processing Systems , 2022. Jaeyeon Kim, Kulin Shah, Vasilis Kontonis, Sham Kakade, and Sitan Chen. Train for the worst, plan for the best: Understanding token ordering in masked diffusions. In International Conference on Machine Learning , 2025. Diederik Kingma, Tim Salimans, Ben Poole, and Jonathan Ho. Variational diffusion models. In 
+
+Advances in Neural Information Processing Systems , 2021. Chanhyuk Lee, Jaehoon Yoo, Manan Agarwal, Sheel Shah, Jerry Huang, Aditi Raghunathan, Se-unghoon Hong, Nicholas M. Boffi, and Jinwoo Kim. Flow map language models: One-step language modeling via continuous denoising. arXiv preprint arXiv:2602.16813 , 2026. Xiang Lisa Li, John Thickstun, Ishaan Gulrajani, Percy Liang, and Tatsunori B. Hashimoto. Diffusion-LM improves controllable text generation. In Advances in Neural Information Processing Systems ,2022. Xingchao Liu, Lemeng Wu, Mao Ye, and Qiang Liu. Learning diffusion bridges on constrained domains. In International Conference on Learning Representations , 2023. Aaron Lou, Chenlin Meng, and Stefano Ermon. Discrete diffusion modeling by estimating the ratios of the data distribution. In International Conference on Machine Learning , 2024. Justin Lovelace, Varsha Kishore, Chao Wan, Eliot Shekhtman, and Kilian Q. Weinberger. Latent diffusion for language generation. In Advances in Neural Information Processing Systems , 2023. Edward Nelson. Dynamical Theories of Brownian Motion . Princeton University Press, 1967. Patrick Pynadath, Jiaxin Shi, and Ruqi Zhang. CANDI: Hybrid discrete-continuous diffusion models. In International Conference on Learning Representations , 2026. Subham Sekhar Sahoo, Marianne Arriola, Yair Schiff, Aaron Gokaslan, Edgar Marroquin, Justin T. Chiu, Alexander M. Rush, and Volodymyr Kuleshov. Simple and effective masked diffusion language models. In Advances in Neural Information Processing Systems , 2024. Kulin Shah, Nishanth Dikkala, Xin Wang, and Rina Panigrahy. Causal language modeling can elicit search and reasoning capabilities on logic puzzles. In Advances in Neural Information Processing Systems , 2024. Jiaxin Shi, Kehang Han, Zhe Wang, Arnaud Doucet, and Michalis K. Titsias. Simplified and generalized masked diffusion for discrete data. In Advances in Neural Information Processing Systems , 2024. Jascha Sohl-Dickstein, Eric Weiss, Niru Maheswaranathan, and Surya Ganguli. Deep unsupervised learning using nonequilibrium thermodynamics. In International Conference on Machine Learning ,2015. Yang Song and Stefano Ermon. Generative modeling by estimating gradients of the data distribution. In Advances in Neural Information Processing Systems , 2019. Yang Song, Jascha Sohl-Dickstein, Diederik P. Kingma, Abhishek Kumar, Stefano Ermon, and Ben Poole. Score-based generative modeling through stochastic differential equations. In International Conference on Learning Representations , 2021. Pascal Vincent. A connection between score matching and denoising autoencoders. Neural Computa-tion , 23, 2011. Zhihan Yang, Wei Guo, Shuibai Zhang, Subham Sekhar Sahoo, Yongxin Chen, Arash Vahdat, Morteza Mardani, and John Thickstun. Continuous diffusion scales competitively with discrete diffusion for language. arXiv preprint arXiv:2605.18530 , 2026. Jiacheng Ye, Jiahui Gao, Shansan Gong, Lin Zheng, Xin Jiang, Zhenguo Li, and Lingpeng Kong. Beyond autoregression: Discrete diffusion for complex reasoning and planning. In International Conference on Learning Representations , 2025. 12 Huangjie Zheng, Shansan Gong, Ruixiang Zhang, Tianrong Chen, Jiatao Gu, Mingyuan Zhou, Navdeep Jaitly, and Yizhe Zhang. Continuously augmented discrete diffusion model for categorical generative modeling. In International Conference on Learning Representations , 2026. Cai Zhou, Chenxiao Yang, Yi Hu, Chenyu Wang, Chubin Zhang, Muhan Zhang, Lester Mackey, Tommi Jaakkola, Stephen Bates, and Dinghuai Zhang. Coevolutionary continuous discrete dif-fusion: Make your diffusion language model a latent reasoner. In International Conference on Machine Learning , 2026. 13 A Notation, Assumptions, and Vocabulary 
+
+We use overhead arrows to disambiguate time direction: •⃗ · denotes forward (noising) objects, e.g., ⃗ Xt (state), ⃗ bt (drift), ⃗ Jt (jump kernel), and ⃗ λt (forward hazard of leaving an anchor). •⃗ · denotes reverse-time (denoising) objects, e.g., ⃗ Xτ ,⃗ bt,⃗ Jt, with reverse time τ = T − t.The state space is X = Rd and the (finite or countable) set of anchors is A = {ak}Kk=1 ⊂ Rd. We write the continuous region as 
+
+XA := Rd \ A .
+
+The forward process (⃗ Xt)t∈[0 ,T ] is an Itô diffusion on XA with scalar diffusion coefficient gt > 0
+
+and drift ⃗ bt, and it can jump off anchors: 
+
+d⃗Xt =⃗ bt(⃗Xt)d t + gtd⃗Wt if ⃗ Xt ∈ XA,
+
+and, if ⃗ Xt = a ∈ A , then with hazard ⃗ λt it unsticks to Y ∼ Ra(·) where Ra is a fixed probability kernel supported on XA. There are no forward jumps into anchors: if ⃗ Xt ∈ XA the jump intensity into A is zero. The reverse-time process (⃗ Xτ )τ ∈[0 ,T ] with τ = T − t is Markov on Rd and (under Assumption C.1) satisfies on XA:
+
+d⃗Xτ =⃗ bt(⃗ Xτ )d τ + gtd⃗W τ ,⃗ bt(x) = ⃗ bt(x) − g2 
+
+> t
+
+∇ log pt(x).
+
+We write Ra(d y) for the forward unsticking kernel (a probability measure on XA). Whenever Ra
+
+admits a density w.r.t. Lebesgue on XA, we write Ra(d y) = ra(y)d y. Likewise, whenever pt admits a density on XA we write pt(d y) = pt(y)d y. All pointwise formulas involving pt(y) and ra(y, t ) are understood under these absolute-continuity assumptions. For sequence tasks, E : A → Rd denotes the embedding map and W ∈ RL×L a blending matrix on positions. The blended mean at position i is μi(⃗X0) :=  W E (⃗X0)
+
+> i
+
+; we recover the per-anchor case μi = E(a(i)) at W = I.
+
+## B Preliminaries: Existing Diffusion Frameworks 
+
+We review the model classes that Section 4 identifies with limits of the SJD construction of Section 2. 
+
+B.1 Continuous Score-Based Diffusion 
+
+A score-based diffusion model on Rd [Sohl-Dickstein et al., 2015, Ho et al., 2020, Song et al., 2021] runs the Itô SDE d⃗Xt =⃗ bt(⃗Xt)d t + gtd⃗Wt from ⃗ X0 ∼ pdata to a tractable prior pT . We focus on the variance-preserving (VP) instance with ⃗ bt(x) = − 12 β(t)x and gt = pβ(t), whose conditional marginal kernel is Gaussian, 
+
+qt(· | x0) = N  ·; α(t)x0, σ 2(t)Id
+
+, α(t) = exp 
+
+
+
+− 12
+
+Z t
+
+> 0
+
+β(s)d s
+
+
+
+, σ2(t) = 1 − α2(t),
+
+and converges to N (0 , I d) as t → T . The reverse-time process is the Itô SDE d⃗ Xτ = ( −⃗bt(⃗ Xτ ) + 
+
+g2 
+
+> t
+
+∇ log pt(⃗Xτ ))d τ + gtd⃗W τ with τ = T − t [Nelson, 1967, Anderson, 1982, Song et al., 2021]. The score ∇ log pt is learned by denoising score matching [Hyvärinen, 2005, Vincent, 2011]: a network sθ (y, t ) minimizes E[∥sθ (y, t ) − ∇ y log qt(y | x0)∥2], the conditional score being available in closed form for VP. For discrete data, this construction requires an external map to the support like a separately-trained decoder [Li et al., 2022, Dieleman et al., 2022, Lovelace et al., 2023], a quantization step [Chen et al., 2023], or a Doob h-transform [Liu et al., 2023]. 14 B.2 Masked Diffusion 
+
+Absorbing-state masked diffusion [Austin et al., 2021, Sahoo et al., 2024, Shi et al., 2024] operates on a discrete state space V ∪ { m} with a special mask symbol m. The forward process keeps each clean token with probability αt and replaces it by m otherwise, where αt is a smooth survival schedule with α0 = 1 and αT = 0 ; in continuous time the clean-to-mask hazard is β(t) = − ˙αt/α t. Time reversal yields a Markov chain in which masked positions un-mask at total rate β(t)αt/(1 − αt) to a token drawn from the denoising posterior pt(v | m, x t) ∝ p0(v) Pr( m | v, t ), while clean positions remain absorbing. A classifier Pθ (v | xt, t ) is trained by cross-entropy on masked positions and substitutes for the posterior at sampling time. The per-position factorization is exact in the forward law and couples positions only through the classifier’s context input; once a position commits, the only signal carried about its proximity to alternative tokens is whatever the classifier reconstructs from the surviving context. 
+
+B.3 Hybrid Discrete-Continuous Diffusion 
+
+Hybrid models [Zheng et al., 2026, Pynadath et al., 2026, Zhou et al., 2026] couple a masked chain with a continuous latent that carries graded information at masked positions. CADD [Zheng et al., 2026] represents the state at time t as a pair (xt, z t) ∈ (V ∪ { m}) × Rd. The discrete component xt
+
+evolves as the masked chain of Section B.2 with survival αt, and the continuous component, defined for masked sites, follows the VP perturbation kernel of an embedding, 
+
+zt | x0 ∼ N  √¯γtE(x0), (1 − ¯γt)Id
+
+, when the site is masked at time t, 
+
+with ¯γt a VP-style schedule and E a fixed embedding map. Time reversal couples the discrete un-masking transition with a score-driven update on zτ ; both are predicted from a single network conditioned on (xt, z t, t ). CANDI [Pynadath et al., 2026] keeps the masked-position augmentation and varies the reverse parameterization. CCDD [Zhou et al., 2026] instead corrupts the continuous component at every position under a factored forward law qt(xt, z t | x0) = qdisc  
+
+> t
+
+(xt | x0)qcont  
+
+> t
+
+(zt | z0),with possibly asynchronous schedules, so its forward lies outside the (I, 1) configuration. 
+
+B.4 Framework-Level Unifications 
+
+Generator Matching [Holderrieth et al., 2025] learns the marginal generator of an arbitrary Markov process from conditional generators, and denoising Markov models [Benton et al., 2024] extend score matching to general state spaces; both are abstract recipes that must be instantiated per process class. SJD is such an instantiation, worked out end to end for jump-diffusions whose marginals mix a continuous density with anchor atoms: the flux identity (7) gives the reverse jump kernel in closed form, DHM (Theorem 3.2) turns the reverse hazard into a conditional expectation that a classifier estimates, training is simulation-free, and the unsticking kernel exposes the (W, η ) design space our experiments study. Neither framework supplies these objects for the sticky, atom-carrying marginal. 
+
+## C Theoretical Details and Proofs 
+
+C.1 Proof of Theorem 2.6 Assumption C.1 (Regularity) .
+
+(i) ⃗ bt and gt are continuous in t, locally Lipschitz in x, with gt ∈ (0 , ∞).(ii) For x ∈ A ,⃗ Jt(x, dy) = ⃗ λt(x)Rt(d y | x) on XA; for x ∈ XA,⃗ Jt(x, ·) ≡ 0.(iii) For almost every t ∈ (0 , T ), pt admits a density on XA and atoms on A.
+
+Theorem (Time reversal for jump–diffusions, restated) . Under Assumption C.1, define the time-reversed process ⃗ Xτ := ⃗ XT −τ , τ ∈ [0 , T ], and denote the corresponding forward time by t := T −τ .Then (⃗ Xτ )τ ∈[0 ,T ] is Markov. 
+
+(Diffusion part on XA). On the continuous region XA = Rd \ A , the reversed process admits an SDE 
+
+d⃗ Xτ = ˜bt(⃗Xτ )d τ + gtd⃗ W τ , ˜bt(x) = −⃗bt(x) + g2 
+
+> t
+
+∇ log pt(x), x ∈ XA.
+
+15 (Jump part: flux identity). The reverse jump kernel ⃗ Jt is uniquely determined (for a.e. t) by the flux equation 
+
+pt(d y)⃗Jt(y, dx) = pt(d x)⃗ Jt(x, dy). (23) 
+
+In particular, since ⃗ Jt(a, dy) = ⃗ λt(a)Rt(d y | a) for a ∈ A and ⃗ Jt(x, ·) ≡ 0 for x ∈ XA, we have for every anchor a ∈ A the measure identity on XA:
+
+pt(d y)⃗Jt(y, {a}) = pt({a})⃗λt(a)Rt(d y | a). (24) 
+
+If moreover pt(d y) = pt(y)d y on XA and Rt(d y | a) = rt(y | a)d y, then for y ∈ XA,⃗Jt(y, {a}) = pt({a})
+
+pt(y)⃗ λt(a)rt(y | a).
+
+Moreover ⃗ Jt(a, XA) = 0 , i.e. anchors are absorbing in reverse time. Proof. Fix t ∈ (0 , T ) for which the marginal pt admits the decomposition 
+
+pt = pac  
+
+> t
+
++ pat  
+
+> t
+
+, pat  
+
+> t
+
+= X
+
+> a∈A
+
+mt(a)δa, pac  
+
+> t
+
+(d x) = pt(x)d x on XA,
+
+as in Assumption C.1(iii), and let U = C2 
+
+> c
+
+(Rd).The proof extracts the backward generator ⃗ Lt from a single integration-by-parts identity, taken from Conforti and Léonard [2022], by isolating the two pieces of structural information that identity carries. We first manipulate the jump contribution to recover the flux identity (23) ; specializing to the anchored forward kernel then yields the explicit form of ⃗ Jt and the absorbing property at anchors. The diffusion contribution determines the drift ˜bt via distributional integration by parts; the boundary terms generated by the atomic part of pt cancel against the backward sticky jumps, with the cancellation supplied by the flux identity itself. 
+
+The integration-by-parts identity. The forward generator on u ∈ U is ⃗Ltu(x) = 1XA (x)
+
+h⃗bt(x) · ∇ u(x) + 12 g2 
+
+> t
+
+∆u(x)
+
+i
+
++
+
+Z
+
+> Rd
+
+ u(y) − u(x)⃗ Jt(x, dy), (25) with ⃗ Jt(x, ·) ≡ 0 on XA and ⃗ Jt(a, dy) = ⃗ λt(a)Rt(d y | a) on A; the corresponding carré du champ is 
+
+Γt(u, v )( x) = 1XA (x)g2 
+
+> t
+
+∇u(x) · ∇ v(x) + 
+
+Z
+
+> Rd
+
+ u(y) − u(x)  v(y) − v(x)⃗ Jt(x, dy).
+
+Under Assumption C.1, U is a measure-determining algebra contained in dom ⃗Lt, and Conforti and Léonard [2022, Theorem 4.4] ensures the existence of a backward generator ⃗ Lt (defined pt-a.e.) such that, for all u, v ∈ U and a.e. t,
+
+Z
+
+> Rd
+
+h ⃗ Ltu +⃗ Ltu(x)v(x) + Γ t(u, v )( x)
+
+i
+
+pt(d x) = 0 . (26) Equation (26) is the only analytic input to the proof: the flux identity, the anchored jump formula, and the score-form drift will all be consequences of choosing test functions u, v appropriately. Conservation of the continuous-martingale quadratic variation under time reversal forces the reversed diffusion coefficient to coincide with gt, so ⃗ Lt takes the form ⃗Ltu(x) = 1XA (x)
+
+h˜bt(x) · ∇ u(x) + 12 g2 
+
+> t
+
+∆u(x)
+
+i
+
++
+
+Z
+
+> Rd
+
+ u(y) − u(x)⃗ Jt(x, dy), (27) for an unknown drift ˜bt and an unknown backward jump kernel ⃗ Jt, both of which we now identify. 16 Step 1: flux identity. We first isolate the jump contribution to (26) . The diffusion parts of ⃗ Lt,⃗Lt, and Γt satisfy a closed integration-by-parts identity on their own (the standard score-based time-reversal calculation in the absence of jumps; cf. Conforti and Léonard [2022, Theorem 5.7]) so subtracting it from (26) leaves the jump-only identity 
+
+Z
+
+> Rd
+
+h ⃗ Ljump  
+
+> t
+
+u +⃗ Ljump  
+
+> t
+
+u(x)v(x) + Γ jump  
+
+> t
+
+(u, v )( x)
+
+i
+
+pt(d x) = 0 , (28) where the superscript “jump” picks out the integral term of the corresponding operator. Expanding the three integrals, 
+
+0 = 
+
+Z Z 
+
+v(x) u(y) − u(x)⃗ Jt(x, dy)pt(d x) + 
+
+Z Z 
+
+v(x) u(y) − u(x)⃗Jt(x, dy)pt(d x)+
+
+Z Z  u(y) − u(x)  v(y) − v(x)⃗ Jt(x, dy)pt(d x).
+
+The algebraic identity 
+
+v(x) u(y) − u(x) +  u(y) − u(x)  v(y) − v(x) =  u(y) − u(x)v(y)
+
+collapses the first and third terms of the right-hand side, leaving 
+
+Z Z 
+
+v(x) u(y) − u(x)⃗ Jt(x, dy)pt(d x) = −
+
+Z Z  u(y) − u(x)v(y)⃗Jt(x, dy)pt(d x).
+
+Swap the dummy variables x ↔ y on the right and use u(x) − u(y) = − u(y) − u(x):
+
+Z Z 
+
+v(x) u(y) − u(x)⃗ Jt(x, dy)pt(d x) = 
+
+Z Z 
+
+v(x) u(y) − u(x)⃗ Jt(y, dx)pt(d y).
+
+The class of test functions (x, y ) 7 → v(x) u(y) − u(x) for u, v ∈ U is measure-determining off the diagonal, so the two measures on Rd × Rd coincide: 
+
+pt(d x)⃗ Jt(x, dy) = pt(d y)⃗Jt(y, dx), (29) which is exactly the flux identity (23). 
+
+Step 2: anchored jumps. We now specialize (29) to the structure of the SJD forward kernel. By Assumption C.1(ii), ⃗ Jt(x, ·) ≡ 0 for x ∈ XA and ⃗ Jt(a, dy) = ⃗ λt(a)Rt(d y | a) for a ∈ A . Fix a ∈ A 
+
+and apply (29) with dx = {a} and dy ⊂ XA:
+
+pt(d y)⃗Jt(y, {a}) = pt({a})⃗ Jt(a, dy) = mt(a)⃗λt(a)Rt(d y | a), (30) which is exactly (24) . If pt admits density pt(y) on XA and Rt(d y | a) = rt(y | a)d y, dividing both sides of (30) by pt(y)d y gives the closed form ⃗Jt(y, {a}) = mt(a)
+
+pt(y)⃗ λt(a)rt(y | a), y ∈ XA, a ∈ A .
+
+Conversely, applying (29) with dy = {a} and any dx ⊂ XA,
+
+pt({a})⃗Jt(a, dx) = pt(d x)⃗Jt(x, {a}) = 0 ,
+
+since the forward kernel does not jump out of XA. Hence ⃗ Jt(a, XA) = 0 : anchors are absorbing in reverse time. The total backward sticky-jump rate at y ∈ XA is ⃗ λ⋆t (y) := P 
+
+> a∈A ⃗
+
+Jt(y, {a}). Summing (30) over a
+
+yields the identity 
+
+X
+
+> a∈A
+
+mt(a)⃗λt(a)rt(y | a) = pt(y)⃗λ⋆t (y), y ∈ XA, (31) which we will use in Step 3. 17 Step 3: diffusion drift. Take u, v ∈ U with supports contained in XA, so that u(a) = v(a) = 0 for every a ∈ A . We catalogue the contributions of (26) term by term. 
+
+Forward generator. On XA,⃗ Ltu(x) = ⃗ bt(x) · ∇ u(x) + 12 g2 
+
+> t
+
+∆u(x) since ⃗ Jt(x, ·) ≡ 0. At x = a ∈ A ,the contribution ⃗ Ltu(a)v(a) vanishes because v(a) = 0 .
+
+Backward generator. On XA, the ansatz (27), the result of Step 2, and u(a) = 0 give ⃗Ltu(x) = ˜bt(x) · ∇ u(x) + 12 g2 
+
+> t
+
+∆u(x) + X
+
+> a∈A
+
+ u(a) − u(x)⃗ Jt(x, {a}) = ˜bt · ∇ u + 12 g2 
+
+> t
+
+∆u − u⃗λ ⋆t .
+
+The sticky jumps to anchors thus contribute the additional term −u(x)⃗ λ⋆t (x) to ⃗ Ltu on XA, even though u is supported off the anchors. At x = a,⃗ Ltu(a)v(a) = 0 since v(a) = 0 .
+
+Carré du champ. On XA, Γt(u, v )( x) = g2 
+
+> t
+
+∇u · ∇ v since ⃗ Jt(x, ·) ≡ 0. At x = a ∈ A , u(a) = 
+
+v(a) = 0 leaves the nontrivial contribution 
+
+Γt(u, v )( a) = 
+
+Z
+
+> Rd
+
+u(y)v(y)⃗λt(a)Rt(d y | a).
+
+Combining the three contributions in (26), 
+
+0 = 
+
+Z
+
+> XA
+
+h
+
+(⃗bt + ˜bt) · ∇ uv + g2 
+
+> t
+
+∆uv + g2 
+
+> t
+
+∇u · ∇ v − uv⃗λ ⋆t
+
+i
+
+pt(x)d x
+
++ X
+
+> a∈A
+
+mt(a)⃗λt(a)
+
+Z
+
+> XA
+
+u(y)v(y)rt(y | a)d y. (32) The atomic carré-du-champ contribution and the backward sticky-jump contribution cancel exactly: by (31), X
+
+> a∈A
+
+mt(a)⃗λt(a)
+
+Z
+
+> XA
+
+uvr t(y | a)d y =
+
+Z
+
+> XA
+
+u(y)v(y)⃗λ⋆t (y)pt(y)d y, 
+
+so the second line of (32) kills the −uv⃗λ ⋆t term in the bulk integral. What remains is the standard diffusion-IbP identity 
+
+Z
+
+> XA
+
+h
+
+(⃗bt + ˜bt) · ∇ uv + g2 
+
+> t
+
+∆uv + g2 
+
+> t
+
+∇u · ∇ v
+
+i
+
+pt(x)d x = 0 . (33) Integrating by parts in space (boundary terms vanish since u, v are compactly supported in XA), 
+
+Z
+
+v∆up tdx = −
+
+Z
+
+∇u · ∇ (vp t)d x = −
+
+Z
+
+∇u ·  pt∇v + v∇pt
+
+dx, 
+
+so the bracketed combination simplifies: 
+
+Z
+
+g2
+
+> t
+
+ v∆u + ∇u · ∇ vptdx = −g2
+
+> t
+
+Z
+
+v∇u · ∇ ptdx. 
+
+Therefore (33) reduces to 
+
+0 = 
+
+Z
+
+> XA
+
+v(x)A(x) · ∇ u(x)d x, A(x) := pt(x) ⃗ bt(x) + ˜bt(x) − g2 
+
+> t
+
+∇pt(x).
+
+A standard distributional argument forces A ≡ 0 on XA: for any φ ∈ C∞ 
+
+> c
+
+(XA) and any cutoff 
+
+χ ∈ C∞ 
+
+> c
+
+(XA) with χ ≡ 1 on supp( φ), set u(x) := xiχ(x) and v(x) := φ(x), so that ∇u = ei on 
+
+supp( φ) and the identity above reads 0 = R 
+
+> XA
+
+φA idx. As φ ranges over C∞ 
+
+> c
+
+(XA), Ai = 0 a.e. on 
+
+XA; ranging i ∈ { 1, . . . , d } yields A ≡ 0 a.e. Dividing by pt(x) > 0,
+
+˜bt(x) = −⃗ bt(x) + g2 
+
+> t
+
+∇ log pt(x), x ∈ XA,
+
+which is the claimed reverse drift, recovering the score-based time-reversal of Song et al. [2021] on the off-anchor region. 18 C.2 Proof of Theorem 3.2 
+
+We restate Theorem 3.2 with the relevant SJD-specific objects in scope, then give the proof. 
+
+Theorem (Denoising Hazard Matching, restated) . Let ⃗ X0 ∼ p0 on A and, conditional on ⃗ X0, let ⃗ Xt
+
+be the SJD state at time t restricted to the continuous region XA, with conditional density pac  
+
+> t
+
+(· | ⃗ X0)
+
+given by the unstick-time mixture of Theorem 2.4. For y ∈ XA and x0 ∈ A , define the DHM target 
+
+bλt(y, x 0) := ⃗ λt(x0)Sx0 (t)rx0 (y, t )
+
+pac  
+
+> t
+
+(y | x0) , (34) 
+
+with Sx0 (t) = exp   − R t
+
+> 0
+
+⃗ λs(x0)d s. Then for almost every y ∈ XA,
+
+Ebλt(⃗ Xt,⃗ X 0)⃗ Xt = y =⃗ λ⋆t (y), (35) 
+
+where ⃗ λ⋆t (y) is the total reverse jump rate of (10) .Proof. The proof is a direct application of Bayes’ rule for the SJD posterior. The crucial point is that the pac  
+
+> t
+
+(y | a) in the denominator of (34) is the actual conditional density of the SJD continuous part and not an auxiliary corruption kernel. The same object therefore reappears in the denoising posterior (13), and the two factors cancel. Because the SJD forward dynamics never re-attach to anchors, the only way for a particle to be at anchor a at time t is to have started at a and never unstuck. Hence 
+
+mt(a) = p0(a)Sa(t), a ∈ A . (36) Let y ∈ XA. Since ⃗ X0 takes values in the finite set A, the joint density of (⃗ X0,⃗ X t) on A × XA is 
+
+p0(a)pac  
+
+> t
+
+(y | a), and the marginal continuous density of ⃗ Xt is 
+
+pt(y) = X
+
+> a∈A
+
+p0(a)pac  
+
+> t
+
+(y | a), y ∈ XA.
+
+Bayes’ rule gives the denoising posterior (13), 
+
+pt(a | y) = Pr  ⃗ X0 = a⃗ Xt = y = p0(a)pac  
+
+> t
+
+(y | a)
+
+pt(y) . (37) Because ⃗ X0 is supported on A, the conditional expectation in (35) is a finite sum: 
+
+Ebλt(⃗Xt,⃗ X 0)⃗ Xt = y = X
+
+> a∈A
+
+bλt(y, a )pt(a | y). (38) Substituting (34) and (37) into (38), 
+
+X
+
+> a∈A
+
+bλt(y, a )pt(a | y) = X
+
+> a∈A
+
+⃗λt(a)Sa(t)ra(y, t )
+
+pac  
+
+> t
+
+(y | a) · p0(a)pac  
+
+> t
+
+(y | a)
+
+pt(y) .
+
+The factor pac  
+
+> t
+
+(y | a) cancels exactly: 
+
+= 1
+
+pt(y)
+
+X
+
+> a∈A
+
+p0(a)Sa(t)⃗λt(a)ra(y, t ).
+
+Applying the mass identity (36), 
+
+= 1
+
+pt(y)
+
+X
+
+> a∈A
+
+mt(a)⃗λt(a)ra(y, t ) = ⃗ λ⋆t (y),
+
+where the last equality is the definition of the total reverse jump rate (10). This proves (35). 19 C.3 Rao–Blackwellized Plug-In 
+
+Theorem 3.2 expresses the total reverse hazard ⃗ λ⋆t (y) as a conditional expectation under the SJD forward pairing. We now record three properties that justify the plug-in estimators (18) : a per-anchor flux identity, consistency of the plug-in when the classifier matches the true posterior, and the Rao–Blackwell variance reduction. 
+
+Setup. Throughout this subsection we fix t ∈ (0 , T ] and y ∈ XA, and write bλt(y, a ) for the DHM target (34) and pt(a | y) for the SJD denoising posterior (37) . We assume the support condition 
+
+ra(y, t ) > 0 ⇒ pac  
+
+> t
+
+(y | a) > 0, which is automatic whenever the convolution semigroup rτ ∗ Kτ →t
+
+has full support on XA (in particular for the VP-matched family of Theorem 2.2). Given any probability vector Pθ (· | y, t ) on A, recall the plug-in estimators 
+
+Λplug ,θ (a | y, t ) := bλt(y, a )Pθ (a | y, t ), λplug ,θ (y, t ) := X
+
+> a∈A
+
+Λplug ,θ (a | y, t ). (39) 
+
+Per-anchor flux identity. The following identity is the per-anchor analogue of Theorem 3.2: the true reverse per-anchor intensity factors exactly as the DHM target times the denoising posterior. 
+
+Lemma C.2 (Per-anchor identity) . For every a ∈ A and almost every y ∈ XA,
+
+Λ⋆t (a | y) = bλt(y, a )pt(a | y). (40) 
+
+Proof. Substitute (34) for bλt(y, a ) and (37) for pt(a | y):
+
+bλt(y, a )pt(a | y) = ⃗ λt(a)Sa(t)ra(y, t )
+
+pac  
+
+> t
+
+(y | a) · p0(a)pac  
+
+> t
+
+(y | a)
+
+pt(y) = p0(a)Sa(t)⃗λt(a)ra(y, t )
+
+pt(y) .
+
+Using mt(a) = p0(a)Sa(t) from (36), the right-hand side is exactly Λ⋆t (a | y) as defined in (9). Theorem C.2 is the structural fact that makes a single classifier sufficient: the DHM target bλt(y, a ) is precisely the Radon–Nikodym factor that converts a probability mass pt(a | y) (a posterior over data labels) into a per-anchor jump rate Λ⋆t (a | y) (jumps per unit time into anchor a). 
+
+Consistency of the plug-in. Theorem C.2 immediately yields consistency: substituting the true posterior into the plug-in recovers the true reverse intensities. 
+
+Proposition C.3 (Consistency) . If Pθ (a | y, t ) = pt(a | y) for every a ∈ A and almost every y ∈ XA,then 
+
+Λplug ,θ (a | y, t ) = Λ ⋆t (a | y), λplug ,θ (y, t ) = ⃗ λ⋆t (y), πplug ,θ (a | y, t ) = π⋆t (a | y). (41) 
+
+Proof. The per-anchor equality is Theorem C.2. The total-rate equality follows by summing over a,and the allocation equality by normalizing. Theorem C.3 pins down what the classifier needs to learn: the cross-entropy loss (14) is a strictly proper scoring rule whose Bayes optimum is exactly the posterior pt(· | y), and the plug-in inherits all three identities of (41) as soon as Pθ matches that posterior. 
+
+Rao–Blackwellization. The DHM identity (35) also yields an unbiased Monte Carlo estimator of ⃗λ⋆t (y) from a single (⃗X0,⃗ X t) pair: the random variable 
+
+Z := bλt(⃗ Xt,⃗ X 0). (42) By Theorem 3.2, E[Z |⃗ Xt = y] = ⃗ λ⋆t (y). The plug-in (39) replaces Z by its conditional expectation given (⃗ Xt, t ), with the unknown posterior approximated by Pθ . The next proposition makes this Rao–Blackwell relationship precise. 
+
+Proposition C.4 (Rao–Blackwellization) . Let Z = bλt(⃗ Xt,⃗ X 0) as in (42) , with (⃗X0,⃗ X t) paired by the SJD forward law. Assume E[Z2 | t] < ∞. Then: 
+
+20 (i) (Conditional mean.) E[Z |⃗ Xt, t ] = ⃗ λ⋆t (⃗ Xt) almost surely. (ii) (Variance decomposition.) The law of total variance gives 
+
+Var( Z | t) = Var  ⃗ λ⋆t (⃗ Xt) t + E Var( Z |⃗ Xt, t ) t. (43) 
+
+(iii) (Variance reduction.) Consequently, 
+
+Var  ⃗ λ⋆t (⃗Xt) t ≤ Var( Z | t), (44) 
+
+with equality if and only if Z is almost surely a function of (⃗ Xt, t ), i.e. Var( Z |⃗ Xt, t ) = 0 a.s. Proof. For (i), apply the discrete expansion (38) with y =⃗ Xt:
+
+E[Z |⃗ Xt, t ] = X
+
+> a∈A
+
+bλt(⃗Xt, a )pt(a |⃗ Xt) = ⃗ λ⋆t (⃗Xt),
+
+where the second equality is Theorem 3.2. Statement (ii) is the law of total variance, conditional on 
+
+t, with conditioning σ-field σ(⃗Xt, t ) and the substitution E[Z |⃗ Xt, t ] = ⃗ λ⋆t (⃗Xt) from (i). Statement (iii) follows from (43) since the second term is nonnegative, with equality iff that term vanishes. 
+
+Interpretation. The single-sample target Z in (42) is unbiased for ⃗ λ⋆t (⃗Xt) but carries the within-cell noise Var( Z |⃗ Xt, t ): at a fixed ⃗ Xt = y, different latent draws of ⃗ X0 ∼ pt(· | y) produce different values bλt(y,⃗ X 0). The Rao–Blackwellized estimator P 
+
+> a
+
+bλt(y, a )pt(a | y) averages this noise out exactly, replacing Z by its conditional mean and saving the second term in (43) . The plug-in (39) performs this Rao–Blackwellization with the true posterior replaced by the trained classifier Pθ :
+
+λplug ,θ (y, t ) = X
+
+> a∈A
+
+bλt(y, a )pt(a | y)
+
+| {z } 
+
+> =⃗
+
+λ⋆t (y) by Theorem 3.2 
+
++ X
+
+> a∈A
+
+bλt(y, a ) Pθ (a | y, t ) − pt(a | y)| {z }
+
+> classifier error
+
+. (45) The first term is exact by Rao–Blackwell; the residual is controlled by the gap between Pθ and the Bayes-optimal posterior, which the cross-entropy loss (14) drives to zero in the well-specified, infinite-data limit. In particular, by Cauchy–Schwarz, 
+
+λplug ,θ (y, t ) −⃗ λ⋆t (y) ≤
+
+ X 
+
+> a∈A
+
+bλt(y, a )21/2 X 
+
+> a∈A
+
+ Pθ (a | y, t ) − pt(a | y)21/2
+
+,
+
+so any consistent classifier yields a consistent plug-in hazard, and the conversion from posterior error to hazard error is mediated by the analytic factor bλt(y, ·).Two practical consequences follow. First, training reduces to a single cross-entropy objective on a discrete classifier, with no auxiliary regression head for the (unbounded, heavy-tailed) hazard target Z.Second, all SJD-specific structure—the forward hazard, the unsticking density, and the unstick-time mixture pac  
+
+> t
+
+(y | a)—enters only through the analytic reweighting bλt(y, a ), which is computed once per reverse step using the closed-form quadrature of Section D.2. The classifier never sees these quantities directly; it learns only the discrete posterior pt(· | y), and the analytic reweighting converts that into the rates and intensities required by the reverse SDE. 
+
+C.4 Proof of Theorem 4.1 Proposition (The plain hybrid coincides with CADD, restated) . Consider the VP-matched SJD of Theorem 2.2 at (W, η ) = ( I, 1) with anchor-agnostic hazard ⃗ λ(t) and survival S(t), and CADD with masking survival αt, continuous kernel N (√¯γtE(x0), (1 − ¯γt)Id) at masked positions, and a common embedding map E. Identify S(t) ↔ αt and (α(t), σ 2(t)) ↔ (√¯γt, 1 − ¯γt). Then: (i) the time-t laws of the corrupted state given the data coincide for every t, and the SJD cross-entropy objective of Algorithm 1 equals CADD’s cross-entropy objective; (ii) the reverse process of Theorem 2.6 reduces to a commit rate ⃗ λ(t)S(t)/(1 − S(t)) shared across anchors, an allocation equal to the classifier posterior, and a reverse SDE whose score is the residual to the posterior-mean embedding; (iii) CADD’s sampler is a first-order discretization of (ii), so the two generative laws coincide in the small-step limit. 
+
+21 (i) Forward laws and objectives. Fix a position and condition on ⃗ X0. Under S(t) ↔ αt the stuck probability equals the survival of CADD’s absorbing chain. Conditionally on having unstuck, (22) gives the off-anchor location the law N (α(t)a, σ 2(t)Id), which is CADD’s masked-position latent N (√¯γtE(a), (1 − ¯γt)Id) under (α(t), σ 2(t)) ↔ (√¯γt, 1 − ¯γt). Positions are conditionally independent given ⃗ X0 in both constructions, so the time-t joint laws agree. The state map is a measurable bijection (a stuck coordinate sits exactly on its anchor and thus carries the token identity, as does an unmasked token; an unstuck coordinate carries the latent), so the Bayes posteriors over the clean sequence agree, and both objectives draw t uniformly and apply unweighted cross-entropy at unstuck (masked) positions: Algorithm 1 coincides with CADD’s loss. 
+
+(ii) The reverse process at (I, 1) . At η = 1 , vt(τ ) = σ2(t) by (20) , so the spatial factor of the DHM target equals rt/p ac  
+
+> t
+
+= 1 /(1 − S(t)) by (22) , giving bλt(y, a ) = ⃗ λ(t)S(t)/(1 − S(t)) for every 
+
+a and y. The plug-in total rate (18) is therefore anchor-independent and the allocation (19) reduces to 
+
+Pθ (· | y, t ). Since vt(τ ) no longer depends on τ , the time-posterior weight in (56) integrates to one and the classifier-induced score reduces to 
+
+sθ (y, t ) = − y − α(t)mθ (y, t )
+
+σ2(t) , mθ (y, t ) := X
+
+> a∈A
+
+Pθ (a | y, t )a, 
+
+the residual to the posterior-mean anchor, exact at the cross-entropy optimum. 
+
+(iii) CADD’s sampler as a discretization. Over a reverse step from t to t−∆, the exponential clock of Algorithm 2 commits with probability 1 − exp( −bλt∆) = ⃗ λ(t)S(t)∆ /(1 − S(t)) + O(∆ 2); since 
+
+˙S = −⃗ λS , this matches CADD’s unmasking probability (αt−∆ − αt)/(1 − αt) to first order under 
+
+S ↔ α. The committed token is drawn from the classifier posterior in both. While uncommitted, CADD’s update zt−∆ ∼ N (˜ μt(ˆ z0,θ , z t), ˜βtId) with ˆz0,θ = P 
+
+> a
+
+Pθ (a | · ) E(a) = mθ is the standard DDPM ancestral step, which agrees to first order in ∆ with the Euler–Maruyama step of Algorithm 2 on the reverse SDE (5) with the score above [Ho et al., 2020, Song et al., 2021]. Upon commitment both processes place the coordinate at the committed anchor and freeze it. The two samplers are therefore first-order discretizations of the same jump-diffusion, and their laws coincide as ∆ → 0.CADD’s alternative latent estimators, such as resampling zt from the forward kernel centered at ˆz0,θ ,are further approximations of the same reverse law, trading fidelity for mode coverage as Zheng et al. [2026] discuss. 
+
+C.5 Learning the Forward Hazard, and Why We Fix It 
+
+Section 4.5 leaves the per-anchor forward hazard to future work. Here we make it learnable, derive the objective, and trace its failure to identifiable defects of the objective rather than of the hazard axis: a seed-replicated experiment with hazards fixed a priori shows Text8 generation insensitive to non-uniform schedules, with uniform the most seed-stable choice. This supports the design of the main text: place the model’s adaptivity on the kernel axis (W, η ).
+
+Objective. Parametrize ⃗ λt(a) = β(t)w(a) with w : A → R>0 learned jointly with θ (the anchor-agnostic baseline is w ≡ 1). The plain cross-entropy (14) is not a bound on log p(⃗X0),so its w-gradient does not target likelihood; we replace it with the negative ELBO. At η = 1 
+
+the unstick-time mixture collapses (22) , making the DHM target (15) the closed-form scalar 
+
+bλt(a) = β(t)w(a)Sa(t)/(1 − Sa(t)) and the conditional score target w-free. 
+
+Proposition C.5 (SJD negative ELBO at η = 1 ). Let Sa(t) = e−w(a)B(t) with B(t) = R t 
+
+> 0
+
+β(s)d s,
+
+mt(a) = p0(a)Sa(t), and assume Sa(T ) = 0 for every a together with the terminal conditions 
+
+α(T ) = 0 , σ(T ) = 1 . Then the negative ELBO decomposes as L(θ, w ) = LCE + LRB + Lscore ,
+
+22 where 
+
+LCE =
+
+Z T
+
+> 0
+
+X
+
+> a∈A
+
+  − ˙mt(a)EY ∼qt(· | a)
+
+ − log Pθ (a | Y, t )dt, (46) 
+
+LRB =
+
+Z T
+
+> 0
+
+EY ∼pac 
+
+> t
+
+h P 
+
+> a∈A
+
+bλt(a) Pθ (a | Y, t ) − pt(a | Y )i
+
+dt, (47) 
+
+Lscore =
+
+Z T
+
+> 0
+
+X
+
+> a∈A
+
+p0(a) 1 − Sa(t)EY ∼qt(· | a)
+
+h g2 
+
+> t
+> 2
+
+sθ (Y, t ) + Y −α(t)aσ2(t)
+
+> 2
+
+i
+
+dt, (48) 
+
+− ˙mt(a) = p0(a)β(t)w(a)Sa(t) is the forward rate of mass leaving anchor a, and EY ∼pac  
+
+> t
+
+denotes integration against pac  
+
+> t
+
+on XA.Proof. Condition on ⃗ X0 = a. At η = 1 the conditional law at time t is the atom Sa(t)δa
+
+plus the absolutely continuous part (1 − Sa(t)) qt(· | a) (22) . The conditional process is it-self an SJD, so the flux identity of Theorem 2.6 applies to it: the conditional reverse inten-sity into a is the state-free scalar Sa(t)⃗λt(a)qt(y | a) (1 − Sa(t)) qt(y | a) = bλt(a) (the DHM target (15) is precisely the ⃗ X0-conditional reverse intensity), and the conditional reverse drift uses the conditional score −(y − α(t)a)/σ 2(t). The model reverses with score sθ and plug-in rates Λθ (b | y, t ) = bλt(b)Pθ (b | y, t ) (18) ; anchors are absorbing on both sides, so committed segments contribute nothing. The pathwise KL between the two reverse laws is the diffusion quadratic term plus the jump term in Bregman form, following Campbell et al. [2023, Prop. 2], 
+
+P 
+
+> b
+
+Λθ (b) − bλt(a) log Λ θ (a) + bλt(a) log bλt(a) − bλt(a), integrated over the off-anchor event, plus a terminal KL that vanishes under the stated assumptions. Substituting Λθ , the log bλt(a) terms cancel, leaving P 
+
+> b
+
+bλt(b)Pθ (b | Y, t ) − bλt(a) log Pθ (a | Y, t ) − bλt(a). Average over a ∼ p0 and the off-anchor event (weight 1 − Sa(t), Y ∼ qt(· | a)). The middle term integrates to LCE 
+
+via p0(a)(1 − Sa(t)) bλt(a) = − ˙mt(a). The first term equals EY ∼pac  
+
+> t
+
+[P 
+
+> b
+
+bλt(b)Pθ (b | Y, t )] since P 
+
+> a
+
+p0(a)(1 − Sa(t)) qt(y | a) = pac  
+
+> t
+
+(y); the third sums to − P
+
+> b
+
+(− ˙mt(b)) , and the tower identity 
+
+EY ∼pac  
+
+> t
+
+[P 
+
+> b
+
+bλt(b)pt(b | Y )] = P
+
+> b
+
+(− ˙mt(b)) combines the two into LRB . The diffusion term is 
+
+Lscore .
+
+LCE is the SJD analogue of the MDLM cross-entropy bound, with the absorbing point replaced by a VP-Gaussian draw and the time-only weight by the per-anchor − ˙mt(a). LRB is the rate-balancing part of the jump term, and its role is sharper than self-consistency: LCE alone is minimized by the allocation π⋆t (a | y) ∝ bλt(a)pt(a | y) of (19) rather than by the posterior, and LRB , linear in Pθ , is exactly the correction that restores the posterior as the joint minimizer. Lscore is conditional denoising score matching; because the induced score of Section D.3 is exact at the cross-entropy optimum, we train no score head and optimize LCE + LRB alone. Every w-dependence is reparametrizable: unlike GenMD4, whose discrete forward pass forces a REINFORCE estimator [Shi et al., 2024, App. I.2], the continuous off-anchor state yields an exact ∂w from one backward pass. In the degenerate-kernel limit of Section 4.1 the score term vanishes and LCE reduces to the GenMD4 negative ELBO under 
+
+αt,a ↔ Sa(t), so the objective generalizes GenMD4’s. 
+
+The objective cannot identify a useful hazard. First, the only term that couples Pθ to the choice of hazard carries no signal at the optimum: 
+
+Lemma C.6 (Rate-balance vanishes at the optimum) . If Pθ (· | y, t ) = pt(· | y) for almost every (y, t ),then LRB (θ, w ) = 0 for every w.Proof. At the Bayes classifier the integrand of (47) is zero pointwise, for every w.At w ≡ 1 it moreover vanishes identically in θ, since bλt is anchor-agnostic. Second, the full bound is flat in w at the per-w optimum. At the Bayes classifier the plug-in rates are exact (Theorem C.3) and the induced score is exact (Section D.3), so the model is the exact time reversal of the forward law for every w: the bound is tight at the data entropy, L(θ⋆(w), w ) = H( p0) in the well-specified 23 Table 3: End-to-end hazard learning on Text8 ( W = I, η = 1 ): valid-word fraction at length ≥ 5,maximized over the temperature/NFE sweep of Section E.2; best checkpoint within 150 k steps (deployed learned-hazard runs peak at 25 k). “Deployed” samples with the trained hazard; “ w ≡ 1
+
+sampler” overrides it to uniform at sampling only. Spread is max a w(a)/ min a w(a) at convergence; parentheses give the rank correlation between log w(a) and character frequency. Configuration w schedule spread deployed w ≡ 1 sampler Fixed hazard, plain CE (14) uniform 1× 0.27 0.27 
+
+Fixed hazard, ELBO-trained θ uniform 1× 0.13 0.13 
+
+Bounded (cross-entropy–driven) frequency ( +0 .99 ) 4× 0.066 0.10 
+
+Uniform-CE ( LRB -driven) anti-freq. ( −0.7) 403 × 0.014 0.14 
+
+limit—the operational form of the schedule non-identifiability of Kingma et al. [2021]. Since θ⋆ is also a stationary point of L in θ, the envelope theorem gives ∂wL θ⋆ = 0 , hence 
+
+∂w
+
+ LCE + LRB 
+
+ 
+
+> θ⋆
+
+= −∂wLscore θ⋆ :
+
+at convergence, the trained objective’s hazard gradient is exactly the negative of the omitted score term’s. Descending it inflates w fastest on anchors carrying the most p0-weighted score residual (the prefactor p0(a)(1 − Sa(t)) grows with w(a) and is largest for common anchors), i.e. a frequency-ordered schedule; away from the optimum, the residual w-signal in LRB supplies the opposite pull. Both directions materialize below, and both degrade generation when deployed. 
+
+Learned schedules degrade generation. We test on Text8 at W = I, η = 1 , training for 150 ksteps and reporting the valid-word fraction at length ≥ 5, maximized over the temperature/NFE sweep of Section E.2. A learned hazard can hurt through two routes: at training, the weight − ˙mt(a) skews which (a, t ) pairs Pθ sees; at inference, bλt(a) reweights the allocation (19) . An offline read-out that overrides w ≡ 1 in the sampler only separates them. In Table 3, the bounded variant ( w ∈ [0 .5, 2] ,cross-entropy driven) learns the frequency-ordered schedule predicted by the envelope identity; the 
+
+uniform-CE variant ( w ≡ 1 inside the weight, so ∂wLCE = 0 and the residual signal is ∂wLRB )runs anti-frequency to its clamp [0 .05 , 20] . Both classifiers stay healthy, forcing w ≡ 1 at sampling recovers 0.10 –0.14 , at the fixed-hazard ELBO reference of 0.13 , yet the deployed hazard degrades generation monotonically in spread: 1× → 0.13 , 4× → 0.066 , 403 × → 0.014 , against 0.27 for the plain-CE baseline within the same budget ( 0.28 at 300 k). Note that the ELBO weighting alone already costs half the metric: at w ≡ 1, LRB ≡ 0 and the objective reduces to − ˙mt-weighted cross-entropy, dropping 0.27 → 0.13 .
+
+Fixed non-uniform hazards are nearly neutral. The learned runs confound three factors: the objective’s w-dynamics, the damage the w-dependent CE weight does to θ, and, in the w ≡ 1 read-outs, a train/inference hazard mismatch. To probe the axis itself we remove all three: we hardcode 
+
+w(a) ∝ freq( a)γ , normalized so P 
+
+> a
+
+p0(a)w(a) = 1 , freeze them, and train by plain cross-entropy (14) , so the hazard enters only the corruption and the inference reweighting and the classifier is trained and sampled under the same hazard. The exponent γ sets spreads of 2× and 4× in each direction: frequency-keyed ( γ > 0; common characters commit last in reverse time) and anti-frequency ( γ < 0; common characters commit first ). Every arm runs three seeds under the offline protocol of Section E.2; as a plumbing check, γ = 0 
+
+through this path reproduces the historical fixed-hazard baseline. Table 4 is unambiguous: every schedule lands within 0.02 of uniform in the mean, and the same 4× frequency direction that collapsed to 0.066 under the ELBO recipe reaches 0.279 here. The failure of end-to-end hazard learning is therefore a property of the objective, not of the axis: the bound is flat in w at the optimum, the CE weight—the only strong w-signal—corrupts the classifier it trains, and either runaway direction degrades generation through the reverse-sampler allocation. 24 Table 4: Frozen frequency-keyed hazards on Text8 (plain cross-entropy (14) , W = I, η = 1 ): valid-word fraction at length ≥ 5 under the offline protocol of Section E.2, mean ±std over three seeds. Anti-frequency schedules commit common characters first in reverse time; frequency-keyed schedules commit them last. No non-uniform schedule clears uniform under the pre-registered mean −std criterion at either budget. Hazard spread valid-word (len ≥ 5)
+
+150 k steps (three seeds) 
+
+anti-frequency 4× 0.262 ± 0.004 
+
+anti-frequency 2× 0.272 ± 0.015 
+
+uniform ( w ≡ 1) 1× 0.263 ± 0.000 
+
+frequency 2× 0.279 ± 0.013 
+
+frequency 4× 0.279 ± 0.008 300 k steps (three seeds) 
+
+anti-frequency 2× 0.270 ± 0.035 
+
+uniform ( w ≡ 1) 1× 0.273 ± 0.005 
+
+## D Implementation Details 
+
+D.1 Convolution Closure for the VP-Matched SJD 
+
+The DHM target (15) and the plug-in quadrature (58) both require the off-anchor conditional 
+
+pac  
+
+> t
+
+(y |⃗ X0, i ) at each position i, which is built from the convolution 
+
+(rτ ∗ Kτ →t)( y |⃗ X0, i ) = 
+
+Z
+
+> Rd
+
+rτ (z |⃗ X0, i )Kτ →t(y | z)d z, 
+
+of the unsticking kernel at time τ with the forward diffusion semigroup from τ to t. We work out this convolution explicitly for the VP-matched family of Theorem 2.2, where both factors are Gaussian and the convolution stays Gaussian. The per-anchor case is recovered at W = I, where 
+
+μi(⃗X0) = E(a(i)) depends only on the local anchor and the conditioning collapses to pac  
+
+> t
+
+(y | a(i)).
+
+The VP semigroup. The VP-SDE d⃗Xt = − 12 β(t)⃗Xtdt + pβ(t)d ⃗Wt has the linear-Gaussian transition kernel 
+
+Kτ →t(· | z) = N
+
+
+
+·; α(t)  
+
+> α(τ)
+
+z, 
+
+
+
+σ2(t) − α2(t)  
+
+> α2(τ)
+
+σ2(τ )
+
+
+
+Id
+
+
+
+,
+
+where α(t) = exp   − 12
+
+R t 
+
+> 0
+
+β(s)d s and σ2(t) = 1 − α2(t). The VP-matched unsticking kernel from Theorem 2.2 is 
+
+rτ (· | ⃗ X0, i ) = N
+
+
+
+·; α(τ )μi(⃗X0), η 2σ2(τ )Id
+
+
+
+, μi(⃗X0) =  W E (⃗X0)
+
+> i
+
+.
+
+The convolution. Both factors are isotropic Gaussian, so the convolution is again isotropic Gaussian with mean and variance given by linearity. Writing m := μi(⃗ X0) for the blended mean at position i,
+
+mean : α(t)  
+
+> α(τ)
+
+· α(τ )m = α(t)m, 
+
+variance : 
+
+ α(t) 
+
+> α(τ)
+
+2
+
+· η2σ2(τ ) + 
+
+
+
+σ2(t) − α2(t)  
+
+> α2(τ)
+
+σ2(τ )
+
+
+
+= σ2(t) − (1 − η2) α2(t)  
+
+> α2(τ)
+
+σ2(τ ).
+
+Writing vt(τ ) := σ2(t) − (1 − η2)α2(t)σ2(τ )/α 2(τ ), we recover (20): 
+
+(rτ ∗ Kτ →t)( · | ⃗ X0, i ) = N  ·; α(t)μi(⃗ X0), v t(τ )Id
+
+. (49) The variance vt(τ ) is identical to the per-anchor case because the variance derivation depends only on the unsticking variance η2σ2(τ ) and the VP semigroup; the cross-position structure W enters only through the mean. 25 0.0 0.5 1.0                     
+
+> Reverse time ¿
+> −3
+> −2
+> −1
+> 0
+> 1
+> 2
+> 3
+> State  y
+> ´= 0 :25 (a)
+> 0.0 0.5 1.0
+> Reverse time ¿
+> ´= 0 :55 (b)
+> 0.0 0.5 1.0
+> Reverse time ¿
+> ´= 0 :85 (c)
+> 0.0 0.5 1.0
+> Reverse time ¿
+> ´= 1 :00 (d)
+> −5 −4 −3 −2 −1 01
+
+log 10 ^¸t(y; a )Figure 4: Effect of η on the state-dependent hazard target bλt(y, a ) under a single anchor a = 1 for reverse trajectories (circles mark commitment events). As η → 1, the width of the intensity surface widens. As η decreases from 1.00 (d) to 0.25 (a), the variance of the unsticking kernel sharpens relative to the mixture marginal pac  
+
+> t
+
+. High intensity regions contract toward the anchor mean, and trajectories in low intensity regions tend to later commitments. 
+
+Sanity checks. Three limits confirm that (49) is well-behaved. 
+
+Recovery of the diffusion kernel at η = 1 . When η = 1 the unsticking kernel coincides with 
+
+qτ (· | a) = K0→τ (· | a), and the semigroup property of the VP transition kernel gives qτ ∗ Kτ →t = qt.Consistently, vt(τ ) η=1 = σ2(t) for every τ , recovering the VP perturbation kernel. 
+
+Variance is positive and decreasing in τ for η < 1. For fixed t and η ∈ (0 , 1] , vt(τ ) is strictly decreasing in τ ∈ (0 , t ), with vt(τ ) → η2σ2(t) as τ → t− (a particle that just unstuck) and 
+
+vt(τ ) → σ2(t) as τ → 0+ (an early unstick has had the full VP semigroup to wash out the variance deficit). In particular vt(τ ) > 0 throughout. 
+
+Terminal Gaussian prior. As t → T with α(T ) → 0, every mixture component converges to N (0 , I d)
+
+regardless of τ and η, recovering Theorem 2.5. 
+
+D.2 Efficient Evaluation of the Plug-In Hazard 
+
+We give the implementation details behind the cost estimate of the plugin hazard: a one-dimensional quadrature for pac  
+
+> t
+
+(y | a) and the resulting plug-in bλt(y, a ), with a vectorized form that shares structure across anchors. We focus throughout on the VP-matched family of Theorem 2.2, where the convolution (49) is closed-form. 
+
+Discretizing the quadrature. Recall that 
+
+pac  
+
+> t
+
+(y | a) = 
+
+Z t
+
+> 0
+
+⃗ λτ (a)Sa(τ )( rτ ∗ Kτ →t)( y | a)d τ. (50) We discretize τ on a fixed grid 0 < τ 1 < · · · < τ Nτ ≤ t with quadrature weights {wi}Nτ 
+
+> i=1
+
+(we use Simpson’s rule with Nτ ∈ [16 , 64] in our experiments). Substituting the closed-form convolution (49), 
+
+pac  
+
+> t
+
+(y | a) ≈
+
+> Nτ
+
+X
+
+> i=1
+
+wi⃗ λτi (a)Sa(τi)N  y; α(t)a, v t(τi)Id
+
+. (51) 
+
+Log-domain stability. The Gaussian densities in (51) can underflow when y is far from α(t)a. We therefore evaluate the log-density by log-sum-exp: 
+
+log pac  
+
+> t
+
+(y | a) ≈ logsumexp i
+
+
+
+log wi + log ⃗ λτi (a) + log Sa(τi) + log N  y; α(t)a, v t(τi)Id
+
+
+
+. (52) 26 The DHM target is then log bλt(y, a ) = log ⃗ λt(a) + log Sa(t) + log ra(y, t ) − log pac  
+
+> t
+
+(y | a), and the reweighted logits in (19) become 
+
+ℓθ (a; y, t ) + log bλt(y, a ),
+
+fed directly into a softmax to sample the destination anchor. 
+
+Sharing structure across anchors. For the common case of an anchor-agnostic forward hazard ⃗λτ (a) ≡⃗ λ(τ ), the prefactor wi⃗ λ(τi)S(τi) in (51) is independent of a and can be precomputed once per reverse step. The only a-dependence in the integrand is in the Gaussian mean α(t)a (recall that the variance vt(τi) depends only on τi and t, not on a; a consequence of VP-matching). The quadrature therefore reduces to evaluating |A| · Nτ Gaussian log-densities and one log-sum-exp per anchor. More generally, when the hazard factors as ⃗ λτ (a) = β(τ )w(a), the τ -weights wiβ(τi)S(τi)w(a) can be precomputed for each anchor. 
+
+Cost. Per reverse step and per site y, evaluating the full plug-in has three components: (i) Precomputing the τ -weights and variances: O(Nτ ).(ii) Evaluating N (y; α(t)a, v t(τi)Id) for all (a, i ): O(Nτ |A| d).(iii) Log-sum-exp across τi and softmax across a: O(Nτ |A| ).The dominant term is step 2. With Nτ ∈ [16 , 64] , |A| on the order of a vocabulary size, and d on the order of a feature dimension, this is one to two orders of magnitude cheaper than a single forward pass through Pθ in our experiments. The quadrature is fully vectorizable and runs alongside the classifier on the same accelerator. 
+
+Cost of the blending step. For the non-local kernel of Theorem 2.2, computing the per-position blended mean μ = W E (⃗ X0) adds an L × L matrix multiply with cost O(L2d) for dense W and 
+
+O(Ldw ) for banded W of bandwidth w. Both are negligible against one classifier forward pass, and the matmul is computed once per minibatch (training) or once per reverse step (sampling). 
+
+D.3 Classifier-Induced Score 
+
+The reverse drift (6) requires the score ∇ log pt(y) on XA. We show how to read it off from the trained classifier Pθ and the same plug-in quadrature used for the hazard, without training a second network Dieleman et al. [2022]. 
+
+Setup. The marginal density on XA factors as pt(y) = P 
+
+> a∈A
+
+p0(a)pac  
+
+> t
+
+(y | a), so by the standard mixture-score identity 
+
+∇ log pt(y) = X
+
+> a∈A
+
+pt(a | y)∇y log pac  
+
+> t
+
+(y | a). (53) The classifier Pθ approximates pt(a | y) from (13), so the only remaining piece is ∇y log pac  
+
+> t
+
+(y | a).
+
+Score of the mixture conditional. Differentiating the integral form of pac  
+
+> t
+
+(y | a) in (50) under the integral sign, 
+
+∇y pac  
+
+> t
+
+(y | a) = 
+
+Z t
+
+> 0
+
+⃗ λτ (a)Sa(τ )∇y (rτ ∗ Kτ →t)( y | a)d τ, 
+
+and dividing by pac  
+
+> t
+
+(y | a),
+
+∇y log pac  
+
+> t
+
+(y | a) = 
+
+Z t
+
+> 0
+
+wt(τ | y, a )∇y log( rτ ∗ Kτ →t)( y | a)d τ, (54) where the time-posterior weight is 
+
+wt(τ | y, a ) := ⃗ λτ (a)Sa(τ )( rτ ∗ Kτ →t)( y | a)
+
+pac  
+
+> t
+
+(y | a) . (55) This is the conditional density of the unstick time given (⃗X0 = a,⃗ X t = y); (54) expresses the score of the mixture as the average of the component scores, weighted by the time-posterior. 27 VP-matched closed form. Under Theorem 2.2, the convolution (49) is Gaussian, so its score is 
+
+∇y log( rτ ∗ Kτ →t)( y | a) = − y − α(t)avt(τ ) .
+
+Substituting into (54) and (53), 
+
+sθ (y, t ) = − X
+
+> a∈A
+
+Pθ (a | y, t )
+
+Z t
+
+> 0
+
+wt(τ | y, a ) y − α(t)avt(τ ) dτ, (56) where we have substituted Pθ for the true posterior pt(a | y). Equation (56) is the classifier-induced score: it depends on Pθ , the precomputed τ -grid quadrature for wt, and the affine residual y − α(t)a.
+
+Sharing computation with the plug-in hazard. The time-posterior weight wt(τi | y, a ) is the same Gaussian-density times hazard-survival product that appears in the discretized quadrature (51) , normalized by pac  
+
+> t
+
+(y | a). In implementation, the score and the hazard reuse the same set of evaluations: at each (y, t ) we compute log N (y; α(t)a, v t(τi)Id) once for each (a, i ) pair, log-sum-exp over i to obtain log pac  
+
+> t
+
+(y | a) for the hazard, and softmax over i within each a to obtain 
+
+wt(τi | y, a ) for the score. The marginal cost of the score on top of the hazard is one extra weighted sum per anchor: still negligible compared to a forward pass through Pθ .
+
+Limit at η = 1 . For η = 1 , the convolution (49) collapses to the VP perturbation kernel qt(· | a) for every τ , so the time-posterior wt(τ | y, a ) becomes uniform and integrates out. Equation (56) reduces to 
+
+sθ (y, t ) η=1 = − X
+
+> a∈A
+
+Pθ (a | y, t ) y − α(t)aσ2(t) ,
+
+which is the standard mixture-of-Gaussians score familiar from masked diffusion with continuous augmentation Zheng et al. [2026]. The general η < 1 formula (56) interpolates between this masked-diffusion-style score and the per-component VP score by averaging over the unstick time. 
+
+Blended kernels ( W̸ = I). For the non-local kernel of Theorem 2.2 the conditioning object is the whole clean sequence, and (56) does not apply as written: the mixture component at position i
+
+is centered at the blended α(t)μi(⃗X0) of (3) , not at α(t)a(i). At η = 1 the correction is exact and closed-form. Write y = ( y1, . . . , y L) for the sequence state. Conditionally on ⃗ X0, the active (off-anchor) coordinates are independent with yi ∼ N  α(t)μi(⃗X0), σ 2(t)Id
+
+, by (49) at vt(τ ) = σ2(t),and a committed position reveals its anchor exactly, since anchors are absorbing. The tower argument of (53), now conditioning on the full state (active coordinates and committed anchors), gives 
+
+∇yi log pt(y) = − yi − α(t)Eμi(⃗X0) | y
+
+σ2(t) ,
+
+and because μi is linear in the embedded sequence (3) , the conditional mean requires only the per-position marginal posteriors: E[μi(⃗X0) | y] = P 
+
+> j
+
+Wij mj (y), where mj (y) := 
+
+P 
+
+> a∈A
+
+p(j) 
+
+> t
+
+(a | y)E(a) is the posterior-mean embedding at position j and p(j) 
+
+> t
+
+(· | y) the marginal pos-terior of that position’s anchor given the full state; at committed and clamped positions, mj = E(a(j))
+
+exactly. Substituting the classifier yields the blended-mean induced score 
+
+sθ,i (y, t ) η=1 = − yi − α(t) W m θ (y, t )
+
+> i
+
+σ2(t) , mθ,j (y, t ) = X
+
+> a∈A
+
+P (j) 
+
+> θ
+
+(a | y, t )E(a). (57) Three remarks. First, (57) is exact, not a mean-field approximation: the conditional score is linear in μi, so the joint posterior over sequences is never needed, and the single per-position classifier remains sufficient at W̸ = I. Second, the jump side needs no modification: at η = 1 the spatial factor of the DHM target collapses to 1/(1 − Sa(t)) for any W so the commit rates and allocation are unchanged, and (57) is the only place W enters the sampler: one blending product W m θ per reverse step, the same product as in training (Section D.2). Third, at W = I it reduces to the η = 1 
+
+limit above. We use (57) whenever W̸ = I; for η < 1 the time-posterior (55) depends on μi(⃗X0)
+
+inside the conditional expectation, per-position marginals no longer suffice, and we do not combine 
+
+W̸ = I with η < 1.28 D.4 Sampling 
+
+A trained classifier Pθ from Section 3 fully specifies an approximation to the reverse-time SJD of Theorem 2.6: the score and the per-anchor reverse intensities are both available through the plug-in (18) . We assemble these into a sampler that runs from the prior pT at τ = 0 to data at τ = T .
+
+Predictor: one reverse step. At reverse time τ (forward time t = T − τ ) and current state y ∈ XA,one Euler step of size ∆τ does two things in parallel: (i) Drift and diffuse along the score. Compute the classifier-induced score sθ (y, t ) (Section D.3) and advance the continuous SDE component via a standard Euler–Maruyama step. (ii) Sample a sticky jump. With probability 1 − exp   − λplug ,θ (y, t )∆ τ , commit to an anchor drawn from πplug ,θ (· | y, t ) (19) and treat that anchor as absorbing for the rest of the reverse trajectory. Both steps reuse the same forward pass through Pθ : the classifier produces logits over anchors, from which the score and the reweighted jump distribution are read off. Algorithm 2 states the full sampler. 
+
+Evaluating the plug-in hazard. The plug-in (18) requires the mixture density pac  
+
+> t
+
+(y | a) pointwise, evaluated by 
+
+pac  
+
+> t
+
+(y | a) = 
+
+Z t
+
+> 0
+
+⃗ λτ (a)Sa(τ )( rτ ∗ Kτ →t)( y | a)d τ, (58) which is one-dimensional and admits a closed-form integrand whenever the simulation-free conditions of Section 3.5 hold. We discretize (58) on a τ -grid of Nτ points and evaluate the log of the integrand by log-sum-exp for numerical stability. The cost is negligible compared to a forward pass through Pθ .See Section D.2 for details. 
+
+## E Experimental Details 
+
+E.1 CIFAR-10 Value-space blending kernel. The blended arms of Figure 2 replace the linear embedding blend (3) with a blend applied to raw pixel values before embedding. Flatten the 32 × 32 pixel grid row-major into N = 1024 sites, indexed by i 7 → (ri, c i) with ri = ⌊i/ 32 ⌋ and ci = i mod 32 , and write the squared grid distance 
+
+d2 
+
+> ij
+
+= ( ri − rj )2 + ( ci − cj )2. (59) The blending matrix B(σB ) ∈ RN ×N is the row-stochastic Gaussian position kernel 
+
+B(σB ) 
+
+> ij
+
+= exp   − d2 
+
+> ij
+
+/2σ2
+
+> B
+
+PNk=1 exp   − d2
+
+> ik
+
+/2σ2
+
+> B
+
+ , σB ∈ { 1.5, 2.0, 2.5}, (60) equivalently the row-wise softmax of −D/ 2σ2 
+
+> B
+
+with D = [ d2 
+
+> ij
+
+]. Row-stochasticity keeps blended values on the pixel scale, and B(σB ) → I as σB → 0, recovering the identity-kernel hybrid. With 
+
+v(⃗X0) ∈ [0 , 255] N ×3 the raw pixel values and E the fixed sinusoidal embedding of the value scale, 
+
+E(v) = 
+
+h
+
+sin  2πf v/P , cos  2πf v/P iFf =1 
+
+, F = 4 , P = 255 , ∥E (v)∥2 = √F = 2 ,
+
+(61) the forward mean blurs the raw values and embeds the blurred result, 
+
+μ(⃗X0) = E B(σB )v(⃗X0), (62) with B(σB ) acting over the flattened spatial grid independently for each of the C = 3 colour channels; the token sequence has length L = 3 N = 3072 , one uint8 token per channel per site. The unsticking kernel (4) uses this mean at η = 1 . The composition E ◦ B(σB ) is smooth in the pixel values, which is what makes natural images low-pass under this corruption; the same blur applied to arbitrary learned embeddings does not preserve that structure. 29 At sampling, the induced score and plug-in weights require the forward mean under the denoising posterior. We form the per-site posterior-mean value ˆvi = P255  
+
+> v=0
+
+Pθ (v | · )v, blur it through B(σB ),and embed the blended result, E B(σB ) ˆv; the embedding step is the mean-field substitution of Section D.3. 
+
+Setup and common hyperparameters. All CIFAR-10 experiments used unconditional generation on images represented as discrete uint8 tokens of shape 32 × 32 × 3 with vocabulary size 256 [Shi et al., 2024, Zheng et al., 2026]. We used no data augmentation. Unless otherwise noted, training and validation used batch size 512 , AdamW with learning rate 10 −4, β2 = 0 .999 , weight decay 0,and a 1,000-step warmup followed by a constant learning-rate schedule. All runs used seed 0, were trained for 200 ,000 steps, used EMA decay 0.9999 , and saved checkpoints every 10 ,000 steps; the best checkpoint was selected by validation FID. We report FID-50k against CIFAR-10 train statistics, using FID evaluation batch size 128 . All samplers used 256 NFEs. All CIFAR-10 models used ADM-family U-Net backbones [Dhariwal and Nichol, 2021]. SJD, MD4, MDLM, and Bit Diffusion used the 5D image-token ADM variant, while DDPM used the 2D ADM variant. Shared ADM hyperparameters were feature dimension 96 , 32 layers, dropout 0.1, channel multipliers [3 , 4, 4] , 4 residual blocks per level, and attention at resolutions [2 , 4] . We train using two NVIDIA H100 GPUs. Owing to compute constraints, each CIFAR-10 configuration is trained with a single seed, following the single-run reporting practice of prior diffusion evaluations on this benchmark [Ho et al., 2020, Chen et al., 2023, Shi et al., 2024, Zheng et al., 2026], so FID differences on the order of run-to-run variability should be read with caution. 
+
+Model-specific settings. SJD used a linear VP schedule with βmin = 0 .1, βmax = 20 .0, and T = 1 ,a polynomial-α hazard with p = 1 ; sampling used a cosine grid; anchors are learned end-to-end and normalized following the methodology from Dieleman et al. [2022, Section 3.2]. MD4 used the continuous-time masked discrete diffusion setup with a linear noise schedule, antithetic time sampling, ancestral sampling, a cosine grid, and top-p = 0 .98 . DDPM used a linear β schedule from 
+
+10 −4 to 2 × 10 −2 and ϵ-prediction. MDLM used a continuous-time masked discrete model with a linear noise schedule, ancestral sampling, a cosine grid, and no prediction caching. Bit Diffusion used x0-prediction, an MSE loss, a linear signal schedule, and deterministic DDIM-style sampling on a uniform grid. In our experiments Bit Diffusion is not self-conditioned. 
+
+E.2 Text8 
+
+We follow the setup of Lou et al. [2024], Austin et al. [2021] on 256-character sequences with an 8M-parameter DiT denoiser. The blending matrix W is a 1D Gaussian convolution of bandwidth 
+
+σW , swept over σW ∈ { 0.5, 1.0, 1.5, 2.0, 2.5}; W = I (σW = 0 ) recovers the CANDI baseline. 
+
+Noise schedule. All methods use the log-linear schedule for the discrete masking corruption [Sahoo et al., 2024, Pynadath et al., 2026]. CANDI and SJD additionally use the CANDI rank-degradation schedule with rmin = 0 .05 and rmax = 0 .4.
+
+Training. Table 5 lists the optimizer and batch settings, shared across all methods. 
+
+Inference and quality–diversity frontier. MDLM uses ancestral sampling. CANDI and SJD use the exact hybrid sampler of Pynadath et al. [2026]. For each method and each NFE budget we sweep the sampling temperature over 11 evenly spaced values in [0 .05 , 1.0] to trace the quality–diversity frontier (Figure 5); Figure 3 reports the maximum valid-word count along each frontier. SJD at 
+
+σW ≥ 1.0 Pareto-dominates CANDI and MDLM throughout the high-diversity regime, with the dominance widening at higher NFE. 
+
+E.3 Sudoku 
+
+We use the Sudoku dataset and split from Shah et al. [2024]. Each instance consists of a 9 ×9puzzle (with blanks) and its unique completed solution. The dataset is filtered to puzzles solvable without backtracking using a fixed set of human-style strategies, ensuring that test-time evaluation probes logical deduction rather than combinatorial search. The model receives an input such as (080050060 . . . 603100007 ) and predicts the full solution ( 789251364 . . . 653184297 ). This matches 30 Table 5: Text8 training hyperparameters. Hyperparameter Value 
+
+Optimizer 
+
+Algorithm AdamW Learning rate 1 × 10 −3
+
+β1 0.9 
+
+β2 0.999 
+
+ϵ 1 × 10 −8
+
+Weight decay 0Gradient clip 1.0 Hyperparameter Value 
+
+Batch size 
+
+Global batch size 512 Gradient accumulation steps 4
+
+Training 
+
+Max steps 40,000 Precision bf16 
+
+EMA decay 0.9999 Antithetic time sampling ✓
+
+LR scheduler Constant Hardware 1 RTX A6000 0.4 0.6 0.8 1.0                  
+
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> Valid words  5 chars  NFE =32
+> 0.4 0.6 0.8 1.0
+> NFE =64
+> 0.4 0.6 0.8 1.0
+> NFE =128
+> 0.5 1.0 1.5 2.0 2.5
+> Unique words
+> SJD: W
+> Baselines
+> CANDI
+> MDLM
+
+Figure 5: Quality–diversity frontiers on Text8, by NFE budget. Each curve is a temperature sweep in the (unique-word fraction, valid-word fraction at length ≥ 5) plane; upper-right dominates. The SJD family at σW ≥ 1.0 Pareto-dominates CANDI and MDLM at high diversity. the MGDM-style Sudoku formulation [Ye et al., 2025] in which the puzzle is represented as an 81-token discrete sequence with (0) used as the masking symbol. 
+
+Constraint-graph jump kernel. The Sudoku board is the L = 81 token positions of a 9 × 9 grid. Index a position i ∈ { 0, . . . , 80 } by its row, column, and 3 × 3 box, 
+
+ri = ⌊i/ 9⌋ , ci = i mod 9 , bi = 3 ⌊ri/3⌋ + ⌊ci/3⌋ . (63) Two positions are Sudoku-constraint neighbours iff they share a unit (row, column, or box): 
+
+N (i) = {i} ∪ { j : rj = ri}
+
+| {z }
+
+> row
+
+∪ { j : cj = ci}
+
+| {z }
+
+> column
+
+∪ { j : bj = bi, r j̸ = ri, c j̸ = ci}
+
+| {z }
+
+> box
+
+. (64) The fixed blending matrix W ∈ R81 ×81 is the constraint-graph Gaussian with bandwidth σW = 1 .5,
+
+Wij =
+
+
+
+exp 
+
+
+
+− (ri − rj )2 + ( ci − cj )2
+
+2σ2
+
+> W
+
+
+
+, j ∈ N (i),
+
+0, otherwise. (65) The blended mean (3) of each cell is thus its own embedding plus a Gaussian-weighted sum of its 20 
+
+constraint peers, 
+
+μi(⃗X0) =  W E (⃗X0) 
+
+> i
+
+= E a(i) + X 
+
+> j∈N (i)\{ i}
+
+exp 
+
+
+
+− (ri − rj )2 + ( ci − cj )2
+
+2σ2
+
+> W
+
+
+
+E a(j), (66) and the unsticking kernel (4) uses this mean at η = 1 , rt(y | i,⃗ X 0) = N  y; α(t)μi(⃗X0), σ 2(t)Id
+
+.
+
+31 Table 6: Sudoku dataset statistics 
+
+Statistic Value Grid size 9 × 9
+
+Vocabulary digits {0, . . . , 9} (|V| = 10 )Train puzzles 1,800,000 Test puzzles 100,000 Filtering solvable by fixed strategy set URL source 
+
+32

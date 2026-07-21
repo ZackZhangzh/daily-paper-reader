@@ -1,0 +1,1575 @@
+Title: Integration Matters: Rollout-Based Training for Constrained Diffusion Models
+
+URL Source: https://arxiv.org/pdf/2607.14398v1
+
+Published Time: Fri, 17 Jul 2026 01:04:29 GMT
+
+Number of Pages: 26
+
+Markdown Content:
+# Integration Matters: Rollout-Based Training for Constrained Diffusion Models 
+
+Xiaoxuan Liang 1 2 Saeid Naderiparizi 1 2 Berend Zwartsenberg 2 Frank Wood 1 2 3 1University of British Columbia 2Inverted AI 3Alberta Machine Intelligence Institute 
+
+liang51@cs.ubc.ca 
+
+## Abstract 
+
+Constrained generative models aim to produce samples that satisfy complex feasibil-ity constraints while remaining faithful to the data distribution. Existing constrained generation methods typically enforce constraints either through training-time op-timization or sampling-time correction. Training-time optimization approaches optimize on states induced by the training distribution, which can differ substan-tially from those encountered during sampling. Sampling-time correction methods instead modify the sampling process at inference, introducing distribution shift and requiring expensive tuning, particularly for few-step sampling. We propose a fine-tuning framework that incorporates constraint guidance obtained through online rollout into the training process, which aligns training with sampling by differentiating through the fixed noise schedule used to numerically integrate the denoising process. This exposes the model to violations that arise along the denois-ing trajectory and aligns diffusion learning with the sampling process. Experiments across multiple tasks show that our method improves constraint satisfaction while maintaining competitive sampling quality compared to prior methods. 
+
+## 1 Introduction 
+
+In many real-world applications, generative tasks are defined not only by the underlying data distribution but also by complex feasibility constraints that govern the validity of the sample space. In robotics systems, generated states should remain geometrically feasible and avoid collisions with the environment and other agents [ 40 , 6]. In autonomous driving scenarios, predicted trajectories should remain on the road [ 47 , 54 ]. Diffusion models [ 20 , 44 , 23 ] provide a powerful framework for high-quality generation [ 39 , 21 , 17 ], but standard denoising objectives do not explicitly enforce feasibility constraints. As a result, generated samples may violate constraints that are critical for deployment. Specifically, standard diffusion models are trained with denoising objectives evaluated at indepen-dently sampled noise levels, without directly enforcing constraints on the final sample. Existing constrained diffusion models address this gap through constraint-aware fine-tuning [ 2, 33 , 26 ] or post-training guidance [11, 9, 19, 50, 30, 15, 49, 8, 25]. Fine-tuning methods incorporate constraint guidance during training, but often optimize constraint losses on forward noising states, which can differ from the denoising states encountered during sampling. Sampling-time correction methods instead apply guidance only at inference, forcing corrections on states the model was not trained to handle [10, 48]. We tackle constrained generation with a fine-tuning approach that aligns training with sampling. Instead of enforcing constraints only through sampling-time corrections, we optimize the model through online denoising rollouts that match the inference procedure. Constraint violations are measured on the terminal generated samples, and the resulting objective trains the model on the states 
+
+> Preprint. arXiv:2607.14398v1 [cs.LG] 15 Jul 2026
+
+it encounters during sampling. To preserve distributional fidelity, we retain the EDM denoising loss as a regularizer. Our contributions are: • We introduce a fine-tuning framework that optimizes constraint satisfaction through the reverse denoising trajectory. • We provide formal analysis of the training-time alignment induced by our training objective and show that the terminal denoising state converges towards the feasible region. • We validate our method on two constrained generation tasks: bouncing ball and traffic scene trajectory prediction experiments. 
+
+## 2 Background 
+
+Diffusion model generation Diffusion models [ 42 , 43 , 20 , 44 ] generate samples by gradually corrupting data with noise and then learning to reverse this process through denoising. Formally, the forward process perturbs data x0 ∼ p0 into a sequence of increasingly noisy states xt, while the reverse process reconstructs clean samples from noise. The forward process is defined by the Ito stochastic differential equation (SDE): 
+
+dxt = f (xt; t) dt + g(t) dwt, (1) where f (·; ·) and g(·) are drift and diffusion coefficients, and wt is a standard Wiener process. The corresponding reverse-time SDE is given by [1]: 
+
+dxt = [ f (xt; t) − g2(t)∇ log pt(xt)] dt + g(t) d ¯wt. (2) where ˜wt denotes a Wiener process evolving backward in time. Since the score function 
+
+∇xt log pt(xt) is intractable, diffusion models learn a neural approximation sθ (xt; t) trained via denoising score matching (DSM) objective [46], which minimizes 
+
+LDSM (θ) = Et, x0,xt
+
+λ(t)∥sθ (xt; t) − ∇ xt log pt(xt)∥2 , (3) where xt ∼ p(xt | x0) is sampled from the forward process. For the Gaussian perturbation process used in EDM [23], consider the diffusion-only SDE 
+
+dxt = g(t) dwt. (4) It has marginals p(xt | x0) ∼ N (x0, σ 2(t)I), σ2(t) = R t 
+
+> 0
+
+g2(s) ds , where σ(t) denotes noise level at time t. Choosing g(t) = √2t leads to xt ∼ N (x0, t 2I). Thus the noise level satisfies σ(t) = t,and we use t to denote the noise scale throughout. This equivalence is standard [ 44 , 23 ]. Through Tweedie’s formula [ 13 ], score estimation can be recast as a denoising problem. Given a denoiser network Dθ (xt; t) that approximates E [x0 | xt], the score can be estimated as 
+
+∇xt log pt(xt) = E [x0 | xt] − xt
+
+t2 ≈ Dθ (xt; t) − xt
+
+t2 . (5) 
+
+Constrained diffusion generation In many applications, generated samples are required to satisfy problem-specific constraints that define a feasible set Ω ⊆ Rd. These constraints often do not admit an explicit analytic boundary and are only implicitly specified through task-specified functions. Let 
+
+ℓΩ(x) denote a constraint violation function such that, for a sample x ∈ Rd, ℓΩ(x) = 0 if x ∈ Ω
+
+and ℓΩ(x) > 0 otherwise. We assume that the data distribution is supported on the feasible set, 
+
+supp( p0) ⊆ Ω. Constrained diffusion generation seeks to produce samples through a reverse process that remains faithful to p0 while satisfying the feasibility condition of lying in Ω.However, learning such constraints from data alone is challenging, as training data only consists of feasible examples and lacks explicit information about infeasible regions [ 37 ]. Prior work [ 32 ]further shows that increasing dataset size alone does not eliminate constraint violations, leaving the model’s behavior outside the data support and instead determined by inductive biases. Consequently, maximum-likelihood training alone cannot achieve high constraint satisfaction, motivating the need for additional signals that explicitly penalize infeasible generations. 210 −4 
+
+> 10 −3
+> 10 −2
+> 10 −1
+> 10 0
+> 10 1
+> 10 2
+> noise level ( σ(t) = t)
+> 010 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> 10 0
+> `Ω(Dθ(x t; t))
+> backward forward
+
+Figure 1: Infraction loss of the one-step lookahead prediction as a function of intermediate state xt and noise level t, comparing forward process samples and reverse-time sampling states. Shaded regions denote ±0.2 standard deviations. 
+
+> (a) Generated sample
+> (b) Ground truth sample
+
+Figure 2: Generated versus ground-truth bouncing ball trajectories. 
+
+## 3 Limitations of existing approaches to constrained diffusion 
+
+3.1 Training-time misalignment in constraint fine-tuning 
+
+Prior constrained diffusion methods [ 2 , 26 ] derive their training signals from constraint loss evaluated at Dθ (xt; t), where xt ∼ q(xt | x0). At low noise levels, xt remains close to the data manifold and is typically near-feasible. Since the pretrained denoiser trained on feasible data tends to recover specific training samples [ 4 ], Dθ (xt; t) also tends to satisfy the constraints. This makes ℓΩ(Dθ (xt; t)) ≈ 0
+
+and causes the correction signal to vanish. In contrast, sampling starts from Gaussian noise and follows discrete denoising steps. High-noise samples often introduce violations under uninformative guidance. These violations can persist until low noise, where correction becomes reliable. However, low-noise infeasible states produced by reverse rollouts are rarely encountered during training. This leads to a misalignment: the model is trained mostly on near-feasible states, yet must correct infeasible rollout states at inference. This is illustrated in Figure 1. We evaluate the constraint loss of the one-step lookahead Dθ (xt; t) at matched noise levels, where xt is obtained either from the forward process or reverse sampling using the EDM model later evaluated in Section 5.1. While both exhibit similar behavior at high noise levels, they diverge significantly at low noise. Forward states remain near-feasible and yield near-zero constraint loss, whereas reverse states incur persistent violations. This indicates that training on forward states underestimates the violations encountered during sampling. Prior work has studied the discrepancy between forward sampling states xt and reverse sampling states ˜xt [ 35 , 24 ]. We examine its effect by comparing constraint losses on the denoised lookahead 
+
+Dθ (xt; t) and Dθ (˜ xt; t). This shows that constraint signals remain weak on forward sampled states, but become nontrivial along the reverse denoising trajectory. 
+
+3.2 Sampling-time correction: distribution shift and few-step degradation 
+
+Another common approach enforces constraints only at sampling time, using either projection [ 8 , 25 ]or gradient-based updates [19] 
+
+dxt = f (xt; t) − g2(t)( sθ (xt; t) − γ(t)∇ℓΩ(xt; t))  dt + g(t) d ¯wt, (6) where γ(t) controls the guidance strength. These methods correct violations online during denoising and can reduce the infeasibility rate in practice, but they are highly sensitive to the guidance sched-ule [ 9]. Weak guidance may fail to remove violations, while strong guidance can push intermediate state xt away from the data manifold [ 11 ], which places samples in regions where the learned score is unreliable. This further widens the misalignment between forward sampled and reverse sampling states. Moreover, because sampling-time correction relies on incremental corrections across the 3denoising trajectory, it becomes sensitive to sampling budget: many steps allow small corrections to accumulate, while few steps require stronger updates that can distort or destabilize sampling [41]. Figure 2 illustrates this behavior using trajectories generated by a sampling-time correction method called MPGD without projection [ 19 ] under 50-step sampling setting later used in Section 5.1. The full-scene and zoomed views use hollow and solid circles denoting start and end positions. With gray balls shown for context, balls 1, 3, and 4 are highlighted because of their jittering motion, which produces sharp trajectory changes that avoid collision but distort the motion. In contrast, the ground truth rollout remains smooth and physically consistent. Thus, this method enforces feasibility without preserving realistic motion. These observations reveal two limitations. Training-time optimization suffers from misalignment between the states encountered from training and sampling distributions. Sampling-time correction introduces distribution shift and becomes fragile under few-step sampling. Together, these limitations motivate training on reverse-time rollout states and learning constraint-aware updates that enforce feasibility. 
+
+## 4 Methodology 
+
+We present IMCD (Integration Matters for Constrained Diffusion), a rollout-based fine-tuning framework for constrained generative modeling that addresses the training-time misalignment. IMCD evaluates constraint losses at terminal rollout samples and backpropagates through the full denoising trajectory for model updates, aligning optimization with inference. During each rollout step, it computes constraint-aware corrections using denoised lookahead estimates and applies them through a learnable scaling mechanism, enabling adaptive guidance across noise levels. To preserve data fidelity, IMCD retains the EDM loss and updates only lightweight trainable components. We assume access to a pretrained denoiser denoted by D, where the pretrained model is parameterized by fixed model weights θ. Since θ remains frozen throughout fine-tuning, we omit it from the notation. The fine-tuned denoiser network is initialized from θ and denoted by Dϕ, where ϕ collects the lightweight trainable components introduced during fine-tuning. The score functions induced by these denoisers are denoted by s(xt; t) and sϕ(xt; t), respectively. 
+
+4.1 Constraint Guidance Mechanism 
+
+A key design choice in constrained diffusion is how to construct a constraint-aware score estimator. Generalizing the definitions in [33], we consider estimators of the form 
+
+sΩ 
+
+> ϕ
+
+(xt; t) = sϕ(xt; t) − γ(xt; t)GΩ(xt; t), (7) where GΩ produces a direction that reduces violations of the constraint Ω and γ controls its strength. We call GΩ the guidance function and γ the scaling function. Table 3 summarizes the definition of these functions in our method and in prior work. 
+
+Guidance function We follow Liang et al. [26] for the choice of guidance function GΩ(xt; t) := 
+
+∂1ℓΩ(D(xt; t); t) where ∂1 denotes the partial derivative with respect to the first argument. Effectively, this computes the gradient of the constraint loss function at the one-step denoising prediction by a pretrained denoiser D. Liang et al. [26] show that this leads to a more stable model (both during training and sampling) than computing the gradients at the noisy state xt.It is important to note that ∂1ℓΩ(D(xt; t); t) differs from ∇xt ℓΩ(D(xt; t); t). The latter corresponds more directly to the diffusion formulation, since it fully accounts for the dependence of the de-noised prediction on the noisy latent xt by backpropagating through the denoiser D. In contrast, 
+
+∂1ℓΩ(D(xt; t); t) ignores this dependency and does not backpropagate gradients through D, making it significantly more computationally efficient in practice. 
+
+Scaling function The scaling γ used in prior work [ 31 , 26 ] is independent of the sample xt and is typically selected via grid search. In practice, this tuning procedure can be computationally expensive, as the optimal value of γ depends on the sampling regime, noise level, and constraint strength. We instead propose to learn a scaling function that adapts the correction dynamically to both the current state xt and diffusion time t. This eliminates the need for costly hyperparameter sweeps. 4This parameterization is also motivated by the exact gradient ∇xt ℓΩ(D(xt; t); t). In particular, the discrepancy between ∂1ℓΩ(D(xt; t); t) and the exact gradient induced by backpropagation through the denoiser can be interpreted as a state- and time-dependent rescaling of the guidance direction. More precisely, 
+
+∇xt ℓΩ(D(xt; t)) = 
+
+ ∂D (xt; t)
+
+∂xt
+
+⊤
+
+∂1ℓΩ(D(xt; t); t). (8) Prior work [ 13 , 5] shows that the Jacobian scales with a posterior covariance term of the form 
+
+∂D (xt; t)/∂ xt ≈ cov [ x0 | xt] /t 2. The covariance term captures state-dependent uncertainty, while the denominator amplifies corrections as the sample approaches the data manifold. 
+
+Definition 4.1. (Learned scaling network) Given a trainable score sϕ, a constraint violation function 
+
+ℓΩ(xt; t), and a learned scaling network γϕ : Rd × [0 , T ] → R+, we define: 
+
+γϕ(xt; t) = αϕ(xt; t) · tβϕ(xt;t), (9) where αϕ(xt; t) ≥ 0, βϕ < −1. The constrained score is then 
+
+sΩ 
+
+> ϕ
+
+= sϕ(xt; t) − γϕ(xt; t)∂1ℓΩ(D(xt; t); t), (10) This parameterization keeps the simple power-law guidance form but makes it adaptive to both the current state xt and noise level t.
+
+Proposition 4.2. (Convergence property) The constrained score 10 corresponds to the score of 
+
+pΩ(xt; t) ∝ p(xt; t) exp( −γϕ(xt; t)ℓΩ(D(xt; t))) . (11) 
+
+Furthermore, γϕ(xt; t) → ∞ as t → 0 for any xt with αϕ(xt; t) > 0, such that 
+
+lim  
+
+> t→0
+
+pΩ(xt; t) ∝ lim  
+
+> t→0
+
+p(xt; t)1Ω(xt), (12) 
+
+preserving stronger corrections near the data manifold while allowing the magnitude to adapt to the current state and noise level. 
+
+The discussion above considers a single constraint gradient. For tasks with multiple constraints, we combine their gradients into a single compatible update direction inspired by PCGrad [ 51 ], then apply the scaling network to this direction to learn a global correction magnitude. We provide the combination procedure and scaling-network architecture in Appendix Section C. 
+
+4.2 Rollout-based training 
+
+Now we address the training-time misalignment discussed in Section 3.1. We construct training states by rolling out the reverse-time process from pure Gaussian noise. The training-time rollout shares the same noise sampling schedule as inference such that the intermediate states are generated by the fine-tuned network Dϕ.We use (xt; t) for continuous-time notation and adopt step-indexed notation (xi, t i) for the discretized reverse-time rollout. Let the noise schedule be T = tN > t N −1 > · · · > t 0 = tmin > 0. Starting from ˜xN ∼ N (0 , t 2 
+
+> N
+
+I), we simulate denoising steps backward along this schedule and denote the resulting reverse rollout trajectory by {˜xi}Ni=1 . At each rollout step i, we compute the denoised state guidance ∂1ℓΩ(D(˜ xi; ti); ti) using the pretrained denoiser. The fine-tuned denoiser Dϕ is conditioned on this guidance through a lightweight embedding, and the scaling network γϕ(˜ xi; ti)
+
+defined in Equation (9) determines its strength at the current rollout state. We also introduce LoRA adapters [ 22 ] within Dϕ to provide adaptation capacity while keeping the pretrained backbone weights fixed. This gives the constraint-aware denoiser: 
+
+DΩ 
+
+> ϕ
+
+(˜ xi; ti) = Dϕ
+
+ ˜xi; ti, ∂ 1ℓΩ(D(˜ xi; ti); ti) + γϕ(˜ xi; ti)∂1ℓΩ(D(˜ xi; ti); ti). (13) We use this constraint-aware denoiser DΩ 
+
+> ϕ
+
+at each rollout step. Thus the model receives the constraint signal at its input while also applying an output-level correction with a learned, state-dependent strength. Training on the resulting rollout states {˜xi} under the same discretization schedule as inference exposes the model to off-manifold states produced by its own sampling process. This alignment directly targets the training-time misalignment identified in Section 3.1, enabling the model to correct constraint violations during generation. 54.3 Training objective and sampling procedure 
+
+We optimize the fine-tuning parameters ϕ with an EDM denoising term and a terminal rollout constraint term, where κ balances constraint optimization against data fidelity: 
+
+L(ϕ) = LEDM (ϕ) + κLrollout (ϕ), (14) 
+
+EDM denoising loss To preserve data-consistent behavior, we retain the EDM denoising objective for the constraint-augmented denoiser DΩ 
+
+> ϕ
+
+:
+
+LEDM (ϕ) = Et, x0,xt
+
+λ(t)∥DΩ 
+
+> ϕ
+
+(xt; t) − x0∥2 , (15) where xt ∼ q(xt | x0) is sampled from the forward process independently of the rollout, and λ(t)
+
+is the EDM loss weighting. This objective regularizes the model toward data-consistent denoising while allowing deviations required to satisfy the constraints. 
+
+Rollout constraint loss For constraint optimization, constraint loss is applied at the terminal rollout: 
+
+Lrollout (ϕ) = Ep(˜ xT ),p ϕ(˜ x0|˜xT )
+
+ℓΩ(˜ x0) . (16) During optimization, the sampled states {˜xi} are not updated by gradients, and optimization is only performed with respect to ϕ through the fine-tuned denoiser evaluations. For efficiency, we adopt the EDM discretization [ 23 ], which achieves high sampling quality with fewer denoising steps. In addition, we employ gradient checkpointing [ 7] to control memory when propagating through rollout trajectories. Since supervision is applied only at the terminal state, the constraint signal is sparse and becomes sparser as the infraction rate decreases. We therefore adaptively weight the rollout loss: 
+
+κ = sg( LEDM )/sg( Lrollout + ϵ), ϵ = 10 −5 (17) where the overline denotes the batch mean, sg( ·) stops gradients through the scaling factors. The adaptive stop-gradient weight keeps the rollout loss on the same scale as the EDM loss, maintaining effective constraint supervision without introducing additional gradient pathways. We summarize the full training procedure in Algorithm 1. At inference time, sampling follows the same reverse-time rollout, with the same noise discretization schedule used during training. The rollout starts from a Gaussian initialization at the highest noise level and iteratively denoises to obtain the final sample. The constraint-aware denoiser DΩ 
+
+> ϕ
+
+is used for sampling, while the pretrained denoiser 
+
+D provides the denoised estimate for constraint gradient computation. Terminal loss evaluation and parameter updates are omitted. 
+
+4.4 Theoretical analysis 
+
+We formalize the training-time alignment by viewing sampling as a composition of differentiable denoising maps, showing that rollout backpropagation optimizes constraint violations under the same sampling distribution at inference. 
+
+Theorem 4.3. (Training-time alignment) Let {ti}Ni=0 be the fixed discretization schedule. Define each denoising step as a deterministic function: 
+
+xi−1 = f (i) 
+
+> ϕ
+
+(xi; ti, t i−1, ϵ i), ϵi ∼ N (0 , I), (18) 
+
+and fϕ is differentiable in xi and ϕ. For an initial noise sample xN , the terminal sample is obtained by composing the update maps: 
+
+Fϕ = f (1)  
+
+> ϕ
+
+◦ f (2)  
+
+> ϕ
+
+◦ · · · ◦ f (N ) 
+
+> ϕ
+
+, s.t. xϕ 
+
+> 0
+
+= Fϕ(xN ) is the terminal state . (19) 
+
+Then the gradient of unscaled rollout objective 16 Lrollout (ϕ) with respect to ϕ is: 
+
+∇ϕLrollout (ϕ) = Ep(xN )
+
+" NX
+
+> i=1
+
+∇xϕ
+
+> 0
+
+ℓΩ(xϕ 
+
+> 0
+
+) ∂xϕ
+
+> 0
+
+∂xϕi−1
+
+∂f (i) 
+
+> ϕ
+
+(xi)
+
+∂ϕ 
+
+#
+
+. (20) 
+
+This concludes that backpropagating ℓΩ through the rollout computes the exact gradient of Lrollout (ϕ),directly minimizing constraint violations under the model’s own sampling distribution. Remark 4.4 . (Full training objective) The full objective in Equation (14) augments the rollout loss with 
+
+LEDM (ϕ). Since LEDM (ϕ) is evaluated on clean data samples independently of the rollout trajectory, its gradient is simply an additive term outside the rollout computation graph. Thus, Theorem 4.3 still applies to L(ϕ), with ∇ϕLEDM (ϕ) added independently. 65 Experiments 
+
+We evaluate whether IMCD improves constraint enforcement while preserving generative fidelity under the same experimental conditions as prior work. To enable direct comparison, we adopt the experimental setup of [ 26 ] and focus on isolating the effect of IMCD. Specifically, we assess whether the proposed design reduces infeasible generation through rollout-based training and improves stability across noise levels. 
+
+5.1 Bouncing balls 
+
+We begin with a synthetic bouncing ball experiment, where multiple balls move inside a closed box with elastic ball-ball and ball-wall collisions. This setting enables controlled evaluation of both physical consistency and constraint satisfaction. Following [ 26 ], we generate simulated trajectories with randomized initial positions and velocities using a physics-based simulator [ 16 ]. The dataset contains 100,000 scenarios, each with 10 balls over 100 timesteps. The goal is to model the trajectory distribution while enforcing two constraints: (i) boundary constraints, keeping all balls inside the box, (ii) overlap constraints, preventing overlap between balls. We compare against a diverse set of baselines spanning unconstrained, sampling-time correction and fine-tuning approaches. EDM [ 23 ] serves as the unconstrained pretrained diffusion model. MBM [ 33 ] and MBM++ [ 26 ] incorporate constraint gradients into the score function with scaling and guidance functions in Table 3 to enforce constraint satisfaction at the clean sample. MPGD [ 19 ]is a sampling-time correction method that we adapt with the same diverging scaling schedule as MBM++, omitting decoder projection. PIDM [ 2] adds denoised-state constraint losses to the DSM objective. Since the original formulation does not specify whether pretraining is used, we evaluate both training-from-scratch and fine-tuning variants, denoted PIDM and PIDM (FT). We also include rollout-based fine-tuning baselines, Adjoint Matching (AM) [ 12 ] and DPOK [ 14 ], which optimize rollout-level objectives while regularizing deviation from the unconstrained pretrained model. All methods use the same sampling configuration with 50 reverse-time steps. We evaluate constraint satisfaction using overlap and boundary violation rates, and assess distri-butional fidelity using reweighted ELBO (r-ELBO). To capture physical motion consistency, we introduce three additional metrics. We measure maximum frame-to-frame displacement (F2F) to quantify temporal inconsistency and detect jittering artifacts, maximum contact distance (MCD) to capture worst-case proximity during ball-ball and ball-wall interactions, and maximum energy deviation (MED) to measure violations of kinetic energy conservation over time. We also compute these metrics on ground-truth trajectories for reference. Full definitions of these metrics are provided in the appendix Section D.1. Table 4 reports results on the bouncing ball experiment. Baselines reveal a trade-off between feasibility, physical realism, and fidelity. MPGD enforces constraints perfectly, but its high F2F and MED indicate abrupt frame-to-frame corrections and jittery motion, as visualized in Figure 2. MBM and MBM++ reduce violations but remain unstable or lose physical plausibility under few-step sampling. PIDM and PIDM (FT) preserve plausible dynamics but fail to enforce hard constraints, while DPOK and AM either degrade fidelity or only partially satisfy constraints. Our method avoids these trade-offs: it achieves near-zero boundary and overlap violations while keeping F2F and MED close to the EDM baseline, indicating smooth constraint-aware rollouts rather than abrupt corrections. Its competitive fidelity shows that retaining EDM denoising preserves the training data distribution, yielding the strongest overall balance across metrics. To better understand these gains, we further provide ablation studies on the effect of rollout-based training and the trainable components in Section D.2. 
+
+5.2 Traffic scene trajectory prediction 
+
+We next evaluate real-world traffic scene trajectory prediction on the Interaction dataset [ 52 ], which contains vehicle trajectories from 11 traffic scenarios. Given a short history of observed states, the model predicts future positions and headings for all agents in the scene. This setting tests multi-agent driving behavior modeling under road geometry and vehicle interactions, including staying within drivable areas and avoiding collisions. Following prior work [ 27 , 26 ], we observe one second of motion and predict a three-second future horizon. 7Table 1: Bouncing ball experiment results. We report constraint violation rates, distributional fidelity (r-ELBO), and physical consistency metrics (F2F, MCD, MED). Ground truth values are provided for reference.                                                                                                                                                                                              
+
+> Constraint (%) ↓Fidelity ↑Physical plausibility ( ×10 −1)↓
+> Method Boundary rate Overlap rate r-ELBO ( ×10 −2)F2F MCD MED EDM [23] 6.01 ±0.02 39 .82 ±0.21 −21 .7±0.13.1±0.01.0±0.00.4±0.0
+> MPGD [19] 0.00 ±0.00 0.00 ±0.00 −27 .0±0.18.6±0.40.8±0.029 .7±5.4
+> MBM [33] 0.36 ±0.00 0.16 ±0.00 −22 .2±0.159 .7±0.41.7±0.0510 .9±11 .5
+> MBM++ [26] 0.00 ±0.00 0.00 ±0.00 −22 .8±0.110 .3±0.60.8±0.041 .1±5.9
+> PIDM [2] 11 .07 ±0.15 40 .91 ±0.19 −26 .9±0.12.9±0.01.1±0.00.3±0.0
+> PIDM (FT) [2] 6.40 ±0.04 29 .15 ±0.10 −21 .6±0.13.0±0.00.8±0.00.3±0.0
+> AM [12] 0.49 ±0.01 4.64 ±0.06 −39 .4±0.23.4±0.03.8±0.00.5±0.0
+> DPOK [14] 2.04 ±0.05 1.69 ±0.03 −53 .5±0.12.8±0.04.3±0.00.3±0.0
+> IMCD ( Ours )0.01 ±0.00 0.01 ±0.00 −22 .9±0.03.4±0.11.2±0.00.6±0.0
+> Ground truth 0.00 ±0.00 0.00 ±0.00 –2.8±0.00.4±0.00.3±0.0
+
+Table 2: Traffic scene trajectory prediction results on the INTERACTION DR_DEU_Merging_MT scenario. Ground truth values are provided for reference.                                                                                         
+
+> Constraint (%) ↓Min traj. match ↓Phys. plaus. ↓Diversity ↑
+> Method Offroad Collision ADE 6FDE 6SADE 6SFDE 6SF2F 6SMLV 6MFD 6
+> EDM [23] 9.03 0.42 0.20 0.50 0.27 0.77 1.11 0.41 2.75
+> MPGD [19] 3.78 0.29 0.19 0.46 0.23 0.67 1.04 0.34 1.92
+> MBM++ [26] 3.73 0.29 0.17 0.45 0.22 0.66 1.01 0.31 1.88
+> PIDM (FT) [2] 8.52 0.34 0.18 0.50 0.24 0.76 0.96 0.26 2.67
+> DPOK [14] 5.45 0.03 3.45 9.94 3.34 9.73 0.88 0.40 1.90
+> CriticSMC [27] –1.03 0.35 –––––2.37
+> IMCD ( Ours )0.30 0.00 0.18 0.45 0.23 0.66 1.07 0.43 1.91
+> Ground truth 0.00 0.00 ––––0.83 0.02 –
+
+We compare against the same classes of baselines as in the bouncing ball experiment, excluding MBM and AM, and additionally include CriticSMC [ 27 ]. Our bouncing ball results show that MBM underperforms MBM++, and we found that AM converges slowly and incurs high computational cost in this large-scale trajectory prediction setting. We use DJINN [ 34 ], an EDM-based diffusion model for joint trajectory prediction, as the pretrained backbone, fine-tuning it with the corresponding objective for baselines that require training and for our method. We report our main variant in the main text and defer additional rollout/LoRA variants to Section E.2. For evaluation, we generate six trajectory samples per scene and report metrics covering constraint satisfaction, trajectory match, physical plausibility and diversity. Constraint satisfaction is mea-sured by offroad and collision rates. Trajectory match is evaluated using ego minADE 6/minFDE 6,where scene metrics minSADE 6/minSFDE 6 are computed over all vehicles. Physical plausibility is measured by maximum scene frame-to-frame displacement (SF2F) and maximum scene lateral velocity (SMLV), which capture abrupt motion and unrealistic lateral shift. Diversity is measured by maximum ego final distance (MFD 6) across six samples. Table 2 reports results on the INTERACTION DR_DEU_Merging_MT scenario. Existing methods remain limited in different ways: EDM and PIDM (FT) better preserve diversity and physical plausi-bility but retain substantial violations, while MPGD and MBM++ reduce violations but still incur non-negligible offroad errors. In contrast, our IMCD achieves the strongest feasibility, substantially reducing offroad violations and eliminating collisions while maintaining good trajectory match. Its physical plausibility metrics remain close to EDM, indicating that constraint satisfaction is achieved without severe motion distortion. Overall, IMCD gives the best balance between feasibility and quality under few-step generation. Additional experiments and visualizations on different locations are reported in Section E.5. 86 Related Work 
+
+6.1 Diffusion models for constrained generation 
+
+Constrained diffusion has been approached by modifying either the forward or reverse process. Liu and Wu [29] employ Doob’s h-transform [ 38 ] to construct a drift that confines the diffusion process to the constraint domain at training time. Reflected diffusion model [ 30 ] and constrained diffusion framework proposed by Fishman et al. [15] alter the forward noising process by reflected Brownian motion or log-barrier metrics to confine samples to feasible regions. Projected diffusion [ 8] instead enforces constraints at inference time by projecting noisy samples onto the constraint set at each denoising step, with extensions to multi-robot motion planning [ 25 ]. However, repeated projection of noisy intermediate states can distort the denoising trajectory. More importantly, these methods all require constraints to be analytically formulated upfront, which makes them less applicable when feasibility is observed through violations but not available in closed form, as in our setting. 
+
+6.2 Reward-driven fine-tuning and controlled diffusion 
+
+Fine-tuning diffusion models with reward or energy objectives is closely related to our training formulation. We defer a detailed comparison with AM and DPOK to Section A. A related line of work views diffusion sampling as stochastic optimal control, where methods such as AM, Adjoint sampling (AS) [ 18 ] and Adjoint Schrodinger bridge Sampler (ASBS) [ 28 ] learn reverse-time controls that drive samples toward reward- or energy-defined targets. ASBS further extends AS to arbitrary source distributions. However, both methods are designed to optimize reward or energy objective directly, rather than leverage a pretrained model as the base distribution. In contrast, our goal is constrained generation, which fine-tunes a pretrained denoiser through its sampling rollout to improve feasibility while preserving the learned data distribution. 
+
+6.3 Diffusion models for autonomous driving 
+
+Several recent works have explored diffusion models for autonomous driving planning. DJINN [ 34 ]jointly diffuses trajectories of all agents for realistic scenario generation, but is primarily designed for simulation rather than planning, and does not focus on constraint satisfaction. Diffusion-ES [ 47 ]combines gradient-free evolutionary search with a diffusion trajectory model to optimize non-differentiable test-time reward objectives, but operates on the ego vehicle only without modeling interactions with other agents. Diffusion Planner [ 54 ] jointly models ego planning and agent pre-diction with a unified diffusion architecture, and applies classifier guidance at inference time to achieve constraint satisfaction, but may encounter the sampling-time correction limitation discussed in Section 3.2. 
+
+## 7 Discussion and future work 
+
+Our method IMCD provides a rollout-based fine-tuning framework for constrained diffusion gener-ation that addresses training-time misalignment. By minimizing constraint violations on terminal rollout samples, the model learns corrections under its own sampling dynamics rather than relying on post hoc guidance. Both theory and experiments show that our method improves constraint satisfaction while preserving distributional fidelity across bouncing ball simulation and autonomous driving tasks. While effective, the current inference procedure still involves constraint-gradient com-putation during the reverse rollout, adding modest computational overhead. A promising direction is to improve efficiency through distillation, where a standalone denoiser learns to approximate the constraint-aware updates directly. Another important direction is to extend rollout-based fine-tuning to higher-dimensional visual domains and broader application settings where feasibility is specified by task-specific violation signals. 
+
+## Acknowledgment 
+
+We acknowledge the support of the Natural Sciences and Engineering Research Council of Canada (NSERC), the Alberta Machine Intelligence Institute (Amii) through the Canada CIFAR AI Chairs Program, Inverted AI, Mitacs, and Google. This research was enabled in part by technical support 9and computational resources provided by the Digital Research Alliance of Canada (alliancecan.ca), the Advanced Research Computing at the University of British Columbia (arc.ubc.ca), and Amazon Web Services. 
+
+## References 
+
+[1] Brian DO Anderson. Reverse-time diffusion equation models. Stochastic Processes and their Applications , 12(3):313–326, 1982. [2] Jan-Hendrik Bastek, WaiChing Sun, and Dennis M Kochmann. Physics-informed diffusion models. arXiv preprint arXiv:2403.14404 , 2024. [3] Iz Beltagy, Matthew E Peters, and Arman Cohan. Longformer: The long-document transformer. 
+
+arXiv preprint arXiv:2004.05150 , 2020. [4] Giulio Biroli, Tony Bonnaire, Valentin De Bortoli, and Marc Mézard. Dynamical regimes of diffusion models. Nature Communications , 15(1):9957, 2024. [5] Benjamin Boys, Mark Girolami, Jakiw Pidstrigach, Sebastian Reich, Alan Mosca, and O Deniz Akyildiz. Tweedie moment projected diffusions for inverse problems. arXiv preprint arXiv:2310.06721 , 2023. [6] Joao Carvalho, An T Le, Mark Baierl, Dorothea Koert, and Jan Peters. Motion planning diffusion: Learning and planning of robot motions with diffusion models. In 2023 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) , pages 1916–1923. IEEE, 2023. [7] Tianqi Chen, Bing Xu, Chiyuan Zhang, and Carlos Guestrin. Training deep nets with sublinear memory cost. arXiv preprint arXiv:1604.06174 , 2016. [8] Jacob K Christopher, Stephen Baek, and Ferdinando Fioretto. Projected generative diffusion models for constraint satisfaction. arXiv preprint arXiv:2402.03559 , 2024. [9] Hyungjin Chung, Jeongsol Kim, Michael T Mccann, Marc L Klasky, and Jong Chul Ye. Diffu-sion posterior sampling for general noisy inverse problems. arXiv preprint arXiv:2209.14687 ,2022. [10] Hyungjin Chung, Jeongsol Kim, Geon Yeong Park, Hyelin Nam, and Jong Chul Ye. Cfg++: Manifold-constrained classifier free guidance for diffusion models. arXiv preprint arXiv:2406.08070 , 2024. [11] Prafulla Dhariwal and Alexander Nichol. Diffusion models beat gans on image synthesis. 
+
+Advances in neural information processing systems , 34:8780–8794, 2021. [12] Carles Domingo-Enrich, Michal Drozdzal, Brian Karrer, and Ricky TQ Chen. Adjoint matching: Fine-tuning flow and diffusion generative models with memoryless stochastic optimal control. 
+
+arXiv preprint arXiv:2409.08861 , 2024. [13] Bradley Efron. Tweedie’s formula and selection bias. Journal of the American Statistical Association , 106(496):1602–1614, 2011. [14] Ying Fan, Olivia Watkins, Yuqing Du, Hao Liu, Moonkyung Ryu, Craig Boutilier, Pieter Abbeel, Mohammad Ghavamzadeh, Kangwook Lee, and Kimin Lee. Dpok: Reinforcement learning for fine-tuning text-to-image diffusion models. Advances in Neural Information Processing Systems , 36:79858–79885, 2023. [15] Nic Fishman, Leo Klarner, Valentin De Bortoli, Emile Mathieu, and Michael John Hutchinson. Diffusion models for constrained domains. Transactions on Machine Learning Research , 2023. [16] Zhe Gan, Chunyuan Li, Ricardo Henao, David E Carlson, and Lawrence Carin. Deep temporal sigmoid belief networks for sequence modeling. Advances in Neural Information Processing Systems , 28, 2015. 10 [17] William Harvey, Saeid Naderiparizi, Vaden Masrani, Christian Weilbach, and Frank Wood. Flexible diffusion modeling of long videos. Advances in neural information processing systems ,35:27953–27965, 2022. [18] Aaron Havens, Benjamin Kurt Miller, Bing Yan, Carles Domingo-Enrich, Anuroop Sriram, Brandon Wood, Daniel Levine, Bin Hu, Brandon Amos, Brian Karrer, et al. Adjoint sampling: Highly scalable diffusion samplers via adjoint matching. arXiv preprint arXiv:2504.11713 ,2025. [19] Yutong He, Naoki Murata, Chieh-Hsin Lai, Yuhta Takida, Toshimitsu Uesaka, Dongjun Kim, Wei-Hsiang Liao, Yuki Mitsufuji, J Zico Kolter, Ruslan Salakhutdinov, et al. Manifold preserv-ing guided diffusion. In The Twelfth International Conference on Learning Representations ,2024. [20] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilistic models. Advances in neural information processing systems , 33:6840–6851, 2020. [21] Jonathan Ho, Tim Salimans, Alexey Gritsenko, William Chan, Mohammad Norouzi, and David J Fleet. Video diffusion models. Advances in neural information processing systems , 35: 8633–8646, 2022. [22] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Liang Wang, Weizhu Chen, et al. Lora: Low-rank adaptation of large language models. Iclr , 1(2):3, 2022. [23] Tero Karras, Miika Aittala, Timo Aila, and Samuli Laine. Elucidating the design space of diffusion-based generative models. Advances in neural information processing systems , 35: 26565–26577, 2022. [24] Mingxiao Li, Tingyu Qu, Ruicong Yao, Wei Sun, and Marie-Francine Moens. Alleviating exposure bias in diffusion models through sampling with shifted time steps. arXiv preprint arXiv:2305.15583 , 2023. [25] Jinhao Liang, Jacob K Christopher, Sven Koenig, and Ferdinando Fioretto. Simultaneous multi-robot motion planning with projected diffusion models. arXiv preprint arXiv:2502.03607 ,2025. [26] Xiaoxuan Liang, Saeid Naderiparizi, Yunpeng Liu, Berend Zwartsenberg, and Frank Wood. Improved constrained generation by bridging pretrained generative models. arXiv preprint arXiv:2603.06742 , 2026. [27] Vasileios Lioutas, Jonathan Wilder Lavington, Justice Sefas, Matthew Niedoba, Yunpeng Liu, Berend Zwartsenberg, Setareh Dabiri, Frank Wood, and Adam Scibior. Critic sequential monte carlo. In The Eleventh International Conference on Learning Representations , 2023. [28] Guan-Horng Liu, Jaemoo Choi, Yongxin Chen, Benjamin Kurt Miller, and Ricky TQ Chen. Adjoint schr \" odinger bridge sampler. arXiv preprint arXiv:2506.22565 , 2025. [29] Xingchao Liu and Lemeng Wu. Learning diffusion bridges on constrained domains. In 
+
+international conference on learning representations (ICLR) , 2023. [30] Aaron Lou and Stefano Ermon. Reflected diffusion models. In International Conference on Machine Learning , pages 22675–22701. PMLR, 2023. [31] Saeid Naderiparizi, Adam Scibior, Andreas Munk, Mehrdad Ghadiri, Atilim Gunes Baydin, Bradley J Gram-Hansen, Christian A Schroeder De Witt, Robert Zinkov, Philip Torr, Tom Rainforth, et al. Amortized rejection sampling in universal probabilistic programming. In 
+
+International Conference on Artificial Intelligence and Statistics , pages 8392–8412. PMLR, 2022. [32] Saeid Naderiparizi, Xiaoxuan Liang, Setareh Cohan, Berend Zwartsenberg, and Frank Wood. Don’t be so negative! score-based generative modeling with oracle-assisted guidance. In 
+
+Forty-first International Conference on Machine Learning , 2024. 11 [33] Saeid Naderiparizi, Xiaoxuan Liang, Berend Zwartsenberg, and Frank Wood. Constrained generative modeling with manually bridged diffusion models. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 39, pages 19607–19615, 2025. [34] Matthew Niedoba, Jonathan Lavington, Yunpeng Liu, Vasileios Lioutas, Justice Sefas, Xiaoxuan Liang, Dylan Green, Setareh Dabiri, Berend Zwartsenberg, Adam Scibior, et al. A diffusion-model of joint interactive navigation. Advances in Neural Information Processing Systems , 36, 2024. [35] Mang Ning, Enver Sangineto, Angelo Porrello, Simone Calderara, and Rita Cucchiara. Input perturbation reduces exposure bias in diffusion models. arXiv preprint arXiv:2301.11706 , 2023. [36] Ethan Perez, Florian Strub, Harm De Vries, Vincent Dumoulin, and Aaron Courville. Film: Visual reasoning with a general conditioning layer. In Proceedings of the AAAI conference on artificial intelligence , volume 32, 2018. [37] Lyle Regenwetter, Giorgio Giannone, Akash Srivastava, Dan Gutfreund, and Faez Ahmed. Constraining generative models for engineering design with negative data. Transactions on Machine Learning Research , 2024. [38] Leonard CG Rogers and David Williams. Diffusions, markov processes, and martingales: Volume 1, foundations . Cambridge university press, 2000. [39] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Björn Ommer. High-resolution image synthesis with latent diffusion models. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 10684–10695, 2022. [40] John Schulman, Yan Duan, Jonathan Ho, Alex Lee, Ibrahim Awwal, Henry Bradlow, Jia Pan, Sachin Patil, Ken Goldberg, and Pieter Abbeel. Motion planning with sequential convex optimization and convex collision checking. The International Journal of Robotics Research ,33(9):1251–1270, 2014. [41] Yifei Shen, Xinyang Jiang, Yifan Yang, Yezhen Wang, Dongqi Han, and Dongsheng Li. Understanding and improving training-free loss-based diffusion guidance. Advances in Neural Information Processing Systems , 37:108974–109002, 2024. [42] Jascha Sohl-Dickstein, Eric Weiss, Niru Maheswaranathan, and Surya Ganguli. Deep unsuper-vised learning using nonequilibrium thermodynamics. In International conference on machine learning , pages 2256–2265. PMLR, 2015. [43] Yang Song and Stefano Ermon. Generative modeling by estimating gradients of the data distribution. Advances in neural information processing systems , 32, 2019. [44] Yang Song, Jascha Sohl-Dickstein, Diederik P Kingma, Abhishek Kumar, Stefano Ermon, and Ben Poole. Score-based generative modeling through stochastic differential equations. In 
+
+International Conference on Learning Representations , 2021. [45] A Vaswani. Attention is all you need. Advances in Neural Information Processing Systems ,2017. [46] Pascal Vincent. A connection between score matching and denoising autoencoders. Neural computation , 23(7):1661–1674, 2011. [47] Brian Yang, Huangyuan Su, Nikolaos Gkanatsios, Tsung-Wei Ke, Ayush Jain, Jeff Schneider, and Katerina Fragkiadaki. Diffusion-es: Gradient-free planning with diffusion for autonomous driving and zero-shot instruction following. arXiv preprint arXiv:2402.06559 , 2024. [48] Lingxiao Yang, Shutong Ding, Yifan Cai, Jingyi Yu, Jingya Wang, and Ye Shi. Guidance with spherical gaussian constraint for conditional diffusion. arXiv preprint arXiv:2402.03201 , 2024. [49] Haotian Ye, Haowei Lin, Jiaqi Han, Minkai Xu, Sheng Liu, Yitao Liang, Jianzhu Ma, James Zou, and Stefano Ermon. Tfg: Unified training-free guidance for diffusion models. Advances in Neural Information Processing Systems , 37:22370–22417, 2024. 12 [50] Jiwen Yu, Yinhuai Wang, Chen Zhao, Bernard Ghanem, and Jian Zhang. Freedom: Training-free energy-guided conditional diffusion model. In Proceedings of the IEEE/CVF International Conference on Computer Vision , pages 23174–23184, 2023. [51] Tianhe Yu, Saurabh Kumar, Abhishek Gupta, Sergey Levine, Karol Hausman, and Chelsea Finn. Gradient surgery for multi-task learning. Advances in neural information processing systems ,33:5824–5836, 2020. [52] Wei Zhan, Liting Sun, Di Wang, Haojie Shi, Aubrey Clausse, Maximilian Naumann, Julius Kummerle, Hendrik Konigshof, Christoph Stiller, Arnaud de La Fortelle, et al. Interaction dataset: An international, adversarial and cooperative motion dataset in interactive driving scenarios with semantic maps. arXiv preprint arXiv:1910.03088 , 2019. [53] Mingyuan Zhang, Zhongang Cai, Liang Pan, Fangzhou Hong, Xinying Guo, Lei Yang, and Ziwei Liu. Motiondiffuse: Text-driven human motion generation with diffusion model. arXiv preprint arXiv:2208.15001 , 2022. [54] Yinan Zheng, Ruiming Liang, Kexin Zheng, Jinliang Zheng, Liyuan Mao, Jianxiong Li, Weihao Gu, Rui Ai, Shengbo Eben Li, Xianyuan Zhan, et al. Diffusion-based planning for autonomous driving with flexible guidance. arXiv preprint arXiv:2501.15564 , 2025. 13 A Algorithm 
+
+Algorithm 1 Rollout-Based Constrained Fine-Tuning 
+
+Require: Pretrained denoiser D, fine-tuned denoiser Dϕ initialized from D, scaling network γϕ,constraint loss ℓΩ, noise schedule {ti}Ni=0 , training data D, division stabilizer ϵ = 10 −5. 
+
+> 1:
+
+while not converged do  
+
+> 2:
+
+// Rollout  
+
+> 3:
+
+Sample xT ∼ N (0 , t 2 
+
+> N
+
+I) 
+
+> 4:
+
+for i = T, . . . , 1 do  
+
+> 5:
+
+Compute constraint-aware fine-tuned denoiser DΩ 
+
+> ϕ
+
+(˜ xi; ti) with Equation (13).  
+
+> 6:
+
+Update the rollout state to ˜xi−1. 
+
+> 7:
+
+end for  
+
+> 8:
+
+// Losses  
+
+> 9:
+
+Lrollout ← ℓΩ(˜ x0) ▷ Terminal state only  
+
+> 10:
+
+Sample x0 ∼ D , xt ∼ q(xt | x0) 
+
+> 11:
+
+LEDM ← λ(t)∥DΩ 
+
+> ϕ
+
+(xt; t) − x0∥2 
+
+> 12:
+
+// Dynamic Scaling and Update  
+
+> 13:
+
+κ ← sg( LEDM )sg( Lrollout )+ ϵ 
+
+> 14:
+
+L ← L EDM + κLrollout  
+
+> 15:
+
+Update ϕ ← ϕ − η∇ϕL ▷ Gradients flow only through ϕ 
+
+> 16:
+
+end while Rollout-based fine-tuning and stochastic optimal control Our rollout-based training admits a natural stochastic optimal control (SOC) interpretation: the reverse denoising process induced by the pretrained denoiser D(xt; t) and constraint-aware fine-tuned denoiser DΩ 
+
+> ϕ
+
+correspond to the base and controlled stochastic process respectively, and the rollout constraint loss acts as a terminal cost. This connects our approach to Adjoint Matching (AM) [ 12 ], which provides a formal SOC grounding for reward fine-tuning of generative models via rollout-based optimization. It is also related to DPOK [ 14 ], which frames the denoising chain as a Markov decision process (MDP) and applies policy gradient with KL regularization. Both AM and DPOK approaches regularize the fine-tuned model by minimizing its KL divergence from the pretrained model, treating the pretrained model as the reference. AM additionally incurs significant computational overhead beyond rollout simulation, as each gradient update requires integrating the lean adjoint ODE backward through the trajectory. However, in our setting, the pretrained denoiser can produce samples that violate the constraints, so enforcing proximity to it can perpetuate these errors. Instead, we rely on initialization from the pretrained model, anchor to the data distribution directly via the denoising objective, and combine it with rollout-time constraint losses to drive the sampler toward the feasible manifold, preserving consistency with the data rather than with the pretrained model’s potentially infeasible outputs. 
+
+Gradient embeddings Following MBM++, the constraint gradient is embedded with a lightweight MLP and added once to xt as input to Dϕ(xt; t). Since this modifies the model input distribution seen by the pretrained backbone, we introduce LoRA adapters [ 22 ] in the attention layers of Dϕ to provide the necessary adaptation capacity. Table 3: A summary table of scaling and guidance functions for various methods. MBM [33] MBM++ [26] IMCD (ours) 
+
+γ(xt; t) c/t 2 c/t 2 αϕ(xt; t) · tβϕ(xt;t)
+
+GΩ(xt; t) ∂1ℓΩ(xt; t) ∂1ℓΩ(D(xt; t); t) ∂1ℓΩ(D(xt; t); t)
+
+14 B Derivation of proofs 
+
+B.1 Proof of Proposition 4.2 
+
+Proof. Given the formulation of pΩ(xt; t), take gradient ∇xt log pΩ(xt; t) and treat γt(xt; t) as constant with respect to xt. This yields the score decomposition in Definition 4.1. For the convergence of denoising terminal state to the constrained region, since βϕ < −1, tβϕ → ∞ as t → 0. Given 
+
+αϕ > 0, we have γϕ(xt; t) → ∞ as t → 0. Then 
+
+lim  
+
+> t→0
+
+exp( −γϕ(xt; t)ℓΩ(xt; t)) = 
+
+ 1 if ℓΩ(xt; t) = 0 0 if ℓΩ(xt; t) > 0 (21) Therefore, 
+
+lim  
+
+> t→0
+
+pΩ(xt; t) ∝ lim  
+
+> t→0
+
+p(xt; t)1Ω(xt), (22) meaning that as t → 0, the distribution concentrates on the constrained region Ω, ensuring that the terminal denoised sample x0 ∼ p(x0, 0) lies within Ω.
+
+B.2 Proof of Theorem 4.3 
+
+Proof. Since each ϵi is independent of ϕ, the trajectory {xi}Ni=0 is a deterministic differentiable function of ϕ. Because each f (i) 
+
+> ϕ
+
+is differentiable, then the composed map Fϕ is differentiable. By chain rule, 
+
+∇ϕℓΩ(Fϕ(xN )) = ∇xϕ
+
+> 0
+
+ℓΩ(xϕ 
+
+> 0
+
+) ∂F ϕ(xN )
+
+∂ϕ . (23) Then the gradient of Lrollout (ϕ) with respect to ϕ is 
+
+∇ϕLrollout (ϕ) = ∇ϕEp(xN )
+
+ℓΩ(Fϕ(xN ))  = Ep(xN )
+
+∇ϕℓΩ(Fϕ(xN ))  (24) 
+
+= Ep(xN )
+
+
+
+∇xϕ
+
+> 0
+
+ℓΩ(xϕ 
+
+> 0
+
+) ∂F ϕ(xN )
+
+∂ϕ 
+
+
+
+(25) by interchanging differentiation with expectation. Now we expand ∂F ϕ(xN ) 
+
+> ∂ϕ
+
+by applying the chain rule through the individual step f (i) 
+
+> ϕ
+
+:
+
+∂F ϕ(xN )
+
+∂ϕ =
+
+> N
+
+X
+
+> i=1
+
+∂xϕ
+
+> 0
+
+∂xϕi
+
+· ∂xϕi
+
+∂ϕ , (26) where ∂xϕ
+
+> 0
+> ∂xϕi
+
+is the Jacobian of the terminal state xϕ 
+
+> 0
+
+with respect to the intermediate state xϕi . The second term ∂xϕi 
+
+> ∂ϕ
+
+, where xϕi = f (i+1)  
+
+> ϕ
+
+(xi+1 ), can be further decomposed to: 
+
+∂xϕi
+
+∂ϕ = ∂f (i+1)  
+
+> ϕ
+
+(xi+1 )
+
+∂xϕi+1 
+
+· ∂xϕi+1 
+
+∂ϕ + ∂f (i+1)  
+
+> ϕ
+
+(xi+1 )
+
+∂ϕ . (27) Given this recursive pattern with base case ∂xN 
+
+> ∂ϕ
+
+= 0 as xN is independent of ϕ, we have 
+
+∂xϕN −1
+
+∂ϕ = ∂f (N ) 
+
+> ϕ
+
+(xN )
+
+∂xϕN
+
+· ∂xϕN
+
+∂ϕ + ∂f (N ) 
+
+> ϕ
+
+(xN )
+
+∂ϕ = ∂f (N ) 
+
+> ϕ
+
+(xN )
+
+∂ϕ , (28) 
+
+∂xϕN −2
+
+∂ϕ = ∂f (N −1)  
+
+> ϕ
+
+(xN −1)
+
+∂xϕN −1
+
+· ∂xϕN −1
+
+∂ϕ + ∂f (N −1)  
+
+> ϕ
+
+(xN −1)
+
+∂ϕ (29) 
+
+= ∂f (N −1)  
+
+> ϕ
+
+(xN −1)
+
+∂xϕN −1
+
+· ∂f (N ) 
+
+> ϕ
+
+(xN )
+
+∂ϕ + ∂f (N −1)  
+
+> ϕ
+
+(xN −1)
+
+∂ϕ (30) 
+
+= ∂xϕN −2
+
+∂xϕN −1
+
+· ∂f (N ) 
+
+> ϕ
+
+(xN )
+
+∂ϕ + ∂f (N −1)  
+
+> ϕ
+
+(xN −1)
+
+∂ϕ . (31) 15 This gives a general form for i ∈ { 0, 1, · · · , N − 1}:
+
+∂xϕi
+
+∂ϕ =
+
+> N
+
+X
+
+> j=i+1
+
+∂xϕi
+
+∂xϕj−1
+
+· ∂f (j) 
+
+> ϕ
+
+(xj )
+
+∂ϕ . (32) Then 
+
+∂F ϕ(xN )
+
+∂ϕ = ∂xϕ
+
+> 0
+
+∂ϕ =
+
+> N
+
+X
+
+> i=1
+
+∂xϕ
+
+> 0
+
+∂xϕi−1
+
+· ∂f (i) 
+
+> ϕ
+
+(xi)
+
+∂ϕ . (33) Therefore, 
+
+∇ϕLrollout (ϕ) = Ep(xN )
+
+" NX
+
+> i=1
+
+∇xϕ
+
+> 0
+
+ℓΩ(xϕ 
+
+> 0
+
+) ∂xϕ
+
+> 0
+
+∂xϕi−1
+
+∂f (i) 
+
+> ϕ
+
+(xi)
+
+∂ϕ 
+
+#
+
+. (34) 
+
+Corollary B.1. (Unbiased gradient estimator) Let xN be a single initial noise sample and let 
+
+{xϕi }N −1 
+
+> i=0
+
+be the trajectory by rolling out {f (i) 
+
+> ϕ
+
+}Ni=1 . Then the single sample estimator 
+
+h(ϕ) = 
+
+> N
+
+X
+
+> i=1
+
+∇xϕ
+
+> 0
+
+ℓΩ(xϕ 
+
+> 0
+
+) ∂xϕ
+
+> 0
+
+∂xϕi−1
+
+∂f (i) 
+
+> ϕ
+
+(xi)
+
+∂ϕ (35) 
+
+is an unbiased estimator of ∇ϕLrollout (ϕ).Proof. This is an immediate conclusion from Theorem 4.3. Since h(ϕ) is a fixed realization, this result is obtained by taking expectation over p(xN ) and interchanging expectation and differentiation, which is, 
+
+∇ϕLrollout (ϕ) = Ep(xN ) [h(ϕ)] . (36) 
+
+## C Multiple constraint gradients and scaling network architecture 
+
+To handle potential conflicts between multiple gradients, we apply a symmetric gradient projection inspired by PCGrad [ 51 ]. Let {gj }Jj=1 denote the gradients associated with J constraint losses. For each pair of constraints (gj , gk), if g⊤ 
+
+> j
+
+gk < 0, we remove the conflicting component from both gradients: 
+
+g′ 
+
+> k
+
+← gk − g⊤ 
+
+> k
+
+gj
+
+∥gj ∥2 + ϵ gj , (37) 
+
+g′ 
+
+> j
+
+← gj − g⊤ 
+
+> j
+
+gk
+
+∥gk∥2 + ϵ gk, (38) where ϵ = 10 −5. If g⊤ 
+
+> j
+
+gk ≥ 0, the gradients are left unchanged. The corrected gradients are then combined to form the final constraint direction. Therefore, the scaling network learns a global correction magnitude rather than per-constraint weights while mitigating destructive interference between constraints. In both our experiments, J = 2 , so this reduces to the symmetric two gradient updates described above. The scaling network γϕ is implemented as three MLPs with linear layers and SiLU activations. The first MLP processes the noisy state xt to a feature embedding. The second MLP maps the noise level t to a time embedding, which is split into scale and shift components for FiLM-style [ 36 ]conditioning of the feature embedding. The third MLP maps the conditioned features to αϕ and βϕ.Together, these outputs determine the correction magnitude through Equation (9). Experiment-specific parameterizations of αϕ and βϕ are provided in the corresponding experiment detail sections. 16 D Bouncing balls experiment details 
+
+D.1 Definition of constraint losses and evaluation metrics 
+
+We provide the full definitions of the constraint losses and evaluation metrics used in the bouncing balls experiment. Each scene contains B = 10 balls in a 10 × 10 square box, with ball radius r = 0 .5.Let x(b) 
+
+> τ
+
+∈ R2 denote the center position of ball b at frame τ , for τ = 1 , · · · , T and T = 100 .
+
+Constraint losses We first define the boundary and overlap losses used to measure constraint violations. The boundary loss measures ball-wall penetration. Since the center of each ball remains in [r, 10 − r]2, we define 
+
+ℓboundary (x(b) 
+
+> τ
+
+) = max {r − x(b)
+
+> τ, 1
+
+, x(b) 
+
+> τ, 1
+
+− (10 − r), r − x(b)
+
+> τ, 2
+
+, x(b) 
+
+> τ, 2
+
+− (10 − r), 0}. (39) The overlap loss measures overlap between pairs of balls: 
+
+ℓoverlap (x(b) 
+
+> τ
+
+, x(b′) 
+
+> τ
+
+= max(2 r − ∥ x(b) 
+
+> τ
+
+− x(b′) 
+
+> τ
+
+∥, 0) . (40) 
+
+Reported metrics The boundary rate is the fraction of frames in which at least one ball has positive boundary loss: Boundary rate = 1
+
+T
+
+> T
+
+X
+
+> t=1
+
+1
+
+
+
+max  
+
+> b
+
+ℓboundary 
+
+
+
+x(b)
+
+> τ
+
+
+
+> 0
+
+
+
+. (41) The overlap rate is the fraction of frames in which at least one pair of balls has positive overlap loss: Overlap rate = 1
+
+T
+
+> T
+
+X
+
+> t=1
+
+1
+
+
+
+max  
+
+> b<b ′
+
+ℓoverlap 
+
+
+
+x(b) 
+
+> τ
+
+, x(b′)
+
+> τ
+
+
+
+> 0
+
+
+
+. (42) The maximum frame-to-frame displacement (F2F) measures abrupt motion or jitter: 
+
+F2F = max  
+
+> b,t< T
+
+∥x(b)  
+
+> τ+1
+
+− x(b) 
+
+> τ
+
+∥2. (43) The maximum contact distance (MCD) measures whether sharp direction changes are supported by nearby contacts. We estimate velocity directly from consecutive positions, which is more reliable than using predicted velocity in generated samples. Specifically, we define 
+
+v(b) 
+
+> τ
+
+= x(b)  
+
+> τ+1
+
+− x(b) 
+
+> τ
+
+. (44) We then mark (b, τ ) as a candidate bounce if the angle between v(b)  
+
+> τ+1
+
+and v(b) 
+
+> τ
+
+exceeds π 
+
+> 6
+
+. Formally, 
+
+B =
+
+(b, τ ) : arccos 
+
+ v(b) 
+
+> τ−1
+> ⊤
+
+v(b)
+
+> τ
+
+∥v(b) 
+
+> τ−1
+
+∥∥ v(b) 
+
+> τ
+
+∥ + ϵ
+
+ > π
+
+6
+
+ , (45) where τ = 2 , · · · , T − 1. For each candidate bounce (b, τ ), we compute the signed distance to the nearest possible contact object over a local temporal window 
+
+Wτ = {τ − 1, τ, τ + 1 }. (46) This accounts for small discretization offsets between the detected direction change and the actual contact frame. The signed wall distance is 
+
+dwall (b, s ) = min {x(b) 
+
+> s, 1
+
+− r, 10 − r − x(b)
+
+> s, 1
+
+, x(b) 
+
+> s, 2
+
+− r, 10 − r − x(b)
+
+> s, 2
+
+}, (47) and the signed ball-ball distance is 
+
+dball (b, s ) = min  
+
+> b′̸=b
+
+
+
+∥x(b) 
+
+> s
+
+− x(b′) 
+
+> s
+
+∥ − 2r
+
+
+
+. (48) We collect all candidate signed contact distances in the local window: 
+
+D(b, τ ) = {dwall (b, s ) : s ∈ W τ } ∪ { dball (b, s ) : s ∈ W τ }. (49) 17 Table 4: Ablation study of bouncing ball experiment 
+
+Constraint (%) ↓ Fidelity ↑ Physical plausibility ( ×10 −1) ↓
+
+Method Boundary rate Overlap rate r-ELBO ( ×10 −2) F2F MCD MED FP training 0.78 ± 0.03 2.83 ± 0.06 −21 .7 ± 0.1 4.1 ± 0.0 0.5 ± 0.0 1.3 ± 0.1
+
+Rollout-only 0.07 ± 0.01 0.01 ± 0.00 −23 .4 ± 0.0 5.4 ± 0.0 0.9 ± 0.0 1.9 ± 0.1
+
+IMCD 0.01 ± 0.00 0.01 ± 0.00 −22 .9 ± 0.0 3.4 ± 0.0 1.2 ± 0.0 0.6 ± 0.010 −3       
+
+> 10 −1
+> 10 1
+> 1.21.4
+> αφ(x t;t)
+> 10 −3
+> 10 −1
+> 10 1
+> −3.0
+> −2.9
+> −2.8
+> βφ(x t;t)
+> 10 −3
+> 10 −1
+> 10 1
+> 02000 4000
+> t2γφ(x t;t)
+> 10 −3
+> 10 −1
+> 10 1
+> 10 −1
+> 10 5
+> 10 11
+> γφ(x t;t)
+> noise level σ(t) = t
+
+Figure 3: Scaling network output versus noise level σ along denoising trajectory for bouncing ball experiment, Means are taken over batches; shaded bands show ±1 standard error. MCD is then defined as 
+
+MCD = max   
+
+> (b,τ )∈B
+
+min   
+
+> d∈D (b,τ )
+
+|d|. (50) Finally, the maximum energy deviation (MED) measures frame-wise inconsistency in system kinetic energy. Assuming unit mass and constant time step, we define the kinetic energy proxy 
+
+Eτ =
+
+> B
+
+X
+
+> b=1
+
+12 ∥x(b)  
+
+> τ+1
+
+− x(b) 
+
+> τ
+
+∥22. (51) The maximum energy deviation is: 
+
+MED = max  
+
+> t< T − 1
+
+|Eτ +1 − Eτ |. (52) All maximum-based metrics are computed within each generated trajectory and then averaged over evaluation batches. We report the mean and standard deviation over four independent evaluation runs. 
+
+D.2 Ablation study 
+
+We further conduct ablations to isolate the contribution of each component in our framework. FP training replaces rollout-based training with standard forward process training, which introduces a mismatch between training and sampling dynamics. It keeps the learned scaling network and gradient embeddings trainable. Rollout-only keeps rollout-based training and the same trainable scaling network and gradient embeddings, but removes LoRA adaptations. Finally, IMCD combines rollout-based training approach, the learned scaling network, gradient embeddings, and LoRA adaptation. Rather than performing a discrete ablation on the scaling network, we analyze its learned behavior across noise levels. As shown in Figure 3, both learned components are noise dependent: αϕ is not a constant multiplier, and βϕ varies smoothly along the sampling trajectory. To compare with prior schedules of the form ct −2 in Table 3, we plot t2γϕ(xt; t). This quantity would be constant under such a ct −2 schedule, but instead changes substantially across noise levels. This suggests that the scaling network learns a nontrivial modulation beyond a fixed power law. Moreover, γϕ(xt; t) grows rapidly as the noise level decreases, consistent with stronger constraint enforcement near the data manifold. 
+
+D.3 Effect of sampling steps on sampling-time correction 
+
+MPGD without projection [ 19 ] performs constraint correction only during sampling, without updating the pretrained model. We evaluate it on the bouncing ball task with 50 , 100 , 150 , 200 denoising steps, 18 Table 5: Effect of sampling steps on MPGD without projection in the bouncing ball task                                                                     
+
+> Constraint (%) ↓Physical plausibility ( ×10 −1)↓
+> Steps Boundary rate Overlap rate F2F MCD MED 50 0.0±0.00.0±0.08.6±0.40.8±0.029 .7±5.4
+> 100 0.0±0.00.0±0.03.8±0.20.6±0.03.2±0.9
+> 150 0.0±0.00.0±0.03.2±0.00.6±0.00.6±0.1
+> 200 0.0±0.00.0±0.03.1±0.00.6±0.00.4±0.1
+
+where 50 matches the main method setting. This ablation tests how sensitive sampling-time correction is to the number of steps for incremental updates along the denoising trajectory. Table 5 shows that MPGD achieves zero boundary and collision violations across all various sampling steps, but its physical plausibility depends strongly on the number of denoising steps. With 50 steps, matching the main evaluation setting, MPGD exhibits large frame-to-frame changes (F2F) and high energy deviation (MED), indicating that feasibility is obtained through many incremental corrections. This supports the claim that sampling-time correction methods can enforce constraints, but may rely on many incremental updates to avoid physically infeasible trajectories. 
+
+D.4 Scaling network parameterization 
+
+The third MLP outputs αϕ and a raw exponent parameter βraw  
+
+> ϕ
+
+. We use a softplus output for 
+
+αϕ to ensure a nonnegative magnitude, and map the raw exponent to the effective component as 
+
+2sigmoid( βraw  
+
+> ϕ
+
+) − 4. This offset incorporates the known scaling of the denoised-state guidance term: the denoiser Jacobian contributes a factor cov [ x0 | xt] /t 2, and the score parameterization 
+
+(E [x0 | xt]−xt)/t 2 contributes an additional t−2 factor. Thus the t−4 component is fixed analytically, while the network learns the remaining state- and noise-dependent covariance modulation. This parameterization preserves the desired divergence property as noise level approaches zero without requiring a manually tuned schedule. 
+
+D.5 Training details 
+
+We follow the prior work [ 26 ] for the experimental setup, using the same transformer-based diffusion backbone [ 45 , 53 , 3] and gradient embedding MLP. We use the same log-linear noise schedule for sampling with σmin = 3 × 10 −5 and σmax = 80 but use 50 sampling steps. The standard EDM model is trained from scratch for 950 k iterations with learning rate 3 × 10 −4 on a Tesla V100 GPU, taking approximately 70 hours. Our proposed fine-tuned model additionally uses the scaling network described in Section C, and includes LoRA adapters. Our model and other baseline models are either initialized from scratch or from the pretrained EDM checkpoint, as specified in their method descriptions, and are trained with learning rate 3 × 10 −5 for approximately 72 hours on an NVIDIA L40S GPU. The number of training iterations varies across methods due to differences in computational cost. All models use the Adam optimizer; our method and DPOK use batch size 16 ,while other fine-tuning models use batch size 32 .
+
+## E Traffic scene trajectory prediction experiment details 
+
+E.1 Definition of constraint losses and evaluation metrics 
+
+We provide the definition of the constraint losses and evaluation metrics used in the traffic scene prediction experiment. Each scene contains a varying number of agents. Given the first 10 frames observed, the model jointly predicts all agents over a future prediction horizon T = 30 frames. We denote the predicted center position of the oriented bounding box for agent a at frame τ by x(a) 
+
+> τ
+
+∈ R2,and denote the corresponding bounding box by O(a) 
+
+> τ
+
+. In our implementation, the first agent in the predicted scene tensor is the ego agent. 
+
+Constraint losses The offroad loss measures how far a vehicle extends outside the drivable region. Given the drivable mesh M, we compute the four corners of each vehicle box. For a corner xaτ,j ,19 where j = {1, · · · , 4}, we define its distance to drivable mesh as 
+
+dmesh 
+
+
+
+c(a)
+
+> τ,j
+
+
+
+= min 
+
+> m∈M
+
+∥c(a) 
+
+> τ,j
+
+− m∥22. (53) The offroad loss is the maximum distance among corners that lie outside the drivable region: 
+
+ℓoffroad 
+
+
+
+O(a)
+
+> τ
+
+
+
+= max  
+
+> j
+
+1
+
+h
+
+c(a) 
+
+> τ,j
+
+∈ M 
+
+i
+
+dmesh 
+
+
+
+c(a)
+
+> τ,j
+
+
+
+. (54) The collision loss measures the overlap area between pairs of vehicles. For two agents a and a′, we define 
+
+ℓcollision 
+
+
+
+O(a) 
+
+> τ
+
+, O(a′)
+
+> τ
+
+
+
+= Area 
+
+
+
+O(a) 
+
+> τ
+
+, O(a′)
+
+> τ
+
+
+
+. (55) 
+
+Reported metrics For each scene, we generate K = 6 predicted futures. We use k ∈ { 1, · · · K} to index generated samples and a = 0 to denote the ego agent. The offroad rate is the fraction of scenes in which the ego vehicle goes offroad at least once during the future prediction horizon Offroad rate = 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+1
+
+
+
+max    
+
+> τ=1 ,··· ,T
+
+ℓoffroad (Ok, (0)  
+
+> τ
+
+) > 0
+
+
+
+. (56) The collision rate is the fraction of scenes in which the ego vehicle collides at least once with another vehicle during the future prediction Collision rate = 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+1
+
+
+
+max    
+
+> τ=1 ,··· ,T
+
+ℓcollision (Ok, (0)  
+
+> τ
+
+) > 0
+
+
+
+. (57) The scene maximum frame-to-frame displacement (SF2F) measures abrupt motion or jitter, same as in the bouncing ball experiment: 
+
+SF2F 6 = max  
+
+> k,a,τ < T
+
+∥xk, (a)  
+
+> τ+1
+
+− xk, (a) 
+
+> τ
+
+∥2. (58) Both offroad and collision rates are then averaged over evaluation batches. The scene maximum lateral velocity (SMLV) measures sideways motion relative to each vehicle heading. We estimate velocity from consecutive predicted positions: 
+
+vk, (a) 
+
+> τ
+
+= xk, (a)  
+
+> τ+1
+
+− xk, (a) 
+
+> τ
+
+. (59) Given heading hk, (a) 
+
+> τ
+
+, the lateral velocity is 
+
+vk, (a)lat ,τ = −vk, (a) 
+
+> τ,x
+
+sin hk, (a) 
+
+> τ
+
++ vk, (a) 
+
+> τ
+
+cos hk, (a) 
+
+> τ
+
+. (60) We define maximum lateral velocity as SMLV 6 = max  
+
+> k,a,τ < T
+
+∥vk, (a)lat ,τ ∥. (61) The maximum final distance (MFD) measures endpoint diversity among generated ego trajectories. We compute the maximum pairwise distance between final predicted ego position across K generated samples, MFD 6 = max  
+
+> k,k ′
+
+∥xk, (0)  
+
+> T
+
+− xk′,(0)  
+
+> T
+
+∥. (62) SF2F 6, SMLV 6, MFD 6 are computed within K = 6 generated samples, and then average over evaluation batches. 
+
+E.2 Method variants 
+
+We report two additional variants to our IMCD in Table 6: Rollout-only trains the scaling network and gradient embedding without LoRA adaptation; and IMCD (staged) uses the same trainable components and training objective as IMCD, but initializes from the trained Rollout-only checkpoint before enabling LoRA adapters for a second fine-tuning stage. IMCD is the variant reported in Table 2. As shown in Table 6, IMCD (staged) further reduces the offroad rate, but requires additional training through the initial rollout-only stage. 20 10 −2       
+
+> 10 0
+> 10 2
+> 0.50 0.55 0.60
+> αφ(x t;t)
+> 10 −2
+> 10 0
+> 10 2
+> −3
+> −2
+> −1
+> βφ(x t;t)
+> 10 −2
+> 10 0
+> 10 2
+> 0.00 0.25 0.50 0.75
+> t2γφ(x t;t)
+> 10 −2
+> 10 0
+> 10 2
+> 02500 5000 7500
+> γφ(x t;t)
+> noise level σ(t) = t
+
+Figure 4: Scaling network output versus noise level σ along denoising trajectory for traffic scene trajectory prediction experiment. Means are taken over batches; shaded bands show ±1 standard error. 
+
+E.3 Effect of scaling network and its parameterization 
+
+As shown in Figure 4, αϕ(xt; t) and βϕ(xt; t) both change with the noise level, so the learned scaling does not collapse to a constant coefficient. Unlike the bouncing balls case, t2γϕ(xt; t) peaks at an intermediate noise level, suggesting that the model places the strongest relative correction in the middle of the trajectory. The final scale γϕ(xt; t) still grows rapidly as t decreases, preserving strong constraint enforcement near the data manifold. For parameterization, the third MLP outputs αϕ and a raw exponent parameter βraw  
+
+> ϕ
+
+as before. We apply a softplus to αϕ to keep the correction magnitude nonnegative, and map the raw exponent to the effective exponent as 2sigmoid( βraw  
+
+> ϕ
+
+) − 3. This effective exponent, rather than the raw MLP output, is the βϕ used in the scaling function. This retains the t−2 factor induced by the score parameterization, while using the remaining t−1 factor as a milder base scaling. Compared with the 
+
+−4 offset used in bouncing balls, this reduces the strength of low-noise guidance. We conjecture that this milder scaling is better suited to trajectory prediction because it uses few sampling steps, where overly aggressive low-noise guidance can lead to abrupt late-stage correction. The bounded learned exponent keeps the divergence property as t goes to zero. 
+
+E.4 Training details 
+
+We follow prior work [ 26 ] for the experimental setup, using the same transformer-based diffusion backbone [ 34 ] and gradient embedding MLP as the bouncing ball experiment. Our fine-tuned models additionally use the scaling network described in Section C and LoRA adapters. We use the same log-linear sampling noise schedule with σmax = 80 and σmin = 2 × 10 −4, and sample with 20 
+
+steps. The standard diffusion model is trained from scratch with learning rate 3 × 10 −4 on a Tesla V100 GPU, taking approximately 168 hours for about 140 epochs. Our fine-tuned models, and other fine-tuned baselines are trained with learning rate 3 × 10 −4 for approximately 72 hours on two NVIDIA L40S GPUs, except for PIDM, which uses learning rate 3 × 10 −5, and IMCD (staged). The IMCD (staged) variant follows the staged procedure described above: the Rollout-only model is trained for three days, and the LoRA adapters are then trained for another three days. The number of training iterations varies across methods due to differences in computational cost. All models use the Adam optimizer with batch size 16 .
+
+E.5 More experimental results 
+
+Table 6: Traffic scene trajectory prediction results on the INTERACTION DR_DEU_Merging_MT scenario. 
+
+Constraint (%) ↓ Min traj. match ↓ Phys. plaus. ↓ Diversity ↑
+
+Method Offroad Collision ADE 6 FDE 6 SADE 6 SFDE 6 SF2F 6 SMLV 6 MFD 6
+
+Rollout-only 0.49 0.02 0.18 0.45 0.23 0.66 1.10 0.49 1.92 
+
+IMCD 0.30 0.00 0.18 0.45 0.23 0.66 1.07 0.43 1.91 
+
+IMCD (staged) 0.04 0.00 0.19 0.47 0.24 0.69 1.02 0.37 1.96 
+
+21 Table 7: Traffic scene trajectory prediction results on the INTERACTION DR_DEU_Roundabout_OF scenario. 
+
+Constraint (%) ↓ Min traj. match ↓ Phys. plaus. ↓ Diversity ↑
+
+Method Offroad Collision ADE 6 FDE 6 SADE 6 SFDE 6 SF2F 6 SMLV 6 MFD 6
+
+EDM [23] 23 .92 1.70 0.35 1.11 0.50 1.80 1.15 0.49 6.00 
+
+MPGD [19] 11 .96 1.42 0.33 1.04 0.45 1.57 1.24 0.65 3.98 
+
+MBM++ [26] 12 .42 1.40 0.32 1.05 0.44 1.59 1.21 0.61 3.91 
+
+PIDM (FT) [2] 14 .12 1.35 0.34 1.24 0.49 1.93 0.96 0.33 5.00 
+
+DPOK [14] 3.73 0.11 2.99 8.88 2.96 9.94 0.97 0.56 2.42 
+
+CriticSMC [27] – 0.08 0.45 – – – – – 3.43 
+
+Rollout-only 0.68 0.03 0.37 1.06 0.51 1.63 2.07 1.35 4.07 
+
+IMCD 1.22 0.01 0.37 1.07 0.51 1.66 1.69 1.06 4.02 
+
+IMCD (staged) 0.37 0.00 0.37 1.08 0.51 1.66 1.68 1.05 3.95 
+
+Ground truth 0.00 0.00 – – – – 0.84 0.06 –
+
+Table 8: Traffic scene trajectory prediction results on the INTERACTION DR_USA_Intersection_MA 
+
+Constraint (%) ↓ Min traj. match ↓ Phys. plaus. ↓ Diversity ↑
+
+Method Offroad Collision ADE 6 FDE 6 SADE 6 SFDE 6 F2F 6 MLV 6 MFD 6
+
+EDM [23] 1.36 1.54 0.24 0.66 0.40 1.37 1.29 0.46 4.44 
+
+MPGD [19] 0.49 0.83 0.22 0.64 0.35 1.22 1.24 0.42 3.17 
+
+MBM++ [26] 0.42 0.83 0.20 0.63 0.33 1.21 1.22 0.36 3.11 
+
+PIDM (FT) [2] 1.15 1.20 0.21 0.67 0.36 1.39 1.20 0.28 4.26 
+
+DPOK [14] 0.37 0.04 2.07 6.28 2.10 6.60 0.96 0.52 1.77 
+
+CriticSMC [27] – 0.09 0.45 – – – – – 2.87 
+
+Rollout-only 0.03 0.00 0.23 0.64 0.35 1.22 1.33 0.53 3.17 
+
+IMCD 0.05 0.00 0.22 0.65 0.35 1.23 1.26 0.46 3.17 
+
+IMCD (staged) 0.01 0.00 0.23 0.67 0.36 1.26 1.24 0.45 3.17 
+
+Ground truth 0.00 0.00 – – – – 1.11 0.05 –Traffic scene trajectory prediction results on the INTERACTION DR_USA_Roundabout_FT Constraint (%) ↓ Min traj. match ↓ Phys. plaus. ↓ Diversity ↑
+
+Method Offroad Collision ADE 6 FDE 6 SADE 6 SFDE 6 F2F 6 MLV 6 MFD 6
+
+EDM [23] 9.32 1.37 0.25 0.72 0.41 1.44 1.23 0.47 4.26 
+
+MPGD [19] 2.64 0.93 0.23 0.68 0.35 1.24 1.21 0.50 2.97 
+
+MBM++ [26] 2.49 0.92 0.21 0.68 0.34 1.23 1.18 0.46 2.92 
+
+PIDM (FT) [2] 5.79 0.86 0.23 0.83 0.39 1.53 1.02 0.31 3.87 
+
+DPOK [14] 1.95 0.06 2.55 7.84 2.65 8.25 1.04 0.58 1.95 
+
+CriticSMC [27] – 0.07 0.44 – – – – – 2.97 
+
+Rollout-only 0.28 0.11 0.24 0.70 0.36 1.26 1.60 1.01 3.01 
+
+IMCD 0.25 0.06 0.24 0.71 0.37 1.28 1.37 0.75 2.94 
+
+IMCD (staged) 0.16 0.05 0.24 0.72 0.36 1.29 1.35 0.77 3.00 
+
+Ground truth 0.00 0.00 – – – – 0.95 0.06 –
+
+In the rendered visualizations below, we show the final predicted frame so that the full trajectory is visible. Gray dot trajectories indicate ground-truth agent motion, and orange trajectories denote model predictions. 22 Standard Diffusion MPGD w/o projection MBM++ PIDM 
+
+DPOK Rollout-only IMCD IMCD (staged) 
+
+Standard Diffusion MPGD w/o projection MBM++ PIDM 
+
+DPOK Rollout-only IMCD IMCD (staged) 
+
+23 Standard Diffusion MPGD w/o projection MBM++ PIDM 
+
+DPOK Rollout-only IMCD IMCD (staged) 
+
+Standard Diffusion MPGD w/o projection MBM++ PIDM 
+
+DPOK Rollout-only IMCD IMCD (staged) 
+
+24 Standard Diffusion MPGD w/o projection MBM++ PIDM 
+
+DPOK Rollout-only IMCD IMCD (staged) 
+
+Standard Diffusion MPGD w/o projection MBM++ PIDM 
+
+DPOK Rollout-only IMCD IMCD (staged) 
+
+25 Standard Diffusion MPGD w/o projection MBM++ PIDM 
+
+DPOK Rollout-only IMCD IMCD (staged) 
+
+26
