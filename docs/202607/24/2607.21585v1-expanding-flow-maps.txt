@@ -1,0 +1,2399 @@
+Title: Expanding Flow Maps
+
+URL Source: https://arxiv.org/pdf/2607.21585v1
+
+Published Time: Fri, 24 Jul 2026 01:18:09 GMT
+
+Number of Pages: 39
+
+Markdown Content:
+# Expanding Flow Maps 
+
+Sophia Tang 1, Pranam Chatterjee 1,2
+
+> 1
+
+Department of Computer and Information Science, University of Pennsylvania , 2Department of Bioengineering, University of Pennsylvania 
+
+Abstract. Flow-based generative models have enabled remarkable progress in fast and controllable generation across continuous and discrete state spaces, yet existing parameterizations are constrained to fixed dimensions or fixed sequence lengths. Here, we introduce Expanding Generative Flows (EFlows), which define flows between distributions of increasing dimensionality along an expanding interpolant that grows the state by augmenting it with conditional noise. Building on this construction, we propose Expanding Flow Maps 
+
+(EFMs), a new class of flow maps that distill the expanding interpolant into efficient few-step generative models. Each EFM factors the map between any two timesteps into two learnable operations: an expand operator , which augments the state space with new coordinates or tokens conditioned on the current state, and a transport map , which pushes the expanded state forward along the interpolant. Composing these operators yields a single map that jointly expands and denoises the state, recovering existing fixed-canvas flows and flow maps as the special case in which the expand operator is the identity. We further extend the framework to the discrete simplex, enabling variable-size graph generation and variable-length sequence generation. Across both continuous and discrete modalities, we establish EFlows and EFMs as a principled framework for settings in which output size is itself a learned, controllable degree of freedom. 
+
+Correspondance: sophtang@engineering.upenn.edu , pranam@upenn.edu 
+
+# 1 Introduction 
+
+Flow maps have recently emerged as a unifying framework for few-step generative modeling, supporting both continuous (Boffi et al., 2025) and discrete (Roos et al., 2026; Lee et al., 2026; Potaptchik et al., 2026b) state spaces. Building on the success of score (Song et al., 2021; Ho et al., 2020) and flow-based (Lipman et al., 2022; Tong et al., 2023; Albergo et al., 2025) models, flow maps cast generation as a continuous-time interpolant between noise and data and learn to parameterize discrete jumps along the ODE trajectory between any pair of timesteps (Boffi et al., 2025; Geng et al., 2025; Song et al., 2023; Kim et al., 2024). They are typically trained either by 
+
+distillation from a teacher flow (Boffi et al., 2024; Frans et al., 2025; Zhou et al., 2025; Salimans et al., 2024) or by self-distillation from data (Boffi et al., 2025), enabling sampling in as few as one or two function evaluations while retaining the modeling flexibility of their multi-step counterparts. Despite this progress, existing flow maps are fundamentally restricted to generation on a fixed canvas : a continuous state space of fixed dimensionality d, or a discrete state space of fixed sequence length L. This rigid constraint conflicts with the structure of many real-world generative tasks, where the size of the output is itself a quantity to be modeled – for example, variable-resolution images and 3D shapes, audio and video of arbitrary duration, language with unknown sequence length, and multi-modal data that interleaves modalities of differing intrinsic dimensionality. Addressing these settings requires a generative framework whose state space can grow during inference, rather than being committed to at initialization. This raises the central question motivating this work: 
+
+How can we enable few-step generation of both continuous and discrete data with adaptive dimensionality at inference? 
+
+We address this question by introducing Expanding Flow Maps (EFMs), a general framework for few-step generative modeling over both continuous and discrete data with variable dimensionality and sequence length. The core idea is to factor the flow map between any two timesteps into two learnable operations: an expand operator , which expands the state space by inserting new coordinates or tokens, and a transport map , which moves the expanded state forward along the interpolant. Composing these operators yields a single map that jointly 
+
+expands and denoises the state, positioning standard fixed-dimensional flow maps (Boffi et al., 2025; Roos et al., 1arXiv:2607.21585v1 [cs.LG] 23 Jul 2026 Figure 1 Expanding Flow Maps. Step from lower-dimensional space on Rd(s) at time s to a higher dimensional space               
+
+> Rd(t)at time tby (i) applying the expand operator Es,t with augmented noise ϵ∼pϵ|s,t and (ii) applying the transport map
+> Xs,t in the augmented space.
+
+2026; Lee et al., 2026; Potaptchik et al., 2026b) as the special case in which the expand operator is the identity. Our main contributions can be summarized in the following points: 1. Expanding Generative Flows: We introduce Expanding Generative Flows (EFlows), a class of generative models defined on an expanding interpolant between distributions of increasing dimensionality. We formulate it as a piecewise-deterministic Markov process consisting of a transport term that describes smooth denoising and a jump kernel that describes jumping to higher dimensionalities. 2. Expanding Flow Maps: We derive the Expanding Flow Map (EFM), which enables jumping between arbitrary points along the expanding interpolant by composing an expand operator , which augments a state with conditional noise, and a transport map , which pushes the augmented state forward over the time interval toward the target distribution. 3. Discrete Expanding Flows and Maps: We extend expanding generative flows and flow maps to the discrete simplex space, formulating expansion as insertions along a sequence or graph and unlocking few-step variable-length discrete generation in regimes where standard flow-based methods do not apply. Through experiments on molecular conformer generation, discrete molecular graph generation, and language modeling, we establish EFlow and EFMs as a single, unified recipe for variable-dimensional generation across domains and at any sampling budget. Further discussion of related works is provided in App A. 
+
+# 2 Preliminaries 
+
+Generative Flows and Stochastic Interpolants A unifying perspective on flow and diffusion models is provided by the stochastic interpolants framework (Albergo et al., 2025; Albergo and Vanden-Eijnden, 2022), which constructs a continuous-time path between a prior p0 and the data distribution p1 = pdata . Given endpoints 
+
+x0 ∼ p0 and x1 ∼ p1, an interpolant is a stochastic process: 
+
+xt = It(x0, x1), ˙xt = bt(xt), t ∈ [0 , 1] , (1) where xt=0 = x0 ∼ p0 and xt=1 = x1 ∼ p1 with intermediate marginals xt ∼ pt = Law (It). The standard linear interpolant is defined as It(x0, x1) = (1 − t)x0 + tx1. The velocity field bt(x) given a point x can be obtained as the conditional expectation of the time derivative of the interpolant at xt = x:
+
+bt(x) = E[ ˙ xt|xt = x] (2) which transports samples from p0 to p1 along the ODE dxt = bt(xt)dt or SDE dXt = bt(Xt)dt + σtdBt with diffusion coefficient σt. To parameterize the velocity field given two empirical distributions, we minimize the 
+
+conditional flow-matching objective (Lipman et al., 2022; Albergo and Vanden-Eijnden, 2022): 
+
+LCFM (ˆb) := 
+
+∫ 10
+
+Ex0,x1
+
+[∥∥ˆbt(It(x0, x1)) − ∂tIt(x0, x1)∥∥2]
+
+dt (3) 2where the expectation is over (x0, x1) ∼ p0 ⊗ p1.
+
+Flow Maps for Trajectory Distillation Numerically integrating the ODE or SDE above typically requires many small steps to accurately approximate the continuous-time dynamics, so a natural goal is to minimize the number of function evaluations needed to generate a target sample. This motivates consistency models (Song et al., 2023; Song and Dhariwal, 2024) and flow maps (Boffi et al., 2025; Sabour et al., 2025; Geng et al., 2025; Frans et al., 2025; Guo et al., 2025), which aim to distill the many-step integration process into a few-step process. Concretely, a flow map is a deterministic map Xs,t : Rd → Rd that directly outputs the state of the ODE at time t given its state at an earlier time s:
+
+Xs,t (xs) = xt = xs + ( t − s)vs,t (xs), ∀s, t ∈ [0 , 1] (4) which can be defined as taking a step of size (t − s) using the mean velocity vs,t (xs) from xs. When t = s, the mean velocity reduces to the instantaneous velocity vs,s (xs) = bs(xs) which can be trained with the standard CFM loss in (3), referred to as the diagonal loss Ldiag as it trains the mean velocity along the diagonal where 
+
+t = s. To parameterize vs,t (xs) for when t̸ = s, we consider three equivalent conditions of the flow map Xs,t :
+
+Lagrangian Condition: ∂tXs,t (xs) = vt,t (Xs,t (x)) (5a) 
+
+Eulerian Condition: ∂sXs,t (x) + vs,s (x) · ∇ xs Xs,t (x) = 0 (5b) 
+
+Semigroup Condition: Xu,t (Xs,u (x)) = Xs,t (x) (5c) for all x ∈ Rd and s, u, t ∈ [0 , 1] . These conditions each translate into consistency objectives Lcons by setting the condition equal to 0 and taking the squared residual with respect to the parameterized velocity ˆvs,t :
+
+Rd → Rd. Then, the full training objective becomes the sum of the diagonal and consistency objectives 
+
+LFM (ˆ v) = Ldiag (ˆ v) + Lcons (ˆ v).
+
+Flow Maps for Discrete Data Recently, flow maps have been extended to the discrete state space (Roos et al., 2026; Lee et al., 2026; Potaptchik et al., 2026b), where the states are defined as vectors on the simplex space 
+
+∆V −1 with vocabulary |V| = V . A sequence of categorical distributions over the simplex is denoted xt ∈ V L.Representing discrete data as continuous distributions over the simplex enables the repurposing of standard flow-map objectives in the discrete setting. The equivalent parameterization of the mean velocity on the discrete state space is the mean denoiser ψs,t : RL×V → RL×V which reduces to the standard denoiser on the diagonal 
+
+t = s and is defined by taking a full (1 − s) step in the direction of the mean velocity vs,t to the denoised state: 
+
+ψs,t (x) = x + (1 − s)vs,t (x), vs,t (x) = ψs,t (x) − x
+
+1 − s (6) which yields the discrete analog of the flow map by substituting vs,t into (4): 
+
+Xs,t (x) = 1 − t
+
+1 − s x + t − s
+
+1 − s ψs,t (x), ∀s, t ∈ [0 , 1] (7) Crucially, the mean denoiser can be written as a weighted sum over the conditional expectation of the data distribution and lies on the simplex ψs,t ∈ ∆V −1, allowing it to be trained via the cross-entropy analogs of the diagonal and consistency objectives: 
+
+Ldiag ( ˆψ) = −
+
+> L
+
+∑
+
+> i=1
+
+Dt(xit) · log ˆψt,t (xit), Lcons ( ˆψ) = −
+
+> L
+
+∑
+
+> i=1
+
+¯ψs,t · log ˆψs,t (xis) (8) where ¯ψs,t is defined via the discrete analogs of the lagrangian , Eulerian , and semigroup conditions (Lee et al., 2026; Potaptchik et al., 2026b). 
+
+# 3 Expanding Generative Flows 
+
+The key limitation of standard continuous flows is that the state space is fixed at initialization: x0 ∈ Rd with fixed d in the continuous state space and x0 ∈ RL×V with fixed length L in the discrete sequence space. We overcome this limitation by presenting a rigorous treatment of generative flows between distributions of different 
+
+3dimensionality , specifically the setting where the source distribution has lower dimensionality than the target distribution. We construct this in three pieces: an expanding interpolant that grows the state along a dimension schedule, an expand operator that lifts the source into the target space, and a piecewise deterministic Markov process (PDMP) characterization that unifies expansion and transport into a single well-defined generative process. 
+
+Expanding Interpolant To accommodate generative tasks in which the size of the output is itself variable, we generalize the standard flow interpolant construction to allow the dimension to increase along the trajectory. Concretely, we replace the fixed dimension d with a non-decreasing dimension schedule d(t) : [0 , 1] → N and let 
+
+xt ∈ Rd(t), so that the marginal pt ∈ P (Rd(t)) is defined on the state space whose dimensionality depends on t.
+
+Generative Flow with Expanding Dimensionality 
+
+P(Rd(0) ) ∋ p0 → · · · → ps → · · · → pt → · · · → p1 ∈ P (Rd(1) ) (9) where d(s) ≤ d(t) for all 0 ≤ s < t ≤ 1.The central challenge of defining this type of flow is that, for s < t with d(s) < d (t), the source state xs ∈ Rd(s)
+
+and the target state xt ∈ Rd(t) live in spaces of different dimension. Consequently, there is no diffeomorphism 
+
+Rd(s) → Rd(t) and no fixed-dimension velocity field that can transport ps to pt. To resolve this, we augment 
+
+the source state with additional coordinates of noise drawn from a tractable conditional distribution pϵ|s,t ∈P(Rd(t)−d(s)), lifting the source to the target dimensionality before applying a transport map. 
+
+Remark 3.1 (Expanding Interpolants Generalize Standard Generative Interpolants) . The standard fixed-dimensional flow ODE is the special case of the expanding generative flow in which the dimension Rd(t) is constant over t ∈ [0 , 1] .
+
+Expand Operator To parameterize the expanding generative flow, we define a two-stage process that, at each discrete time step, expands the state space with augmented noise coordinates and then integrates the interpolant from the augmented state to the target time step. The first stage is carried out by the expand operator Es,t .
+
+Expand Operator 
+
+Es,t (xs, ϵ) : Rd(s) × Rd(t)−d(s) → Rd(t), ϵ ∼ pϵ|s,t ∈ Rd(t)−d(s) (10) which defines the placement scheme determining where the coordinates of ϵ are inserted relative to xs.The augmented noise variable ϵ adds new coordinates to the growing state space, which can then be mapped to a sample from the target distribution pt. The expand operator Es,t combines the existing coordinates of xs with the latent coordinates of ϵ according to a placement scheme specifying where in the augmented state the new coordinates appear. Es,t can take several instantiations, including: (i) Concatenation : Es,t (xs, ϵ) = Cat (xs, ϵ) appends the new coordinates to the end of the state. This is the natural instantiation for autoregressive sequence generation or for appending points to a point cloud. (ii) Positional Insertion : Es,t (xs, ϵ) interleaves the entries of ϵ at a subset of positions within {1, . . . , d (t)} in the augmented state. This instantiation is useful for any-length sequence generation or infilling. (iii) Child Expansion : Es,t (xs, ϵ) attaches each new coordinate to a parent entry pa (i) of xs and initializes it relative to that parent, xϵs[i] = xs[ pa (i)] + σϵi. This instantiation is suitable for coarse-to-fine generation on structured states. The augmented noise and its placement may be deterministic (e.g., always concatenating i.i.d. Gaussian noise to the end) or predicted via a parameterized network ˆE (e.g., predicting the number of insertions at each gap). In all cases, the expand operator lifts the state to Rd(t) so that transport along the interpolant from s to t
+
+can proceed via a d(t)-dimensional velocity field. For simplicity, we drop the explicit noise argument and write 
+
+xϵs := Es,t (xs) ≡ E s,t (xs, ϵ).4Proposition 3.1 (Expand Operator is Pushforward of Noise Law) . Fix an expand operator Es,t : Rd(s) ×
+
+Rd(t)−d(s) → Rd(t) that places source and noise coordinates according to one of the instantiations. Then, the resulting conditional law is: 
+
+pt|s(· | xs) = ( Es,t (xs, ·)) #pϵ|s,t (· | xs) (11) 
+
+The proof is given in App B.5. This proposition shows that the expand operator alone fixes the conditional law of the augmented state, but it does not yet describe how that state is transported to the target time. To complete the construction, we next specify how each newly inserted coordinate is denoised along the interpolant, which requires tracking the time elapsed since its insertion. 
+
+Local Time Coordinate Since newly inserted coordinates are instantiated at different points along the interpolant, we assign each inserted component i a local time coordinate ti, with the set of local times denoted tlocal . At the insertion time tins  
+
+> i
+
+of component i, the local time is initialized at ti = 0 . At global time t > t ins  
+
+> i
+
+, it is defined as: 
+
+ti = t − tins 
+
+> i
+
+1 − tins 
+
+> i
+
+∈ [0 , 1] (12) This is a bijection that projects the global time onto a [0 , 1] local time interval for each dimension i, so that every inserted dimension is denoised on a common local clock. 
+
+Transport Along the Expanding Interpolant After applying the expand operator, we integrate the standard velocity field of the continuous-time interpolant over τ ∈ [s, t ] from the augmented state xϵs to the target state xt:
+
+xt = xϵs +
+
+∫ ts
+
+bτ (xϵτ )dτ, xt[i] = xϵs[i] + 
+
+∫ ti
+
+> si
+
+bτi (xϵτi [i]) dτ i, bt(xϵt ) = 
+
+{
+
+bti (xϵti [i]) tins  
+
+> i
+
+≤ t
+
+0 tins  
+
+> i
+
+> t (13) where each coordinate i is integrated along its own local time τi ∈ [si, t i]. Since bt : Rd(t) → Rd(t) is a standard flow velocity field on the active coordinates ( tins  
+
+> i
+
+≤ t), we parameterize it as ˆbt by minimizing the standard CFM objective in (3) and set it to zero otherwise, leaving the inactive coordinates unchanged. Given the expand operator and the transport ODE, we can define the Expanding Generative Flow (EFlow). 
+
+Definition 3.1 (Expanding Generative Flow) . Let 0 ≤ s < t ≤ 1 with marginals ps ∈ P (Rd(s)), pt ∈ P (Rd(t)),expand operator Es,t (10), and conditional noise pϵ|s,t (· | xs) ∈ P (Rd(t)−d(s)). Write xϵs := Es,t (xs, ϵ) and 
+
+pϵs,t := ( Es,t )#(ps ⊗ pϵ|s,t ). An expanding generative flow from ps to pt is the composition 
+
+Φs,t := Xs,t ◦ E s,t : Rd(s) → Rd(t), (14) 
+
+where Xs,t : Rd(t) → Rd(t) is the time-t flow map of the augmented interpolant ODE ˙xϵτ = bτ (xϵτ ) (13) initialized at xϵs at time s. This map satisfies the marginal constraint (Xs,t )#pϵs,t = pt, and being the deterministic flow from xϵs, it fixes the full coupling between xs and xt rather than only the marginal pt. The induced conditional law is 
+
+pt|s(· | xs) = (Φs,t (xs, ·))
+
+> #
+
+pϵ|s,t (· | xs). (15) In practice, we parameterize both the expand operator and the velocity field with a neural network. While Φs,t is a well-defined flow on the intervals between insertions, the jump discontinuity introduced at each insertion breaks the flow construction at those times. We therefore provide an alternative characterization of the expanding flow that is valid over the full interval t ∈ [0 , 1] .
+
+Piecewise-Deterministic Markov Processes The expand operator and interpolant transport together specify a two-stage process, but not yet a single stochastic process with well-defined dynamics. We now show that these two stages can be unified as a piecewise-deterministic Markov process (PDMP) (Davis, 1984) on the disjoint union of different-dimensional spaces M := ⊔ 
+
+> t
+
+Rd(t). The PDMP is characterized by an extended generator, from which both the change-of-variables formula and the reduction to standard fixed-dimensional flows follow directly. 5Proposition 3.2 (Expanding Flows are Piecewise-Deterministic Markov Processes) . Let M := ⊔ 
+
+> t∈[0 ,1]
+
+Rd(t)
+
+be the state space and (xt)t∈[0 ,1] the expanding generative flow of Def. 3.1, with velocity bt in the augmented space, expand operator Et, and noise law pϵ|t. Writing Et := lim s→t Es,t and pϵ|t := lim s→t pϵ|s,t for the instantaneous insertion map and noise law at time t, the augmented process St := ( xt, tlocal ), carrying the local-time coordinates tlocal , is a piecewise-deterministic Markov process (PDMP) on M with extended generator acting on x-functions given by: 
+
+Ltf (x) = bt(x) · ∇ f (x)
+
+︸ ︷︷ ︸
+
+> transport
+
++ λt(x)
+
+∫ (f (Et(x, ϵ)) − f (x))pϵ|t(dϵ)
+
+︸ ︷︷ ︸
+
+> jumps, kernel =( Et(x,·)) #pϵ|t
+
+, (16) 
+
+where λt is the insertion intensity and the jump kernel is the pushforward (Et(x, ·)) #pϵ|t, which equals the instantaneous conditional law pt|s(· | xs) of (11) as s ↑ t.
+
+The proof is provided in App B.4. In the discrete setting, the insertion intensity takes an explicit form in terms of the per-gap insertion expectation. We defer the full characterization of the discrete case to Section 5. 
+
+Corollary 3.1 (Change-of-Variables Formula) . Given that Xs,t is considered the time-t map of an ODE in the augmented space ddτ xϵτ = bτ (xϵτ ), the marginal density can be defined with the instantaneous change-of-variables formula: 
+
+∀s ≤ t, log pt(Xs,t (xϵs)) = log ps(xϵs) −
+
+∫ ts
+
+∇ · bτ (Xs,τ (xϵs)) dτ, ∇ · bτ = ∑ 
+
+> i:tins
+> i≤τ
+
+∂xi biτ (17) 
+
+where bτ : Rd(t) → Rd(t) is the instantaneous velocity field in the augmented space. 
+
+The divergence sums only over active coordinates ( tins  
+
+> i
+
+≤ τ ), so the density evolves as if it were already at its final dimension throughout, with non-inserted coordinates contributing nothing until their insertion time. 
+
+# 4 Expanding Flow Maps 
+
+Given the definition of expanding generative flows , we now define the Expanding Flow Map (EFM), which transports between two states along the expanding interpolant in a single learned step, jointly increasing dimensionality and pushing the flow forward in time. 
+
+Flow Map in Augmented State Space We define the expanding flow map (EFM) Φs,t : Rd(s) → Rd(t) as the composition of the expand operator Es,t (10) which raises dimension from d(s) to d(t) and a transport map Xs,t 
+
+in d(t)-dimensional space that pushes the state forward along the local time coordinate of each dimension. In this section, we define the transport map as the mean velocity vs,t for continuous state spaces, and in Section 5, we define it as the mean denoiser ψs,t for discrete state spaces. 
+
+Expanding Flow Map 
+
+Φs,t = Xs,t ◦ E s,t , Φs,t (xs) := Xs,t (Es,t (xs)) =: Es,t (xs) + ( t − s)vs,t (Es,t (xs)) , ∀s, t ∈ [0 , 1] (18) where Es,t : Rd(s) → Rd(t) is the expand operator and vs,t : Rd(t) → Rd(t) is the mean velocity that parameterizes the transport map. Leveraging the expand operator Es,t from (10) which lifts the state xs ∈ Rd(s) to the dimensionality of the target state along the interpolant xt ∈ Rd(t), we can apply the standard residual form of the flow map via the average velocity vs,t , which satisfies the tangent condition (Kim et al., 2024): 
+
+lim  
+
+> s→t
+
+∂tΦs,t (x) = vt,t (x) = bt(x) (19) 6where bt is the standard flow velocity field defined in (13). This condition can be enforced via the diagonal objective: 
+
+Ldiag (ˆ v) := 
+
+∫ 10
+
+E∥∥ˆvt,t (xt) − ˙xt
+
+∥∥2dt, ˙xt =
+
+{x(t)1 − E 0,t (x0) (self-distillation from data) 
+
+ˆbt(xt) (distillation from a teacher flow) (20) The intermediate state follows the expanding interpolant xt = (1 − t)E0,t (x0) + tx(t)1 , where x(t)1 is the clean sequence x1 truncated to the dimensions at time t and the regression target is the time-derivative ˙xt.
+
+Expanding Flow Map Identities In addition to the tangent condition, the expanding flow map Φs,t must also satisfy analogous consistency constraints , which characterize a valid flow map as introduced in (5). Given our parameterization, we define these constraints with respect to the expand operator ˆEs,t and the average velocity 
+
+ˆvs,t in the continuous-state setting. 
+
+Proposition 4.1 (Expanding Flow Map Identities) . Let xϵs := Es,t (xs). Then, the expanding flow map 
+
+Φs,t (xs) satisfy the following consistency conditions: Lagrangian: ∂tΦs,t (x) = vt,t (Φ s,t (x)) (21a) 
+
+Eulerian: ∂sΦs,t (x) + ∇xΦs,t (x)˜ vs,s (x) = 0 (21b) 
+
+Semigroup: Φu,t (Φ s,u (x)) = Φ s,t (x) (21c) 
+
+where ˜vs,s : Rd(s) → Rd(s) is the unlifted diagonal velocity of A4, satisfying vs,s (Es,t (x)) = E˜vs,s (x).
+
+Φs,t (x) := Xs,t (Es,t (x)) = Es,t (x) + ( t − s)vs,t (Es,t (x)) is the residual form of the expanding flow map in the continuous state space. 
+
+These identities coincide with the fixed-dimensional flow map identities (5) with proof in Boffi et al. (2025). The only difference is in the Eulerian condition, where the Jacobian ∇xΦs,t ∈ Rd(t)×d(s) is rectangular, so multiplying with the unlifted velocity ˜vs,s (x) ∈ Rd(s) of Assumption A4 gives the diagonal velocity vs,s on the expanded state 
+
+Es,t (x) ∈ Rd(t). We provide proof in App B.6. To enforce these constraints, we define the analogous consistency objectives: 
+
+LLSD ( ˆE, ˆv) := 
+
+∫ 10
+
+∫ t
+
+> 0
+
+E ∥∥∂t ˆΦs,t (xs) − sg (ˆbt( ˆΦs,t (xs)) )∥ ∥2
+
+dsdt + Ldiag (ˆ v) (22a) 
+
+LESD ( ˆE, ˆv) := 
+
+∫ 10
+
+∫ t
+
+> 0
+
+E ∥∥∂s ˆΦs,t (xs) + sg (∇x ˆΦs,t (xs)ˆbs(xs))∥ ∥2
+
+dsdt + Ldiag (ˆ v) (22b) 
+
+LPSD ( ˆE, ˆv) := 
+
+∫ 10
+
+∫ t
+
+> 0
+
+∫ ts
+
+E∥∥ ˆΦs,t (xs) − sg ( ˆΦu,t ( ˆΦs,u (xs))) ∥∥2dudsdt + Ldiag (ˆ v) (22c) 
+
+where unlike fixed-dimensional flow maps, ˆΦs,t is parameterized via both ˆEs,t and ˆvs,t .
+
+Stochastic Flow Map Interpretation A notable property of the expanding flow map is that it defines a stochastic flow whose randomness arises from an explicit conditional noise injection. Unlike deterministic flow maps, this construction induces a distribution over trajectories by augmenting the state with latent noise and transporting it through the flow. We formalize this idea in the following proposition. 
+
+Proposition 4.2 (Expanding Flow Maps are Stochastic Flow Maps) . Let Φs,t (xs, ϵ) be an expanding flow map (18) with conditional noise ϵ ∼ pϵ|s,t satisfying the consistency identities (21). Then for all t ∈ [s, 1] ,the pushforward satisfies pt|s(·| xs) = (Φ s,t (xs, ·)) #pϵ|s,t , and recovers the clean posterior p1|s(·| xs) at t = 1 .
+
+The proof is provided in App B.7. This property follows the construction of the expanding flow map as the composition of learned expanding and denoising operators that reconstruct the interpolant at a future time step 
+
+t > s , capturing the full posterior over future states rather than committing to a single deterministic trajectory. 75 Discrete Expanding Flow Maps 
+
+The expanding generative flows and expanding flow maps framework is naturally positioned for variable-length discrete generation , where a sequence or graph dynamically expands from a single token or node into a full sequence or graph. We instantiate the objects of Sections 3 and 4 on the discrete simplex: the expand operator 
+
+Es,t becomes token insertions and the transport Xs,t becomes token denoising .
+
+Discrete Expanding Interpolant for Growing Sequence Lengths We first define the discrete expanding interpolant , in which the number of tokens d(t) : [0 , 1] → N grows over intermediate times. At training time, we fix an insertion schedule αt interpolating between α0 = 0 and α1 = 1 . An intermediate sequence xt is constructed by first sampling a clean sequence from the data distribution, x1 ∼ p1, and then independently sampling an insertion time tins  
+
+> i
+
+for each position i according to the schedule. Each position is either not yet inserted, denoted (empty), or in an intermediate latent state xiti along the continuous-time flow at its rescaled local time ti:
+
+Pr[ tins  
+
+> i
+
+≤ t] = αt, xit =
+
+{
+
+(empty) , t < t ins 
+
+> i
+
+(1 − ti)xi 
+
+> 0
+
++ tixi
+
+> 1
+
+, t ≥ tins 
+
+> i
+
+, ti = t − tins 
+
+> i
+
+1 − tins 
+
+> i
+
+(23) A sequence along the interpolant at global time t is therefore the subsequence of currently inserted tokens: 
+
+xt = ( x1 
+
+> t1
+
+, . . . , xd(t) 
+
+> td(t)
+
+) ∈ Rd(t)×V , (24) where each token xiti ∈ RV is a latent vector denoised to its local time ti.
+
+Parameterizing Token Insertions Given an intermediate subsequence xs and a target time t > s , we decide where and how many V -dimensional latent tokens to insert on the jump via the (two-time) insertion expectation 
+
+Is,t (xs)[ i], the expected number of tokens inserted into gap i (the slot between active tokens xi−1 
+
+> s
+
+and xis) over 
+
+(s, t ]:
+
+Is,t (xs)[ i] = αt−αs 
+
+> 1−αs
+
+Is(xs)[ i], It(xt)[ i] := E[gi(t) | xt
+
+], gi(t) := ind i(t) − ind i−1(t) − 1 (25) where gi(t) is the count still missing from gap i at t, ind i(t) the index of active position i in x1, and αt−αs 
+
+> 1−αs
+
+is the fraction of the remaining tokens inserted over (s, t ] with the insertion hazard λt := ˙αt 
+
+> 1−αt
+
+defining the instantaneous insertion rate of an uninserted token at time t. The insertion head ˆIs,t (xs) is conditioned on both endpoints and trained on diagonal and off-diagonal time pairs with the insertion loss: 
+
+Linsert (ˆI) = EtEx0,x1
+
+[ ˙αt
+
+> 1−αt
+
+∑ 
+
+> i
+
+ϕ(gi(t), ˆIt(xt)[ i])]
+
++ Es<t Ex0,x1
+
+[ ∑ 
+
+> i
+
+ϕ(μi(s, t ), ˆIs,t (xs)[ i])]
+
+(26) where ϕ(a, b ) := b − a + a log ab is the Poisson NLL of count a under mean b up to a b-independent constant, so 
+
+arg min b E[ϕ(A, b )] = E[A]. Both terms supervise against a realized count and recover its conditional mean: the diagonal term supervises against the gap count gi(t), giving ˆIt = It and the off-diagonal term supervises against the interval count μi(s, t ) := # {j : tins  
+
+> j
+
+∈ (s, t ], j ∈ gap i}, whose mean is Is,t (xs)[ i], so the insertion head learns the two-time count directly. 
+
+Discrete Expand Operator Given the learned insertion expectation, the discrete expand operator Es,t inserts latent tokens x0 ∼ N (0, σ 2IV ) with prior scale σ and local time ti = 0 per gap according to the gap-lengths ℓi:
+
+Es,t (xs) := xϵs =
+
+
+
+> d(s)
+
+⊕
+
+> i=1
+
+(xℓi 
+
+> 0
+
+⊕ xisi
+
+) ⊕ xℓd(s)+1  
+
+> 0
+
+(27) Since the head predicts the interval count ˆIs,t (xs)[ i] directly, we draw ℓi from the exact conditional law of the interpolant. Since each of the L − ns uninserted tokens lands in gap i over (s, t ] independently, we have: 
+
+ℓi ∼ Binomial 
+
+(
+
+L − ns, ˆIs,t (xs)[ i]
+
+> L−ns
+
+)
+
+(28) which matches the predicted mean, E[ℓi] = ˆIs,t (xs)[ i], while capping each gap at the remaining budget; we truncate the joint draw left-to-right so that ∑ 
+
+> i
+
+ℓi ≤ L − ns. Writing ρs,t := αt−αs 
+
+> 1−αs
+
+for the fraction of tokens inserted over s → t, the size of the jump determines how much this cap matters. 8Figure 2 Discrete Expanding Flow Maps. 
+
+Latent tokens are inserted via the expand operator 
+
+Es,t and denoised via the transport map defined with the mean denoiser ψs,t .
+
+Many-step sampling takes ρs,t ≪ 1, inserting a few tokens per step against a budget of hundreds, so L − ns ≫ ˆIs,t and (28) converges to the Poisson operator ℓi ∼ Poisson ( ˆIs,t (xs)[ i]) , the infinitesimal jump law of the PDMP of Section 3 with insertion intensity λt := ˙αt
+
+> 1−αt
+
+∑ 
+
+> i
+
+It(xt)[ i].For few-step sampling where the jump interval approaches the boundary pair (s, t ) = (0 , 1) , the operator must produce the whole sequence in one jump, with ρs,t → 1 and ∑ 
+
+> i
+
+ˆIs,t [i] ≈ L.In this setting, the Poisson limit fails with unbounded cap and high variance equal to its mean, while the binomial concentrates to the exact count with variance np (1 − p) for Binomial (n, p )
+
+vanishing as p → 1.
+
+Discrete Expanding Flow Map Following the mean denoiser 
+
+(6) of fixed-length discrete flow maps, we define the expanding mean denoiser as: 
+
+ψs,t (Es,t (xs)) := Es,t (xs) + (1 − s)vs,t (Es,t (xs)) (29) Substituting this into the definition of the expanding flow map in (18) yields the discrete expanding flow map (EFM), which jointly inserts and denoises tokens in a discrete sequence toward the target one-hot distribution. 
+
+Discrete Expanding Flow Map 
+
+Φs,t (xs) := Xs,t (Es,t (xs)) = 1 − t
+
+1 − s Es,t (xs) + t − s
+
+1 − s ψs,t (Es,t (xs)) (30) where Es,t (xs) : Rd(s)×V → Rd(t)×V is the expand operator from sequence length d(s) to d(t) and vocabulary size V and ψs,t : Rd(t)×V → (∆ V −1)d(t) is the mean denoiser that parameterizes the transport map. Unlike the continuous-space definition of EFM, the mean denoiser that parameterizes discrete EFM is defined on the simplex at each position ψs,t (xs)[ i] ∈ ∆V −1 and can be optimized with cross-entropy objectives. 
+
+Discrete Expanding Flow Map Identities To parameterize discrete EFM, we extend the continuous-time consistency identities (21) to the discrete setting with respect to the mean denoiser on the expanded state 
+
+ψs,t (Es,t (x)) , extending prior work on fixed-length discrete flow maps (Lee et al., 2026; Potaptchik et al., 2026b). 
+
+Proposition 5.1 (Discrete Expanding Flow Map Identities) . Let xϵs := Es,t (xs). Then, for s < t (and 
+
+s < u < t in the semigroup case), the expanding flow map Φs,t (xs) and mean denoiser ψs,t (xϵs) satisfy the following consistency conditions: Lagrangian: ψs,t (xϵs) = ψt,t (Φ s,t (xs)) − γs,t ∂tψs,t (xϵs) (31a) 
+
+Eulerian: ∂sψs,t (xϵs) + Jxψs,t (xϵs)bs(xϵs) = κs,t (ψs,t (xϵs) − E s,t (ψs,s (xs))) (31b) 
+
+Semigroup: ψs,t (xϵs) = ωs,u,t ψ(t)
+
+> s,u
+
+(xϵs) + (1 − ωs,u,t )ψu,t 
+
+(Eu,t (Φ s,u (xs)) ) (31c) 
+
+where Jxψs,t (xϵs) denotes the Jacobian of the map ψs,t with respect to its d(t)-dimensional input, and the coefficients are defined as ωs,u,t := (u−s)(1 −t)(t−s)(1 −u) , 1−ωs,u,t = (t−u)(1 −s)(t−s)(1 −u) , γs,t := (1 −t)( t−s)1−s , and κs,t := 1−t 
+
+> (1 −s)( t−s)
+
+.We define ψ(t) 
+
+> s,u
+
+: Rd(t)×V → Rd(t)×V as the mean denoiser over [s, u ] evaluated at the augmented dimension 
+
+d(t), the same parameterized map as ψs,u applied to a longer input. Because the velocity mask of (13) enforces A3, ψ(t) 
+
+> s,u
+
+leaves the coordinates inserted over (u, t ] unchanged, so ψ(t)
+
+> s,u
+
+(xϵs) = Eu,t (ψs,u (Es,u (xs))) .
+
+The proof is provided in App B.8. These properties define consistency objectives for training ˆE and ˆψ. Since 
+
+ˆψ : Rd(t)×V → (∆ V −1)d(t), we follow (Lee et al., 2026) and define the discrete EFM objective in the cross-entropy 9Table 1 Molecular conformer generation results on GEOM-Drugs and GEOM-QM9 . Comparison against state-of-the-art multi-step diffusion and deep generative models. +R indicates sampling with 10 additional steps, using a learned coordinate-refinement network. Reported baseline values are taken from (Hu et al., 2026a). Best values are bolded 
+
+and second-best are underlined.                                                                                                                                                               
+
+> GEOM-QM9 (δ= 0 .5Å) GEOM-Drugs (δ= 1 .25 Å) COV-R(%) ↑AMR-R(Å) ↓COV-P(%) ↑AMR-P(Å) ↓COV-R(%) ↑AMR-R(Å) ↓COV-P(%) ↑AMR-P(Å) ↓
+> Models Steps ↓Mean/Median Mean/Median Mean/Median Mean/Median Mean/Median Mean/Median Mean/Median Mean/Median GraphDG 500 73.33/84.21 0.4245/0.3973 43.90/35.33 0.5809/0.5823 8.27/0.00 1.9722/1.9845 2.08/0.00 2.4340/2.4100 CGCF 500 78.05/82.48 0.4219/0.3900 36.49/33.57 0.6615/0.6427 53.96/57.06 1.2487/1.2247 21.68/13.72 1.8671/1.8066 ConfVAE 500 55.84/88.20 0.4154/0.3739 38.02/34.67 0.6215/0.6091 55.20/59.43 1.2380/1.1417 22.96/14.05 1.8287/1.8159 GeoMol 500 71.26/72.00 0.3731/0.3731 -/--/-67.16/71.71 1.0875/1.0586 -/--/-ConfGF 500 88.49/94.31 0.2673/0.2685 46.43/43.41 0.5224/0.5124 62.15/70.93 1.1629/1.1596 23.42/15.52 1.7219/1.6863 GeoDiff 500 87.80/93.66 0.3179/0.3216 46.25/45.02 0.6173/0.5112 64.12/75.56 1.1444/1.1296 43.16/42.02 1.3806/1.3314 SubgDiff 500 89.40 /94.39 0.2543 /0.2601 49.21/47.45 0.5030/0.4724 74.30/77.87 1.0003/0.9905 -/--/-MSGEN 1000 88.36/ 95.10 0.2606/ 0.2332 49.54/48.39 0.4934/ 0.4624 85.06/ 97.16 0.9538/0.9478 49.28/48.20 1.3140/1.2719 EFlow 20 88.51/93.01 0.3849/0.3585 53.07/52.27 0.5185/0.4891 81.78/90.91 0.9971/0.9826 55.88/61.58 1.2672/1.2028 EFlow+R 30 88.87/94.05 0.3212/0.2924 54.86/52.38 0.4876 /0.4636 85.80/93.85 0.9069/0.8855 64.05/70.38 1.1663/1.0997 EFM 169.21/69.23 0.4884/0.4635 32.18/29.09 0.6093/0.5794 63.28/72.47 1.1921/1.1721 31.03/26.09 1.4966/1.4454 EFM 272.83/74.25 0.4703/0.4436 34.09/31.33 0.6000/0.5654 77.21/88.67 1.0740/1.0499 47.14/49.24 1.3483/1.2966 EFM 483.62/86.91 0.4165/0.3954 48.76/45.26 0.5412/0.5159 81.26/91.13 1.0201/1.0029 53.37/56.72 1.2883/1.2354 EFM+R 14 87.79/92.01 0.3271/0.3049 55.56 /53.09 0.4889/0.4691 87.97 /95.45 0.9029 /0.8836 64.67 /73.25 1.1575 /1.0875
+
+form: 
+
+LDEFM ( ˆψ) := Es,u,t Ex0,x1
+
+[
+
+−
+
+> d(t)
+
+∑
+
+> i=1
+
+( ¯ψs,t · log ˆψs,t )( xϵs)i
+
+]
+
++ EtEx0,x1
+
+[
+
+−
+
+> d(t)
+
+∑
+
+> i=1
+
+(Dt · log ˆψt,t )( xit)
+
+]
+
+(32) 
+
+where Dt : Rd(t)×V → (∆ V −1)d(t) is either a teacher instantaneous denoiser or the diagonal values of the student mean denoiser. Both terms in the target act on the state xϵs = Es,t (xs) expanded once to the terminal length d(t),with positions inserted after u left empty: 
+
+¯ψs,t (xϵs) := sg 
+
+[
+
+ωs,u,t ˆψ(t)
+
+> s,u
+
+(xϵs) + (1 − ωs,u,t ) ˆψu,t 
+
+( ˆΦ(t)
+
+> s,u
+
+(xϵs))]
+
+(33) which enforces the discrete semigroup condition in Prop 5.1 as shown in App B.8 and, together with Linsert , trains the mean denoiser and expand operator for few-step generation in the discrete setting. The training procedures for discrete EFlow and EFM are provided in Algorithms 1 and 2, respectively. 
+
+# 6 Experiments 
+
+To establish EFlow and EFM as a generalizable framework for generative modeling with variable canvas sizes across continuous and discrete state spaces, we evaluate our approach on three diverse tasks: coarse-to-fine molecular conformer generation on continuous 3D coordinate space (Section 6.1), discrete molecular graph generation (Section 6.2), and language modeling (Section 6.3). 
+
+## 6.1 Coarse-to-Fine Molecular Conformer Generation 
+
+Setup and Training Framework We evaluate our framework on molecular conformer generation over the GEOM-QM9 and GEOM-Drugs datasets (Axelrod and Gomez-Bombarelli, 2022), following the GeoDiff split (Xu et al., 2022), and report Coverage (COV) and Average Minimum RMSD (AMR) in both recall (R) and precision (P) forms at thresholds δ = 0 .5 Å for QM9 and δ = 1 .25 Å for Drugs (Table 1; see App. E.1 for experimental details). EFlow treats a conformer as a coarse-to-fine continuous-space expanding interpolant: the heavy-atom backbone is denoised from Gaussian noise and frozen at an insertion-end time, after which the hydrogens are inserted and resolved around the fixed backbone. Both stages live in a single insertion flow with per-atom local times, so one network generates the all-atom conformer, and an optional low-noise refiner (EFlow+R, EFM+R) refines the result. For fair comparison, the velocity field is the GeoDiff dual-encoder (Xu et al., 2022) used by MSGEN (Hu et al., 2026a). Since the molecular graph fixes the atom count, the expand operator here is the deterministic case of child expansion, where heavy atoms are held fixed, and hydrogen atoms are sampled from a deterministic insertion schedule but conditioned on the positions of their heavy-atom parent. 10 Results We compare against strong multi-step diffusion baselines: GeoDiff (Xu et al., 2022), SubgDiff (Zhang et al., 2024), and the two-stage MSGEN (Hu et al., 2026a), which run 500 -1000 denoising steps, alongside the classical and generative baselines (App E.1). Despite using 16 -50 × fewer steps than the diffusion baselines, EFlow is competitive with or surpasses them across both datasets. On GEOM-QM9, EFlow attains COV-R 88 .51% and COV-P 53 .07% at 20 steps, and the refiner sharpens precision to the best AMR-P of any method ( 0.4876 Å) at 
+
+30 steps. The gains are most significant on the larger GEOM-Drugs molecules (up to 181 atoms), where our methods take the best and second-best value on all four metrics. The refiner consistently sharpens the precision metrics with only 10 additional evaluations by refining local geometry around the frozen heavy-atom backbone. Notably, EFlow without distillation already surpasses the performance of multi-step diffusion at a fraction of the budget. After distillation, EFM pushes generation into the few-step regime, producing conformers in as few as 4, 2, and even 1 step, with EFM+R attaining the single best score on all four GEOM-Drugs metrics. To evaluate the chemical validity of generated samples, we evaluate the molecular ensemble properties (Axelrod and Gomez-Bombarelli, 2022) for 30 molecules in GEOM-QM9 on 50 generated conformers using Psi4 (Smith et al., 2020) and report these results in Table 5. These results establish expanding flows as a single framework that scales from multi-step to few-step conformer generation. 
+
+## 6.2 Discrete Molecular Graph Generation 
+
+Setup and Training Framework We evaluate our framework on drug-like small molecules from the QM9 dataset (Wu et al., 2018), reporting validity, uniqueness, and Fréchet ChemNet Distance (FCD) (Preuer et al., 2018) on 10 ,000 generated molecules (Table 2; see App E.2 for experimental details). EFlow treats a molecule as a discrete expanding interpolant over a variable number of nodes. The state is a pair (x, E) of node categories and a symmetric edge-category matrix, where each node has an independent insertion time, and a learned insertion head predicts the per-gap node count, enabling the graph to grow from empty to its full size. In contrast, node and edge categories are denoised jointly by a single network. For fair comparison, the denoiser is the DeFoG graph transformer (Qin et al., 2024). In contrast to conformer generation, the graph size is unknown, and the expand operator is a learned head predicting how many nodes to insert at sampling time (see App D for the discrete graph implementation details).                                                                      
+
+> Table 2 Discrete molecular graph generation results. Compar-ison against state-of-the-art multi-step baseline DeFoG (Qin et al., 2024) (top) and flow map baseline CFM (Roos et al., 2026) (bottom) on 10,000 molecules with FCD computed on the test split. Best FCD values are bolded .Multi-Step DeFoG EFlow (ours)
+> Steps Valid ↑Unique ↑FCD ↓Valid ↑Unique ↑FCD ↓
+> 100 99.2 96.2 0.134 98.9 95.9 0.116
+> 50 98.8 96.2 0.260 98.8 96.1 0.131
+> 10 88.6 92.8 1.630 97.9 96.1 0.390
+> 453.6 63.1 3.008 91.7 92.8 1.780
+> Few-Step CFM EFM (ours)
+> Steps Valid ↑Unique ↑FCD ↓Valid ↑Unique ↑FCD ↓
+> 291.1 97.6 0.49 90.0 97.9 0.40
+> 190.0 91.8 2.14 90.2 97.7 0.44
+
+Results First, we evaluate EFlow without any distillation against the state-of-the-art discrete graph flow model DeFoG (Qin et al., 2024). At a 100 -step budget, EFlow already surpasses DeFoG with lower FCD, with greater improve-ment as the step budget shrinks. From 100 
+
+to 10 steps, EFlow’s FCD degrades by only slightly while validity and uniqueness remain above 95% . DeFoG’s FCD and validity de-grade significantly over the same range, falling to 53 .6% at 4 steps, while EFlow still produces 
+
+91 .7% valid and 92 .8% unique molecules at FCD 1.780 . Notably, this is the non-distilled EFlow teacher, suggesting meaningful room for further gains in the few-step regime. We then evaluate the distilled EFM student against categorical flow maps (CFM) (Roos et al., 2026) in the one- to two-step regime (Table 2). In two steps, EFM is comparable to CFM on validity and uniqueness and achieves a lower FCD ( 0.40 vs. 0.49 ). EFM’s advantage widens at a single step, where CFM’s FCD degrades to 2.14 , and uniqueness drops to 91 .8, while EFM’s FCD remains strong at 0.44 with 97 .7% uniqueness. At one step, EFM’s FCD is nearly 5× lower than CFM’s (0.44 vs. 2.14 ). Together, these results establish expanding flows as a single framework robust across multi-step and one-step generation of variable-sized graphs. 
+
+## 6.3 Variable-Length Language Modeling 
+
+Setup and Training Framework Finally, we evaluate unconditional text generation on the One Billion Word benchmark (LM1B) (Chelba et al., 2013), reporting generative perplexity under GPT-2-Large (Radford et al., 11 Table 3 EFlow performance on LM1B. Gen. PPL ( ↓) and entropy across sampling budgets. FLM results are computed by running publicly released checkpoints from Lee et al. (2026). Best Gen. PPL values are bolded .                            
+
+> EFlow (ours) FLM Steps Gen. PPL ↓Ent. Gen. PPL ↓Ent. 1024 103.63 4.16 111.36 4.30 512 110.97 4.16 114.89 4.31 256 117.69 4.16 120.19 4.32 128 126.20 4.15 129.06 4.34 64 133.62 4.14 143.73 4.36
+
+Table 4 EFM performance on LM1B. Generative PPL ( ↓) and entropy ( ↑) across step counts 1, 2, 4. All reported baseline results taken from Lee et al. (2026). Best values are bolded and second-best are underlined.                                                        
+
+> Steps 124
+> Method Gen. PPL ↓Ent. Gen. PPL ↓Ent. Gen. PPL ↓Ent. Duo + DCD 1224.52 4.33 520.08 4.20 210.88 4.23 Duo + Di4C 292.94 3.79 247.69 3.87 150.67 4.00 MDLM + SDTT 1429.48 4.31 602.14 4.28 241.01 4.28 MDLM + Di4C 1217.10 4.38 621.59 4.37 247.32 4.00 CFM 269.72 3.10 267.39 3.15 267.97 3.28 FMLM 119.34 4.16 110.19 4.21 98.76 4.21
+> EFM (Ours) 98.35 3.56 125.95 3.95 99.85 3.93
+
+2019) and the entropy of the generated token distribution across both the multi-step and few-step regimes (Tables 3 and 4; see App E.3 for experimental details). We define a discrete expanding interpolant on sentences, where each token is assigned an independent insertion time, and a learned head predicts per-gap insertions, allowing the sequence to grow from empty to full length as a single network denoises token categories. Sampling either integrates the learned velocity via the instantaneous denoiser or mean denoiser and takes the argmax only at the final step. Due to the significantly higher vocabulary size of language data ( V = 30 , 522 for LM1B), we restrict the insertion times to the interval [0 , t ins-end ] to allow sufficient denoising time. The algorithmic choices specific to language are discussed in App C and experiment details are provided in App E.3. 
+
+Results As shown in Table 3, EFlow improves on the fixed-length flow language model FLM (Lee et al., 2026) at every step budget we evaluate, despite solving the strictly more expressive variable-length problem. Generative perplexity falls monotonically with the sampling budget, from 133 .62 at 64 steps to 103 .63 at 1024 steps. Notably, EFlow beats FLM in Gen. PPL at all step counts, indicating that variable-length conditioning does not sacrifice sample quality. Entropy is flat across the sweep at 4.14 -4.16 , slightly below FLM’s 4.30 -4.36 , but remains coherent as shown in Figure 3. Together, these results indicate that the expand-transport decomposition adds variable-length flexibility without sacrificing sample quality. We then evaluate the distilled EFM student in the few-step regime (Table 4) against distilled diffusion and flow-map baselines: Duo (Sahoo et al., 2025) and MDLM (Sahoo et al., 2024) distilled with DCD, SDTT (Deschenaux and Gulcehre, 2025), or Di4C (Hayakawa et al., 2025), categorical flow maps (CFM) (Roos et al., 2026), and flow map language models (FMLM) (Lee et al., 2026). EFM generates coherent text at 2 and 4 steps, improving on all distilled diffusion baselines and on CFM by a wide margin, while remaining competitive with FMLM (example generations in Fig 4). Single-step sampling exhibits mode collapse, which we attribute to the difficulty of predicting the full-length expansion and applying the flow map over the entire interval in one shot (see App C.5 for further discussion). Sample entropy is also lower than the fixed-length baselines, with one likely factor being that EFM conditions on the strictly larger space of local time coordinates rather than a shared uniform schedule, and we expect performance to improve with further schedule tuning. To our knowledge, this is nonetheless the first demonstration of flow maps on variable-length discrete sequences, expanding the design space of existing flow map frameworks that operate on a fixed-length token grid with uniform time conditioning. 
+
+# 7 Conclusion 
+
+In this work, we introduce Expanding Generative Flows (EFlow) and Expanding Flow Maps (EFMs), a unified framework that recasts generative modeling as learning a transport along an expanding interpolant between marginals of increasing dimensionality. We introduce the expand operator , which projects a state into a higher-dimensional space via conditional noise augmentation, and the transport map , which pushes the expanded state forward toward the target distribution. By extending continuous- and discrete-space consistency identities to this setting, EFMs enable efficient few-step generation across dimensionalities within a single formulation, removing the limitation of flow-based generators to a fixed-dimensional state space. 12 8 Limitations and Future Work 
+
+The current version of the paper validates EFlow and EFM on a diverse array of modalities, with GEOM-QM9 having a maximum of 29 atoms, GEOM-Drugs a maximum of 181 atoms, and LM1B capped at 128-length sequences. We theoretically show the stability of our Binomial insertion parameterization and transport map on variable-sized (active dimensionality) inputs. However, the complexity introduced by conditioning on local time coordinates for each dimension (over a fixed schedule) and the larger space of interpolants per clean data sample suggests that further tuning is required to scale to larger dimensionalities, which we were unable to fully explore empirically due to the large computational expense. The general construction of several components of our framework also suggests future extensions. For instance, the conditional noise distribution is not restricted to be defined as Gaussian noise and can be an additional learnable parameter, where the mean and covariance from which the inserted dimensions are sampled are parameterized. Furthermore, different interpolants that are 
+
+conditioned on the insertion time, or enforcing some structure to the ordering of insertion times, remain promising directions to be explored. Finally, while we restrict ourselves to interpolants of increasing dimensionality , we note that decreasing dimensionality along the interpolant can be considered as an operation in the PDMP construction. 
+
+# Declarations 
+
+Acknowledgements We thank Mark III Systems for providing database and hardware support that has con-tributed to the research reported within this manuscript. 
+
+Author Contributions S.T. devised and developed model architectures and theoretical formulations and performed experiments. S.T. drafted the manuscript and designed the figures. P.C. supervised and directed the study, and reviewed and finalized the manuscript. 
+
+Data and Materials Availability The codebase is freely accessible to the academic community at https://github. com/sophtang/ExpandingFlowMaps and at https://huggingface.co/ChatterjeeLab/ExpandingFlowMaps .
+
+Funding Statement This research was supported by NIH grant R35GM155282 to the lab of P.C.. 
+
+# References 
+
+Michael Albergo, Nicholas M Boffi, and Eric Vanden-Eijnden. 2025. Stochastic interpolants: A unifying framework for flows and diffusions. Journal of Machine Learning Research , 26(209):1–80. Michael S Albergo and Eric Vanden-Eijnden. 2022. Building normalizing flows with stochastic interpolants. International Conference on Learning Representations .Marianne Arriola, Aaron Gokaslan, Justin T Chiu, Zhihan Yang, Zhixuan Qi, Jiaqi Han, Subham Sekhar Sahoo, and Volodymyr Kuleshov. 2025. Block diffusion: Interpolating between autoregressive and diffusion language models. 
+
+International Conference on Learning Representations .Simon Axelrod and Rafael Gomez-Bombarelli. 2022. Geom, energy-annotated molecular conformations for property prediction and molecular generation. Scientific data , 9(1):185. Nicholas M Boffi, Michael S Albergo, and Eric Vanden-Eijnden. 2024. Flow map matching with stochastic interpolants: A mathematical framework for consistency models. Transactions in Machine Learning Research .Nicholas M Boffi, Michael S Albergo, and Eric Vanden-Eijnden. 2025. How to build a consistency model: Learning flow maps via self-distillation. Advances in Neural Information Processing Systems .Ciprian Chelba, Tomas Mikolov, Mike Schuster, Qi Ge, Thorsten Brants, Phillipp Koehn, and Tony Robinson. 2013. One billion word benchmark for measuring progress in statistical language modeling. arXiv preprint arXiv:1312.3005 .Yuxin Chen, Chumeng Liang, Hangke Sui, Ruihan Guo, Chaoran Cheng, Jiaxuan You, and Ge Liu. 2026. Langflow: Continuous diffusion rivals discrete in language modeling. arXiv preprint arXiv:2604.11748 .Chaoran Cheng, Jiahan Li, Jiajun Fan, and Ge Liu. 2025. α-flow: A unified framework for continuous-state discrete flow matching models. arXiv preprint arXiv:2504.10283 .
+
+13 Mark HA Davis. 1984. Piecewise-deterministic markov processes: A general class of non-diffusion stochastic models. 
+
+Journal of the Royal Statistical Society: Series B (Methodological) , 46(3):353–376. Oscar Davis, Samuel Kessler, Mircea Petrache, İsmail İ Ceylan, Michael Bronstein, and Avishek J Bose. 2024. Fisher flow matching for generative modeling over discrete data. Advances in Neural Information Processing Systems .Warren L DeLano et al. 2002. Pymol: An open-source molecular graphics tool. CCP4 Newsl. protein crystallogr , 40(1):82–92. Justin Deschenaux and Caglar Gulcehre. 2025. Beyond autoregression: Fast llms via self-distillation through time. In 
+
+International Conference on Learning Representations .Justin Deschenaux and Caglar Gulcehre. 2026. Language modeling with hyperspherical flows. arXiv preprint arXiv:2605.11125 .Sander Dieleman, Laurent Sartran, Arman Roshannai, Nikolay Savinov, Yaroslav Ganin, Pierre H Richemond, Arnaud Doucet, Robin Strudel, Chris Dyer, Conor Durkan, et al. 2022. Continuous diffusion for categorical data. arXiv preprint arXiv:2211.15089 .Fangyu Ding, Ding Ding, Sijin Chen, Kaibo Wang, Peng Xu, Zijin Feng, Haoli Bai, Kai Han, Youliang Yan, Binhang Yuan, et al. 2026. Beyond masks: Efficient, flexible diffusion language models via deletion-insertion processes. International Conference on Learning Representations .Kevin Frans, Danijar Hafner, Sergey Levine, and Pieter Abbeel. 2025. One step diffusion via shortcut models. International Conference on Learning Representations .Octavian Ganea, Lagnajit Pattanaik, Connor Coley, Regina Barzilay, Klavs Jensen, William Green, and Tommi Jaakkola. 2021. Geomol: Torsional geometric generation of molecular 3d conformer ensembles. Advances in Neural Information Processing Systems .Zhengyang Geng, Mingyang Deng, Xingjian Bai, J Zico Kolter, and Kaiming He. 2025. Mean flows for one-step generative modeling. Advances in Neural Information Processing Systems .Fabian Gloeckle, Badr Youbi Idrissi, Baptiste Rozière, David Lopez-Paz, and Gabriel Synnaeve. 2024. Better & faster large language models via multi-token prediction. International Conference on Machine Learning .Yi Guo, Wei Wang, Zhihang Yuan, Rong Cao, Kuan Chen, Zhengyang Chen, Yuanyuan Huo, Yang Zhang, Yuping Wang, Shouda Liu, et al. 2025. Splitmeanflow: Interval splitting consistency in few-step generative modeling. arXiv preprint arXiv:2507.16884 .Marton Havasi, Brian Karrer, Itai Gat, and Ricky TQ Chen. 2025. Edit flows: Flow matching with edit operations. 
+
+Advances in Neural Information Processing Systems .Satoshi Hayakawa, Yuhta Takida, Masaaki Imaizumi, Hiromi Wakaki, and Yuki Mitsufuji. 2025. Distillation of discrete diffusion through dimensional correlations. International Conference on Machine Learning .Jonathan Ho, Ajay Jain, and Pieter Abbeel. 2020. Denoising diffusion probabilistic models. Advances in Neural Information Processing Systems , 33:6840–6851. Peter Holderrieth, Douglas Chen, Luca Eyring, Ishin Shah, Giri Anantharaman, Yutong He, Zeynep Akata, Tommi Jaakkola, Nicholas Matthew Boffi, and Max Simchowitz. 2026a. Diamond maps: Efficient reward alignment via stochastic flow maps. International Conference on Machine Learning .Peter Holderrieth, Uriel Singer, Tommi Jaakkola, Ricky TQ Chen, Yaron Lipman, and Brian Karrer. 2026b. Glass flows: Transition sampling for alignment of flow and diffusion models. International Conference on Learning Representations .Jiapeng Hu, Weizhi Gao, Zhichao Hou, and Xiaorui Liu. 2026a. Hierarchical multi-scale molecular conformer generation. 
+
+International Conference on Learning Representations .Keya Hu, Linlu Qiu, Yiyang Lu, Hanhong Zhao, Tianhong Li, Yoon Kim, Jacob Andreas, and Kaiming He. 2026b. Elf: Embedded language flows. arXiv preprint arXiv:2605.10938 .Wolfgang Kabsch. 1976. A solution for the best rotation to relate two sets of vectors. Foundations of Crystallography ,32(5):922–923. Olav Kallenberg. 1997. Foundations of modern probability . Springer. Dongjun Kim, Chieh-Hsin Lai, Wei-Hsiang Liao, Naoki Murata, Yuhta Takida, Toshimitsu Uesaka, Yutong He, Yuki Mitsufuji, and Stefano Ermon. 2024. Consistency trajectory models: Learning probability flow ode trajectory of diffusion. 
+
+International Conference on Learning Representations .
+
+14 Jaeyeon Kim, Lee Cheuk-Kit, Carles Domingo-Enrich, Yilun Du, Sham Kakade, Timothy Ngotiaoco, Sitan Chen, and Michael Albergo. 2026. Any-order flexible length masked diffusion. International Conference on Learning Representations .Chanhyuk Lee, Jaehoon Yoo, Manan Agarwal, Sheel Shah, Jerry Huang, Aditi Raghunathan, Seunghoon Hong, Nicholas M Boffi, and Jinwoo Kim. 2026. Flow map language models: One-step language modeling via continuous denoising. arXiv preprint arXiv:2602.16813 .Jinsong Li, Xiaoyi Dong, Yuhang Zang, Yuhang Cao, Jiaqi Wang, and Dahua Lin. 2025. Beyond fixed: Training-free variable-length denoising for diffusion large language models. International Conference on Learning Representations .Yaron Lipman, Ricky TQ Chen, Heli Ben-Hamu, Maximilian Nickel, and Matt Le. 2022. Flow matching for generative modeling. arXiv preprint arXiv:2210.02747 .John Nguyen, Marton Havasi, Tariq Berrada, Luke Zettlemoyer, and Ricky TQ Chen. 2025. Oneflow: Concurrent mixed-modal and interleaved generation with edit flows. arXiv preprint arXiv:2510.03506 .Jingyang Ou, Shen Nie, Kaiwen Xue, Fengqi Zhu, Jiacheng Sun, Zhenguo Li, and Chongxuan Li. 2025. Your absorbing discrete diffusion secretly models the conditional distributions of clean data. International Conference on Learning Representations .Peter Potaptchik, Adhi Saravanan, Abbas Mammadov, Alvaro Prat, Michael S Albergo, and Yee Whye Teh. 2026a. Meta flow maps enable scalable reward alignment. International Conference on Machine Learning .Peter Potaptchik, Jason Yim, Adhi Saravanan, Peter Holderrieth, Eric Vanden-Eijnden, and Michael S Albergo. 2026b. Discrete flow maps. arXiv preprint arXiv:2604.09784 .Kristina Preuer, Philipp Renz, Thomas Unterthiner, Sepp Hochreiter, and Gunter Klambauer. 2018. Fréchet chemnet distance: a metric for generative models for molecules in drug discovery. Journal of chemical information and modeling ,58(9):1736–1741. Yiming Qin, Manuel Madeira, Dorina Thanou, and Pascal Frossard. 2024. Defog: Discrete flow matching for graph generation. International Conference on Machine Learning .Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, Ilya Sutskever, et al. 2019. Language models are unsupervised multitask learners. OpenAI blog , 1(8):9. Daan Roos, Oscar Davis, Floor Eijkelboom, Michael Bronstein, Max Welling, İsmail İlkan Ceylan, Luca Ambrogioni, and Jan-Willem van de Meent. 2026. Categorical flow maps. International Conference on Machine Learning .Amirmojtaba Sabour, Sanja Fidler, and Karsten Kreis. 2025. Align your flow: Scaling continuous-time flow map distillation. 
+
+Advances in Neural Information Processing Systems .Subham Sahoo, Marianne Arriola, Yair Schiff, Aaron Gokaslan, Edgar Marroquin, Justin Chiu, Alexander Rush, and Volodymyr Kuleshov. 2024. Simple and effective masked diffusion language models. Advances in Neural Information Processing Systems .Subham Sekhar Sahoo, Justin Deschenaux, Aaron Gokaslan, Guanghan Wang, Justin Chiu, and Volodymyr Kuleshov. 2025. The diffusion duality. International Conference on Machine Learning .Tim Salimans, Thomas Mensink, Jonathan Heek, and Emiel Hoogeboom. 2024. Multistep distillation of diffusion models via moment matching. Advances in Neural Information Processing Systems .Chence Shi, Shitong Luo, Minkai Xu, and Jian Tang. 2021. Learning gradient fields for molecular conformation generation. In International Conference on Machine Learning .Jiaxin Shi, Kehang Han, Zhe Wang, Arnaud Doucet, and Michalis Titsias. 2024. Simplified and generalized masked diffusion for discrete data. Advances in Neural Information Processing Systems .Gregor NC Simm and Jose Miguel Hernandez-Lobato. 2019. A generative model for molecular distance geometry. arXiv preprint arXiv:1909.11459 .Daniel GA Smith, Lori A Burns, Andrew C Simmonett, Robert M Parrish, Matthew C Schieber, Raimondas Galvelis, Peter Kraus, Holger Kruse, Roberto Di Remigio, Asem Alenaizan, et al. 2020. Psi4 1.4: Open-source software for high-throughput quantum chemistry. The Journal of chemical physics , 152(18). Yang Song and Prafulla Dhariwal. 2024. Improved techniques for training consistency models. International Conference on Learning Representations .Yang Song, Prafulla Dhariwal, Mark Chen, and Ilya Sutskever. 2023. Consistency models. International Conference on Machine Learning .
+
+15 Yang Song, Jascha Sohl-Dickstein, Diederik P Kingma, Abhishek Kumar, Stefano Ermon, and Ben Poole. 2021. Score-based generative modeling through stochastic differential equations. International Conference on Learning Representations .Hannes Stark, Bowen Jing, Chenyu Wang, Gabriele Corso, Bonnie Berger, Regina Barzilay, and Tommi Jaakkola. 2024. Dirichlet flow matching with applications to dna sequence design. International Conference on Machine Learning .Sophia Tang, Yinuo Zhang, Alexander Tong, and Pranam Chatterjee. 2025. Gumbel-softmax flow matching with straight-through guidance for controllable biological sequence generation. ArXiv , pages arXiv–2503. Sophia Tang, Yuchen Zhu, Molei Tao, and Pranam Chatterjee. 2026. A2d2: Fine-tuning any-length discrete diffusion for adaptive decoding. arXiv preprint arXiv:2606.13565 .Alexander Tong, Kilian Fatras, Nikolay Malkin, Guillaume Huguet, Yanlei Zhang, Jarrid Rector-Brooks, Guy Wolf, and Yoshua Bengio. 2023. Improving and generalizing flow-based generative models with minibatch optimal transport. arXiv preprint arXiv:2302.00482 .Zhenqin Wu, Bharath Ramsundar, Evan N Feinberg, Joseph Gomes, Caleb Geniesse, Aneesh S Pappu, Karl Leswing, and Vijay Pande. 2018. Moleculenet: a benchmark for molecular machine learning. Chemical science , 9(2):513–530. Zirui Wu, Lin Zheng, Zhihui Xie, Jiacheng Ye, Jiahui Gao, Shansan Gong, Yansong Feng, Zhenguo Li, Wei Bi, Guorui Zhou, et al. 2026. Dreamon: Diffusion language models for code infilling beyond fixed-size canvas. International Conference on Learning Representations .Minkai Xu, Shitong Luo, Yoshua Bengio, Jian Peng, and Jian Tang. 2021a. Learning neural generative dynamics for molecular conformation generation. International Conference on Learning Representations .Minkai Xu, Wujie Wang, Shitong Luo, Chence Shi, Yoshua Bengio, Rafael Gomez-Bombarelli, and Jian Tang. 2021b. An end-to-end framework for molecular conformation generation via bilevel programming. In International Conference on Machine Learning .Minkai Xu, Lantao Yu, Yang Song, Chence Shi, Stefano Ermon, and Jian Tang. 2022. Geodiff: A geometric diffusion model for molecular conformation generation. International Conference on Learning Representations .Jingyi Yang, Yuxian Jiang, and Jing Shao. 2026a. ρ-eos: Training-free bidirectional variable-length control for masked diffusion llms. arXiv preprint arXiv:2601.22527 .Zhihan Yang, Wei Guo, Shuibai Zhang, Subham Sekhar Sahoo, Yongxin Chen, Arash Vahdat, Morteza Mardani, and John Thickstun. 2026b. Continuous diffusion scales competitively with discrete diffusion for language. arXiv preprint arXiv:2605.18530 .Jaehoon Yoo, Wonjung Kim, and Seunghoon Hong. 2026. Redi: Rectified discrete flow. Advances in Neural Information Processing Systems .Jiying Zhang, Zijing Liu, Yu Wang, Bin Feng, and Yu Li. 2024. Subgdiff: A subgraph diffusion model to improve molecular representation learning. Advances in Neural Information Processing Systems .Kaiwen Zheng, Yongxin Chen, Hanzi Mao, Ming-Yu Liu, Jun Zhu, and Qinsheng Zhang. 2025. Masked diffusion models are secretly time-agnostic masked models and exploit inaccurate categorical sampling. International Conference on Learning Representations .Linqi Zhou, Stefano Ermon, and Jiaming Song. 2025. Inductive moment matching. International Conference on Machine Learning .
+
+16 Appendix 
+
+A Related Works 18 B Theoretical Proofs 18 
+
+B.1 Notation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 18 B.2 Assumptions . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 19 B.3 Assumptions Hold In Practice . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 19 B.4 Proof of Proposition 3.2 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 20 B.5 Proof of Proposition 3.1 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 21 B.6 Proof of Proposition 4.1 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 22 B.7 Proof of Proposition 4.2 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 23 B.8 Proof of Proposition 5.1 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 24 
+
+C Discrete Sequence Implementation Details 26 
+
+C.1 Local Time Insertions and Denoising . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 26 C.2 Time Reparameterization . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 27 C.3 Time Conditioning . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 27 C.4 Adaptive Loss Weighting . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 27 C.5 One-Step Sampling . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 28 
+
+D Discrete Graph Implementation Details 28 
+
+D.1 Notation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 28 D.2 Per-node Insertion Times and Edge Activation . . . . . . . . . . . . . . . . . . . . . . . . . . . . 28 D.3 Node and Edge Interpolants . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 29 D.4 Compacting the Partially Active Graph . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 29 D.5 Node and Edge Insertions . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 29 D.6 Denoising Nodes and Edges . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 30 
+
+E Experiment Details 30 
+
+E.1 Coarse-to-Fine Molecular Conformer Generation . . . . . . . . . . . . . . . . . . . . . . . . . . . 30 E.2 Discrete Molecular Graph Generation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 32 E.3 Language Modeling . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 33 
+
+F Algorithms 34 G Example Generations 36 
+
+17 A Related Works 
+
+Few-Step Generative Models Generation under a flow- or diffusion-based model requires numerical integration of an ODE or SDE, and inference cost scales with the number of function evaluations. A long line of work amortizes this cost by learning a solution operator that maps between two points on the generative trajectory in a single network call. Consistency models (Song et al., 2023; Song and Dhariwal, 2024) train networks to be self-consistent along the probability-flow ODE, and flow maps generalize this by transporting samples between any two times s and t, recovering consistency models at s = 0 and the instantaneous velocity as s → t. Recent work develops the theory and training recipes for flow maps (Boffi et al., 2025; Geng et al., 2025; Frans et al., 2025; Guo et al., 2025; Sabour et al., 2025), with parallel efforts on few-step discrete language generation (Hu et al., 2026b; Deschenaux and Gulcehre, 2025; Gloeckle et al., 2024; Hayakawa et al., 2025; Yoo et al., 2026; Roos et al., 2026; Lee et al., 2026; Potaptchik et al., 2026b). 
+
+Continuous Flows for Discrete Generation Discrete diffusion (Shi et al., 2024; Sahoo et al., 2024; Ou et al., 2025; Zheng et al., 2025) needs many function evaluations for accurate generation, motivating extensions of flow maps to discrete domains where standard regression losses are unstable. Continuous-space parameterizations for discrete generation operate either in simplex space (Stark et al., 2024; Davis et al., 2024; Tang et al., 2025) or in continuous embedding spaces (Cheng et al., 2025; Chen et al., 2026; Dieleman et al., 2022; Hu et al., 2026b; Deschenaux and Gulcehre, 2026; Yang et al., 2026b). Building on these, FMLMs (Lee et al., 2026) and DFMs (Potaptchik et al., 2026b) distill a continuous flow over simplex-embedded tokens into a few-step generator trained with simplex-aware cross-entropy, while CFM (Roos et al., 2026) self-distills a flow-matching model constrained to the simplex. Together, these show the flow-map recipe transfers to categorical data once the loss matches the simplex geometry. 
+
+Stochastic Flow Maps Standard flow maps are deterministic, but posterior sampling, reward alignment, and inverse problems require many independent endpoints from a single intermediate state. Flow Map Matching (Boffi et al., 2024) builds flow maps for stochastic interpolants that generalize consistency models. Diamond Maps (Holderrieth et al., 2026a) amortize many SDE steps into one call while preserving the noise injection needed for value estimation, distilled from GLASS Flows (Holderrieth et al., 2026b). Meta Flow Maps (Potaptchik et al., 2026a) condition on an intermediate pair (x, t ) to learn a family of conditional flow maps generating the posterior 
+
+pu|t(· | x), recovering the clean posterior p1|t(· | x) at u = 1 .
+
+Variable-Length Generation Most non-autoregressive models, including masked diffusion and standard discrete flows, operate on a fixed-length canvas that forces a length commitment upfront and wastes compute on padding. A growing body of work removes this restriction. FlexMDMs (Kim et al., 2026) extend stochastic interpolants (Albergo et al., 2025; Albergo and Vanden-Eijnden, 2022) to build sequences by inserting and then unmasking tokens, and can retrofit pretrained models like LLaDA-8B. Edit Flows (Havasi et al., 2025) model generation as a continuous-time Markov chain over insertion, deletion, and substitution edits, and OneFlow (Nguyen et al., 2025) extends this to interleaved multimodal text-and-image outputs. Within masked diffusion, several methods adjust length via the model’s own predictions, including block diffusion (Arriola et al., 2025), DAEDAL (Li et al., 2025), ρ-EOS (Yang et al., 2026a), DreamOn (Wu et al., 2026), and Deletion-Insertion Diffusion (Ding et al., 2026). A2D2 (Tang et al., 2026) formulates any-length generation as a controlled continuous-time Markov chain and jointly optimizes insertion and unmasking policies for reward-guided fine-tuning. These works establish variable-length generation but remain outside the flow-map paradigm, motivating how to combine length flexibility with few-step flow-map efficiency. 
+
+# B Theoretical Proofs 
+
+## B.1 Notation 
+
+State spaces and time variables We write s, u, t ∈ [0 , 1] for time coordinates and d(t) : [0 , 1] → N for a non-decreasing dimension schedule. In the continuous setting Rd(t) is the state space at time t and, in the discrete setting Rd(t)×V is the space of length-d(t) sequences whose tokens are V -dimensional latent vectors that resolve onto the simplex ∆V −1 ⊂ RV . The PDMP of Section 3 lives on the disjoint union M := ⊔ 
+
+> t
+
+Rd(t). For each 18 coordinate i, tins  
+
+> i
+
+is its insertion time and ti = ( t − tins  
+
+> i
+
+)/(1 − tins  
+
+> i
+
+) its local time. The vector of local times is denoted tlocal .
+
+States and distributions xt denotes the state at time t, a latent vector in Rd(t) (continuous) or a sequence of latent vectors in Rd(t)×V (discrete). We write x0 ∼ p0 for a prior sample, x1 ∼ p1 for a clean data sample, and 
+
+x(t)1 for the data sample restricted to the coordinates present at time t. The marginal law is pt ∈ P (Rd(t)) and the conditional law of the jump is pt|s(· | xs). Augmented noise ϵ ∼ pϵ|s,t lifts the dimension from d(s) to d(t),giving the augmented state xϵs := Es,t (xs) = Es,t (xs, ϵ).
+
+Operators Es,t is the expand operator, Xs,t the transport map in the augmented space, and Φs,t := Xs,t ◦ E s,t 
+
+the full expanding flow map. Transport is parameterized by the average velocity vs,t in the continuous setting and by the mean denoiser ψs,t (valued on the simplex) in the discrete setting. On the diagonal t = s, bt is the instantaneous velocity and Dt the instantaneous denoiser. In the discrete setting, αt is the insertion schedule with Pr [tins  
+
+> i
+
+≤ t] = αt, Is,t (xs)[ i] the per-gap insertion expectation, and λt the insertion intensity of the PDMP. Hats denote network-parameterized objects ( ˆvs,t , ˆψs,t , ˆEs,t , ˆIs,t ) and sg (·) the stop-gradient operator used in the consistency objectives. 
+
+## B.2 Assumptions 
+
+Assumptions on the Expand Operator The expand operator Es,t obeys the following structural properties: 
+
+Assumption A1 (Fixed-noise differentiability) . Once the augmented noise ϵ is sampled, Es,t (x, ϵ) depends differentiably on x, and its x-derivative is the embedding matrix E ∈ Rd(t)×d(s) that places existing coordinates at their target positions and fills the rest with the entries of ϵ. In particular, ∂tEs,t (x, ϵ) = 0 and ∂sEs,t (x, ϵ) = 0 at fixed ϵ and fixed placement, and ∇xEs,t (x, ϵ) = E.
+
+Assumption A2 (Composability) . For s ≤ u ≤ t, the placements compose: Es,t = Eu,t ◦ E s,u when the noise samples are drawn consistently from the disintegration pϵ|s,t = pϵ|u,t ⊗ pϵ|s,u .
+
+Assumption A3 (Inactive coordinates are unchanged) . For s ≤ u, the augmented-space flow Xs,u on Rd(t)
+
+does not change the d(t) − d(u) coordinates that are scheduled to be inserted only at times ≥ u. Equivalently, 
+
+X(t) 
+
+> s,u
+
+◦ E u,t = Eu,t ◦ Xs,u on the image of Es,u .
+
+Assumption A4 (Active-inactive velocity definition) . On the image of Es,t , the diagonal velocity has no component along inactive coordinates, such that there exists ˜vs,s : Rd(s) → Rd(s) such that: 
+
+vs,s (Es,t (x)) = E˜vs,s (x), E := ∇xEs,t (x, ϵ) ∈ Rd(t)×d(s) (34) Intuitively, A3 states that the flow does not transform coordinates before they are inserted. A4 extends A3 by stating that if inactive coordinates do not move under the augmented flow, then their instantaneous velocity vanishes, so vs,s (Es,t (x)) is supported on the active block (i.e., in the column space of E). This means that it can be reduced back to a d(s)-dimensional velocity ˜vs,s : Rd(s) → Rd(s).
+
+## B.3 Assumptions Hold In Practice 
+
+The assumptions on the expand operator split into two groups. A1 (fixed-noise differentiability) and A2 (composability) constrain only the placement map of Es,t and hold for any learned velocity, while A3 (inactive coordinates are unchanged) and A4 (active-inactive split) constrain the learned dynamics and are enforced by the local-time velocity of (13). We verify both groups hold by construction in each experiment. 
+
+A1 and A2 are automatically enforced by the expand operation. In every experiment, Es,t only decides which slot each coordinate goes in. It copies the existing coordinates of xs into their slots and drops the noise ϵ into the new ones, without transforming any values. Once the noise and the slots are fixed, the output is just xs
+
+rearranged plus a constant, so it is affine in xs with derivative equal to the fixed 0/1 slot-selection matrix E and no dependence on time, giving A1. This holds for concatenation, gap-wise insertion, and child expansion. Composability (A2) then says that inserting in two steps ( s → u → t) lands each coordinate in the same slot as inserting in one step ( s → t), which holds because concatenating slots is associative. The only condition is that 19 the augmented noise be drawn consistently across the two paths. For a fixed schedule, each token’s insertion time satisfies Pr [tins  
+
+> i
+
+≤ t] = αt, which satisfies the disintegration pϵ|s,t = pϵ|u,t ⊗ pϵ|s,u . When the per-gap allocation is learned (language), the schedule factor in (25) and the two-time insertion loss constrain the head to respect this disintegration, so composability is enforced by the fixed schedule. 
+
+A3 and A4 are enforced by the velocity mask. The velocity field sets bt(xϵt )[ i] = 0 for every uninserted coordinate ( tins  
+
+> i
+
+> t ), so uninserted coordinates never move (A3) and vs,s (Es,t (x)) is supported on the active block spanned by E (A4). This mask is applied at the parameterization level and does not rely on training. In conformer generation, the heavy-atom backbone is denoised and frozen before hydrogens are inserted, which is A3 applied to resolved atoms. In discrete graphs, the atom count is fixed and uninserted node and edge coordinates stay empty until inserted. In language, a position enters the mean-denoiser loss only after being inserted, so the denoiser emits no gradient for empty positions. 
+
+## B.4 Proof of Proposition 3.2 
+
+Proposition 3.2 (Expanding Flows are Piecewise-Deterministic Markov Processes) . Let M := ⊔ 
+
+> t∈[0 ,1]
+
+Rd(t) be the state space and (xt)t∈[0 ,1] the expanding generative flow of Def. 3.1, with velocity 
+
+bt in the augmented space, expand operator Et, and noise law pϵ|t. Writing Et := lim s→t Es,t and 
+
+pϵ|t := lim s→t pϵ|s,t for the instantaneous insertion map and noise law at time t, the augmented process 
+
+St := ( xt, tlocal ), carrying the local-time coordinates tlocal , is a piecewise-deterministic Markov process (PDMP) on M with extended generator acting on x-functions given by: 
+
+Ltf (x) = bt(x) · ∇ f (x)
+
+︸ ︷︷ ︸
+
+> transport
+
++ λt(x)
+
+∫ (f (Et(x, ϵ)) − f (x))pϵ|t(dϵ)
+
+︸ ︷︷ ︸
+
+> jumps, kernel =( Et(x,·)) #pϵ|t
+
+, (16) 
+
+where λt is the insertion intensity and the jump kernel is the pushforward (Et(x, ·)) #pϵ|t, which equals the instantaneous conditional law pt|s(· | xs) of (11) as s ↑ t.
+
+Proof. A piecewise-deterministic Markov process (PDMP) on M is characterized by (i) a deterministic flow ˙xτ ,(ii) a jump intensity λt ≥ 0, and (iii) a transition kernel Qt of the jump process. The generator of a PDMP is given by: 
+
+Ltf = ∇f · bt + λt
+
+∫
+
+(f (y) − f (x)) Qt(x, d y) (35) Because the jump intensity and transport depend on how far each coordinate has been denoised, we track the full state St := ( xt, tlocal ), where tlocal = {ti} collects the local time coordinates ti = ( t − tins  
+
+> i
+
+)/(1 − tins  
+
+> i
+
+) of the inserted coordinates (equivalently the insertion times, by the bijection at fixed t). We write each component of the expanding generative flow as a component of the PDMP generator. 
+
+Step 1: Deterministic Flow. Given a ordered set of insertion times {tins  
+
+> k
+
+}, the time interval between two consecutive insertion times (tins  
+
+> k
+
+, t ins 
+
+> k+1
+
+) has fixed dimension d(t) and following Def 3.1, the state evolves via an augmented-space ODE ˙xτ = bτ (xτ ) on the fixed-dimensional space xτ ∈ Rd(tins + 
+
+> k)
+
+, where the superscript +
+
+denotes the right limit, i.e. the dimension immediately after the kth insertion. For any test function f ∈ C1 
+
+> b
+
+with bounded, continuous first derivative, the chain rule yields:  
+
+> ddt
+
+f (xt) = ˙ xt · ∇ f (xt) = bt(xt) · ∇ f (xt) (36) which is the transport term in (35). By A3, bτ (x)[ i] = 0 for every uninserted coordinate i and all x, so the velocity field maps into the active subspace and its flow keeps the uninserted coordinates fixed for the whole interval. Hence bt · ∇ f is supported on the inserted coordinates and the flow stays bound to Rd(tins + 
+
+> k)
+
+.
+
+Step 2: Jump Between Dimensions. At each insertion time tins  
+
+> k
+
+, the state makes a discontinuous jump from 
+
+x ∈ Rd(tins  
+
+> k−)
+
+to the augmented state xϵ = Etins  
+
+> k
+
+(x, ϵ) ∈ Rd(tins +  
+
+> k)
+
+where ϵ ∼ pϵ|tins  
+
+> k
+
+. Since the expanding operator 
+
+Etins  
+
+> k
+
+(x, ϵ) depends only on the current state x and freshly sampled noise ϵ, the jump is Markov. 20 By A1, for fixed noise Et(·, ϵ) is affine in both x and ϵ, so as a map of the pair (x, ϵ) it is continuous and Borel measurable. This guarantees that the preimage {ϵ : Et(x, ϵ) ∈ A} is measurable and the transition kernel Qt(x, A ),defined as the probability of the expanded state starting from x landing in a measurable set A, is well-defined. Given x, the stochasticity is dependent on ϵ, so the probability of landing in A is the probability that ϵ falls in the preimage set, equal to the pushforward measure: 
+
+Qt(x, A ) = pϵ|t({ϵ : Et(x, ϵ) ∈ A}) = 
+
+(
+
+(Et(x, ·)) # pϵ|t
+
+)
+
+(A) (37) so Qt(x, ·) is the law of Et(x, ϵ), a Markov kernel. The generator of a Markov jump process is the expected instantaneous change in the test function with jump intensity λt:
+
+λt
+
+∫
+
+(f (y) − f (x)) Qt(x, d y) = λt
+
+∫
+
+(f (Et(x, ϵ)) − f (x)) pϵ|t(dϵ) (38) where we substitute the post-jump state with the expanded state Et(x, ϵ) and integrate over ϵ ∼ pϵ|t.
+
+Step 3: Markov Property. The post-jump state depends only on (x, ϵ) with ϵ drawn independently of the past. Between jumps the local times advance deterministically by ˙ti = (1 − tins  
+
+> i
+
+)−1 and a newly inserted coordinate enters at ti = 0 , so tlocal is determined by the state. Since between jumps St evolves deterministically and at a jump depends only on (x, ϵ), it depends on the past only through St− , so (St)t∈[0 ,1] is Markov. The state process (xt)t∈[0 ,1] is not Markov on its own, as its intensity and transport require tlocal . By Prop 3.1, the conditional law is pt|s(· | xs) = ( Es,t (xs, ·)) #pϵ|s,t , and taking s ↑ t
+
+and comparing with the kernel above gives Qt(xs, ·) = pt|s(· | xs), where the disintegration pϵ|s,t = pϵ|u,t ⊗ pϵ|s,u 
+
+is A2. 
+
+Step 4: Jump Intensity in Discrete Case. A coordinate inserted with schedule Pr [tins  
+
+> i
+
+≤ t] = αt has survival 1 − αt
+
+and hazard − ddt log (1 − αt) = ˙αt/(1 − αt) (the insertion rate for each expected uninserted token) so summing over gaps i gives λt(x) = ˙αt
+
+> 1−αt
+
+∑ 
+
+> i
+
+It(x)[ i]. Since each jump raises the dimension by at least one and d(1) < ∞, there are finitely many jumps on [0 , 1] and the process does not explode. Combining the generator components from the deterministic flow, insertion jump, and jump intensity yields the generator for the PDMP of the expanding flow in (16). □
+
+## B.5 Proof of Proposition 3.1 
+
+Proposition 3.1 (Expand Operator is Pushforward of Noise Law) . Fix an expand operator Es,t :
+
+Rd(s) ×Rd(t)−d(s) → Rd(t) that places source and noise coordinates according to one of the instantiations. Then, the resulting conditional law is: 
+
+pt|s(· | xs) = ( Es,t (xs, ·)) #pϵ|s,t (· | xs) (11) 
+
+Proof. Fix xs ∈ Rd(s) and hold it constant throughout, so that Es,t (xs, ·) : Rd(t)−d(s) → Rd(t) is a measurable map in the augmented noise alone (measurability holds for each instantiation, since concatenation, positional insertion, and coordinate refinement are all compositions of coordinate embeddings and permutations, which are Borel measurable). The augmented state is the random variable: 
+
+xt := Es,t (xs, ϵ), ϵ ∼ pϵ|s,t (· | xs), (39) and by definition the conditional law pt|s(· | xs) is the distribution of xt given xs, i.e. the law of Es,t (xs, ϵ) under the noise law. By the definition of the pushforward measure, for every Borel set A ⊆ Rd(t),
+
+pt|s(A | xs) = Pr [Es,t (xs, ϵ) ∈ A ∣∣ xs
+
+] (40) 
+
+= Pr [ϵ ∈ E s,t (xs, ·)−1(A) ∣∣ xs
+
+] (41) 
+
+= pϵ|s,t 
+
+(Es,t (xs, ·)−1(A) ∣∣ xs
+
+) (42) 
+
+= (Es,t (xs, ·))
+
+> #
+
+pϵ|s,t (· | xs)( A), (43) 21 where the third line uses that the preimage Es,t (xs, ·)−1(A) is measurable, and the last line is exactly the definition of the pushforward of pϵ|s,t (· | xs) under the map Es,t (xs, ·). Since this holds for all Borel A, the two measures agree, giving (11). □
+
+## B.6 Proof of Proposition 4.1 
+
+Setup Let xϵs = Es,t (x) ∈ Rd(t) and Xs,t : Rd(t) → Rd(t) be the time-t flow map of the augmented-space ODE 
+
+˙zτ = bτ (zτ ) on Rd(t) with zs = xϵs. By the proofs in Boffi et al. (2025), Xs,t satisfies the standard fixed-dimensional flow map identities. Here, we lift these through Es,t to Φs,t = Xs,t ◦ E s,t .
+
+Proposition 4.1 (Expanding Flow Map Identities) . Let xϵs := Es,t (xs). Then, the expanding flow map Φs,t (xs) satisfy the following consistency conditions: Lagrangian: ∂tΦs,t (x) = vt,t (Φ s,t (x)) (21a) 
+
+Eulerian: ∂sΦs,t (x) + ∇xΦs,t (x)˜ vs,s (x) = 0 (21b) 
+
+Semigroup: Φu,t (Φ s,u (x)) = Φ s,t (x) (21c) 
+
+where ˜vs,s : Rd(s) → Rd(s) is the unlifted diagonal velocity of A4, satisfying vs,s (Es,t (x)) = E˜vs,s (x).
+
+Φs,t (x) := Xs,t (Es,t (x)) = Es,t (x) + ( t − s)vs,t (Es,t (x)) is the residual form of the expanding flow map in the continuous state space. 
+
+Proof. Throughout this proof, we fix the augmented noise ϵ and simplify notation by writing Es,t (x) ≡ E s,t (x, ϵ).By A1 the placement is held fixed, so the Lagrangian and Eulerian identities are local statements valid on any interval of times over which the dimension schedule d(·) is constant, i.e., between consecutive insertion times. The semigroup identity requires no differentiability and holds for all 0 ≤ s ≤ u ≤ t ≤ 1. We prove each identity one by one. 
+
+Lagrangian Identity By the chain rule applied to Φs,t (x) = Xs,t (Es,t (x)) , we have: 
+
+∂tΦs,t (x) = ∂tXs,t (y)∣∣y=Es,t (x) + ∇y Xs,t (y)∣∣y=Es,t (x) · ∂tEs,t (x, ϵ)
+
+︸ ︷︷ ︸ 
+
+> =0 by A1
+
+= ∂tXs,t (y)∣∣y=Es,t (x) (44) The standard Lagrangian condition (5) in the fixed-dimensional augmented space Rd(t), ∂tXs,t (y) = vt,t (Xs,t (y)) ,evaluated at y = Es,t (x), gives: 
+
+∂tΦs,t (x) = vt,t 
+
+(Xs,t (Es,t (x)) ) = vt,t (Φ s,t (x)) , (45) which is the Lagrangian identity in (21). 
+
+Eulerian Identity By A1, ∂sEs,t (x, ϵ) = 0 at fixed ϵ, so the chain rule in s gives: 
+
+∂sΦs,t (x) = ∂sXs,t (y)∣∣y=Es,t (x) + ∇y Xs,t (y)∣∣y=Es,t (x) · ∂sEs,t (x, ϵ)
+
+︸ ︷︷ ︸
+
+> =0
+
+= ∂sXs,t (y)∣∣y=Es,t (x) (46) Similarly, since ∇xEs,t (x, ϵ) = E ∈ Rd(t)×d(s) by A1, the chain rule in x gives: 
+
+∇xΦs,t (x) = ∇y Xs,t (y)∣∣y=Es,t (x)E ∈ Rd(t)×d(s) (47) The standard Eulerian condition (5) on the augmented space Rd(t), evaluated at y = Es,t (x), is given by: 
+
+∂sXs,t (y) + ∇y Xs,t (y)vs,s (y) = 0 (48) 22 By A4, on the image of Es,t the diagonal velocity satisfies vs,s (Es,t (x)) = E˜vs,s (x) with ˜vs,s (x) ∈ Rd(s). Substituting into the second term of (48) and using (47), we get: 
+
+∇y Xs,t (y)∣∣y=Es,t (x)vs,s (Es,t (x)) = ∇y Xs,t (y)∣∣y=Es,t (x)E˜vs,s (x) (47) 
+
+= ∇xΦs,t (x)˜ vs,s (x) (49) Combining with (46) yields: 
+
+∂sΦs,t (x) + ∇xΦs,t (x)˜ vs,s (x) = 0 , (50) which is the Eulerian identity in (21). Both terms are vectors in Rd(t), since ∇xΦs,t (x) ∈ Rd(t)×d(s) multiplies the vector ˜vs,s (x) ∈ Rd(s) to give a vector in Rd(t), matching ∂Φs,t (x).
+
+Semigroup Identity Fix 0 ≤ s ≤ u ≤ t ≤ 1. The maps involved act between spaces of different dimension: 
+
+Φs,t : Rd(s) → Rd(t), Φs,u : Rd(s) → Rd(u), Φu,t : Rd(u) → Rd(t), (51) so the claim is that expanding and transporting from d(s) to d(t) in one step agrees with doing so in two steps through d(u).Let X(t) 
+
+> s,u
+
+: Rd(t) → Rd(t) denote the transport map on the augmented space Rd(t) over [s, u ]. By (13) its velocity vanishes on coordinates scheduled for insertion at times ≥ u, so X(t) 
+
+> s,u
+
+acts as Xs,u on the coordinates active by time u and as the identity on the remaining d(t) − d(u) coordinates. Since X(t)
+
+> s,u
+
+, Xu,t , and Xs,t are all flow maps of the same ODE on the fixed space Rd(t), the standard semigroup condition (5) gives 
+
+Φs,t (x) = Xs,t (Es,t (x)) = Xu,t 
+
+(X(t)
+
+> s,u
+
+(Es,t (x)) ). (52) By A2, the placements compose, Es,t = Eu,t ◦ E s,u , and by A3 the augmented-space flow leaves the coordinates inserted at times ≥ u unchanged, so on the image of Es,u , we have: 
+
+X(t) 
+
+> s,u
+
+◦ E u,t = Eu,t ◦ Xs,u (53) Substituting A2 and then (53) into (52), we get: 
+
+Φs,t (x) = Xu,t 
+
+(
+
+X(t)
+
+> s,u
+
+(Eu,t (Es,u (x)) ))
+
+= Xu,t 
+
+(
+
+Eu,t 
+
+(Xs,u (Es,u (x)) ))
+
+= Xu,t 
+
+(Eu,t (Φ s,u (x)) ) = Φ u,t (Φ s,u (x)) (54) which is the semigroup identity in (21). □
+
+## B.7 Proof of Proposition 4.2 
+
+Proposition 4.2 (Expanding Flow Maps are Stochastic Flow Maps) . Let Φs,t (xs, ϵ) be an expanding flow map (18) with conditional noise ϵ ∼ pϵ|s,t satisfying the consistency identities (21). Then for all t ∈ [s, 1] , the pushforward satisfies pt|s(·| xs) = (Φ s,t (xs, ·)) #pϵ|s,t , and recovers the clean posterior 
+
+p1|s(·| xs) at t = 1 .
+
+Proof. By Definition 3.1, the flow map on the augmented space Xs,t : Rd(s) × Rd(t)−d(s) → Rd(t) satisfies the pushfoward identity: 
+
+(Xs,t )#pϵs,t = ( Xs,t )#(ps ⊗ pϵ|s,t ) = pt (55) Using the disintegration theorem (Kallenberg, 1997), we can disintegrate both sides by the marginal ps. The LHS disintegrates by the property that, for fixed xs, the map Xs,t (xs, ·) : Rd(t)−d(s) → Rd(t) is a function of ϵ alone, so the conditional measure given xs is the pushforward of pϵ|s,t along Xs,t (xs, ·):
+
+[( Xs,t )#pϵs,t ]( ·| xs) = ( Xs,t (xs, ·)) #pϵ|s,t (56) 23 The RHS of the disintegration written through the joint ps,t (xs, xt), is given by the conditional distribution 
+
+pt|s(·| xs):
+
+pt(·) = 
+
+∫
+
+pt|s(· | xs)ps(dx s) (57) By the uniqueness of disintegration, we have: 
+
+pt|s(·| xs) = (Xs,t (xs, ·))
+
+> #
+
+pϵ|s,t (58) The clean posterior is recovered when t = 1 :
+
+p1|s(·| xs) = (Xs, 1(xs, ·))
+
+> #
+
+pϵ|s, 1 (59) which concludes the proof. □
+
+## B.8 Proof of Proposition 5.1 
+
+In the discrete expanding flow map setting, we define the parameterization: 
+
+Φs,t (xs) = Xs,t (Es,t (xs)) , Xs,t (y) = 1−t 
+
+> 1−s
+
+y + t−s 
+
+> 1−s
+
+ψs,t (y) (60) which satisfies the tangent condition ψs,s (y) = y + (1 − s)bs(y). We use (A1-A4) from Proposition B.6 and the additional assumption for the mean denoiser: 
+
+Assumption A5 (Diagonal-expand consistency) . ψ(t)
+
+> s,s
+
+(Es,t (x)) = Es,t (ψs,s (x)) for the diagonal denoiser, where 
+
+ψ(t) 
+
+> s,s
+
+: Rd(t)×V → (∆ V −1)d(t) is the diagonal denoiser at the augmented dimension d(t) and ψs,s : Rd(s)×V →
+
+(∆ V −1)d(s) at the native dimension d(s), so both sides lie in (∆ V −1)d(t). Equivalently, the model’s clean prediction at the diagonal on a newly lifted state equals the lift of its clean prediction on the unlifted state. 
+
+Proposition 5.1 (Discrete Expanding Flow Map Identities) . Let xϵs := Es,t (xs). Then, for s < t 
+
+(and s < u < t in the semigroup case), the expanding flow map Φs,t (xs) and mean denoiser ψs,t (xϵs)
+
+satisfy the following consistency conditions: Lagrangian: ψs,t (xϵs) = ψt,t (Φ s,t (xs)) − γs,t ∂tψs,t (xϵs) (31a) 
+
+Eulerian: ∂sψs,t (xϵs) + Jxψs,t (xϵs)bs(xϵs) = κs,t (ψs,t (xϵs) − E s,t (ψs,s (xs))) (31b) 
+
+Semigroup: ψs,t (xϵs) = ωs,u,t ψ(t)
+
+> s,u
+
+(xϵs) + (1 − ωs,u,t )ψu,t 
+
+(Eu,t (Φ s,u (xs)) ) (31c) 
+
+where Jxψs,t (xϵs) denotes the Jacobian of the map ψs,t with respect to its d(t)-dimensional input, and the coefficients are defined as ωs,u,t := (u−s)(1 −t)(t−s)(1 −u) , 1 − ωs,u,t = (t−u)(1 −s)(t−s)(1 −u) , γs,t := (1 −t)( t−s)1−s , and 
+
+κs,t := 1−t 
+
+> (1 −s)( t−s)
+
+. We define ψ(t) 
+
+> s,u
+
+: Rd(t)×V → Rd(t)×V as the mean denoiser over [s, u ] evaluated at the augmented dimension d(t), the same parameterized map as ψs,u applied to a longer input. Because the velocity mask of (13) enforces A3, ψ(t) 
+
+> s,u
+
+leaves the coordinates inserted over (u, t ] unchanged, so 
+
+ψ(t)
+
+> s,u
+
+(xϵs) = Eu,t (ψs,u (Es,u (xs))) .Proof. Throughout this proof, we denote y := xϵs = Es,t (xs).
+
+Lagrangian Identity Differentiating Xs,t (y) = 1−t 
+
+> 1−s
+
+y + t−s 
+
+> 1−s
+
+ψs,t (y) in t at fixed s, y, we get: 
+
+∂tXs,t (y) = ψs,t (y) − y
+
+1 − s + t − s
+
+1 − s ∂tψs,t (y) (61) The continuous Lagrangian on the augmented space gives ∂tXs,t (y) = bt(Xs,t (y)) , and the boundary condition 
+
+ψt,t (z) = z + (1 − t)bt(z) implies: 
+
+bt(z) = ψt,t (z) − z
+
+1 − t (62) 24 Setting z = Xs,t (y) in bt and setting the expression equal to (61) multiplied by (1 − t), we get: 
+
+1 − t
+
+1 − s
+
+(ψs,t (y) − y) + (1 − t)( t − s)1 − s ∂tψs,t (y) = ψt,t (Xs,t (y)) − Xs,t (y) (63) Substituting Xs,t (y) = 1−t 
+
+> 1−s
+
+y + t−s 
+
+> 1−s
+
+ψs,t (y) on the right-hand side, the y-terms cancel and we get: 
+
+( 1−t 
+
+> 1−s
+
++ t−s
+
+> 1−s
+
+)
+
+ψs,t (y) + (1 −t)( t−s)1−s ∂tψs,t (y) = ψt,t (Xs,t (y)) (64) The terms inside the bracket sum to 1, so we have: 
+
+ψs,t (y) = ψt,t (Xs,t (y)) − (1 − t)( t − s)1 − s ∂tψs,t (y) (65) Substituting y = Es,t (xs) = xϵs and Xs,t (y) = Φ s,t (xs), we get the final identity: 
+
+ψs,t (xϵs) = ψt,t (Φ s,t (xs)) − γs,t ∂tψs,t (xϵs), γs,t = (1 −t)( t−s)1−s (66) which is the Lagrangian identity of discrete expanding flow maps in (31). 
+
+Eulerian Identity Using the partial derivatives: 
+
+∂s
+
+( 1−t
+
+> 1−s
+
+)
+
+= 1−t 
+
+> (1 −s)2
+
+, ∂s
+
+( t−s
+
+> 1−s
+
+)
+
+= − 1−t 
+
+> (1 −s)2
+
+(67) and differentiating Xs,t (y) = 1−t 
+
+> 1−s
+
+y + t−s 
+
+> 1−s
+
+ψs,t (y) in s at fixed y, t , we have: 
+
+∂sXs,t (y) = − 1−t
+
+> (1 −s)2
+
+(ψs,t (y) − y) + t−s 
+
+> 1−s
+
+∂sψs,t (y) (68) The continuous Eulerian identity on Rd(t) states: 
+
+∂sXs,t (y) + Jy Xs,t (y)bs(y) = 0 , Jy Xs,t (y) = 1−t 
+
+> 1−s
+
+I + t−s 
+
+> 1−s
+
+Jy ψs,t (y) (69) Combining (68) and (69), we get: 
+
+0 = − 1−t
+
+> (1 −s)2
+
+(ψs,t (y) − y) + t−s 
+
+> 1−s
+
+∂sψs,t (y) + 1−t 
+
+> 1−s
+
+bs(y) + t−s 
+
+> 1−s
+
+Jy ψs,t (y)bs(y) (70) Using bs(y) = ( ψs,s (y) − y)/(1 − s) in the third term, we get: 
+
+0 = − 1−t
+
+> (1 −s)2
+
+(ψs,t (y) − ψs,s (y)) + t−s
+
+> 1−s
+
+[
+
+∂sψs,t (y) + Jy ψs,t (y)bs(y)
+
+]
+
+(71) Rearranging and defining κs,t := 1−t 
+
+> (1 −s)( t−s)
+
+, we get: 
+
+∂sψs,t (y) + Jy ψs,t (y)bs(y) = 1 − t
+
+(1 − s)( t − s)
+
+(ψs,t (y) − ψs,s (y))
+
+= κs,t 
+
+(ψs,t (y) − ψs,s (y)) (72) Substituting y = xϵs and using A5 to rewrite ψ(t)
+
+> s,s
+
+(xϵs) = Es,t (ψs,s (xs)) , we have: 
+
+∂sψs,t (xϵs) + Jxψs,t (xϵs)bs(xϵs) = κs,t (ψs,t (xϵs) − E s,t (ψs,s (xs))) (73) which recovers the Eulerian identity of discrete expanding flow maps in (31). 
+
+Semigroup Identity For s ≤ u ≤ t, we introduce ψ(t) 
+
+> s,u
+
+: Rd(t)×V → (∆ V −1)d(t) as the two-time mean denoiser over [s, u ] applied at the augmented dimension d(t) that leaves the dimensions inserted over (u, t ] unchanged, and 
+
+ψs,u : Rd(u)×V → (∆ V −1)d(u) for the same denoiser at its native dimension d(u). Since the network is applied to whatever sequence it receives, these are the same parameterized map evaluated on inputs of different length. Given this, we denote the transport map defined by ψ(t) 
+
+> s,u
+
+as X(t) 
+
+> s,u
+
+: Rd(t)×V → Rd(t)×V which satisfies the semigroup condition in augmented space Xs,t = Xu,t ◦ X(t)
+
+> s,u
+
+.25 For any s ≤ u ≤ t, we can expand ψs,t from the definition Xs,t (y) = 1−t 
+
+> 1−s
+
+y + t−s 
+
+> 1−s
+
+ψs,t (y):
+
+ψs,t (y) = 1 − st − s Xs,t (y) − 1 − tt − s y (74) Applying the augmented-space semigroup Xs,t = Xu,t ◦ X(t) 
+
+> s,u
+
+and the definition of Xu,t , we get: 
+
+Xs,t (y) = Xu,t (X(t)
+
+> s,u
+
+(y)) = 1 − t
+
+1 − u X(t)
+
+> s,u
+
+(y) + t − u
+
+1 − u ψu,t (X(t)
+
+> s,u
+
+(y)) (75) Substituting (75) into (74), we get: 
+
+ψs,t (y) = (1 − s)(1 − t)(t − s)(1 − u) X(t)
+
+> s,u
+
+(y) + (1 − s)( t − u)(t − s)(1 − u) ψu,t (X(t)
+
+> s,u
+
+(y)) − 1 − tt − s y (76) Now expanding X(t)
+
+> s,u
+
+(y) = 1−u 
+
+> 1−s
+
+y + u−s 
+
+> 1−s
+
+ψ(t)
+
+> s,u
+
+(y) in the first term, we have: 
+
+(1 − s)(1 − t)(t − s)(1 − u) X(t)
+
+> s,u
+
+(y) = 1 − tt − s y + (1 − t)( u − s)(t − s)(1 − u) ψ(t)
+
+> s,u
+
+(y) (77) Subtracting out 1−tt−s y cancels the y-term, and we get: 
+
+ψs,t (y) = (u − s)(1 − t)(t − s)(1 − u) ψ(t)
+
+> s,u
+
+(y) + (t − u)(1 − s)(t − s)(1 − u) ψu,t (X(t)
+
+> s,u
+
+(y)) (78) Defining ωs,u,t := (u−s)(1 −t)(t−s)(1 −u) and verifying: 
+
+1 − ωs,u,t = (t − s)(1 − u) − (u − s)(1 − t)(t − s)(1 − u) = (t − u)(1 − s)(t − s)(1 − u) (79) given (t − s)(1 − u) − (u − s)(1 − t) = t − tu − s + su − u + ut + s − st = ( t − u)(1 − s), which means that (78) is a convex combination. Substituting y = xϵs = Es,t (xs), the second term simplifies by A2 and A3: 
+
+X(t)
+
+> s,u
+
+(xϵs) = X(t)
+
+> s,u
+
+(Eu,t (Es,u (xs))) = Eu,t (Xs,u (Es,u (xs))) = Eu,t (Φ s,u (xs)) (80) so that 
+
+ψs,t (xϵs) = ωs,u,t ψ(t)
+
+> s,u
+
+(xϵs) + (1 − ωs,u,t )ψu,t 
+
+(Eu,t (Φ s,u (xs)) ) (81) which recovers the semigroup identity for the discrete expanding flow map in (31). Equivalently, keeping the pre-substitution term of (78) at y = xϵs and writing Φ(t)
+
+> s,u
+
+(xϵs) := 1−u 
+
+> 1−s
+
+xϵs + u−s 
+
+> 1−s
+
+ψ(t)
+
+> s,u
+
+(xϵs) = Xs,u (xϵs) gives the 
+
+expand-once form: 
+
+ψs,t (xϵs) = ωs,u,t ψ(t)
+
+> s,u
+
+(xϵs) + (1 − ωs,u,t )ψu,t 
+
+(Φ(t)
+
+> s,u
+
+(xϵs)), (82) in which both terms act on the single d(t) state xϵs. This is the form implemented in Algorithm 2 and used as the semigroup training target (33). It equals the native form above by A2-A3. □
+
+# C Discrete Sequence Implementation Details 
+
+## C.1 Local Time Insertions and Denoising 
+
+To integrate insertion and denoising into a single flow map framework, we must define insertion times for each position along the sequence. These insertions should be determined by the surrounding context and the sequence’s denoising state. Each position i has insertion time tins  
+
+> i
+
+drawn from the insertion schedule tins  
+
+> i
+
+∼ ˙αsds and the local time starts and integrates over ti ∈ [0 , 1] starting at global time t = tins  
+
+> i
+
+where the position is pure noise initialized as xitins 
+
+> i
+
+= z.At global time t > t ins  
+
+> i
+
+, the local time is defined as: 
+
+ti = t − tins 
+
+> i
+
+1 − tins 
+
+> i
+
+∈ [0 , 1] (83) 26 such that each position is denoised for ti = t − tins  
+
+> i
+
+at time t. Concretely, we have: 
+
+xiti = (1 − ti)xi 
+
+> 0
+
++ tixi
+
+> 1
+
+, xi 
+
+> 0
+
+= z ∼ p0 (84) Therefore, at time t, the input to the denoising model is a padded sequence of length d(t), where each active position has a different noise level tlocal = ( t1, . . . , t d(t), 0, . . . , 0) , providing rich context for the denoiser. In addition to the linear per-position interpolant, one can define a per-position coefficient β : [0 , 1] → [0 , 1] (with 
+
+β(0) = 0 , β(1) = 1 ) that remaps the interpolant, independently of the tins → t time reparameterization, to: 
+
+xiti = (1 − β(ti)) z + β(ti)xi
+
+> 1
+
+, σi = 1 − β(ti), (85) recovering the linear case at β(ti) = ti. An insertion cutoff time tins-end ∈ (0 , 1] confines all insertions to the interval [0 , t ins-end ] by reparameterizing the schedule as αtins-end (t) = α( min (t/t ins-end , 1)) , so no position is inserted after t = tins-end and the interval [tins-end , 1] becomes a pure-denoising phase. Setting tins-end = 1 allows insertions over the full interval. 
+
+## C.2 Time Reparameterization 
+
+We adopt the time-reparameterization scheme of Lee et al. (2026), which shows that for large alphabets the decoding error Pe(t) remains near its initial value across most of [0 , 1] and collapses only in a thin band near 
+
+t = 1 . Uniform training times and evenly spaced inference grids therefore spend nearly all their budget where the model has little to learn, worsening as |V | grows. The fix is to compose the time axis with a smooth, strictly increasing τ : [0 , 1] → [0 , 1] with τ (0) = 0 , τ (1) = 1 , drawing τ ∼ U [0 , 1] and setting t = t(τ ) during training, and sampling on the warped grid tn = t(n/N ). Requiring equal increments of τ to correspond to equal reductions in decoding error gives 
+
+τ (t) = Pe(0) − Pe(t)
+
+Pe(0) = 1 − |V ||V | − 1 Pe(t) (86) concentrating both the training distribution and the inference grid on the window where token identities are committed. We evaluate (86) once by Gauss-Hermite quadrature on a uniform grid of 10 4 points and fit cubic splines in both directions for constant-time evaluation of τ (t), t(τ ), and dτ /dt . The warp is applied unconditionally in training and sampling. 
+
+## C.3 Time Conditioning 
+
+Since the expanding flow map Φs,t transports a sequence between two times rather than denoising at a single one, the network must condition on the source and target times (s, t ). We do this through two separate sinusoidal time embedders, whose outputs are summed and injected into every transformer block via adaptive layer normalization (adaLN). The final projection of the target embedder is zero-initialized so that at the start of training the target time has no effect and the model behaves as a standard single-time denoiser conditioned on s, which we found stabilizes the early distillation phase before the two-time flow-map behavior is learned. Since positions are inserted at different global times tins  
+
+> i
+
+and have different local noise levels tlocal = ( t1, . . . , t d(t), 0, . . . , 0) 
+
+at any global time t, we apply source-time adaLN conditioning per position. Each active position’s local time 
+
+ti is passed through the same sinusoidal source-time embedder used for the global source time s, producing a per-position conditioning vector ci that modulates every transformer block and the output layer via adaLN, while the target-time embedding stays global and is broadcast across positions. Conditioning each position on its own local time makes every position behave similarly to the teacher’s single-time denoiser evaluated at noise level 
+
+ti, which keeps the flow-map student consistent with the fixed-length denoiser it distills from. Since the state is mixed with the (possibly non-linear) coefficient β, the true local time fed to this embedder is recovered by inverting the mixing schedule, ti = β−1(1 − σi), so the conditioning is exact even under non-linear mixing rather than reading ti off the noise level directly. 
+
+## C.4 Adaptive Loss Weighting 
+
+To stabilize training, we scale the distillation losses by a weight that lowers the contribution of large mismatches between the student and teacher models (Potaptchik et al., 2026b). Given the student mean denoiser ψs,t (x) ∈
+
+27 ∆V −1 and the target ¯ψs,t (x) ∈ ∆V −1, the weight is defined as: 
+
+ws,t (x) := sg 
+
+[(∥∆s,t (x)∥2 + c)−r ]
+
+, ∆s,t (x) := ψs,t (x) − ¯ψs,t (x) (87) where ∆s,t is the mismatch between the categorical distributions and c and r are tunable hyperparameters. This is used to scale the cross-entropy loss defined in (32), where we set c = 1 e − 6 and r = 0 .5.
+
+## C.5 One-Step Sampling 
+
+Under the few-step sampling algorithm for discrete EFM, one-step sampling results in degenerate behavior since in a single step, it determines the number of tokens to insert by sampling from the Binomial distribution in (28), and then takes a jump with the flow map Φ0,1(·) over time t ∈ [0 , 1] for all inserted tokens given the fully noisy sequence. However, since the probability of the insertion time of a token being 1 is near zero, the model is never trained on the case where all tokens are newly inserted noise samples at time t = 0 and therefore defaults to the mode of the distribution when sampling from Φ0,1(x0).To overcome this, we define the denoising interval as [tdenoise-min , 1] and the one-step map as Φ0,1(x0) = 
+
+ψtdenoise-min ,1(E0,1(x0)) . This allows the model to denoise from a noisy sequence at a time step tdenoise-min , which resembles the time at which the model has seen sequences of this form during training. This ensures that the denoiser is never conditioned on the near-pure-noise full-length input at time t = 0 it rarely encounters in training, while the insertion schedule still uses the true time. 
+
+# D Discrete Graph Implementation Details 
+
+Here we describe the graph implementation of EFlow and EFM. The construction mirrors the sequence variant. Each node has an independent insertion time, the clean target is interpolated with a Gaussian-latent prior, a learned head fires per-gap Poisson insertions, and the denoiser is rolled out with an Euler scheme on the resulting flow ODE. The one difference is that the state is a pair (x, E) with a square edge matrix E. Every position update is applied consistently on the node axis and both edge axes, and the edge matrix stays symmetric with zero diagonal at all times. 
+
+## D.1 Notation 
+
+A clean graph with d(1) nodes lives on the discrete space of nodes Xx and edges Xe,
+
+Xx = {0, . . . , V x − 1}d(1) , Xe ∈ { 0, . . . , V e − 1}d(1) ×d(1) , (88) where Vx counts node categories and Ve counts edge categories (with 0 reserved for the absence of an edge), the graph analogs of sequence vocabularies. Note that Xx carries no “no-node” class. The node count is a property of the active set, controlled entirely by the insertion process below and never by an absorbing node category. We represent a clean graph as one-hot vectors xi 
+
+> 1
+
+∈ ∆Vx−1 at each node i and e1 ∈ ∆Ve−1 at each ordered pair 
+
+(i, j ). The full graph is the tensor of nodes x1 ∈ Rd(1) ×Vx and edges E1 ∈ Rd(1) ×d(1) ×Ve , with the edge matrix symmetric and zero on the diagonal, E1 = E⊤ 
+
+> 1
+
+and diag( E1) = 0 .
+
+## D.2 Per-node Insertion Times and Edge Activation 
+
+Each node i is assigned an insertion time tins  
+
+> i
+
+∈ [0 , 1] drawn from the schedule’s inverse CDF 
+
+tins  
+
+> i
+
+= t(τi), τi ∼ Uniform(0 , 1) (89) For padded slots, we set tins  
+
+> i
+
+= 2 so they never activate. At global time t, a node is active if its insertion time has elapsed, 
+
+ai(t) = 1{tins  
+
+> i
+
+≤ t} ∈ 
+
+{
+
+1 (active) 
+
+0 (inactive) (90) and its per-node local time and noise level are 
+
+ti = t−tins 
+
+> i
+> 1−tins
+> i
+
+· ai(t), σi = 1 − ti. (91) 28 An edge inherits its noise level from the nodes it connects. An ordered pair (i, j ) with i̸ = j is active when both endpoints are active and inherits its local time as the minimum of the endpoint local times, 
+
+aij (t) = ai(t)aj (t)(1 − δij ), tij = min ( ti, t j ) (92) In the sequence EFM, the only activation variable is per-position ai. In the graph EFM, edges are coupled to nodes through (92) , so insertions of nodes implicitly grow the active edge set, and an edge can never be denoised ahead of either endpoint. 
+
+## D.3 Node and Edge Interpolants 
+
+Both nodes and edges are corrupted by the same flow-matching interpolant as in the sequence case, defined as a Gaussian-latent path between a one-hot target and a Gaussian prior N (0, σ 2I). For nodes we draw 
+
+x0 ∼ N (0, σ 2IVx ) and use the linear interpolant 
+
+xit = tixi 
+
+> 1
+
++ (1 − ti)xi
+
+> 0
+
+, i ∈ { 1, . . . , d (1) } (93) where inactive nodes have ti = 0 and stay fixed at pure noise. For edges we draw E0 ∼ N (0, σ 2IVe ), symmetrize it as ˜E0 = ( E0 + E⊤ 
+
+> 0
+
+)/2, and use the interpolant 
+
+Eij t = tij Eij  
+
+> 1
+
++ (1 − tij )Eij  
+
+> 0
+
+, ˜Et := 12 (Et + E⊤ 
+
+> t
+
+), diag ( ˜Et) = 0 (94) where the edge local time tij = min (ti, t j ) is inherited from its endpoints as in (92) , which symmetrizes the edge matrix and sets the diagonal (indicating self-edges) to zero at every step. 
+
+## D.4 Compacting the Partially Active Graph 
+
+To form the partial graph with active positions compacted to be contiguous, we gather on the position vector and on both axes of the edge matrix. A position j in the full graph falls in the gap γ(j) given by 
+
+γ(j) = ∑
+
+> k<j
+
+ak(t) (95) and the number of uninserted nodes at each gap i at time t is 
+
+gi(t) = ∑ 
+
+> j:aj(t)=0
+
+1{γ(j) = i}, i ∈ { 0, . . . , d (t)} (96) which defines the prediction target for the insertion head during training. 
+
+## D.5 Node and Edge Insertions 
+
+Given the compacted graph (xs, Es) with d(s) active nodes and the per-gap counts gi(t) of (96), a shared insertion head reads the node hidden states and predicts the two-time insertion expectation ˆIs,t (xs)[ i] for each gap i ∈ { 0, . . . , d (s)}, trained exactly as in the sequence case (26) against gi(t). The graph expand operator Es,t 
+
+jumps from d(s) to d(t) nodes by drawing a per-gap count from the binomial law (28), 
+
+ℓi ∼ Binomial 
+
+(
+
+dmax − d(s), ˆIs,t (xs)[ i]
+
+> dmax −d(s)
+
+)
+
+, (97) capped left-to-right at the node budget so ∑ 
+
+> i
+
+ℓi ≤ dmax − d(s), and converging to ℓi ∼ Poisson ( ˆIs,t (xs)[ i]) in the many-step limit. Unlike sequences, an inserted node carries both a node coordinate and a full row and column of edges. Writing A
+
+for the d(s) existing nodes and N for the ∑ 
+
+> i
+
+ℓi freshly inserted nodes, the expand operator scatters the old state into the enlarged d(t)-node layout and fills every new coordinate with a Gaussian latent at local time ti = 0 :
+
+xϵs[i] = 
+
+{xs[i] i ∈ A
+
+z ∼ N (0, σ 2IVx ) i ∈ N , Eϵs[i, j ] = 
+
+{Es[i, j ] i, j ∈ A
+
+˜e ∼ N (0, σ 2IVe ) i ∈ N or j ∈ N (98) 29 so the existing A × A edge block is copied while every pair touching a new node (the A × N , N × A, and 
+
+N × N blocks) is seeded with noise. The result is symmetrized and its diagonal zeroed, Eϵs ← 12 (Eϵs + Eϵ⊤ 
+
+> s
+
+) with 
+
+diag (Eϵs) = 0 , so the augmented state stays a valid symmetric graph. Because a graph has no inherent node ordering , the per-gap counts are needed only to define the training target against the node order of (96), and at sampling any placement of the ∑ 
+
+> i
+
+ℓi new nodes yields the same graph up to relabeling. This is the graph instance of positional insertion collapsing to concatenation under permutation invariance. 
+
+## D.6 Denoising Nodes and Edges 
+
+The transport map Xs,t denoises the augmented graph (xϵs, Eϵs) toward the clean one-hot graph. A single graph transformer ˆψs,t takes the augmented state, the target time t, and the per-node source local times, emitting a mean denoiser on the simplex at every node and edge: 
+
+ˆψXs,t (xϵs)[ i] ∈ ∆Vx−1, ˆψEs,t (Eϵs)[ i, j ] ∈ ∆Ve−1. (99) Node i is conditioned on its own local time si and edge (i, j ) on the inherited sij = min (si, s j ) of (92), so a more recently inserted coordinate is denoised from a higher noise level. The discrete expanding flow map is then applied identically on the node axis and on both edge axes, 
+
+ΦXs,t (xϵs) = 1−t 
+
+> 1−s
+
+xϵs + t−s 
+
+> 1−s
+
+ˆψXs,t (xϵs), ΦEs,t (Eϵs) = 1−t 
+
+> 1−s
+
+Eϵs + t−s 
+
+> 1−s
+
+ˆψEs,t (Eϵs), (100) with the same global (s, t ) coefficients as the discrete sequence implementation. After each jump, the edge tensor is re-symmetrized and its diagonal zeroed, Et ← 12 (Et + E⊤ 
+
+> t
+
+) with diag (Et) = 0 , preserving symmetry and the absence of self-edges. Inactive nodes and edges are masked and stay at their prior noise until inserted. Training uses the cross-entropy discrete EFM objective (32) summed over the active node set ai = 1 and active edge set aij = 1 of (90)-(92), with the two channels balanced by an edge weight λE .
+
+Ldiag ( ˆψ) = EtEx0,x1
+
+[
+
+− ∑
+
+> i:ai=1
+
+(DXt · log ˆψXt,t 
+
+)(xϵt )[ i] − λE
+
+∑ 
+
+> (i,j ): aij =1
+
+(DEt · log ˆψEt,t 
+
+)(Eϵt )[ i, j ]
+
+]
+
+(101) 
+
+Lcons ( ˆψ) = Es,u,t Ex0,x1
+
+[
+
+− ∑
+
+> i:ai=1
+
+( ¯ψXs,t · log ˆψXs,t 
+
+)(xϵs)[ i] − λE
+
+∑ 
+
+> (i,j ): aij =1
+
+( ¯ψEs,t · log ˆψEs,t 
+
+)(Eϵs)[ i, j ]
+
+]
+
+(102) where D{X,E } 
+
+> t
+
+are the instantaneous denoising target for s = t and ¯ψ{X,E } 
+
+> s,t
+
+is the semigroup consistency target defined in (33) for the off-diagonal ( s < t ) pairs. Because the denoiser is permutation-equivariant and every update acts identically on the node and both edge axes, the full map is invariant to node relabeling, matching the unordered structure of the target graph. 
+
+# E Experiment Details 
+
+## E.1 Coarse-to-Fine Molecular Conformer Generation 
+
+Datasets We conduct our experiments on the GEOM dataset (Axelrod and Gomez-Bombarelli, 2022), which comprises GEOM-QM9 and GEOM-Drugs. Following the split of GeoDiff (Xu et al., 2022), each dataset provides 
+
+40 ,000 molecules for training and 5,000 for validation, each with 5 conformers. For testing we use 200 molecules per dataset, yielding 22 ,409 conformers for QM9 and 14 ,324 for Drugs. Atoms are encoded by atomic number and bonds by their 4 RDKit types (single, double, triple, aromatic). For each test molecule, we generate twice its number of reference conformers, matching the GeoDiff/MSGEN evaluation protocol (Hu et al., 2026a). 
+
+Framework Setting Our main experiments adopt a coarse-to-fine two-stage decomposition of each molecule into a heavy-atom backbone and its hydrogen atoms. This reflects the fact that heavy atoms form the structural scaffold while hydrogens govern local stereochemistry and fine geometry, so the backbone is generated first to serve as a global spatial anchor that guides hydrogen placement. EFlow naturally implements this hierarchical structure within a single expanding flow: the heavy backbone is denoised from Gaussian noise and frozen by 
+
+tins-end , and then the hydrogens are inserted on a schedule and resolved around the fixed backbone. An optional low-noise refiner forms a second stage that polishes the generated all-atom structure. 30 Model Architecture For fair comparison, the velocity field is the GeoDiff dual-encoder (Xu et al., 2022) used by MSGEN (Hu et al., 2026a), which is a global SchNet over the extended-order and radius graph ( 6 interactions), a local GIN over the bond graph ( 4 convolutions), higher-order extended edges ( edge_order = 3 ), and a radius cutoff of 10 Å, all with hidden dimension 128 . Each encoder emits a per-edge invariant scalar that eq_transform maps to an equivariant per-node velocity, and the two are summed ( v = vglobal + vlocal ). The network is conditioned on the global time pair (s, t ) and on the per-atom local (insertion) time through Fourier embeddings ( dim = 64 )added to the edge features. The refiner uses the identical architecture. 
+
+Training Details The interpolant is the per-position Gaussian-latent linear interpolant xis = (1 − ti)xi 
+
+> 0
+
++ tixi
+
+> 1
+
+,where each active atom has local time ti ∈ [0 , 1] . Heavy atoms draw xi 
+
+> 0
+
+∼ N (0 , σ 2 
+
+> z
+
+I) with σz = 1 .0. Each hydrogen is anchored on its bonded heavy parent as xi 
+
+> 0
+
+= xparent (i)0 + σhϵ with σh = 0 .1, and positions are made center-of-mass free at every step. Heavy atoms are present from t = 0 with denoise window [0 , t ins-end ], and each hydrogen is inserted at a per-atom time tins  
+
+> i
+
+drawn from a cosine schedule on [0 , t ins-end ] with window [tins  
+
+> i
+
+, 1] .With tins-end = 0 .6 the heavy backbone forms and freezes by t = 0 .6, leaving a hydrogen-resolving tail on (0 .6, 1] .The model predicts the mean velocity vs,t and is trained with the per-graph mean-squared error over inserted atoms, with 5,000 diagonal-only flow-matching warmup steps and the off-diagonal range annealed to full by 20 ,000 
+
+steps. EFlow is trained with the AdamW optimizer, learning rate 5 × 10 −4, a cosine schedule to 10 −6, gradient clipping at 1.0, an EMA of the weights with decay 0.999 (used for sampling), batch size 256 for QM9 and 128 for Drugs, for 300 epochs on a single NVIDIA A100 GPU. The refiner is a separate single-scale low-noise all-atom denoiser trained with source x0 = x1 + σr ϵ (all atoms present), where σr is approximated by the error of the initial insertion-denoising process ( σr = 0 .4 for QM9, 1.0 for Drugs). 
+
+Sampling EFlow (no refinement) generates conformers by Euler-integrating the per-position flow ODE on a uniform grid of 20 steps. Insertion follows the deterministic per-atom schedule (heavy atoms present from t = 0 ,each hydrogen inserted at its tins  
+
+> i
+
+) and costs no additional network evaluation; heavy atoms are frozen once 
+
+t ≥ tins-end . Because the molecular graph fixes the atom count, the expand operator is the deterministic case of the general framework, and the per-atom times tins  
+
+> i
+
+are drawn once from the insertion schedule before integration, so no learned insertion head is required and no count has to be inferred at sampling time. EFlow+R (with refinement) appends a 10 -step refiner pass that takes the output of the EFlow or EFM model as its initialization and integrates all atoms over [0 , 1] .EFM samples with the same insertion schedule but replaces the Euler steps with two-time flow-map jumps Φs,t 
+
+on a grid of 1, 2, or 4 steps, so the number of network evaluations drops by an order of magnitude while the interpolant is unchanged. EFM+R (with refinement) applies the 4-step flow map followed by 10 -step refinement. 
+
+Baselines We build EFlow on top of GeoDiff (Xu et al., 2022), used as the backbone network, and denote the hierarchical two-stage variant GeoDiff+MSGEN (Hu et al., 2026a). In the few-step generation setting, we evaluate GeoDiff and SubgDiff (Zhang et al., 2024) at 500 denoising steps and GeoDiff+MSGEN (Hu et al., 2026a) at two 500 -step stages. For broader comparison, we include deep generative models GraphDG (Simm and Hernandez-Lobato, 2019), CGCF (Xu et al., 2021a), ConfVAE (Xu et al., 2021b), GeoMol (Ganea et al., 2021), and ConfGF (Shi et al., 2021). Reported baseline values are taken from Xu et al. (2022) and Zhang et al. (2024). 
+
+Evaluation We adopt the widely used Coverage (COV) and Average Minimum RMSD (AMR) metrics proposed by Ganea et al. (2021), in both recall (R) and precision (P) forms. Both are computed from the root-mean-square deviation (RMSD) between conformers aligned by the Kabsch algorithm (Kabsch, 1976), following the GeoDiff/MSGEN protocol (Xu et al., 2022; Hu et al., 2026a). Given a threshold δ (0.5 Å for QM9 and 1.25 Åfor Drugs), COV-R is the fraction of reference conformers matched within δ by some generated conformer, and AMR-R is the average minimum RMSD to the nearest generated conformer; the precision variants swap the roles of the generated and reference sets. Each metric is reported as the mean and median over test molecules. 
+
+Property Prediction Metrics This benchmark aims to evaluate whether a generated conformer set reproduces a molecule’s ensemble-averaged quantum-chemical behavior (Axelrod and Gomez-Bombarelli, 2022) rather than the geometry of any single conformer. Following Shi et al. (2021), we generate 50 conformers each for 30 test molecules from GEOM-QM9 and obtain the electronic energy and its HOMO and LUMO levels using the quantum chemistry 31 calculation package, Psi4 (Smith et al., 2020). Using these values, we compute five properties for each molecule: the mean and minimum conformer energies ¯E and Emin , mean ∆ε, minimum ∆εmin , and maximum ∆εmax 
+
+HOMO-LUMO gap ∆ε = |εLUMO − εHOMO |. Computing the same descriptors from each molecule’s reference ensemble, we score a model by the absolute gap between its predicted and reference values, and take the median over the 30 molecules. Results are reported in Table 5 in eV, where lower is better.    
+
+> Table 5 Ensemble property prediction on GEOM-QM9, reported as the median of absolute prediction errors (eV; lower is better). Baseline medians (RDKit, ConfGF) are from Shi et al. (2021).
+
+Model Steps ↓ E ↓ Emin ↓ ∆εavg ↓ ∆εmin ↓ ∆εmax ↓
+
+RDKit 500 0.8914 0.6629 0.2947 0.5196 0.1617 ConfGF 500 0.5328 0.1145 0.3207 0.7365 0.1337 EFlow+R 30 0.4506 0.0731 0.2204 0.8717 0.1156 
+
+EFM+R 14 2.0521 0.1232 0.3208 2.6383 0.1672 
+
+## E.2 Discrete Molecular Graph Generation 
+
+Dataset We train EFlow and EFM on the QM9 dataset (Wu et al., 2018) containing small molecules with up to 
+
+9 heavy atoms. Instantiating the state space of App D, the node categories are the Vx = 4 heavy-atom types (C, N, O, F) and the edge categories are the Ve = 5 bond types (no-bond, single, double, triple, aromatic). The node buffer is dmax = 9 . Following Roos et al. (2026), we split the data into 100K molecules for training, 20K for validation, and 13K for testing. 
+
+Model Architecture For fair comparison, we use the same graph Transformer architecture as DeFoG (Qin et al., 2024), with 9 layers with node/edge/global hidden dimensions (dX , d E , d y ) = (256 , 64 , 64) , 8 attention heads, and FFN hidden dimensions (256 , 128 , 128) . The input MLPs project to dimensions (256 , 128 , 128) . The RRWP structural features are computed with k = 12 random-walk steps. 
+
+Training Details Both the EFlow teacher and the EFM flow-map student are trained with batch size 256 ,AdamW (weight decay 10 −12 ), learning rate 3 × 10 −4, constant schedule with 1, 000 warmup steps, and a maximum of 2×10 6 training steps on a single NVIDIA A100 GPU. The Gaussian-latent interpolant of App D is instantiated with prior scale σ = 1 .0 on both the node and edge axes. Training uses an antithetic time sampler with sampling-time floor εt = 10 −3 and edge-loss weight λE = 5 .0. The student is initialized from the teacher checkpoint and, on each step, we sample s = t with probability 0.75 , training on the diagonal loss (101) against the frozen EFlow teacher’s endpoint prediction, and s < t with probability 0.25 ,training on the consistency loss (102) against the target ˆψs,t .Since the size of QM9 is small, we train the learned per-gap insertion head with the diagonal loss and drop the off-diagonal term of (26), so the two-time count is reconstructed at sampling time rather than learned. On a jump 
+
+s → t we scale the diagonal head by the schedule fraction ρs,t = αt−αs 
+
+> 1−αs
+
+. We use a polynomial insertion schedule 
+
+ρ(t) = ( rt r−1)/(1 − tr ) with exponent r = 0 .5 for t ∈ [10 −4, 1.0] without an explicit insertion cutoff ( tins-end = 1 )since the polynomial schedule with r = 0 .5 is concave with median insertion time tins  
+
+> i
+
+= 0 .25 .
+
+Sampling EFlow generates by Euler-integrating the per-position flow ODE on a uniform grid of Nsteps steps, applying the learned insertion head before each denoiser step to grow the graph. Per-gap insertion counts are drawn from the Poisson law ℓi ∼ Poisson ( ˆIs,t (xs, Es)[ i]) . EFM uses the same grid with the flow map in place of the denoiser, and at Nsteps = 1 reduces to a single call ψ0,1 preceded by one insertion-head call at t = 0 . Reported numbers are 10 ,000 molecules per step count. 
+
+Baselines We compare against DeFoG (Qin et al., 2024) by running their publicly released checkpoints using the same model architecture and sampling steps on 10 , 000 molecules per step count and categorical flow maps (CFM) (Roos et al., 2026) via their reported results on the same model architecture and sampling steps. 32 Evaluation To assess sample quality, we compute the proportion of 10 ,000 generated graphs per method and step count that correspond to RDKit-sanitizable molecules with valid SMILES (Validity), the proportion of these that are distinct under largest-fragment SMILES canonicalization (Uniqueness), and the Fréchet ChemNet Distance (FCD) between generated and reference molecules in ChemNet’s final-layer embedding space against the test dataset. 
+
+## E.3 Language Modeling 
+
+Dataset We evaluate on the One Billion Word Benchmark (LM1B) (Chelba et al., 2013), a standard corpus for large-scale language modeling. We use the bert-base-uncased tokenizer with vocab size V = 30 , 522 .
+
+Model Architecture The architecture follows the DDiT backbone used in Sahoo et al. (2025), consisting of 12 
+
+blocks, hidden size 768 , 12 attention heads, conditioning dimension 128 , and dropout 0.1. The insertion head described in App C reads the same 768 -dimensional pre-output hidden states and is conditioned by the same 
+
+128 -dimensional time vector, adding 0.79 M parameters on top of the backbone. 
+
+Training Details The EFlow denoising backbone is warm-started from the publicly released LM1B FLM checkpoint of Lee et al. (2026), but our framework also allows training from scratch. We emphasize that while the warm start accelerates convergence, the variable-length, per-position denoising and insertion objectives diverge from those used to train FLM. The insertion head is randomly initialized and, for the first 2,000 steps, its gradients are detached from the backbone so that the untrained head does not corrupt the warm-started weights. Training then proceeds for 2×10 5
+
+steps on 4 NVIDIA B200 GPUs with global batch size 512 (per-GPU batch size of 128 , no gradient accumulation), AdamW with β1 = 0 .9, β2 = 0 .999 , ε = 10 −8, no weight decay, learning rate 3×10 −4 with a constant schedule after 2,500 warmup steps, gradient clipping 1.0, and EMA decay 0.9999 .The per-position insertion times follow a cosine schedule, whose cumulative insertion fraction α(t) = 1 −
+
+cos ( π 
+
+> 2
+
+t/t ins-end 
+
+) is confined to the window [0 , t ins-end ], so all positions are inserted by the cutoff (median insertion time 23 tins-end ) and [tins-end , 1] is left for pure denoising. The insertion head is trained with insertion cutoff time 
+
+tins-end = 0 .5, input noise scale 1.25 , and per-position adaLN time conditioning. For EFM, we distill from the same frozen FLM teacher (Lee et al., 2026), but our framework also allows training from self-distillation or from an EFlow teacher. We use a diagonal fraction 0.75 , boundary probability 1/32 , and uniform-difference off-diagonal (s, t ) sampling. The insertion head learns the binomial interval insertion law, with a 2000 -step detached warmup. The two loss terms are merged by gradient surgery following Potaptchik et al. (2026b). 
+
+Baselines We compare against both multi-step and few-step baselines. For multi-step baselines, we compare EFlow against the fixed-length flow language model (FLM) (Lee et al., 2026) at budgets from 64 to 1024 steps, evaluated by running their publicly released checkpoints. For the few-step baselines, we compare EFM at 1, 2, and 
+
+4 steps against distilled diffusion and flow-map baselines, including Duo distilled with DCD (Sahoo et al., 2025), MDLM with SDTT (Deschenaux and Gulcehre, 2025), both Duo and MDLM distilled with Di4C, categorical flow maps (CFM) (Roos et al., 2026), and flow map language models (FMLM) (Lee et al., 2026), with the numbers reported in Lee et al. (2026). 
+
+Evaluation For each step count, we generate 1024 sequences under the EMA weights using Euler integration of the insertion-denoising process, take the argmax of the final vectors, decode with the bert-base-uncased 
+
+tokenizer, and re-encode with the GPT-2 tokenizer. Then, we compute generative perplexity under GPT-2 Large (Radford et al., 2019). We additionally compute the sample entropy as the empirical token-frequency entropy per sample. 33 F Algorithms 
+
+Algorithm 1 Training Discrete Expanding Generative Flows (EFlows) 
+
+1: Input: Dataset D, insertion schedule α, time schedule t(·), initialized networks ˆD, ˆI, insertion loss weight 
+
+λinsert , maximum length L
+
+2: while not converged do 
+
+3: x1 ∼ D , x0 ∼ N (0, Id(0) )
+
+4: τ ∼ U (0 , 1) , t ← t(τ ) ▷ sample global time via time schedule 
+
+5: for i in 1, . . . , L do 
+
+6: tins  
+
+> i
+
+∼ ˙αsds ▷ sample per-token insertion time 
+
+7: ti ← max 
+
+(
+
+0, t−tins 
+
+> i
+> 1−tins
+> i
+
+)
+
+▷ local time induced by global t
+
+8: xiti ← (1 − ti)xi 
+
+> 0
+
++ tixi 
+
+> 1
+
+▷ sample expanding interpolant 
+
+9: end for 
+
+10: xt ← (xiti : tins  
+
+> i
+
+≤ t) ▷ active subsequence, |xt| = d(t)
+
+11: ˆx1 ← ˆDt(xt)
+
+12: LCE ← − ∑  
+
+> i:tins
+> i≤t
+
+xi 
+
+> 1
+
+· log ˆ xi
+
+> 1
+
+13: Linsert ← ˙αt
+
+> 1−αt
+
+∑d(t) 
+
+> i=0
+
+ϕ(ind i(t) − ind i−1(t) − 1, ˆIt(xt)) 
+
+14: Ltotal ← L CE + λinsert Linsert 
+
+15: Update ˆI, ˆD using ∇L total 
+
+16: end while 
+
+17: return ˆI, ˆD
+
+Algorithm 2 Training Discrete Expanding Flow Maps (EFMs) 
+
+1: Input: Dataset D, insertion schedule α, time schedule t(·), initialized networks ˆψ, ˆI, insertion loss weight 
+
+λinsert , maximum length L
+
+2: while not converged do 
+
+3: x1 ∼ D , x0 ∼ N (0, Id(0) )
+
+4: τs, τ t ∼ U (0 , 1) with τs ≤ τt, τu ← 12 (τs + τt) ▷ ordered global times 
+
+5: s, u, t ← t(τs), t (τu), t (τt) ▷ map through the time schedule 
+
+6: for i in 1, . . . , L do 
+
+7: tins  
+
+> i
+
+∼ ˙αsds ▷ sample per-token insertion time 
+
+8: si ← max 
+
+(
+
+0, s−tins 
+
+> i
+> 1−tins
+> i
+
+)
+
+▷ local time induced by global s
+
+9: xisi ← (1 − si)xi 
+
+> 0
+
++ sixi 
+
+> 1
+
+▷ sample expanding interpolant 
+
+10: end for 
+
+11: xs ← (xisi : tins  
+
+> i
+
+≤ s) ▷ active subsequence, |xs| = d(s)
+
+12: xϵs ← (xisi : tins  
+
+> i
+
+≤ t) ▷ expand once to d(t) with gaps over (s, t ] as noise ( si=0 )
+
+13: ωs,u,t ← (u−s)(1 −t)(t−s)(1 −u)
+
+14: ˆΦ(t)
+
+> s,u
+
+(xϵs) ← 1−u 
+
+> 1−s
+
+xϵs + u−s 
+
+> 1−s
+
+ˆψ(t)
+
+> s,u
+
+(xϵs) ▷ flow map over [s, u ] at dimension d(t)
+
+15: ¯ψs,t (xϵs) ← sg 
+
+[
+
+ωs,u,t ˆψ(t)
+
+> s,u
+
+(xϵs) + (1 − ωs,u,t ) ˆψu,t 
+
+( ˆΦ(t)
+
+> s,u
+
+(xϵs)
+
+)] 
+
+16: for i in 0, . . . , d (s) do 
+
+17: Is(xs)[ i] ← E[ind i(s) − ind i−1(s) − 1 | xs] ▷ per-gap missing count 
+
+18: Is,t (xs)[ i] ← αt−αs 
+
+> 1−αs
+
+Is(xs)[ i] ▷ expected insertions over (s, t ]
+
+19: end for 
+
+20: Linsert ← ∑d(s) 
+
+> i=0
+
+ϕ
+
+(
+
+Is,t (xs)[ i], ˆIs,t (xs)[ i]
+
+)
+
+21: LDEFM ( ˆE, ˆψ) ← ∑d(t)
+
+> i=1
+
+[
+
+− ( ¯ψs,t · log ˆψs,t )( xϵs)i − (Dt · log ˆψt,t )( xit)
+
+]
+
+22: Ltotal ← L DEFM + λinsert Linsert 
+
+23: Update ˆψ, ˆI using ∇L total 
+
+24: end while 
+
+25: return ˆψ, ˆI
+
+34 Algorithm 3 ExpandOperator : Insert tokens between tokens at parameterized rate 
+
+1: Input: Intermediate subsequence xs, global initial time s, global jump time t, maximum length L
+
+2: ns ← length (xs) ▷ get number of inserted tokens 
+
+3: ˆIs(xs) ← InsertHead (xs)
+
+4: ℓi ∼ Binomial 
+
+(
+
+L − ns, ˆIs(xs)[ i]
+
+> L−ns
+
+)
+
+▷ sample number of tokens to insert at each gap 
+
+5: xℓi 
+
+> 0
+
+∼ N (0, σ 2Iℓi ) ▷ sample noisy tokens 
+
+6: xϵs ←
+
+[⊕d(s)
+
+> i=1
+
+(xℓi 
+
+> 0
+
+⊕ xisi
+
+)]
+
+⊕ xℓd(s)+1  
+
+> 0
+
+▷ insert noisy tokens into sequence 
+
+7: return xϵs
+
+Algorithm 4 Sampling Discrete Expanding Flow Maps (EFMs) 
+
+1: Input: Trained expanding operator ˆE, mean denoiser ˆψ, time grid {tk}Kk=1 , maximum length L
+
+2: x0 ← (empty) 
+
+3: x0 ← ˆE0,t denoise-min (x0)
+
+4: xt1 ← ˆψtdenoise-min ,t 1 (x0) ▷ insert from minimum time 
+
+5: for k in 1, . . . , K − 1 do 
+
+6: xϵtk ← ExpandOperator (xtk , t k, t k+1 , L ) ▷ insert noisy tokens into sequence 
+
+7: xtk+1 ← ˆψtk ,t k+1 (xϵtk )
+
+8: end for 
+
+9: x1 ← arg max( xtK ) ▷ sample one-hot argmax tokens 
+
+10: return x1
+
+35 G Example Generations 
+
+## steps = 64 
+
+EFlow (Ours) Gen. PPL: 54.92 
+
+Entropy: 4.04 
+
+[CLS] the side. [SEP] i’m guessing that it is are based on a and point. [SEP] he called the old life,’bo the, of andal’to mr. [SEP] and his father. [SEP] the hon in given patients to an does not or a test. [SEP] i was not to for her. [SEP] by way, it is not to be a, but available to be funny as well - - just as a party. [SEP] i am waiting for it to happen for each firm. [SEP] craig ward made 30 saves for the defending st louisny and antoine vermo on its 13out, including six - [SEP] 
+
+## steps = 264 
+
+EFlow (Ours) Gen. PPL: 41.29 
+
+Entropy: 4.09 
+
+[CLS] spent 15 years in prison at a $ 1 million military camp in afghanistan. [SEP] there’s a face on it, we can’t look like our else. [SEP] he never lost the great of the before. [SEP] court’s bemourned her on tuesday. [SEP] two teenagers have died from a serious wound in hospital. [SEP] the military alone was not enough to force the points. [SEP] adjusted for inflation, m. a. n. m. was up 4. 2 percent, but is up slightly. [SEP] " it is a job we have agreed for as well as with the new - community policing group. [SEP] [SEP] 
+
+## steps = 128 
+
+EFlow Gen. PPL: 54.19 
+
+Entropy: 4.21 
+
+[CLS] is scheduled to be monday. [SEP] they are appealing against two key yesterday. [SEP] i’m never sure how much i mean. [SEP] he said, " a friend has come a little down and has been making the most into again. " [SEP] by the time, last week, some 5, 000 tamil there were living in the, which on have year, an even the s at found. [SEP] the price of gasoline was 2. 7 % compared with the previous year. [SEP] the next morning mr cameron said that he would not be able to give london to for the expense of defence. [SEP] they study the verys so that [SEP] 
+
+## steps = 512 
+
+EFlow (Ours) Gen. PPL: 49.89 
+
+Entropy: 4.19 
+
+[CLS] - hitter, will win against the wall. [SEP] no wonder it was right? [SEP] the wall street agency said the biggest threat to the financial system is from individuals and the, caused of over $ 3 million in assets. [SEP] the public library at the university is having a lowdown on film. [SEP] japan’s olympic committee will meet again on monday. [SEP] it is a difficult ( and sometimes expensive ) decision to make with us, but it also takes time and effort to do with the usual for ofs. [SEP] of the world’s three countries with low - on economies face up to 22pc of gdp, most has [SEP]        
+
+> Figure 3 Example LM1B generations from the EFlow teacher at 64 ,128 ,264 , and 512 sampling steps. Generative perplexity (GPT-2-Large) and entropy are reported for the individual sample shown.
+
+36 steps = 1 
+
+EFM (Ours) Gen. PPL: 47.8 
+
+Entropy: 3.72 
+
+[CLS] the into being us. [CLS] it [CLS] for a the state. [CLS] more than a state. [CLS] after, we are. [CLS] the first time off the president and the who would - at least [CLS] : and after days - percent of, when would be their an, of, go to to off about in two about to to a about more than their second into [CLS]t they to more, when it to an into the deal. [CLS] from was the, [CLS].’over the are of you two. on make two being., who now have to to another„ one of the of its with from if alls [CLS] 
+
+## steps = 4 
+
+EFM (Ours) Gen. PPL: 55.2 
+
+Entropy: 4.12 
+
+[CLS] second just to [CLS] his own city, while it’s on to three - world countries such as the united states, too left for this year. [CLS] more than i do later has to me been asp. [CLS] i don’t want three call he 24 to be [CLS], " she said. [CLS] he then can at least her once again again for two days. [CLS] but. i go at the university. [CLS] she was not [CLS] next week or there’s already ever later [CLS]. [CLS], [CLS] 6 ( upi ) - - - they are another lead to the -john in an a through last - like [CLS] 
+
+## steps = 2 
+
+EFM (Ours) Gen. PPL: 60.8 
+
+Entropy: 4.01 
+
+[CLS] country. [CLS] but well it will not see after all in the high school of, tenn. [CLS] the most important of his first second in three years which has left over more on u. s. house. [CLS] it’s do, and that’s a good country in city high points. [CLS] well, one week, as well as he’s trying to be up by half two points. [CLS] the 23 - year - old’s house, they are more important is the country’s own win, and when they are once in the game house because he is to work for the most next, but an [CLS] 
+
+## steps = 8 
+
+EFM (Ours) Gen. PPL: 44.2 
+
+Entropy: 4.03 
+
+[CLS] every year. [CLS] he was one after his week’s only, has been on top of the world. [CLS] he had his team on the close, at least in this week. [CLS] " i have people, who do not think it’s close to keep up to be it in party, " the said. [CLS] a last week’s. man of years last week, first four of the children - were made on tuesday with me. [CLS] that’s not all. [CLS] but there have been four al - qaeda, which don’t the right four two go to the country. they million ifs of these [CLS]       
+
+> Figure 4 Example LM1B generations from the EFM teacher at 1,2,4, and 8sampling steps. Generative perplexity (GPT-2-Large) and entropy are reported for the individual sample shown.
+
+37 Figure 5 Molecular graph, three generated conformers with EFlow+R (30 steps), and ground-truth sample for 5 test molecules in GEOM-Drugs, visualized with PyMol (DeLano et al., 2002). 
+
+38 Figure 6 Molecular graph, three generated conformers with EFM+R (6 steps), and ground-truth sample for 5 test molecules in GEOM-Drugs, visualized with PyMol (DeLano et al., 2002). 
+
+39

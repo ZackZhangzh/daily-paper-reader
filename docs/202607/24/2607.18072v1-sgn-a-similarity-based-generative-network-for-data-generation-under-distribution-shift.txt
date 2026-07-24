@@ -1,0 +1,608 @@
+Title: SGN: A Similarity-based Generative Network for Data Generation under Distribution Shift
+
+URL Source: https://arxiv.org/pdf/2607.18072v1
+
+Published Time: Tue, 21 Jul 2026 02:16:20 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# SGN: A Similarity-based Generative Network for Data Generation under Distribution Shift 
+
+Jiaqi Zhu 
+
+National University of Singapore 
+
+jiaqi77@nus.edu.sg 
+
+Xincheng Chen 
+
+National University of Singapore 
+
+e0838447@u.nus.edu.sg 
+
+Yuncheng Wu 
+
+Renmin University of China 
+
+wuyuncheng@ruc.edu.cn 
+
+Zhaojing Luo 
+
+Beijing Institute of Technology 
+
+zjluo@bit.edu.cn 
+
+Beng Chin Ooi 
+
+Zhejiang University 
+
+ooibc@zju.edu.cn 
+
+# Abstract 
+
+Generative models trained on a source domain often produce samples that are poorly aligned with shifted target domains, limiting their effectiveness for target-domain data augmentation. Although target-specific adaptation can reduce this mismatch, it typically requires additional optimization and domain-specific pa-rameters. We propose a Similarity-based Generative Network (SGN), a reusable framework that is trained once on labeled source data and applied to new tar-get domains without parameter updates. SGN learns a latent space structured by label-induced pairwise similarities while preserving reconstructive information through an encoder-decoder architecture. At generation time, a small labeled rep-resentative set from the target domain is encoded and combined in the learned latent space, allowing the generated samples to inherit target-specific characteris-tics while maintaining class consistency. We further analyze the realizability and dimensionality requirements of the proposed similarity structure. Experiments on image and tabular datasets demonstrate the effectiveness of SGN for target-guided data augmentation under source-to-target distribution shifts. 
+
+# 1 Introduction 
+
+Generative models (GMs) provide a principled way to expand limited datasets by synthesiz-ing new samples that preserve the structure of observed data. Representative paradigms, such as generative adversarial networks (GANs) (Goodfellow et al., 2014), variational autoencoders (VAEs) (Kingma and Welling, 2014), and more recently, diffusion-based models (Ho et al., 2020; Yang et al., 2024), have attracted increasing attention for data generation in various applica-tions (Deldjoo et al., 2021; Zhu et al., 2026; Yi et al., 2017; Shaham et al., 2019). Despite their architectural differences, these methods are typically trained to approximate the data distri-bution observed during training. Conditional generative models further incorporate class la-bels, semantic attributes, or domain information to control the characteristics of generated sam-ples (Mirza and Osindero, 2014; Miyato and Koyama, 2018; Chou et al., 2023; Zhu et al., 2025). When the training and deployment data follow similar distributions, such models can generate real-istic and useful samples for data augmentation and downstream prediction. However, in many practical settings, a generative model trained on one source domain is reused across multiple target domains with different data distributions. Such shifts may arise from changes in acquisition devices, environments, populations, data-collection protocols, or class pro-portions (Quiñonero-Candela et al., 2008; Zhu et al., 2023). As a result, samples generated from the source distribution may be poorly aligned with the target domain and provide limited, or even negative, utility for target-domain augmentation. Although target-specific fine-tuning can mitigate this mismatch, it is often costly and unreliable when only limited target data are available. 
+
+Preprint. Under review. arXiv:2607.18072v1 [cs.LG] 20 Jul 2026 We therefore consider a reusable generation setting in which a model is trained once on a labeled source dataset and applied to multiple target domains without parameter updates, using only a small labeled representative set at generation time. The key challenge is to transfer class semantics learned from the source domain while preserving target-specific characteristics. Existing approaches only partially address this challenge. Source-trained conditional generators use class labels or seman-tic attributes to control generation, but the learned class-conditional distributions remain largely tied to the source domain (Miyato and Koyama, 2018; Hou et al., 2022a; Peebles and Xie, 2023; Sadat et al., 2025). Target-specific adaptation methods can align a pretrained generator with a new domain through fine-tuning or additional optimization, but require maintaining or updating a sep-arate model for each target domain (Wang et al., 2020; Bahram et al., 2025). Sample-based aug-mentation methods , such as input-space mixing and latent interpolation, can directly incorporate target-domain characteristics from limited observations, yet they typically lack an explicitly learned semantic structure to preserve class consistency during generation (Zhang et al., 2018; Verma et al., 2019; Nguyen et al., 2026). These limitations motivate a reusable framework that combines trans-ferable class structure with target-domain information during generation. In this paper, we propose a novel evaluation mechanism that forms a basis for an alternative paradigm for GMs. Specifically, we consider a generated sample to satisfy the evaluation criteria if its sim-ilarity scores with other data samples are close to the similarity scores of original data samples; otherwise, the quality of the generated data is poor. The rationale behind this mechanism is that the original data points definitely satisfy the evaluation criteria; therefore, if a generated data point re-sults in the same performance as the original data points, it can be considered a satisfactory sample. The key to this mechanism is to develop an appropriate similarity measurement, which is challeng-ing. If the measurement is tight, the generated samples will only be accepted if they are extremely close to the original data points. On the contrary, if the measurement is loose, the generated samples may not be acceptable even if they satisfy the evaluation criteria. To address this challenge, we utilize data labels to construct the similarity measurement because data labels provide a natural bal-ance between the generalization and the specification of measurement, where sufficient numbers of data are categorized into each label. We therefore design a zero-one similarity matrix: the similarity score of two samples is one if they have the same label, and zero otherwise. Based on the evaluation mechanism, we propose a new generative network, called similarity-based generative network (SGN). Specifically, our evaluation mechanism establishes a latent space where each data sample has a set of colinear latent representations and a unique special latent representation. The similarity score between any two data points is reflected by the dot product of their special latent representations. Consequently, we train a neural network model to find the latent space and also the transformation between the latent and the original spaces. Essentially, SGN learns the special latent representations of the data points in the training dataset without being aware of its distribution. After SGN is trained, we utilize these latent representations to generate desired samples according to the need of downstream tasks. Compared to existing GMs, SGN is more amenable to generating samples that follow various distributions and is capable of addressing the distribution shift problem, where the data distribution in the source domain is different from that in the target domain. Mathematically, SGN can be viewed as a conditional generative paradigm. However, unlike exist-ing conditional generative works that utilize the label information explicitly and represent each label with an embedding, SGN implicitly adopts label information, which could better alleviate the distri-bution shift problem because it provides a stable label-data relationship. In particular, in our design, the inner product of any two data representations always satisfies the same zero-one similarity re-quirement across different domains. In existing works, a data sample is constantly represented as a one-hot label representation, while the data representations vary across different domains.Thus, the relationship between the label and data representations exhibits significant variations across different domains. Our contributions are summarized as follows: • We propose a novel evaluation mechanism based on similarity measurements between different data points. To the best of our knowledge, this is the first work that designs a distribution-agnostic evaluation mechanism for GMs. • We present a similarity-based generative network SGN to generate desirable samples for target domains, mitigating the distribution shift problem. We further analyze the lower bound of the latent space dimension and provide the convergence analysis of SGN training. 2• We conduct extensive experiments on eleven real-world datasets including both image and tabular datasets, demonstrating the effectiveness of SGN for generating high-quality data and mitigating the distribution shift problem, compared to six state-of-the-art baselines. 
+
+# 2 Related Work 
+
+Conditional Generative Model. Conditional generative models synthesize data according to auxiliary conditions, such as class labels, semantic attributes, text descriptions, or domain in-formation. Early representative approaches include conditional generative adversarial networks (CGANs) (Mirza and Osindero, 2014), conditional variational autoencoders (CVAEs) (Sohn et al., 2015), and projection-based conditional GANs (Miyato and Koyama, 2018). Subsequent studies improved class-conditional generation through contrastive objectives, auxiliary classifiers, and more expressive conditioning mechanisms (Kang and Park, 2020; Kang et al., 2021). More recently, diffusion models have become a prevalent paradigm for conditional generation. Classifier and classifier-free guidance enable pretrained diffusion models to generate samples aligned with class labels, textual descriptions, or other conditions (Dhariwal and Nichol, 2021; Ho and Salimans, 2022). Recent studies further investigate the quality-diversity trade-off of guid-ance and develop more flexible conditioning mechanisms (Sadat et al., 2025; Li et al., 2025). Nev-ertheless, the conditional distributions learned by these models remain primarily shaped by their training data. When a generator trained on a source domain is directly applied to a shifted target domain, specifying the desired class does not by itself capture how the class-conditional data char-acteristics change across domains. 
+
+Target-specific Generative Adaptation. Another line of research adapts a pretrained genera-tor to a target domain using a limited number of target examples. Earlier GAN-based methods transfer source-domain generators through selective fine-tuning, regularization, or cross-domain correspondence preservation Wang et al. (2020); Bahram et al. (2025). Similar ideas have been extended to diffusion models, where a pretrained model is adapted using target-domain fine-tuning, domain-specific regularization, parameter-efficient updates, or additional guidance objec-tives Zhu et al. (2022). For example, Domain Guidance (Zhong et al., 2025) interprets diffusion-model transfer as conditional generation and introduces a target-domain guidance mechanism, whereas SaRA (Hu et al., 2025) performs parameter-efficient adaptation through sparse low-rank up-dates. These approaches can produce high-quality samples in a new domain, but still involve target-specific optimization and typically require storing either a separately adapted model or domain-specific parameters. In contrast, SGN keeps the source-trained model fixed and incorporates target-domain characteristics through representative samples only during generation. 
+
+Sample-based Data Augmentation. Sample-based augmentation constructs new training ex-amples directly from observed samples or their representations. Classical methods include Mixup (Zhang et al., 2018), which linearly combines training examples and labels, and Manifold Mixup (Verma et al., 2019), which performs interpolation in hidden representation spaces. Recent diffusion-based augmentation methods leverage strong pretrained generative priors to improve the fidelity and diversity of synthetic samples. Trabucco et al. (2024) edits real images using pretrained text-to-image models, while Wang and Chen (2025) performs class-wise interpolation between dif-fusion inversions and reconstructs the interpolated representations through a two-stage denoising process. More recent work studies which synthetic samples are most useful rather than generating them indiscriminately. In particular, targeted image augmentation selectively allocates diffusion-based augmentation to training examples for which synthetic data are expected to provide greater utility (Nguyen et al., 2026). These approaches demonstrate the effectiveness of sample-conditioned and representation-space augmentation. However, conventional interpolation rules are generally defined by geometric prox-imity in the input or latent space. Although modern pretrained representations may already encode semantic information, they do not explicitly impose a transferable pairwise class geometry learned from the source domain. SGN instead organizes the latent space using label-induced similarity con-straints and uses this structure to guide the combination of limited target-domain representations without updating the model parameters. 3                 
+
+> 
+>              
+>            
+>        
+>   
+>          
+>  
+>  
+>   
+
+Figure 1: An illustration of the SGN paradigm, which consists of two stages. In the training stage, the encoder and decoder learn the transformation between the original data space and latent space, where the latent space satisfies the similarity requirement defined in Equation 1. In the data genera-tion stage, the encoder takes two data points with the same label and produces two latent representa-tions; then, the decoder generates a data point by a linear combination of these latent representations as inputs. 
+
+# 3 Similarity-Based Generative Networks 
+
+In this section, we present our similarity-based generative networks SGN that can generate desirable samples for the need of target domains. Generally speaking, SGN isolates the source domain training and target domain generation, where SGN is first trained in the source domain without knowing the information of the target domain, and then SGN generates required data samples of the target domain. Specifically, we first propose the similarity-based evaluation mechanism and then analyze the latent space it determines in Section 3.1. Subsequently, we describe the training paradigm of SGN in Section 3.2, and present the convergence analysis of the training process in Section 3.3. Finally, we describe how to generate desirable samples in the target domain in Section 3.4. We consider a labeled dataset X = {(xi, y i)|i ∈ { 1, · · · , N }} , where N is the number of samples in 
+
+X. Let K be the number of distinct labels and a = {a1, · · · , aK } be the label value set. Moreover, we denote the ith original data and its latent representations as xori  
+
+> i
+
+and xlat  
+
+> i
+
+, respectively. 
+
+3.1 Similarity-Based Evaluation Mechanism 
+
+We utilize the similarity score between samples to construct the evaluation mechanism, where the similarity scores are determined by data labels. Specifically, we require the similarity score of two samples to be one if they have the same label, and otherwise zero. Let S denote the zero-one similarity matrix defined by the evaluation mechanism. In essence, this similarity-based evaluation mechanism determines a latent linear space. In this latent space, we can utilize the inner product of two data points’ representations as their similarity score, where each data point has a special latent representation and a set of other latent representations. The inner product of the special latent representations is equivalent to the similarity score, and all latent representations for one data sample are co-linear. Formally, given a latent space with D dimensions, 
+
+S is encoded through 
+
+Si,j = 〈xlat_S  
+
+> i
+
+, xlat_S  
+
+> j
+
+〉 =
+
+{1 yi = yj
+
+0 yi 6 = yj , (1) where xlat_S  
+
+> i
+
+and xlat_S  
+
+> j
+
+are the special latent representations of data points i and j, respectively, and 
+
+〈xlat_S  
+
+> i
+
+, xlat_S  
+
+> j
+
+〉 is the inner product of xlat_S  
+
+> i
+
+and xlat_S  
+
+> j
+
+.The above design has two properties. First, it ensures that the latent representations of different labels are orthogonal, i.e., latent representations of all labels essentially form an orthogonal set of the latent 4space, and each sample’s latent representation is a linear combination of its label’s corresponding orthogonal basis. Let V = {Vd|d ∈ { 1, ..., D }} denote the aforementioned orthogonal set of the latent space, where different labels have different Vd and each label may have multiple orthogonal basis. Let mk be the number of orthogonal basis for the kth label ak, then D = ∑Kk=1 mk.We use an indicator γd,k to represent the relationship between Vd and ak: if Vd is an orthogonal basis of ak, then γd,k = 1 ; otherwise γd,k = 0 . As a consequence, xlat  
+
+> i
+
+could be represented by V
+
+as 
+
+xlat  
+
+> i
+
+=
+
+> D
+
+∑
+
+> d=1
+> K
+
+∑
+
+> k=1
+
+βi,d αi,k γd,k Vd, (2) where βi,d is the linear coefficient, and αi,k indicates whether yi equals to the label value ak, i.e., if 
+
+ak = yi, αi,k = 1 ; otherwise, αi,k = 0 .Second, the co-linear setting supports a flexible generative paradigm design, enabling the special latent representation to be set in a variety of ways. For example, we could use the normalized representation as the special latent representation due to the co-linear setting. Another option is to adopt a neural network to infer the special latent representation, where the network’s input is the original representation and the output can be set to the special latent representation. 
+
+3.2 SGN Training 
+
+Notably, SGN refers to a family of deep neural networks trained based on the similarity-based eval-uation mechanism. It should satisfy two requirements: (1) find the latent space determined by the similarity-based evaluation mechanism, i.e., the inner product of any two data points’ special latent representations is equivalent to the similarity of these two data points; (2) imitate the transformation between the latent space and the original space, i.e., given a latent representation of a data point, SGN could obtain its original representation. Therefore, the loss function is defined as follows: 
+
+L = η
+
+N 2
+
+> N
+
+∑
+
+> i=1
+> N
+
+∑
+
+> j=1
+
+L(r1 ) 
+
+> i,j
+
++ 1 − η
+
+N
+
+> N
+
+∑
+
+> i=1
+
+L(r2 ) 
+
+> i
+
+, (3) where L(r1 ) 
+
+> i,j
+
+corresponds to the regularization loss, which is the first requirement for any two data points, and L(r2 ) 
+
+> i
+
+corresponds to the reconstruction loss, which is the second requirement for any specific training data point. η ∈ [0 , 1] is a trade-off parameter which represents the relative impor-tance between two requirements. Figure 1 illustrates the general pipeline of SGN, which follows the autoencoder structure: xori  
+
+> i
+
+and xlat  
+
+> i
+
+are the input and output of the encoder, respectively. The input of the decoder is a scalar multiplication of xlat  
+
+> i
+
+that supports co-linear relationships among a data point’s latent representations, i.e., c xlat   
+
+> i
+> ‖xlat
+> i‖
+
+, where c is sampled from the uniform distribution 
+
+U (‖xlat  
+
+> i
+
+‖ − C, ‖xlat  
+
+> i
+
+‖ + C). The constant C is the maximum length variation of the latent represen-tation. Let xrec  
+
+> i
+
+denote the output of the decoder. Then the reconstruction loss L(r2 ) 
+
+> i
+
+can be defined as L(r2 ) 
+
+> i
+
+= ‖xrec  
+
+> i
+
+− xori  
+
+> i
+
+‖. For L(r1 ) 
+
+> i,j
+
+, we define the special latent representation as follows: 
+
+L(r1 ) 
+
+> i,j
+
+=
+
+{∣ ∣〈f (xlat  
+
+> i
+
+), f (xlat  
+
+> j
+
+)〉∣∣ yi 6 = yj∣∣〈f (xlat  
+
+> i
+
+), f (xlat  
+
+> j
+
+)〉 − 1∣∣ yi = yj , (4) where f (·) is a post-processing function of the encoder’s output and xlat_S  
+
+> i
+
+= f (xlat  
+
+> i
+
+). For example, it can be the identity function f (x) or the normalized function f (x) = x 
+
+> ‖x‖
+
+. We shall discuss the choice of this function for different types of datasets in Section 4. 
+
+Determining the dimension of the special latent representation. Since the number of samples N
+
+is usually large, we utilize a batch of samples to calculate L in each epoch. Let D be the dimension of the latent space. The batch size can be used to derive the lower bound of D. Let Xb be a batch of the training data and B be the batch size. Suppose Xb has Q different label values ( Q ≤ K), and N (b) 
+
+> q
+
+is the number of data points with label value aq in Xb, and apparently ∑Qq=1 N (b) 
+
+> q
+
+= B. Moreover, to 5facilitate our analysis, we assume data in Xb has different special latent representations. 1 If SGN is trained close to the optimal solution, according to Equation 1, for any other data sample whose special latent representation is xlat_S other and label is yother , it should satisfy the following conditions established by the data in Xb,
+
+{〈xlat_S other , xlat_S  
+
+> i
+
+〉 = 1 , if yi = yother 
+
+〈xlat_S other , xlat_S  
+
+> i
+
+〉 = 0 , if yi 6 = yother . (5) Apparently, the resulted coefficient matrix of Equation 5 is the special latent representations of Xb,denoted as Xlat_S . Let Xlat_S  
+
+> q
+
+be the subset of Xlat_S , which consists of special latent representations with label value aq.In essence, the dimension of latent representations is the length of variables in the equation system, which can be determined by the relationship between the rank of coefficient matrix and the number of independent solutions. Propositions 3.1 and 3.2 give the lower bound of the rank of a coefficient sub-matrix and the lower bound of the rank of the whole coefficient matrix, respectively. Based on which, we decide the dimension requirement of latent representations in Theorem 3.3. 
+
+Proposition 3.1. If the dimension D is sufficiently large, then r(Xlat_S  
+
+> q
+
+) ≥ N (b) 
+
+> q
+
+− 1, where r(Xlat_S  
+
+> q
+
+)
+
+is the rank of Xlat_S  
+
+> q
+
+.Proof. Since D is sufficiently large, the main idea of the proof is to construct a group of linearly independent vectors from Xlat_S  
+
+> q
+
+, and the number of vectors in the constructed group is N (b) 
+
+> q
+
+− 1. We can construct the group by randomly selecting a special latent representation xlat_S  
+
+> i
+
+from Xlat_S  
+
+> q
+
+and generating the constructed group by Xlat_S  
+
+> q
+
+− xlat_S  
+
+> i
+
+, which has N (b) 
+
+> q
+
+− 1 non-zero vectors. Note that the non-zero vectors in the constructed group are pairwise orthogonal, because for any two non-zero vectors xlat_S  
+
+> j
+
+−xlat_S  
+
+> i
+
+and xlat_S  
+
+> h
+
+−xlat_S  
+
+> i
+
+in the constructed group satisfy 〈xlat_S  
+
+> j
+
+−xlat_S  
+
+> i
+
+, xlat_S  
+
+> h
+
+−xlat_S  
+
+> i
+
+〉
+
+= 0. Hence, these vectors are linear independent. 
+
+Proposition 3.2. If the dimension D is sufficiently large, then r(Xlat_S ) ≥ B − Q.Proof. It is apparent that any two vectors from different constructed groups are orthogonal. There-fore, these constructed groups form a large group with ∑Qq=1 N (b) 
+
+> q
+
+− Q = B − Q independent vectors. 
+
+Theorem 3.3. The dimension of latent representations needs to satisfy: D ≥ B + K − 2Q.Proof. According to Proposition 3.2, there exist at most D−B+Q numbers of independent solutions to Equation (1). Moreover, we have Q ≤ K, and thus K − Q label values are not included in Xb,which means there must exist at least K − Q independent solutions to Equation (1). Therefore, we can obtain: D − B + Q ≥ K − Q.
+
+3.3 Convergence Analysis 
+
+Recall that any design of L(r1 ) 
+
+> i,j
+
+and L(r2 ) 
+
+> i
+
+is proposed to satisfy the aforementioned two requirements, and thus the global optimality essentially satisfies the two requirements, as stated in theorem 3.4. 
+
+Theorem 3.4. Xlat_S ∗ (Xlat_S ∗ )T = S, where Xlat_S ∗
+
+represents the optimal solution of special latent representations Xlat_S .
+
+Based on the global optimality, we could then analyze the convergence of SGN training. Assume that the original data representation space is discrete, we can then enumerate all the data points in such space. Accordingly, we can obtain their special latent representations, i.e., Xlat_S  
+
+> W
+
+. Thus, we have the following theorem. 
+
+> 1
+
+The situation we consider here is the worst case. If we have more different special latent representations in one batch, it would be more difficult to make ∑Bi=1 
+
+∑Bj=1 L(r1)  
+
+> i,j
+
+= 0. Therefore, we consider the worst case for training, where all the data in this batch have different special latent representations. 
+
+6Algorithm 1 Data generation based on the trained SGN model 
+
+Input: The representative dataset XRep , the trained SGN, the number of data Nk to be sampled. 
+
+Output: Generated data: (xnew , y new ).Step 1: Select a label value ak.Step 2: Select datasets Xequal = {(xi, y i = ak)|i ∈ {1, ..., N k}} and Xunequal =
+
+{(xi, y i6 = ak)|i ∈ { 1, ..., N k}} from XRep , and set Xselect = Xequal ∪ Xunequal .Step 3: Compute a latent representation xlat new that satisfies Equation (1) for Xselect .Step 4: Input xlat new to the trained SGN, and the output is the generated data xnew .Step 5: Set ynew = ak and return (xnew , y new ).
+
+Theorem 3.5. There always exists a well-trained SGN such that Xlat_S ∗
+
+> W
+
+(
+
+Xlat_S ∗
+
+> W
+
+)T
+
+= SW , where 
+
+SW is the similarity among the enumerated data points and Xlat_S ∗ 
+
+> W
+
+is the optimal solution of Xlat_S  
+
+> W
+
+.Proof. We can transform the problem into: for any SW , there exists a matrix X that satisfies 
+
+X(X)T = SW . The reason is that SW is a real symmetric matrix, such X will always exist. Consequently, if SGN has enough model capacity, we can finally find such a latent space. 
+
+3.4 Data Generation 
+
+In this section, we present how to generate a data point according to the trained SGN and a repre-sentative dataset XRep in the target domain. Algorithm 1 summarizes the data generation process. First, we decide the label value ak of the generated sample. Subsequently, we select a set of Nk data points from XRep whose labels equal ak, and obtain Xequal = {(xi, y i = ak)|i ∈ { 1, ..., N k}} ; sim-ilarly, we select another Nk data points whose labels are not ak to construct Xunequal = {(xi, y i 6 =
+
+ak)|i ∈ { 1, ..., N k}} . Let Xselect = Xequal ∪ Xunequal be the selected dataset. Next, we construct a latent representation xlat new that satisfies Equation (1) for the selected dataset Xselect . Notice that there exist multiple ways to construct xlat new , i.e., solving the equation system Equation (1). In the experiments, we utilize a simple but effective way that linearly mixes the data points in Xequal . After that, we input xlat new to the trained SGN, and the output is the generated data point xnew . Finally, we can obtain a generated data point (xnew , y new ), where ynew = ak.A noteworthy aspect is that our data generation method can address the distribution shift problem. Specifically, the way of generating data samples should meet the needed distribution of target do-main, which is challenging because of the existence of the distribution shift. Typically, the data distribution p(x) is determined by the label distribution p(y) and the label-conditioned distribution 
+
+p(x|y), as shown in the Equation (6), where different p(y) (i.e., prior probability shift) and p(x|y)
+
+(i.e., covariate shift) could lead to different p(x) (i.e., distribution shift). 
+
+p(x) = 
+
+> K
+
+∑
+
+> k=1
+
+p(x|y = ak)p(y = ak). (6) In SGN, since we search for a latent space instead of learning the distribution during the training stage, we can use the needed distribution in the target domain to generate the data samples. In par-ticular, in Step 1 and Step 2 of Algorithm 1, we can sample the label value ak and the Xequal dataset according to p(y) and p(x|y = ak), respectively, where p(y) and p(x|y = ak) are determined by the representative dataset XRep . This way, we can tackle the prior probability shift and covariate shift to mitigate the distribution shift problem. Note that in the training stage, the neural network learns the reflection between the data original representations and latent representations. When moving into the target domain, we use the learned reflection to calculate the latent representations of the data used in the target domain. These latent representations inherently consist of the distribution information of the target domain. With the mixture of the latent representations, we can make the generated data satisfy the target domain distribution. 
+
+# 4 Experiments 
+
+4.1 Experimental Setup 
+
+7We evaluate SGN on both image datasets and tabular datasets. For image datasets, we use two imple-mentations: one is NeurSpec whose f (·) is an identity function, and the other is NormSpec whose 
+
+f (·) is the normalized function. For the implementation on tabular datasets, we employ f (·) as the normalized function simply denoted SGN. All the experiments are run on a server equipped with an I9-11900K CPU and GEFORCE RTX 3090 Ti HOF OC LAB Edition * 2 GPUs. 
+
+Datasets. We use six image datasets and five tabular datasets for the evaluation. For image datasets, we use BloodMNIST (Acevedo et al., 2020), OctMNIST (Kermany et al., 2018), Tis-sueMNIST (Woloshuk et al., 2021), RetinaMNIST (DeepDRiD, 2020), SVHN (Netzer et al., 2011) and FashionMNIST (Xiao et al., 2017). We create different domains via the dataset rotation (Nguyen et al., 2021). For tabular datasets, we utilize Insect (de Souza et al., 2020), Adult (Kohavi, 1996), Avila (Stefano et al., 2011), Dry Bean (Koklu and Özkan, 2020), and Electrical Grid Stabil-ity (Arzamasov et al., 2018) datasets. For the Insect dataset, we utilize sub-datasets that already contain distribution shifts, namely Insects_Abr (denoted InsectsA), Insects_Incr (denoted InsectsI), Insects_IncrGrd (denoted InsectsIG). For the other four datasets, we divide each of them into two subsets to create distribution shifts. The details are explained in Appendix A. 
+
+Baselines. For image datasets, we compare SGN with four state-of-the-art CGMs, namely, ProjGAN (Miyato and Koyama, 2018), ContraGAN (Kang and Park, 2020), ReACGAN (Kang et al., 2021), and ADCGAN (Hou et al., 2022b). We adopt the studioGAN library to implement these baseline models. The ProjGAN’s architecture is based on ResNet, and other baselines’ architectures are based on bigGAN. For tabular datasets, we compare SGN with the two conditional tabular dataset generation methods: CTGAN and TVAE (Xu et al., 2019), where we adopt the SDV library to implement them with the defaulted structures stated in the library. 
+
+Metric. For image datasets, we measure the effectiveness of generated data in the target domain by the downstream classification tasks. The generated data is considered effective if it can improve the classifier’s performance. For tabular datasets, we measure the generated data quality by the benchmark provided by (Xu et al., 2019). We train regressor/classifier models on the generated data and test the models on the target domain. We use Linear Regression (LR) and Multilayer Perceptron (MLP) regression as regressors, and Decision Tree (DT) and MLP classification as classifiers. We utilize the F1 score and R2 to evaluate the classifiers and regressors, respectively. More details on the experimental setup are provided in Appendix B. 
+
+4.2 Evaluation on Image Datasets Downstream task evaluation. In this paper, we conduct classification as the downstream tasks, and the classifier is ResNet50 (He et al., 2016). The target domain is created by rotating the original dataset for 90 degrees. For each generative paradigm, we generate 200 images per label, the same number as that in the rotated training dataset. Table 1 summarizes the classification results over three runs evaluated on five generative paradigms. Note that the ‘Original’ column refers to the classification accuracy directly on the rotated training dataset (without generated data). The accuracy is low due to the limited number of training images. There are three main observations from Table 1. First, the new data generated by the baselines, i.e., ProjGAN, ContraGAN, RcACGAN, and ADCGAN, is ineffective for downstream tasks in the target domain. Specifically, except for the BloodMNIST dataset, the performances of the classifiers trained with generated data on the other five datasets are similar to or even lower than those trained without generated data. This is because the baselines are trained in the source domain, i.e., they learn the source domain’s distributions for generating new data. When the distribution shifts exist Table 1: Classification accuracy 
+
+Methods BloodMNIST OctMNIST TissueMNIST RetinaMNIST SVHN FashionMNIST 
+
+Original 0.63 ± 0.01 0.33 ± 0.03 0.38 ± 0.03 0.44 ± 0.03 0.47 ± 0.05 0.41 ± 0.03 ProjGAN 0.67 ± 0.02 0.32 ± 0.02 0.35 ± 0.03 0.40 ± 0.04 0.49 ± 0.02 0.42 ± 0.01 ContraGAN 0.68 ± 0.02 0.27 ± 0.03 0.39 ± 0.02 0.41 ± 0.04 0.45 ± 0.01 0.40 ± 0.02 ReACGAN 0.65 ± 0.03 0.31 ± 0.03 0.40 ± 0.02 0.42 ± 0.03 0.52 ± 0.03 0.45 ± 0.03 ADCGAN 0.68 ± 0.02 0.34 ± 0.04 0.42 ± 0.03 0.44 ± 0.03 0.51 ± 0.02 0.43 ± 0.03 NormSpec 0.68 ± 0.01 0.41 ± 0.03 0.42 ± 0.02 0.47 ± 0.03 0.52 ± 0.02 0.49 ± 0.03 NeurSpec 0.75 ± 0.01 0.43 ± 0.03 0.44 ± 0.03 0.50 ± 0.03 0.55 ± 0.01 0.53 ± 0.02 
+
+8Figure 2: Visualization results of the RetinaMNIST and TissueMNIST datasets. The Original Data 1 and Original Data 2 are in the source domain for training the SGN. The Rotated Data 1 and Rotated Data 2 are in the target domain. The Generated Data is obtained in the data generation stage. between the source domain and target domain, the generated new data is not helpful to the classifi-cation tasks in the target domain. For the BloodMNIST dataset, the four baselines can improve the classifiers’ performances because the key features of the label information are more robust. Note that BloodMNIST results in the highest ‘Original’ classification accuracy; thus, data rotation has little impact on the key features. Second, the data generated by SGN greatly improves the classifi-cation accuracy of the downstream tasks w.r.t. the six datasets. Even for the BloodMNIST dataset, where all the generative paradigms can improve the accuracy, SGN still outperforms the baselines. The reason is that SGN essentially learns a latent space during training and incorporates the target domain’s distribution into the data generation process. Therefore, it can generate data that follows the target domain’s distribution, leading to better performance. Third, the performance of the SGN’s NeurSpec realization is generally better than that of the NormSpec realization. For example, Neur-Spec achieves about 2% ∼ 6% accuracy improvement compared to NormSpec. The reason is that NeurSpec employs more orthogonal bases to construct the latent representations, and thus, it has a higher capability to provide high-quality latent representations for generating better data. 
+
+Visualization results. Figure 2 shows the visualization results of data generation in NeurSpec as it provides better accuracy on the downstream classification tasks. Figure 2 consists of three parts: original data, rotated data, and generated data, where the original data is used for NeurSpec training, the rotated data is the input of generation, and the generated data is the output. Moreover, the original data is in the source domain, while the rotated and generated data are in the target domain. We can observe from Figure 2 that, even though NeurSpec is not trained in the target domain, the generated data is similar to but different from the rotated data, demonstrating that NeurSpec is able to generate acceptable data by the linear combination of rotated data. For example, the third generated image of TissueMNIST, i.e., the fifth image in the fifth row highlighted in the red rectangle, consists of two circles, where the yellow circle inherits from rotated 1, and the blue circle inherits from rotated data 2. More visualization results of the generated data are provided in Appendix C. 
+
+4.3 Evaluation on Tabular Datasets 
+
+Tables 2 and 3 summarize the comparison results for regressors and classifiers, respectively. There are two observations. First, SGN outperforms CTGAN and TVAE in most cases. This is because SGN is designed to learn a universal linear space and transmission across the target and source domains. However, CTGAN and TVAE are designed to learn the distributions of the source domain, and thus, cannot perform well in the target domain. Second, we observe that the results are not symmetric, meaning that the performance of SGN from one dataset to another may not be the same in reverse. For example, SGN performs well from Avila0 to Avia1, but it does not perform well from Avila1 to Avila0. This lack of symmetry can be attributed to differences between the datasets. While GMs trained on one dataset may find it easier to perform well on another, this does not necessarily guarantee the same for models trained on a different dataset. We further conduct an ablation study of the effect of the parameter η in the loss function in Appendix D. 9Table 2: Benchmark results ( R2 for regressors) on tabular datasets 
+
+Dataset Source → Target SGN CTGAN TVAE LR MLP LR MLP LR MLP 
+
+Insect InsectA → InsectI 0.5028 0.0422 -0.8304 -0.2169 0.4923 -0.2887 InsectA → InsectIG 0.4620 -0.1132 -1.3399 -0.4884 -0.0043 -0.9879 InsectA → InsectIR 0.4040 -0.0600 -0.8327 -0.2939 0.2641 -0.2887 InsectI → InsectA 0.5055 -0.0525 -0.0950 -0.4944 0.4964 -0.0928 InsectI → InsectIG 0.5108 -0.0984 -0.9219 -0.9173 0.2754 -0.1894 InsectI → InsectIR 0.5153 -0.1894 -0.2775 -0.5936 0.4581 -0.1164 InsectIG → InsectA 0.5723 -0.0837 -0.3835 -0.5262 0.2108 -0.3124 InsectIG → InsectI 0.2833 -0.1305 -0.4712 -0.4354 0.2261 -0.2591 InsectIG → InsectIR 0.3754 0.0116 -0.4423 -0.4035 0.1576 -0.0977 InsectIR → InsectA 0.5229 -0.0694 0.2952 -0.4751 0.2813 -0.0267 InsectIR → InsectI 0.6332 0.0477 0.3664 -0.4710 0.2457 0.0253 InsectIR → InsectIG 0.4970 -0.0905 0.3193 -0.4689 0.1291 -0.0010 
+
+Electrial Electrical0 → Electrical1 0.0987 -0.4460 -0.0518 -1.4251 -0.6375 -8.0482 Electrical1 → Electrical0 -0.1539 -1.5070 -1.1412 -2.4765 -1.8348 -7.2222 
+
+Table 3: Benchmark results (F1 score for classifiers) on tabular datasets 
+
+Dataset Source → Target SGN CTGAN TVAE DT MLP DT MLP DT MLP 
+
+Adult Adult0 → Adult1 0.5560 0.5723 0.3888 0.5707 0.4291 0.5711 Adult1 → Adult0 0.6834 0.8810 0.4348 0.8754 0.2409 0.1181 
+
+DryBean DryBean0 → DryBean1 0.0717 0.2306 0.0563 0.0759 0.0699 0.0704 DryBean1 → DryBean0 0.2198 0.2313 0.1717 0.2156 0.0606 0.1487 
+
+Avila Avila0 → Avila1 0.3016 0.2975 0.0692 0.1706 0.2714 0.2621 Avila1 → Avila0 0.4625 0.4323 0.0918 0.0713 0.3459 0.3844 
+
+# 5 Conclusion 
+
+In this paper, we propose a similarity-based generative network SGN to generate desirable samples for downstream tasks. The core of SGN is a novel similarity-based evaluation mechanism, which utilizes the data labels to construct a zero-one similarity matrix. In the training stage, instead of learning the probability distribution of the training dataset in the source domain, SGN searches for a latent space that satisfies the similarity requirement. In the data generation stage, SGN incorporates the needed distribution information of the representative dataset to generate the desirable samples in the target domain, mitigating the distribution shift problem. Extensive experiments on various real-world datasets, including both image and tabular datasets, demonstrate the effectiveness of SGN and its superiority over the baselines. 
+
+# References 
+
+Andrea Acevedo, Anna Merino, Santiago Alférez, and et al. 2020. A dataset of microscopic pe-ripheral blood cell images for development of automatic recognition systems. Data in Brief 30 (2020), 105474. Vadim Arzamasov, Klemens Böhm, and Patrick Jochem. 2018. Towards Concise Models of Grid Stability. In SmartGridComm . 1–6. Yara Bahram, Melodie Desbos, Mohammadhadi Shateri, and Eric Granger. 2025. Uni-DAD: Unified Distillation and Adaptation of Diffusion Models for Few-step Few-shot Image Generation. CoRR 
+
+abs/2511.18281 (2025). arXiv:2511.18281 doi: 10.48550/ARXIV.2511.18281 
+
+Gene Chou, Yuval Bahat, and Felix Heide. 2023. Diffusion-SDF: Conditional Genera-tive Modeling of Signed Distance Functions. In IEEE/CVF International Conference on 
+
+10 Computer Vision, ICCV 2023, Paris, France, October 1-6, 2023 . IEEE, 2262–2272. doi: 10.1109/ICCV51070.2023.00215 
+
+Vinícius M. A. de Souza, Denis Moreira dos Reis, André Gustavo Maletzke, and Gustavo E. A. P. A. Batista. 2020. Challenges in benchmarking stream learning algorithms with real-world data. Data Min. Knowl. Discov. 34, 6 (2020), 1805–1858. DeepDRiD. 2020. The 2nd diabetic retinopathy – grading and image quality estimation challenge. Yashar Deldjoo, Tommaso Di Noia, and Felice Antonio Merra. 2021. A survey on adversarial recommender systems: from attack/defense strategies to generative adversarial networks. Comput. Surveys 54, 2 (2021), 1–38. Prafulla Dhariwal and Alexander Quinn Nichol. 2021. Diffusion Models Beat GANs on Image Synthesis. In Advances in Neural Information Processing Systems 34: Annual Conference on Neural Information Processing Systems 2021, NeurIPS 2021, December 6-14, 2021, virtual , Marc’Aurelio Ranzato, Alina Beygelzimer, Yann N. Dauphin, Percy Liang, and Jennifer Wortman Vaughan (Eds.). 8780–8794. 
+
+https://proceedings.neurips.cc/paper/2021/hash/49ad23d1ec9fa4bd8d77d02681df5cfa-Abstract.html 
+
+Ian Goodfellow, Jean Pouget-Abadie, Mehdi Mirza, Bing Xu, David Warde-Farley, Sherjil Ozair, Aaron Courville, and Yoshua Bengio. 2014. Generative adversarial nets. NIPS 27 (2014). Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. 2016. Deep Residual Learning for Image Recognition. In CVPR . 770–778. Jonathan Ho, Ajay Jain, and Pieter Abbeel. 2020. Denoising Diffusion Probabilistic Models. In 
+
+Advances in Neural Information Processing Systems 33: Annual Conference on Neural Informa-tion Processing Systems 2020, NeurIPS 2020, December 6-12, 2020, virtual , Hugo Larochelle, Marc’Aurelio Ranzato, Raia Hadsell, Maria-Florina Balcan, and Hsuan-Tien Lin (Eds.). 
+
+https://proceedings.neurips.cc/paper/2020/hash/4c5bcfec8584af0d967f1ab10179ca4b-Abstract.html 
+
+Jonathan Ho and Tim Salimans. 2022. Classifier-Free Diffusion Guidance. CoRR abs/2207.12598 (2022). arXiv:2207.12598 doi: 10.48550/ARXIV.2207.12598 
+
+Liang Hou, Qi Cao, Huawei Shen, Siyuan Pan, Xiaoshuang Li, and Xueqi Cheng. 2022a. Conditional GANs with Auxiliary Discriminative Classifier. In International Conference on Machine Learning, ICML 2022, 17-23 July 2022, Baltimore, Maryland, USA (Proceed-ings of Machine Learning Research, Vol. 162) , Kamalika Chaudhuri, Stefanie Jegelka, Le Song, Csaba Szepesvári, Gang Niu, and Sivan Sabato (Eds.). PMLR, 8888–8902. 
+
+https://proceedings.mlr.press/v162/hou22a.html 
+
+Liang Hou, Qi Cao, Huawei Shen, Siyuan Pan, Xiaoshuang Li, and Xueqi Cheng. 2022b. Condi-tional GANs with Auxiliary Discriminative Classifier. In ICML , Vol. 162. 8888–8902. Teng Hu, Jiangning Zhang, Ran Yi, Hongrui Huang, Yabiao Wang, and Lizhuang Ma. 2025. SaRA: High-Efficient Diffusion Model Fine-tuning with Progressive Sparse Low-Rank Adaptation. In 
+
+The Thirteenth International Conference on Learning Representations, ICLR 2025, Singapore, April 24-28, 2025 . OpenReview.net. https://openreview.net/forum?id=wGVOxplEbf 
+
+Minguk Kang and Jaesik Park. 2020. Contragan: Contrastive learning for conditional image gener-ation. NeurIPS (2020). Minguk Kang, Woohyeon Shim, Minsu Cho, and Jaesik Park. 2021. Rebooting ACGAN: Auxiliary Classifier GANs with Stable Training. NeurIPS 34 (2021). Daniel S Kermany, Michael Goldbaum, Wenjia Cai, Carolina CS Valentim, Huiying Liang, Sally L Baxter, Alex McKeown, Ge Yang, Xiaokang Wu, Fangbing Yan, et al. 2018. Identifying medical diagnoses and treatable diseases by image-based deep learning. Cell 172, 5 (2018), 1122–1131. Diederik P. Kingma and Max Welling. 2014. Auto-Encoding Variational Bayes. In ICLR .Ron Kohavi. 1996. Scaling Up the Accuracy of Naive-Bayes Classifiers: A Decision-Tree Hybrid. In SIGKDD . 202–207. 11 Murat Koklu and Ilker Ali Özkan. 2020. Multiclass classification of dry beans using computer vision and machine learning techniques. Comput. Electron. Agric. 174 (2020), 105507. Xirui Li, Charles Herrmann, Kelvin C. K. Chan, Yinxiao Li, Deqing Sun, Chao Ma, and Ming-Hsuan Yang. 2025. A Simple Approach to Unifying Diffusion-based Conditional Generation. In The Thirteenth International Conference on Learning Representations, ICLR 2025, Singapore, April 24-28, 2025 . OpenReview.net. https://openreview.net/forum?id=tAGmxz1TUi 
+
+Mehdi Mirza and Simon Osindero. 2014. Conditional generative adversarial nets. arXiv preprint arXiv:1411.1784 (2014). Takeru Miyato and Masanori Koyama. 2018. cGANs with Projection Discriminator. In ICLR .Yuval Netzer, Tao Wang, Adam Coates, Alessandro Bissacco, Bo Wu, and Andrew Y. Ng. 2011. Reading Digits in Natural Images with Unsupervised Feature Learning. A Tuan Nguyen, Toan Tran, Yarin Gal, and Atilim Gunes Baydin. 2021. Domain invariant represen-tation learning with domain density transformations. NeurIPS 34 (2021). Dang Nguyen, Jiping Li, Jinghao Zheng, and Baharan Mirzasoleiman. 2026. Do We Need All the Synthetic Data? Targeted Image Augmentation via Diffusion Models. In International Confer-ence on Learning Representations .William Peebles and Saining Xie. 2023. Scalable Diffusion Models with Transformers. In 
+
+IEEE/CVF International Conference on Computer Vision, ICCV 2023, Paris, France, October 1-6, 2023 . IEEE, 4172–4182. doi: 10.1109/ICCV51070.2023.00387 
+
+Joaquin Quiñonero-Candela, Masashi Sugiyama, Anton Schwaighofer, and Neil D Lawrence. 2008. 
+
+Dataset shift in machine learning .Seyedmorteza Sadat, Manuel Kansy, Otmar Hilliges, and Romann M. Weber. 2025. No Training, No Problem: Rethinking Classifier-Free Guidance for Diffusion Models. In The Thirteenth In-ternational Conference on Learning Representations, ICLR 2025, Singapore, April 24-28, 2025 .OpenReview.net. https://openreview.net/forum?id=b3CzCCCILJ 
+
+Tamar Rott Shaham, Tali Dekel, and Tomer Michaeli. 2019. Singan: Learning a generative model from a single natural image. In ICCV . 4570–4580. Kihyuk Sohn, Honglak Lee, and Xinchen Yan. 2015. Learning structured output representation using deep conditional generative models. NIPS 28 (2015), 3483–3491. Claudio De Stefano, Francesco Fontanella, Marilena Maniaci, and Alessandra Scotto di Freca. 2011. A Method for Scribe Distinction in Medieval Manuscripts Using Page Layout Features. In ICIAP ,Vol. 6978. 393–402. Brandon Trabucco, Kyle Doherty, Max Gurinas, and Ruslan Salakhutdinov. 2024. Effec-tive Data Augmentation With Diffusion Models. In The Twelfth International Conference on Learning Representations, ICLR 2024, Vienna, Austria, May 7-11, 2024 . OpenReview.net. 
+
+https://openreview.net/forum?id=ZWzUA9zeAg 
+
+Vikas Verma, Alex Lamb, Christopher Beckham, Amir Najafi, Ioannis Mitliagkas, David Lopez-Paz, and Yoshua Bengio. 2019. Manifold Mixup: Better Representations by Interpolating Hid-den States. In Proceedings of the 36th International Conference on Machine Learning, ICML 2019, 9-15 June 2019, Long Beach, California, USA (Proceedings of Machine Learning Re-search, Vol. 97) , Kamalika Chaudhuri and Ruslan Salakhutdinov (Eds.). PMLR, 6438–6447. 
+
+http://proceedings.mlr.press/v97/verma19a.html 
+
+Yanghao Wang and Long Chen. 2025. Inversion Circle Interpolation: Diffusion-based Image Aug-mentation for Data-scarce Classification. In IEEE/CVF Conference on Computer Vision and Pat-tern Recognition, CVPR 2025, Nashville, TN, USA, June 11-15, 2025 . Computer Vision Founda-tion / IEEE, 25560–25569. doi: 10.1109/CVPR52734.2025.02380 
+
+12 Yaxing Wang, Abel Gonzalez-Garcia, David Berga, Luis Herranz, Fahad Shahbaz Khan, and Joost van de Weijer. 2020. MineGAN: Effective Knowledge Transfer From GANs to Target Domains With Few Images. In 2020 IEEE/CVF Conference on Computer Vision and Pattern Recognition, CVPR 2020, Seattle, WA, USA, June 13-19, 2020 . Computer Vision Foundation / IEEE, 9329– 9338. doi: 10.1109/CVPR42600.2020.00935 
+
+Andre Woloshuk, Suraj Khochare, Aljohara F Almulhim, Andrew T McNutt, Dawson Dean, Daria Barwinska, Michael J Ferkowicz, Michael T Eadon, Katherine J Kelly, Kenneth W Dunn, et al. 2021. In situ classification of cell types in human kidney tissue using 3D nuclear staining. Cytom-etry Part A 99, 7 (2021), 707–721. Han Xiao, Kashif Rasul, and Roland Vollgraf. 2017. Fashion-MNIST: a Novel Image Dataset for Benchmarking Machine Learning Algorithms. CoRR abs/1708.07747 (2017). Lei Xu, Maria Skoularidou, Alfredo Cuesta-Infante, and Kalyan Veeramachaneni. 2019. Modeling Tabular data using Conditional GAN. In NeurIPS . 7333–7343. Ling Yang, Zhilong Zhang, Yang Song, Shenda Hong, Runsheng Xu, Yue Zhao, Wentao Zhang, Bin Cui, and Ming-Hsuan Yang. 2024. Diffusion Models: A Comprehensive Survey of Methods and Applications. ACM Comput. Surv. 56, 4 (2024), 105:1–105:39. doi: 10.1145/3626235 
+
+Zili Yi, Hao Zhang, Ping Tan, and Minglun Gong. 2017. Dualgan: Unsupervised dual learning for image-to-image translation. In ICCV . 2849–2857. Hongyi Zhang, Moustapha Cissé, Yann N. Dauphin, and David Lopez-Paz. 2018. mixup: Be-yond Empirical Risk Minimization. In 6th International Conference on Learning Representations, ICLR 2018, Vancouver, BC, Canada, April 30 - May 3, 2018, Conference Track Proceedings .OpenReview.net. https://openreview.net/forum?id=r1Ddp1-Rb 
+
+Jincheng Zhong, Xiangcheng Zhang, Jianmin Wang, and Mingsheng Long. 2025. Domain Guidance: A Simple Transfer Approach for a Pre-trained Diffusion Model. In The Thirteenth International Conference on Learning Representations, ICLR 2025, Singapore, April 24-28, 2025 . OpenRe-view.net. https://openreview.net/forum?id=PplM2kDrl3 
+
+Jiaqi Zhu, Shaofeng Cai, Fang Deng, Beng Chin Ooi, and Wenqiao Zhang. 2023. METER: A Dynamic Concept Adaptation Framework for Online Anomaly Detection. Proceedings of the VLDB Endowment 17, 4 (2023), 794–807. Jiaqi Zhu, Shaofeng Cai, Yanyan Shen, Gang Chen, Fang Deng, and Beng Chin Ooi. 2025. In-Context Adaptation to Concept Drift for Learned Database Operations. In International Confer-ence on Machine Learning . PMLR, 79699–79726. Jiaqi Zhu, Yunfeng Fan, Geng Han, Xiang Shi, Fang Deng, and Jie Chen. 2026. Generative anomaly detection: a comprehensive review of modeling principles, advances, and future opportunities. 
+
+Artificial Intelligence Review (2026). Jingyuan Zhu, Huimin Ma, Jiansheng Chen, and Jian Yuan. 2022. Few-shot Image Generation with Diffusion Models. CoRR abs/2211.03264 (2022). arXiv:2211.03264 doi: 10.48550/ARXIV.2211.03264 
+
+13

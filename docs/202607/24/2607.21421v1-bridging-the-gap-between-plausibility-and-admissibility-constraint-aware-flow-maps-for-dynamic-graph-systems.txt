@@ -1,0 +1,655 @@
+Title: Bridging the Gap Between Plausibility and Admissibility: Constraint-Aware Flow Maps for Dynamic Graph Systems
+
+URL Source: https://arxiv.org/pdf/2607.21421v1
+
+Published Time: Fri, 24 Jul 2026 01:05:31 GMT
+
+Number of Pages: 23
+
+Markdown Content:
+# Bridging the Gap Between Plausibility and Admissibility: Constraint-Aware Flow Maps for Dynamic Graph Systems 
+
+Michael Romei de Socio 1,2 , Gian Luca Pozzato 2, and Alessio Merlo * 1 
+
+> 1
+
+CASD – School of Advanced Defense Studies, 00165 Rome, Italy  
+
+> 2
+
+Department of Computer Science, University of Turin, 10149 Turin, Italy 
+
+Preprint – July 2026 
+
+Abstract 
+
+Generative models can support decision-making under uncertainty by producing en-sembles of plausible future system trajectories, but statistical plausibility does not ensure structural feasibility. This study investigates whether post-sampling symbolic constraints can improve the reliability of generative trajectory modeling in dynamic graph-structured systems. A conditional diffusion model generates future graph-state trajectories from partial observations, while an external symbolic layer applies hard filtering, soft weighting, or projection-based repair. The framework is evaluated on two controlled synthetic regimes: a compact graph and a medium-complexity dependency graph, using metrics for structural validity, sample efficiency, diversity, robustness, and calibration. In the compact regime, the model produces an invalid probability mass of 0.002996, indicating an almost entirely admis-sible trajectory manifold. Under the same architecture and training protocol, invalid mass increases to 0.155929 in the medium-complexity regime. Hard filtering removes all invalid retained trajectories while preserving 84.4% of generated samples, whereas soft weighting preserves effective sample size but yields only limited validity gains. Family-level analysis shows that dependency constraints account for nearly all observed inadmissibility. These results indicate that statistical plausibility and structural admissibility are distinct reliability properties and that symbolic constraint handling becomes more valuable as graph-structural complexity increases. 
+
+Keywords: flow map learning; transport-based generative modeling; conditional diffusion; constraint-aware generative modeling; dynamic graphs; generative trajectory modeling; struc-tural admissibility; reliable decision-making; neurosymbolic AI 
+
+# 1 Introduction 
+
+Many decision-support problems involve systems whose state evolves through interconnected components. Examples include cyber-physical infrastructures, communication networks, logis-tics processes, sensing systems, and operational environments that can be naturally represented as dynamic graphs, in which nodes represent system entities and edges encode dependency relations [ 1, 2 ]. Such systems may also exhibit multilayer and interdependent structures, in which local state changes propagate through coupled dependencies and produce system-level effects that are not captured by component-wise analysis alone [3, 4]. In these settings, decisions must be made under uncertainty. Rather than predicting a single future state, it is often preferable to reason over an ensemble of possible future trajectories 
+
+> *
+
+Corresponding author: alessio.merlo@unicasd.it 
+
+1arXiv:2607.21421v1 [cs.AI] 23 Jul 2026 generated from partial observations [ 5 , 6]. Recent advances in diffusion models, score-based generative modeling, flow-based methods, and neural dynamical systems provide powerful tools for learning such conditional trajectory distributions [7–13]. However, statistical plausibility alone does not guarantee decision-making reliability. A generated trajectory can appear realistic while violating structural requirements that define system feasibility. Typical examples include inconsistent dependency propagation, invalid recovery sequences, or violations of operational constraints. This motivates a distinction between three complementary reliability dimensions: statistical plausibility, structural admissibility, and decision-relevant probability calibration [5, 14–16]. This paper investigates whether an external symbolic constraint layer can improve the re-liability of generative trajectory modeling in dynamic graph-structured systems. We adopt a flow-map perspective in which a neural generator maps latent uncertainty and partial observa-tions into future graph-state trajectories: 
+
+τ = Tθ (z, Ot). (1) Throughout this paper, the term flow map is used in the dynamical-systems sense to denote the learned conditional operator that maps partial observations and latent uncertainty into future graph-state trajectories. In the diffusion-based instantiation used below, z denotes the full source of randomness for sampling, including the initial diffusion noise and, when applicable, any stochasticity introduced during reverse sampling. Thus, Tθ should be read as the induced conditional sampling map rather than as a claim that all reverse-sampling procedures are deterministic. The generator is instantiated using a conditional diffusion model, while structural admissi-bility is evaluated only after sampling, using symbolic constraints. This separation enables us to isolate the contribution of post-sampling constraint handling without modifying the underlying generative model. More generally, constraints can be incorporated during training, used to guide the sampling process, or applied after generation through rejection, reweighting, or repair mechanisms [17, 18]. The present study focuses on the latter setting. Generative-model evaluation, graph prediction, constrained generation, and probabilistic calibration emphasize different reliability criteria [ 2, 5, 18 , 19 ]; controlled benchmarks that examine these dimensions jointly for conditional graph-trajectory generation remain limited. We therefore introduce a compact and a medium-complexity regime to assess structural ad-missibility, sample efficiency, diversity, robustness, and decision-relevant calibration, and to determine how these properties change with graph complexity. The contributions of the paper are: 1. a constraint-aware flow-map formulation for generative decision support in dynamic graph-structured systems; 2. a conditional diffusion framework for future graph-trajectory generation from partial obser-vations; 3. an external symbolic constraint layer supporting hard filtering, soft weighting, and projection-based repair; 4. a controlled two-regime benchmark for studying complexity-dependent admissibility effects; 5. a reliability evaluation framework that jointly assesses validity, sample efficiency, diversity, robustness, and calibration. The remainder of the paper is organized as follows. Section 2 introduces the proposed framework and benchmark. Section 3 presents the empirical evaluation. Section 4 discusses implications and limitations. Section 5 concludes the paper. 22 Materials and Methods 
+
+2.1 Framework Overview 
+
+The proposed framework combines three components: a neural trajectory generator, a symbolic admissibility layer, and a decision layer. Given a partial observation history Ot and latent uncertainty z, the generator produces future graph-state trajectories according to the conditional map introduced in Equation (1) . The generator is implemented through a conditional diffusion model that approximates 
+
+Pθ (τ | Ot). (2) Generated trajectories are subsequently evaluated by an external symbolic layer through a Boolean validity indicator IC (τ) and a continuous violation score ϕC (τ). Constraint handling can be performed through hard filtering, soft weighting, or projection-based repair. The resulting trajectory ensemble is then used to estimate probabilities of decision-relevant outcomes. The architecture is summarized in Figure 1. The explicit separation between neural gen-eration and symbolic validation allows statistical plausibility, structural admissibility, and probabilistic calibration to be analyzed independently. 
+
+Inputs Partial observation Ot and latent noise z
+
+Neural generative layer Conditional diffusion trajectory generator 
+
+Tθ (z, Ot)
+
+Generated future graph trajectories 
+
+Sθ (Ot) = {τ(m)}Mm=1
+
+Symbolic admissibility layer External constraint evaluation 
+
+IC (τ), ϕC (τ)
+
+Hard filtering 
+
+IC (τ) = 1
+
+Soft weighting exp [−λϕ C (τ)] 
+
+Optional projection repair baseline 
+
+Decision layer Probability estimates over admissible outcomes 
+
+Statistical plausibility learned trajec-tory distribution 
+
+Structural admissibility constraint satisfaction 
+
+Decision-relevant calibration probability reliability 
+
+Figure 1: Constraint-aware conditional diffusion framework. Partial observations and latent noise are mapped into future graph-state trajectories, which are evaluated by an external symbolic layer before decision-relevant probability estimation. 
+
+32.2 Dynamic Graph Formulation 
+
+The system is represented as a dynamic directed graph 
+
+Gt = ( V, E, Xt, At), (3) where V = {1, . . . , n} is the node set, E ⊆ V × V is the set of allowed directed dependency edges, Xt ∈ [0, 1 ]n contains node states, and At ∈ [0, 1 ]|E| contains allowed-edge states. Node values represent operational, functional, or integrity levels, while edge values represent the state of admissible dependencies. Forbidden edges are not generated as independent variables. The graph-state vector is 
+
+st = [ Xt, At] ∈ [0, 1 ]d, d = n + |E|, (4) and the available observation history is 
+
+Ot = {˜st−W+1, . . . , ˜ st}, (5) where ˜ st may be noisy or partially observed. The prediction target is 
+
+τt+1: t+H = {st+1, . . . , st+H } ∈ [0, 1 ]H×d, (6) which is denoted simply by τ throughout the paper. In the medium-complexity regime, K1 represents an intermediate local service outcome, whereas K2 represents the final global service outcome. The main decision-relevant event is the admissible high-service outcome associated with K2, whose probability is estimated from generated trajectory ensembles rather than from single forecasts. Allowed-edge variables are generated jointly with node states and evaluated through boundedness and continuity-related invariants, while dependency constraints are defined at the node level. 
+
+2.3 Conditional Diffusion Trajectory Generation 
+
+A lightweight conditional diffusion model is used to model Pθ (τ | Ot). Training follows the standard noise-prediction objective 
+
+Ldiff (θ) = Eτ,Ot,ϵ,k
+
+h
+
+∥ϵ − ϵθ (τk, k, Ot)∥22
+
+i
+
+, (7) where ϵ ∼ N (0, I) and 
+
+τk = √¯αk τ + p1 − ¯αk ϵ, (8) with ¯ αk denoting the cumulative noise-schedule coefficient. At inference time, the model generates an ensemble 
+
+Sθ (Ot) = {τ(1), . . . , τ(M)}, τ(m) ∼ Pθ (τ | Ot). (9) The generator receives observations, masks, and diffusion-step embeddings but never receives symbolic constraints, validity labels, or violation scores. Generated continuous outputs are mapped component-wise to [0, 1 ] before constraint evaluation. 
+
+2.4 Symbolic Constraint Layer 
+
+Let C denote the set of structural constraints. Each generated trajectory receives a Boolean validity indicator 
+
+IC (τ) = 
+
+(
+
+1, if τ satisfies all constraints in C,0, otherwise, (10) 4and a continuous violation score 
+
+ϕC (τ) ≥ 0, (11) where ϕC (τ) = 0 for fully admissible trajectories and larger values indicate more severe viola-tions. Hard filtering retains only admissible trajectories: 
+
+Shard (Ot, C) = {τ(m) ∈ S θ (Ot) : IC (τ(m)) = 1}. (12) When the valid mass is positive, this induces 
+
+Pvalid (τ | Ot, C) = Pθ (τ | Ot)IC (τ)
+
+Zvalid (Ot, C) , Zvalid (Ot, C) = 
+
+> Z
+
+Pθ (τ | Ot)IC (τ) dτ. (13) Soft weighting preserves all samples but downweights trajectories with larger violation scores: 
+
+w(m) = exp [−λϕ C (τ(m))] 
+
+∑Mj=1 exp [−λϕ C (τ(j))] . (14) The corresponding weighted distribution is 
+
+Psoft (τ | Ot, C) = Pθ (τ | Ot) exp [−λϕ C (τ)] 
+
+Zsoft (Ot, C) , Zsoft (Ot, C) = 
+
+> Z
+
+Pθ (τ | Ot) exp [−λϕ C(τ)] dτ.(15) This violation-dependent exponential penalty is related to knowledge-based regularization in generative modeling [ 20 ], but is applied here only after sampling and therefore does not guarantee structural admissibility. Projection is included only as a repair-oriented reference baseline. It can be viewed as a rule-based map ΠC : τ 7 → ˜τ that clips or adjusts components that violate thresholds, dependencies, or invariant conditions while preserving unchanged components whenever possible. Five constraint families are evaluated: threshold, dependency, mutual-exclusion, temporal-ordering, and structural-invariant constraints. Families are not mutually exclusive; a trajectory may violate more than one family simultaneously. Full mathematical definitions are reported in Appendix B. 
+
+2.5 Benchmark Design 
+
+The evaluation uses two synthetic dynamic-graph regimes that share the same generation and evaluation pipeline but differ in graph complexity. Experiment 1 is a compact graph used as a positive-control regime. Experiment 2 is a medium-complexity dependency graph that introduces richer multi-parent dependencies, hierarchical service variables, and temporal constraints. The benchmark specifications are summarized in Table 1, while the corresponding graph topologies are shown in Figure 2. 5Table 1: Summary of the two synthetic dynamic-graph regimes used in the controlled benchmark. The regimes share the same generative and constraint-evaluation protocol, but differ in graph size, state dimensionality, and dependency complexity. 
+
+Quantity Experiment 1 compact Experiment 2 complex 
+
+Graph and target specification 
+
+Nodes 9 15 Allowed directed edges 16 37 Graph-state dimension ( d = n + |E|) 25 52 Prediction horizon ( H) 16 16 Flattened target dimension ( H × d) 400 832 
+
+Dataset construction and sampling 
+
+Base trajectories 3000 3000 Trajectory length 80 80 Observation window ( W) 8 8Train/validation/test split 70/15/15 70/15/15 Test contexts per seed 450 450 Samples per context 512 512 
+
+Replication 
+
+Random seeds 2026, 2027, 2028 2026, 2027, 2028 P
+
+> Y
+> C
+> S
+> D
+> L
+> R
+> M
+> K
+> Panel A
+> Pm
+> Pb
+> Y
+> C1
+> C2
+> S1
+> S2
+> D1
+> D2
+> Q
+> L
+> R
+> M
+> K1
+> K2
+> Panel B
+
+Figure 2: Synthetic dynamic-graph regimes. Panel A shows the compact graph with 9 nodes and 16 allowed directed edges; Panel B shows the medium-complexity dependency graph with 15 nodes and 37 allowed directed edges. 
+
+2.5.1 Experiment 1: Compact Graph Regime 
+
+Experiment 1 contains nine nodes, 
+
+Vcompact = {P, Y, C, S, D, L, R, M, K}, (16) representing power availability, cyber integrity, communication reliability, sensing coverage, data-processing integrity, logistics readiness, repair capacity, maintenance or safe mode, and service feasibility. The graph includes 16 allowed directed dependency edges, yielding d = 25 and a flattened target dimension of H × d = 400. This regime tests whether the generator can learn a near-admissible trajectory manifold under limited structural complexity. 62.5.2 Experiment 2: Medium-Complexity Dependency Graph Regime 
+
+Experiment 2 contains 15 nodes: 
+
+Vcomplex = {Pm, Pb, Y, C1, C2, S1, S2, D1, D2, Q,
+
+L, R, M, K1, K2}. (17) The graph contains 37 allowed directed edges, yielding d = 52 and a flattened target dimen-sion of H × d = 832. Compared with Experiment 1, this regime introduces multiple service outputs, richer dependency caps, cross-layer coupling, and more active temporal and cascading constraints. Explicit edge sets and generator settings are reported in Appendix A. 
+
+2.6 Dataset, Strategies, and Evaluation 
+
+For each regime, 3000 base trajectories of length 80 are generated by a controlled stochastic simulator that evolves node and allowed-edge states under exogenous degradations, recovery dynamics, and cascading dependencies. The simulator is intentionally mostly, but not perfectly, constraint-consistent, avoiding both a trivially valid benchmark and one dominated by structural inconsistency. Observation windows of length W = 8 may include noisy node states, noisy edge states, and observation masks, whereas constraint rules, validity indicators, and violation scores are reserved for post-sampling evaluation. Prediction targets have horizon H = 16; the data are split into training, validation, and test subsets using fractions of 0.70, 0.15, and 0.15, and results are aggregated across seeds 2026, 2027, and 2028. Four trajectory-handling strategies are evaluated: unconstrained diffusion, hard filtering, soft weighting, and projection-based repair. They are summarized in Table 2. For soft weighting, the penalty parameter is selected from 
+
+λ ∈ { 1, 2, 5, 10, 20, 50, 100 }. (18) The selected configuration must preserve a minimum effective sample size ratio to prevent soft weighting from being interpreted as implicit hard rejection.  
+
+> Table 2: Compared trajectory-handling strategies. Projection is included as an optional deterministic repair baseline.
+
+Strategy Modifies samples Modifies weights Rejects samples Role 
+
+Unconstrained diffusion No No No Neural generative baseline Hard filtering No No Yes Support restriction to admissible trajectories Soft weighting No Yes No Conservative probability reweighting Optional projection Yes No No Deterministic repair baseline Structural validity is measured through trajectory-level and step-level constraint-violation rates, invalid probability mass, and violation severity. The trajectory-level violation rate is CVR traj = 1
+
+N
+
+> N
+
+# ∑
+
+> i=1
+
+1{IC (τi) = 0}, (19) and the step-level violation rate is CVR step = 1
+
+NH 
+
+> N
+
+# ∑
+
+> i=1
+> H
+
+# ∑
+
+> h=1
+
+1{IC (τi,h) = 0}. (20) 7For unweighted ensembles, invalid probability mass is 
+
+bpinvalid = 1
+
+M
+
+> M
+
+# ∑
+
+> m=1
+
+1{IC (τ(m)) = 0}. (21) When computed over the same pooled generated trajectories, Equations (19) and (21) coincide. For soft-weighted ensembles, 
+
+bpsoft invalid =
+
+> M
+
+# ∑
+
+> m=1
+
+w(m)1{IC (τ(m)) = 0}. (22) Violation severity is summarized through the continuous score ϕC (τ), both globally and by constraint family. For hard filtering, sample efficiency is measured by the retained ratio 
+
+rhard = |S hard (Ot, C)||S θ (Ot)| . (23) The zero-retained-context rate is monitored and reported when nonzero or diagnostically relevant. For soft weighting, sample efficiency is measured through ESS = 1
+
+∑Mm=1(w(m))2 , (24) and ESS ratio = ESS 
+
+M . (25) When reported for hard filtering, ESS hard /M = |S hard |/M is under uniform weights over retained samples. Trajectory diversity is computed over the generated ensemble to assess whether constraint handling reduces the variability of possible futures; unweighted or normalized-weighted esti-mates are used according to the trajectory-handling strategy. Decision-relevant calibration is evaluated for regime-specific admissible high-service events using the Brier score and Expected Calibration Error (ECE) [ 14 , 15 ]. Let Yi ∈ { 0, 1 } denote the realized event for test context i, and let ˆpi denote its probability estimated from the generated trajectory ensemble. The Brier score is Brier = 1
+
+N
+
+> N
+
+# ∑
+
+> i=1
+
+( ˆpi − Yi)2. (26) Calibration is further evaluated as ECE =
+
+> B
+
+# ∑
+
+> b=1
+
+|Bb|
+
+N |acc (Bb) − conf (Bb)| , (27) using equally spaced bins over [0, 1 ]; empty bins do not contribute. Robustness is evaluated diagnostically, without retraining, under increasing observation noise and missingness, and under topology perturbations that progressively reduce the avail-ability of allowed edges. Structural validity, sample efficiency, diversity, and calibration are recomputed for each severity level. These controlled tests assess degradation and its structural sources, but do not imply that the constraint layer resolves distribution shift, which remains a distinct uncertainty-reliability problem [6, 21]. 82.7 Reproducibility 
+
+All results are aggregated over three random seeds: 2026, 2027, and 2028. The implementation preserves generated samples, metrics, figures, configuration files, and execution metadata to support reproducibility. Source code and processed artifacts will be released together with the experimental materials described in Appendix D. 
+
+# 3 Results 
+
+3.1 Cross-Regime Reliability Comparison 
+
+All results are aggregated over three random seeds (2026–2028), using 450 test contexts and 512 generated trajectories per context. The simulator trajectory-level constraint-violation rate remains within the intended sanity range in both regimes, confirming that neither benchmark is trivially valid nor dominated by simulator-level inconsistency. In the compact regime, the generated invalid mass is lower than the simulator-level violation, suggesting that rare simulator violations are smoothed by the learned conditional trajectory distribution. Table 3 summarizes the main comparison between the two graph regimes. Moving from the compact to the medium-complexity graph substantially increases unconstrained invalid probability mass, from 0.002996 to 0.155929, while reducing the hard-filter retained ratio from 0.997004 to 0.844071. The contrast is visualized in Figure 3. The compact graph serves as a positive control setting in which the diffusion model learns an almost entirely admissible trajectory manifold. In contrast, the richer dependency structure of the complex graph exposes residual structural inadmissibility, making external constraints substantially more relevant. Soft weighting preserves the effective sample size in both regimes but only slightly re-duces the probability mass that is invalid. Calibration metrics are reported separately because structural admissibility and probability calibration represent distinct reliability dimensions.                          
+
+> Table 3: Main cross-experiment comparison. Increasing graph complexity increases the amount of invalid generated probability mass while the simulator remains within the intended sanity range.
+> Metric Experiment 1 compact Experiment 2 complex Interpretation
+> Nodes / edges 9 / 16 15 / 37 Structural complexity increases. State dimension / target dimension 25 / 400 52 / 832 Trajectory dimensionality increases. Simulator trajectory CVR 0.030222 0.050667 Both regimes remain within the sanity range. Unconstrained invalid mass 0.002996 0.155929 Generated invalidity increases under complexity. Hard retained ratio 0.997004 0.844071 Hard filtering becomes nontrivial in the complex regime. Soft invalid mass 0.002715 0.148807 Soft weighting has a modest effect on invalid mass. Soft ESS ratio 0.999930 0.998764 Soft weighting preserves effective sample size. Unconstrained diversity 1.030889 1.561000 The complex regime induces broader variation in trajectories.
+
+9Compact Complex  
+
+> 0.00
+> 0.02
+> 0.04
+> 0.06
+> 0.08
+> 0.10
+> 0.12
+> 0.14
+> 0.16
+> 0.18
+> Aggregate multi-seed value
+> 0.002996
+> 0.155929
+> Panel A: unconstrained invalid mass
+> Compact Complex
+> 0.80
+> 0.85
+> 0.90
+> 0.95
+> 1.00
+> Aggregate multi-seed value  0.997004
+> 0.844071
+> Panel B: hard-fi lter retained ratio
+
+Figure 3: Cross-regime structural effect. Panel A reports the unconstrained invalid-generated mass, while Panel B reports the hard-filter-retained ratio for the compact and medium-complexity regimes. 
+
+3.2 Constraint Handling in the Complex Regime 
+
+The medium-complexity graph is the primary regime for evaluating post-sampling admissibility mechanisms. Results are reported in Table 4. Hard filtering completely removes invalid retained trajectories, reducing the invalid mass from 0.155929 to 0 while preserving 84.4% of the generated samples. This demonstrates that most generated trajectories remain useful after enforcing all constraints. Soft weighting produces a different behavior. By construction, it preserves all generated samples and maintains an ESS ratio of 0.998764. However, the invalid mass decreases only from 0.155929 to 0.148807, corresponding to an absolute reduction of 0.007122. These results indicate that soft weighting primarily redistributes probability mass rather than enforcing admissibility. The projection baseline achieves near-complete validity (0.000023 invalid mass) by modifying generated trajectories and is therefore interpreted as a repair-oriented reference rather than a probabilistic generation strategy. Overall, the three approaches reveal a clear trade-off among validity guarantees, sample preservation, and intervention in generated samples. 
+
+Table 4: Strategy-level results in the medium-complexity graph regime. Hard filtering removes invalid retained samples, while soft weighting preserves effective sample size with limited reduction of invalid mass. 
+
+Strategy Invalid mass Trajectory CVR Retained ratio ESS ratio Diversity ECE 
+
+Unconstrained diffusion 0.155929 0.155929 1.000000 1.000000 1.561000 0.070736 Hard filtering 0.000000 0.000000 0.844071 0.844071 1.539848 0.070643 Soft weighting 0.148807 0.155929 1.000000 0.998764 1.561000 0.070731 Optional projection 0.000023 0.000023 1.000000 1.000000 1.560327 0.070284 
+
+3.3 Constraint-Family Diagnostics 
+
+Table 5 reports family-level violation diagnostics. In both regimes, dependency constraints are the dominant source of structural inadmissibility. In the medium-complexity graph, dependency invalid mass reaches 0.155929, whereas threshold violations (0.000370) and temporal-ordering violations (0.000383) remain negligible. Mutual-exclusion and structural-invariant violations are absent at the aggregate level. 10 These results indicate that generated invalidity is not primarily caused by trivial range violations, forbidden-edge artifacts, or maintenance inconsistencies. Instead, it originates from the multi-parent dependency structure intentionally introduced in Experiment 2. Family-level invalid masses are not additive because a trajectory may violate multiple constraint families simultaneously.  
+
+> Table 5: Per-family constraint diagnostics in the medium-complexity graph regime. Residual invalidity is dominated by dependency-consistency violations, whereas threshold, temporal-ordering, mutual-exclusion, and structural-invariant violations remain negligible.
+
+Constraint family Invalid mass Interpretation 
+
+Dependency 0.155929 Dominant structural failure mode. Threshold 0.000370 Negligible relative to dependency violations. Temporal ordering 0.000383 Negligible relative to dependency violations. Mutual exclusion 0.000000 No aggregate contribution. Structural invariant 0.000000 No aggregate contribution. 
+
+3.4 Calibration Results 
+
+Calibration is evaluated independently from structural validity using the Brier score and Ex-pected Calibration Error (ECE). Across both regimes, constraint handling has only a marginal effect on calibration metrics. In the compact graph, hard filtering slightly changes the Brier score from 0.578380 to 0.577716 and the ECE from 0.741424 to 0.740841. Similar behavior is observed in the medium-complexity graph, where ECE changes from 0.070736 to 0.070643 after filtering. These findings confirm that improvements in admissibility do not automatically translate into better probability calibration. Structural validity and calibration should therefore be considered complementary but distinct reliability properties. The large numerical difference between calibration scores in the two benchmark regimes should not be interpreted as a direct measure of problem difficulty, since calibration is evaluated with respect to regime-specific admissible-service events and operating ranges. 
+
+3.5 Robustness Analysis 
+
+Robustness is evaluated under observation noise and topology perturbations without retraining the generator. In the medium-complexity regime, severe observation noise increases invalid mass from 0.154819 to 0.158594 and reduces the hard-filter retained ratio from 0.845181 to 0.841406. Topology perturbations produce a stronger effect, increasing invalid mass to 0.169536 and reducing the retained ratio to 0.830464. Although the observed degradation remains moderate, the results indicate that topology shifts have a greater impact on structural admissibility than observation-noise perturbations do. Detailed robustness results are reported in Table 12. 
+
+3.6 Key Findings 
+
+Four findings emerge consistently across the benchmark. First, the diffusion generator learns an almost entirely admissible trajectory manifold on the compact graph, with unconstrained invalid mass of only 0.002996. Second, structural complexity substantially increases generated invalidity: in the medium-complexity regime, invalid mass rises to 0.155929 despite using the same generator architecture and training protocol. Third, hard filtering provides the strongest admissibility guarantee, eliminating invalid retained trajectories while preserving 84.4% of 11 generated samples. Fourth, dependency constraints account for nearly all observed inadmissi-bility, while threshold, temporal-ordering, mutual-exclusion, and structural-invariant violations remain negligible. Collectively, these results show that the benefit of external symbolic constraints grows with graph-structural complexity and that structural validity and probabilistic calibration represent distinct dimensions of reliability. 
+
+# 4 Discussion 
+
+4.1 Main Findings 
+
+The benchmark highlights a clear complexity-dependent effect in constraint-aware generative trajectory modeling. When the dependency structure is relatively simple, the diffusion generator learns a trajectory manifold that is already almost entirely admissible. In this setting, external constraints primarily act as a certification mechanism. The situation changes substantially in the medium-complexity graph. Under the same architecture and training protocol, generated trajectories exhibit non-negligible structural in-admissibility. This indicates that increasing graph dimensionality alone is not the main issue; rather, the difficulty lies in capturing higher-order dependency relations, hierarchical service variables, and temporal consistency requirements simultaneously. The central outcome of the study is, therefore, that the usefulness of symbolic constraint handling increases with structural complexity. As the admissible trajectory manifold becomes more difficult to learn directly from data, post-sampling admissibility mechanisms become increasingly important for reliability. 
+
+4.2 Reliability Beyond Distribution Learning 
+
+A key observation emerging from the benchmark is that statistical plausibility and structural admissibility are not equivalent. The diffusion model learns realistic trajectory distributions in both benchmark regimes. Nevertheless, in the complex graph, a significant fraction of generated trajectories violates dependency constraints, despite remaining statistically plausible under the learned model. This demonstrates that distribution learning alone does not guarantee structural feasibility. The results, therefore, support a layered view of reliability. Generated trajectories should be evaluated along at least three complementary dimensions: statistical plausibility, struc-tural admissibility, and decision-relevant calibration. These dimensions are related but not interchangeable. A model may be well calibrated while still generating structurally infeasi-ble trajectories, and conversely, a fully admissible trajectory ensemble does not automatically guarantee calibrated decision probabilities. 
+
+4.3 Interpreting Constraint-Handling Strategies 
+
+The benchmark clarifies the practical role of the post-sampling strategies investigated. Hard filtering is the only mechanism that provides explicit admissibility guarantees. In the medium-complexity regime, it removes all invalid retained trajectories while preserving a large fraction of the generated ensemble. Its effectiveness depends directly on the amount of invalid probability mass produced by the generator. Soft weighting addresses a different problem. Rather than enforcing admissibility, it redis-tributes probability mass away from highly violating trajectories while preserving ensemble continuity and effective sample size. The experiments show that this strategy has only a limited effect on Boolean validity, indicating that probability reweighting and validity enforcement should be regarded as distinct objectives. 12 Projection occupies a separate methodological position. Because it modifies generated trajectories, it can substantially improve validity, but only by altering the learned generative distribution. It is therefore best viewed as a repair-oriented baseline rather than as a probabilistic inference mechanism. Taken together, the three strategies expose a trade-off among validity guarantees, sample preservation, and fidelity to the original generated distribution. 
+
+4.4 Dependency Constraints as the Primary Failure Mode 
+
+The family-level diagnostics provide an important insight into the source of the generated inadmissibility. Almost all violations observed in the complex regime originate from dependency constraints. Threshold violations, temporal-ordering violations, mutual-exclusion violations, and structural-invariant violations remain negligible throughout the benchmark. This result suggests that the primary challenge is not generating realistic local node values but preserving consistency across interconnected system components. In other words, the dominant errors arise from modeling relational dependencies rather than from state-range violations or simple rule violations. From a decision-support perspective, this distinction is significant. A trajectory may appear plausible when individual state variables are inspected in isolation, yet remain infeasible once dependencies among components are considered. The constraint layer, therefore, provides valuable diagnostic information that cannot be obtained from marginal trajectory statistics alone. 
+
+4.5 Implications for Generative Decision Support 
+
+The proposed framework can be interpreted as a conditional flow map transporting latent uncertainty into future graph-state trajectories. The symbolic layer subsequently evaluates whether those futures remain structurally feasible. This separation is particularly relevant in decision-support scenarios. Decision makers rarely require only realistic predictions; they require realistic futures that also satisfy operational, physical, or logical feasibility constraints. The benchmark demonstrates that the gap between plausibility and feasibility widens as the dependency structure becomes more complex. Consequently, reliability assessment in generative decision support should not rely exclusively on predictive fidelity or likelihood-based criteria. Structural admissibility diagnostics provide complementary information regarding whether sampled futures remain actionable. 
+
+4.6 Limitations and Future Work 
+
+Several limitations should be acknowledged. First, the benchmark is synthetic and serves as a controlled methodological testbed rather than as an operational validation. Second, only two graph-complexity regimes are considered. Third, constraints are manually specified and assumed to be correct and complete. In addition, the generator is intentionally prevented from accessing symbolic constraints during training. This design isolates the effect of post-sampling regulation but does not compare against constraint-integrated generative approaches. The observed soft-weighting trade-off is also specific to the adopted violation score and penalty schedule: alternative score designs, adaptive penalties, or guided sampling mechanisms may yield different balances between validity and effective sample size. Future work should extend the analysis to larger and more heterogeneous graph families, compare post-sampling regulation against constraint-guided generation methods, and investi-gate settings involving uncertain, incomplete, or dynamically evolving constraints. A particu-larly promising direction is the integration of admissibility-aware generation with calibration-13 aware probabilistic estimation, so that validity and probability reliability can be addressed jointly. 
+
+# 5 Conclusions 
+
+This paper investigated constraint-aware generative trajectory modeling in dynamic graph-structured systems from a flow-map perspective. A conditional diffusion model was used to generate future graph-state trajectories from partial observations, while structural admissibility was evaluated via an external symbolic layer that supports hard filtering, soft weighting, and projection-based repair. The experimental results reveal a clear complexity-dependent effect. In the compact graph, the diffusion model learns an almost entirely admissible trajectory manifold, making external constraints largely diagnostic. In the medium-complexity graph, however, structural inadmis-sibility becomes substantial despite using the same generation protocol, demonstrating that statistical plausibility does not necessarily imply structural feasibility. Among the evaluated strategies, hard filtering provides the strongest admissibility guaran-tees, eliminating invalid trajectories from the retained ensemble while preserving most of the generated samples. Soft weighting preserves sample efficiency but only marginally reduces the probability mass assigned to invalid samples, indicating that probability redistribution and validity enforcement address different objectives. Family-level diagnostics further show that dependency constraints constitute the dominant source of inadmissibility in the generated output. More broadly, the study supports a layered view of reliability in generative decision support. Statistical plausibility, structural admissibility, and decision-relevant calibration capture distinct properties of generated trajectory ensembles and should be evaluated separately. Although the benchmark is intentionally synthetic, it provides controlled evidence that the importance of symbolic constraint handling grows with graph-structural complexity. Future work should extend the analysis to larger, more realistic graph environments, compare post-sampling regulation with constraint-guided generation, and investigate methods that jointly address admissibility and probabilistic calibration. More generally, the results suggest that evaluating generative models solely through pre-dictive plausibility can overlook important forms of structural unreliability. Constraint-aware assessment, therefore, represents a necessary component of trustworthy generative decision support in graph-structured environments. 
+
+# Author Contributions 
+
+Conceptualization: M.R.d.S. and G.L.P.; methodology: M.R.d.S. and G.L.P.; software: M.R.d.S.; validation: M.R.d.S. and A.M.; formal analysis: M.R.d.S. and G.L.P.; investigation: M.R.d.S.; writing—original draft preparation: M.R.d.S.; writing—review and editing: M.R.d.S. and A.M.; supervision: A.M. 
+
+# Funding 
+
+This research received no external funding. 
+
+# Data Availability 
+
+The raw data supporting the conclusions of this article will be made available by the authors on request. 14 Acknowledgments 
+
+The authors gratefully acknowledge the “HPC4AI” initiative [ 22 ] for providing access to high-performance computing resources that supported preliminary implementation of this work. 
+
+# Conflicts of Interest 
+
+The authors declare no conflicts of interest. 
+
+# A Benchmark Specification 
+
+This appendix documents the benchmark configuration used to support the empirical analysis presented in Section 3. The main paper focuses on how graph-structural complexity affects the relationship between statistical plausibility and structural admissibility. Consequently, only implementation-specific details that are not essential to the main narrative are reported here. The benchmark consists of two controlled dynamic-graph regimes that share the same generation, sampling, and evaluation pipeline but differ in dependency complexity. Together, they provide the experimental environment used throughout the paper to study reliability in constraint-aware generative trajectory modeling. 
+
+A.1 Experiment 1: Compact Graph Regime 
+
+The compact-regime node set is introduced in Section 2.5.1. The allowed directed edge set used to instantiate that topology is 
+
+Ecompact = {P → C, P → D, P → S, Y → C, Y → D, C → D, S → D,
+
+C → K, D → K, L → K, P → K, R → P, R → C,
+
+R → Y, R → S, M → K}.This edge set provides the compact topology summarized in Table 1 and Figure 2. 
+
+A.2 Experiment 2: Medium-Complexity Dependency Graph Regime 
+
+The medium-complexity node set is introduced in Section 2.5.2. Table 6 reports the symbol-level interpretation used in the implementation, while the allowed directed edge set is listed below. 15 Table 6: Node set for the medium-complexity dependency graph. 
+
+Symbol Name Interpretation 
+
+Pm Main power availability Primary energy source. 
+
+Pb Backup power availability Redundant or backup energy source. 
+
+Y Cyber integrity Integrity of digital control and data channels. 
+
+C1 Internal communication reliability Local coordination reliability. 
+
+C2 External communication reliability External coordination or network reliability. 
+
+S1 Primary sensing coverage Primary monitoring or sensing capability. 
+
+S2 Secondary sensing coverage Redundant sensing capability. 
+
+D1 Data-processing integrity First-stage data-processing reliability. 
+
+D2 Data-fusion integrity Cross-source data-fusion reliability. 
+
+Q Data quality/control integrity Quality-control and consistency layer. 
+
+L Logistics/resource readiness Sustained resource availability. 
+
+R Repair/recovery capacity Capacity to restore degraded components. 
+
+M Maintenance/safe mode Emergency or maintenance mode restricting service. 
+
+K1 Local service feasibility Intermediate local decision-relevant service. 
+
+K2 Global service feasibility Final global decision-relevant service. 
+
+The allowed directed edge set used to instantiate the medium-complexity topology is 
+
+Ecomplex = {Pm → C1, Pm → D1, Pm → S1, Pm → K1, Pm → Q,
+
+Pb → C2, Pb → D2, Pb → S2, Pb → K2,
+
+Y → C1, Y → C2, Y → D1, Y → Q,
+
+C1 → D1, C1 → K1, C1 → D2,
+
+C2 → D2, C2 → K2,
+
+S1 → D1, S1 → Q, S2 → D2, S2 → Q,
+
+D1 → D2, D1 → K1, D2 → K2,
+
+Q → K1, Q → K2, L → K1, L → K2,
+
+R → Pm, R → Pb, R → Y, R → C1, R → S1, R → S2,
+
+M → K1, M → K2}.This edge set provides the medium-complexity topology summarized in Table 1 and Figure 2. 
+
+A.3 Shared Diffusion Configuration 
+
+Both benchmark regimes use the same conditional diffusion architecture and training protocol. Keeping the generator fixed across experiments ensures that the observed differences in ad-missibility can be attributed primarily to graph complexity rather than to differences in model capacity or optimization. Dataset-level parameters are summarized in Table 1. Table 7 reports the implementation-specific generator configuration used throughout the benchmark. 16 Table 7: Shared conditional diffusion trajectory generator configuration used in both benchmark regimes. 
+
+Component Configuration 
+
+Diffusion steps during training 100 Sampling steps 25 Noise schedule Cosine Sampler DDIM Prediction type Noise prediction Denoiser backbone Temporal TCN Hidden dimension 256 Number of layers 4Dropout 0.10 Time-embedding dimension 64 Conditioning dimension 256 Training objective Noise-prediction MSE; see Equation (7) Symbolic constraints provided to generator No 
+
+# B Constraint Layer Specification 
+
+This appendix formalizes the symbolic admissibility layer introduced in Section 2.4. Throughout the paper, admissibility is treated as a reliability dimension distinct from both statistical plausibility and probability calibration. The objective of this appendix is therefore to specify how admissibility is operationalized within the benchmark and how the diagnostic quantities used in the empirical evaluation are computed. Each constraint family contributes to both the trajectory-level validity indicator defined in Equation 10 and the aggregate violation score defined in Equation 11. These quantities support the hard filtering, soft weighting, and diagnostic analyses reported throughout Section 3. Table 8 summarizes the five constraint families and their associated violation semantics. 
+
+Table 8: Constraint families used to evaluate structural admissibility of generated graph trajectories. 
+
+Constraint family Role Violation score 
+
+Threshold constraints Encode prerequisite conditions for high service or component activation. Threshold-margin severity. Dependency constraints Enforce consistency between downstream variables and upstream parents. Excess-over-cap severity. Mutual exclusion Prevent incompatible states from co-occurring. Incompatibility severity. Temporal ordering Require selected states to recover or activate only after prerequisite stability. Temporal inconsistency severity. Structural invariants Enforce bounded values, allowed-edge consistency, and basic graph-state admissibility. Invariant-violation severity. 
+
+For a generated trajectory τ, each constraint family f ∈ F produces a Boolean family indica-tor If (τ) ∈ { 0, 1 } and a non-negative family-level violation score ϕf (τ) ≥ 0. The trajectory-level validity indicator introduced in Equation (10) is implemented as the conjunction of all family-level indicators: 
+
+IC(τ) = ∏ 
+
+> f∈F
+
+If (τ).The continuous violation score introduced in Equation (11) is implemented as a weighted 17 aggregation of family-level margins: 
+
+ϕC (τ) = ∑ 
+
+> f∈F
+
+α f ϕf (τ), α f ≥ 0. Boolean validity is used for hard filtering and family-level violation rates, whereas the contin-uous score is used for severity diagnostics and soft weighting. For upper-bound dependency constraints, violation margins are computed as the positive excess above the admissible cap and then aggregated over constraints and time steps. 
+
+B.1 Threshold Constraints 
+
+Threshold constraints specify prerequisite conditions for high-service outcomes in the medium-complexity regime. For the local service variable K1, high activation requires the relevant upstream variables to satisfy their respective threshold conditions: 
+
+K1, t ≥ θK1 ⇒ Pm,t ≥ θPm ∧ C1, t ≥ θC1 ∧ D1, t ≥ θD1
+
+∧ Qt ≥ θQ ∧ Lt ≥ θL ∧ Mt ≤ θM.For the global service variable K2, high activation additionally requires support from the inter-mediate service variable and from the global upstream components: 
+
+K2, t ≥ θK2 ⇒ K1, t ≥ θlow  
+
+> K1
+
+∧ Pb,t ≥ θPb ∧ C2, t ≥ θC2
+
+∧ D2, t ≥ θD2 ∧ Qt ≥ θQ ∧ Lt ≥ θL ∧ Mt ≤ θM.The threshold values used for these conditions are reported in Table 9. 
+
+Table 9: Threshold values for the medium-complexity dependency graph. 
+
+Threshold Value Threshold Value 
+
+θPm 0.55 θPb 0.50 
+
+θY 0.50 θC1 0.60 
+
+θC2 0.60 θS1 0.55 
+
+θS2 0.50 θD1 0.55 
+
+θD2 0.60 θQ 0.60 
+
+θL 0.50 θM 0.40 
+
+θK1 0.70 θK2 0.70 
+
+θlow  
+
+> K1
+
+0.55 
+
+B.2 Dependency Constraints 
+
+Dependency constraints encode consistency between downstream variables and their upstream parents. In the medium-complexity regime, the main dependency caps are specified by the following inequalities: 
+
+C1, t ≤ 0.15 + 0.45 Yt + 0.25 Pm,t + 0.15 Qt + η,
+
+C2, t ≤ 0.10 + 0.35 Yt + 0.35 Pb,t + 0.20 Qt + η,
+
+D1, t ≤ 0.10 + 0.40 S1, t + 0.30 C1, t + 0.20 Yt + η,
+
+D2, t ≤ 0.05 + 0.25 D1, t + 0.30 S2, t + 0.25 C2, t + 0.20 Qt + η,
+
+Qt ≤ 0.10 + 0.30 Yt + 0.25 S1, t + 0.25 S2, t + 0.20 D1, t + η,
+
+K1, t ≤ min (Pm,t, C1, t, D1, t, Qt, Lt, 1 − Mt) + η,
+
+K2, t ≤ min (K1, t, Pb,t, C2, t, D2, t, Qt, Lt, 1 − Mt) + η.18 The dependency slack is fixed at η = 0.05. For each cap, the corresponding violation margin is the positive excess of the generated downstream value above the right-hand side. These margins are aggregated over all dependency constraints and time steps to obtain the dependency-family violation score. 
+
+B.3 Mutual-Exclusion Constraints 
+
+Mutual-exclusion constraints prevent high service outputs from co-occurring with maintenance or safe-mode conditions. In the medium-complexity regime, the service variables are constrained as follows: Mt ≥ 0.60 ⇒ K1, t ≤ 0.30, 
+
+Mt ≥ 0.60 ⇒ K2, t ≤ 0.30. The associated violation score is computed from the positive excess above the allowed service level when maintenance or safe-mode conditions are active. 
+
+B.4 Temporal-Ordering Constraints 
+
+Temporal-ordering constraints require selected downstream activations to be preceded by stable upstream conditions. The stability window is set to q = 2. If either K1 or K2 becomes high at time t, the corresponding prerequisites must have remained above their thresholds over the interval {t − q, . . . , t}.For K1, the prerequisite set is 
+
+PK1 = {Pm, C1, D1, Q, L}.For K2, the prerequisite set is 
+
+PK2 = {K1, Pb, C2, D2, Q, L}.Thus, a temporal-ordering violation is recorded when a high-service activation occurs before the relevant prerequisite variables have remained stable throughout the required window. A second temporal condition concerns recovery after cyber degradation. If cyber integrity falls below 0.35, then C1, C2, D2, and Q are not allowed to recover above their high thresholds before Y recovers above 0.50. The corresponding violation score aggregates the positive recovery excess observed before cyber recovery has occurred. 
+
+B.5 Structural Invariants 
+
+Structural invariants enforce basic graph-state admissibility independently of service-specific dependencies. They include bounded node and edge values, consistency with the allowed-edge topology, and continuity restrictions over edge-state evolution. Generated node and allowed-edge values are required to remain in [0, 1 ]. Variables corresponding to forbidden edges are not generated as independent state components, consistently with the graph-state formulation in Section 2.2. Continuity restrictions limit abrupt edge-state changes. Unless topology perturbation is active, the maximum allowed edge jump between consecutive time steps is 
+
+∆max = 0.25. Structural-invariant violation scores aggregate out-of-range values, allowed-edge inconsisten-cies, and excess jumps over the generated trajectory. 19 C Supplementary Reliability Analysis 
+
+This appendix presents supplementary analyses that support the reliability assessment presented in Section 3. The additional results are not used to establish the main claims of the paper. Instead, they provide complementary diagnostics regarding structural admissibility, sample efficiency, calibration behavior, and robustness across the two benchmark regimes. Consistent with the main manuscript, the supplementary analyses are organized around the three reliability dimensions investigated throughout the study: 1. structural admissibility; 2. sample efficiency; 3. decision-relevant calibration. 
+
+C.1 Full Experiment 1 Strategy Metrics 
+
+The compact graph regime is summarized in Section 3.1, while the cross-regime summary is reported in Table 3. Table 10 provides the corresponding full strategy-level metrics for Experiment 1. 
+
+Table 10: Full strategy-level metrics for the compact-graph regime.                                 
+
+> Strategy Invalid mass Trajectory CVR Retained ratio ESS ratio Diversity Brier ECE
+> Unconstrained diffusion 0.002996 0.002996 1.000000 1.000000 1.030889 0.578380 0.741424 Hard filtering 0.000000 0.000000 0.997004 0.997004 1.028912 0.577716 0.740841 Soft weighting 0.002715 0.002996 1.000000 0.999930 1.030889 0.578309 0.741360 Optional projection 0.000000 0.000000 1.000000 1.000000 1.030910 0.578201 0.741282
+
+C.2 Soft-Weighting Reduction Summary 
+
+Soft weighting is discussed in the main text as a probability-reweighting mechanism rather than as a guarantee of structural admissibility; see Section 3.2. Table 11 summarizes the observed invalid-mass reduction and the effective sample size ratio across the two regimes. 
+
+Table 11: Soft-weighting effect across the two graph regimes.         
+
+> Experiment Unconstrained invalid mass Soft invalid mass Absolute reduction ESS ratio
+> Experiment 1: compact 0.002996 0.002715 0.000282 0.999930 Experiment 2: complex 0.155929 0.148807 0.007122 0.998764
+
+C.3 Calibration and Robustness Diagnostics 
+
+Calibration is treated as a reliability dimension distinct from structural admissibility; see Sec-tions 3.4 and 4.2. Figure 4 provides supplementary calibration diagnostics for admissible-outcome probability estimates. 20 Compact Complex      
+
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> Aggregate multi-seed value  Panel A: Brier score
+> Compact Complex
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> 0.8
+> Aggregate multi-seed value  Panel B: ECE
+> Unconstrained Hard fi lter Soft weight Projection
+
+Figure 4: Calibration diagnostics across graph regimes and trajectory-handling strategies. Panel A reports the aggregate multi-seed Brier score, while Panel B reports the aggregate multi-seed expected calibration error (ECE) for admissible-outcome probability estimates. 
+
+Robustness diagnostics are discussed in Section 3.5. Table 12 reports the condensed medium-complexity diagnostics under observation-noise and topology-perturbation conditions. 
+
+Table 12: Condensed robustness diagnostics in the medium-complexity graph regime.              
+
+> Condition Unconstrained invalid mass Hard retained ratio Soft invalid mass
+> Noise base 0.154819 0.845181 0.147811 Noise severe 0.158594 0.841406 0.151528 Topology base 0.156555 0.843445 0.149428 Topology severe 0.169536 0.830464 0.161635
+
+# D Reproducibility and Provenance 
+
+This appendix documents the provenance of the empirical results and the reproducibility protocol adopted throughout the study. The full experimental configuration uses seeds 2026, 2027, and 2028 for both benchmark regimes. Because the primary objective of the paper is to evaluate reliability across graph-complexity regimes and constraint-handling strategies, all quantitative claims reported in Section 3 are based exclusively on multi-seed aggregate analyses. Seed-level outputs are preserved for reproducibility, auditing, traceability, and debugging purposes; however, they are not treated as primary evidence for the scientific claims reported in the manuscript. Experimental artifacts are organized into compact-regime, medium-complexity-regime, and comparative outputs. The comparative artifacts are derived only after the experiment-level workflows have been completed, preventing cross-regime mixing during training, sampling, metric computation, and figure generation. The reproducibility package includes configuration files, run manifests, machine-readable aggregate tables, seed-level tables, lambda-sensitivity outputs, near-validity diagnostics defined as fractions of samples below selected violation-score thresholds, figure-data files, hardware and software metadata, and provenance notes. The clean Grace Hopper run manifests and logs constitute the primary computational provenance for the results reported in the manuscript. Historical or exploratory logs may be retained for traceability, but they are not treated as primary evidence for the aggregate results reported in the paper. 21 References 
+
+[1] Seyed Mehran Kazemi, Rishab Goel, Kshitij Eghbali, Janahan Ramanan, Jaspreet Sahota, Sanjay Thakur, Stella Wu, Cathal Smyth, Pascal Poupart, and Marcus Brubaker. Represen-tation learning for dynamic graphs: A survey. Journal of Machine Learning Research , 21(70): 1–73, 2020. URL https://jmlr.org/papers/v21/19-447.html .[2] Guangyin Jin, Yuxuan Liang, Yuchen Fang, Ziyue Shao, Junbo Huang, Junjie Zhang, and Yu Zheng. Spatio-temporal graph neural networks for predictive learning in urban computing: A survey. IEEE Transactions on Knowledge and Data Engineering , 36(10):5388–5408, 2024. doi: 10.1109/TKDE.2023.3333824. [3] Mikko Kivelä, Alex Arenas, Marc Barthelemy, James P. Gleeson, Yamir Moreno, and Mason A. Porter. Multilayer networks. Journal of Complex Networks , 2(3):203–271, 2014. doi: 10.1093/comnet/cnu016. [4] Sergey V. Buldyrev, Roni Parshani, Gerald Paul, H. Eugene Stanley, and Shlomo Havlin. Catastrophic cascade of failures in interdependent networks. Nature , 464(7291):1025–1028, 2010. doi: 10.1038/nature08932. [5] Tilmann Gneiting and Matthias Katzfuss. Probabilistic forecasting. Annual Review of Statis-tics and Its Application , 1(1):125–151, 2014. doi: 10.1146/annurev-statistics-062713-085831. [6] Moloud Abdar, Farhad Pourpanah, Sadiq Hussain, Dana Rezazadegan, Li Liu, Moham-mad Ghavamzadeh, Paul Fieguth, Xiaochun Cao, Abbas Khosravi, U. Rajendra Acharya, Vladimir Makarenkov, and Saeid Nahavandi. A review of uncertainty quantification in deep learning: Techniques, applications and challenges. Information Fusion , 76:243–297, 2021. doi: 10.1016/j.inffus.2021.05.008. [7] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilis-tic models. In Advances in Neural Information Processing Systems , volume 33, pages 6840–6851, 2020. URL https://proceedings.neurips.cc/paper/2020/hash/ 4c5bcfec8584af0d967f1ab10179ca4b-Abstract.html .[8] Yang Song, Jascha Sohl-Dickstein, Diederik P. Kingma, Abhishek Kumar, Stefano Ermon, and Ben Poole. Score-based generative modeling through stochastic differential equations. In International Conference on Learning Representations , 2021. URL https://openreview.net/ forum?id=PxTIG12RRHS .[9] Jiaming Song, Chenlin Meng, and Stefano Ermon. Denoising diffusion implicit models. In 
+
+International Conference on Learning Representations , 2021. URL https://openreview.net/ forum?id=St1giarCHLP .[10] George Papamakarios, Eric Nalisnick, Danilo Jimenez Rezende, Shakir Mohamed, and Balaji Lakshminarayanan. Normalizing flows for probabilistic modeling and inference. 
+
+Journal of Machine Learning Research , 22(57):1–64, 2021. URL https://jmlr.org/papers/ v22/19-1028.html .[11] Ivan Kobyzev, Simon J. D. Prince, and Marcus A. Brubaker. Normalizing flows: An introduction and review of current methods. IEEE Transactions on Pattern Analysis and Machine Intelligence , 43(11):3964–3979, 2021. doi: 10.1109/TPAMI.2020.2992934. [12] Ricky T. Q. Chen, Yulia Rubanova, Jesse Bettencourt, and David K. Duvenaud. Neu-ral ordinary differential equations. In Advances in Neural Information Processing Sys-tems , volume 31, 2018. URL https://proceedings.neurips.cc/paper/2018/hash/ 69386f6bb1dfed68692a24c8686939b9-Abstract.html .22 [13] Yaron Lipman, Ricky T. Q. Chen, Heli Ben-Hamu, Maximilian Nickel, and Matt Le. Flow matching for generative modeling. In International Conference on Learning Representations ,2023. URL https://openreview.net/forum?id=PqvMRDCJT9t .[14] Glenn W. Brier. Verification of forecasts expressed in terms of probability. Monthly Weather Review , 78(1):1–3, 1950. doi: 10.1175/1520-0493(1950)078<0001:VOFEIT>2.0.CO;2. [15] Chuan Guo, Geoff Pleiss, Yu Sun, and Kilian Q. Weinberger. On calibration of modern neural networks. In the 34th International Conference on Machine Learning , volume 70, pages 1321–1330. PMLR, 2017. URL https://proceedings.mlr.press/v70/guo17a.html .[16] Artur S. d’Avila Garcez and Luis C. Lamb. Neurosymbolic ai: The 3rd wave. Artificial Intelligence Review , 56:12387–12406, 2023. doi: 10.1007/s10462-023-10448-w. [17] Hyungjin Chung, Byeongsu Sim, Dohoon Ryu, and Jong Chul Ye. Diffusion posterior sampling for general noisy inverse problems. In International Conference on Learning Repre-sentations , 2023. URL https://openreview.net/forum?id=OnD9zGAGT0k .[18] Jacob K. Christopher, Stephen Baek, and Ferdinando Fioretto. Constrained synthesis with projected diffusion models. In Advances in Neural Information Processing Systems , 2024. URL 
+
+https://openreview.net/forum?id=FsdB3I9Y24 .[19] Lucas Theis, Aäron van den Oord, and Matthias Bethge. A note on the evaluation of generative models. In International Conference on Learning Representations , 2016. URL 
+
+https://arxiv.org/abs/1511.01844 .[20] Naoya Takeishi and Yoshinobu Kawahara. Knowledge-based regularization in generative modeling. In the Twenty-Ninth International Joint Conference on Artificial Intelligence (IJCAI) ,pages 2390–2396, 2020. doi: 10.24963/ijcai.2020/331. [21] Yaniv Ovadia, Emily Fertig, Jie Ren, Zachary Nado, D. Sculley, Sebastian Nowozin, Joshua V. Dillon, Balaji Lakshminarayanan, and Jasper Snoek. Can you trust your model’s un-certainty? evaluating predictive uncertainty under dataset shift. In Advances in Neural Information Processing Systems (NeurIPS) , 2019. [22] Marco Aldinucci, Sergio Rabellino, Marco Pironti, Filippo Spiga, Paolo Viviani, Maurizio Drocco, Marco Guerzoni, Guido Boella, Marco Mellia, Paolo Margara, Idilio Drago, Roberto Marturano, Guido Marchetto, Elio Piccolo, Stefano Bagnasco, Stefano Lusso, Sara Vallero, Giuseppe Attardi, Alex Barchiesi, Alberto Colla, and Fulvio Galeazzi. HPC4AI: an AI-on-demand federated platform endeavour. In the 15th ACM International Conference on Computing Frontiers , pages 279–286. ACM, 2018. doi: 10.1145/3203217.3205340. 23

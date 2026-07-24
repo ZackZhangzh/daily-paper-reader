@@ -1,0 +1,651 @@
+Title: Latent Riemannian Flow Matching for Geometry-Grounded 3D Foundation Models
+
+URL Source: https://arxiv.org/pdf/2607.19120v1
+
+Published Time: Wed, 22 Jul 2026 01:21:03 GMT
+
+Number of Pages: 25
+
+Markdown Content:
+# Latent Riemannian Flow Matching for Geometry-Grounded 3D Foundation Models 
+
+Lisa Weijler 
+
+TU Wien 
+
+Irene Ballester 
+
+TU Wien 
+
+Guofeng Mei 
+
+Fondazione Bruno Kessler 
+
+Tolga Birdal 
+
+Imperial College London 
+
+Pedro Hermosilla 
+
+TU Wien 
+
+## Abstract 
+
+Geometric foundation models, such as the Visual Geometry Grounded Trans-former (VGGT), provide strong 3D priors from unposed images. However, such models operate purely in a feed-forward, deterministic regime, i.e. they cannot generate plausible geometry beyond what the input views directly support. Gener-ative models for 3D scenes, on the other hand, must rely on strong geometric priors to produce coherent outputs from sparse inputs. We bridge these two paradigms by performing flow matching directly in VGGT’s latent space, leveraging its learned 3D priors without committing to any explicit downstream representation such as Gaussians, meshes, or video-VAE latents. This requires respecting the latent ge-ometry: VGGT tokens occupy a product of high-dimensional hyperspheres on which standard Euclidean flow matching fails. We address this with a Riemannian Flow Matching framework defined on a product manifold of four hyperspheres, aligned with VGGT’s multi-scale encoder, which keeps generated tokens on the valid data manifold required by the frozen decoding heads. On RealEstate10K, ScanNet++ and ETH3D, our method achieves strong performance against recent scene generation baselines in both per-view appearance and aggregated 3D geom-etry, establishing latent-space flow matching on geometric foundation models as a viable paradigm for 3D generation. The project page can be found here. 
+
+## 1 Introduction 
+
+Inferring the complete 3D scene geometry from partial RGB observations is of key importance for robotics, AR/VR, and autonomous driving. Agents must reason about occluded regions to anticipate hidden obstacles and recover the full scene from sparse inputs, requiring geometric reasoning. Recent advances in Novel View Synthesis (NVS), such as NeRF [41] and Gaussian Splat-ting [25], have achieved unprecedented results, producing high-quality renderings and accurate scene reconstructions for unseen viewpoints. However, these methods require large numbers of posed images, involve tedious per-scene optimization, and typically generalize poorly to cam-era orientations far from the observed views. To address these limitations, a parallel line of work [74, 5, 9, 76, 21, 24, 77, 83, 26] has approached NVS from a data-driven perspective. These methods train a general model on large-scale datasets to generate novel views at inference time from a sparse set of observations, without requiring per-scene optimization. Nevertheless, they commonly treat NVS as a well-posed problem, while it is inherently ill-posed: a set of partial observations may correspond to multiple plausible underlying scenes. This ambiguity has recently been acknowledged, and several approaches have tackled NVS from a generative standpoint. Due to the scarcity of 3D data, many of these methods rely on multi-view [39, 46] or view-conditioned [11, 22] generative models, or leverage video generative mod-
+
+> Preprint. arXiv:2607.19120v1 [cs.CV] 21 Jul 2026
+
+## VGGT 
+
+> DPT DPT
+> PM
+> RGB
+
+## Input multi-view Product Manifold Novel Scan Generation Figure 1: Method overview. Given a sparse set of unposed RGB observations, a frozen VGGT encoder extracts per-view latent tokens. A learned Riemannian Flow Matching model vw generates latent codes conditioned on the tokens of the input views and a target camera pose, operating directly on the product manifold of four zero-mean hyperspheres. Frozen DPT decoding heads reconstruct point maps (PM) from the generated latents, while a trained RGB decoder produces full photometric reconstructions, enabling novel scan generation of complete, geometrically consistent 3D scenes. els [38, 63, 75]. However, such approaches often lack explicit 3D priors: they treat 3D reconstruction as a post-processing step, require geometric knowledge to be learned implicitly from large datasets through costly training, and are prone to multi-view inconsistencies. More recent works have ex-plored explicitly incorporating 3D structure, for instance, through depth-conditioning [55, 50, 8] or by coupling generative models with computationally expensive reconstruction pipelines [67]. Yet, those still require costly training strategies. A recent line of work [61, 60] has approached 3D reconstruction from a fundamentally different angle, treating it as a direct inference problem rather than an iterative geometric optimization. Foun-dation models such as the Visual Geometry Grounded Transformer (VGGT) [60] enable robust 3D inference from unposed image sets, providing strong geometric priors that can be exploited within generative frameworks. However, works using forward models for generative tasks typically treat them as a post-processing step or pair them with 2D video generative models [66, 18]. In this work, inspired by generative approaches operating on structured latent spaces [79, 31], we propose a generative geometry-grounded foundation model that operates directly in the latent space of forward reconstruction models. Yet, naively applying standard generative techniques, such as flow matching [37], to this space leads to catastrophic mode collapse. To address this, we start by identifying the latent space of VGGT as a product manifold of four hyperspheres. Based upon [7], we then introduce a conditional Riemannian Flow Matching (RFM) framework tailored to such la-tent manifolds. Our model is conditioned on a set of partial, unposed observations and a target camera pose. By leveraging frozen decoding heads, we reconstruct depth and point maps directly from the generated latent codes. Additionally, we train an RGB decoder for VGGT, enabling full RGB reconstruction. We evaluate our framework on the task of sparse-view reconstruction, demon-strating that the proposed model generates robust, plausible 3D scenes that benefit from the strong geometric priors encoded in VGGT. In summary, our contributions are :• We address 3D reconstruction and NVS from a generative perspective with a Flow Matching (FM) model operating directly on the latent space of frozen foundation models such as VGGT [60], thus taking advantage of the strong 3D priors learned by these models through extensive pre-training. • We realize our generative approach through a context and pose conditioned Riemannian FM model specifically tailored to the latent manifold of VGGT [60], defined as a product manifold of four zero-mean hyperspheres. • Our extensive evaluation on RE10K, ScanNet++, and ETH3D shows improved geometric reason-ing while preserving high-quality RGB inference. Our fully general formulation is order-invariant in the context views, handles as few as a single con-text view, and operates on one target view at a time, removing the trajectory and adjacency assump-tions of video-diffusion-based generation methods, or methods predicting explicit 3D geometry, that require multiple context views. 22 Related Work 
+
+Multi-view 3D reconstruction . Traditional approaches decompose the problem into: feature matching, structure-from-motion, followed by dense reconstruction [52, 53]. Neural representations, on the other hand, bypass these explicit steps: NeRF [41, 1, 44] and Gaussian Splatting [25, 17] learn scene geometry directly through differentiable rendering. Unfortunately, such methods require ex-pensive per-scene optimizations, limiting scalability. Recent feed-forward variants generalize across scenes through explicit 3D representations [74, 6, 5, 9, 69] or geometry-free transformer architec-tures [24, 26], but still require camera poses. Geometric foundation models [61, 32, 60, 36] elim-inate this requirement by jointly inferring geometry and camera parameters from uncalibrated im-ages; VGGT [60] unifies camera estimation, dense geometry, and point correspondence in a single feed-forward transformer. Our work exploits VGGT’s structured latent space to enable generative modeling while preserving VGGT’s advantages, e.g. learned geometric priors. 
+
+Reconstruction from limited (sparse) views . Sparse-view reconstruction addresses scenarios where limited viewpoint coverage leads to geometric ambiguity, incomplete scene observations, and under-constrained depth estimation. Regularization-based approaches [47, 20, 10, 27] adapt per-scene optimization to sparse settings through geometric regularization, semantic consistency, or ray entropy minimization. Feed-forward methods circumvent optimization through learned priors: some leverage multi-view feature matching to predict Gaussian splats [5, 9, 69, 76], while others learn scene-level priors to directly regress radiance fields [74, 6]. These deterministic approaches excel at reconstruction but cannot model distributions over plausible geometries. In contrast, our generative framework enables probabilistic modeling of 3D scenes under sparse observations. 
+
+Scene generation . To enable such probabilistic modeling, methods leverage 2D generative priors or operate in 3D representation spaces. Pixel-space methods synthesize novel views without ex-plicit 3D structure, relying on implicit geometric learning through multi-view generation [39, 46], view-conditioned synthesis [11, 22], or camera-controlled video diffusion [38, 75, 63, 77]. To inject geometric priors while remaining in pixel space, methods explore alignment with geometric founda-tion models [66], depth-conditioned generation [55, 50, 8], or tight coupling between reconstruction and generation pipelines [67, 14, 30, 40]. However, these approaches either lack geometric consis-tency or require expensive two-stage processing. An alternative paradigm applies generative models to refine existing 3D reconstructions, using diffusion [64, 73, 68] or flow matching [12] on rendered views to remove artifacts and complete occluded regions. Latent-space methods directly generate 3D primitives such as Gaussian Splatting [80, 65]. Concurrent work Gen3R [18] takes advantage of geometric foundation model tokens too. However, Gen3R treats VGGT tokens as Euclidean vec-tors, overlooking their manifold structure, and therefore requires transforming VGGT’s latent space to the latent space of a video generative model. In contrast, we employ Riemannian flow matching to respect the hyperspherical geometry of VGGT tokens. 
+
+Latent spaces of deep networks . Stable Diffusion [51] moves generation from pixels to latent space through compressed VAE spaces. Representation Autoencoders [79] instead pair frozen pretrained encoders such as DINOv2 with learned decoders, preserving semantically rich, high-dimensional representations. Concurrent work [31] recognizes these spaces have geometric structure—DINOv2 embeddings reside on a hypersphere—requiring Riemannian flow matching to avoid mode collapse. We observe VGGT’s latent space similarly forms a product manifold of hyperspheres and employ Riemannian flow matching for geometrically consistent 3D generation. Concurrent work further supports operating in geometry-foundation-model latents: VGGT-World [57] forecasts frozen VGGT tokens for world modeling and likewise finds velocity-prediction flow matching unstable in this space, while Geometry Latent Diffusion (GLD) [23] repurposes Depth Anything 3 and VGGT features as a multi-view diffusion latent space. Both, however, treat these features as Euclidean; we instead identify and exploit their hyperspherical product structure. 
+
+Riemannian flow matching (RFM) . Flow matching [37] learns continuous normalizing flows by regressing velocity fields. RFM extends this to Riemannian manifolds, offering a general and flexi-ble toolkit used across numerous areas: in category level pose estimation by RFMPose [48], human pose estimation by PoseD-Flow [45] and NRDF [15], generative modeling on meshes by DSG [59], mesh molecule generation by FoldFlow [19, 2], protein backbone generation by FrameFlow [72], generating materials by FlowMM [42], protein-ligand docking by FlowDock [43] & MATCHA [13], grasp pose generation by Equigraspflow [35], modeling brain connectivity by BrainFlow [82, 2], and for modeling statistical manifolds [82, 2], metal-organic structure prediction [28] and graph genera-3tion [4]. Finally, a concurrent work [31] leveraged RFM to correct for the errors in diffusion trans-formers. We extend RFM to 3D scene generation, operating directly on VGGT’s geometric latent manifold to enable probabilistic modeling of 3D geometry while preserving strong reconstruction priors. 
+
+## 3 Method 
+
+Given a set of unposed RGB images of a scene and a target camera pose π ∈ SE (3) , our goal is to generate latent features that encode the geometry and appearance of the scene from the tar-get viewpoint, remaining multi-view consistent with the observed views. We cast this as a condi-tional generative modeling problem on the VGGT [60] encoder latent space: given context tokens 
+
+c = {c(1) , . . . , c (N )} extracted from context views and a target pose π, we model the conditional distribution p(x1 | c, π ) on a Riemannian manifold M, where x1 is the latent code corresponding to the target view. The generated x1 is then decoded by VGGT’s DPT heads into geometry (point clouds, depth) and, via an auxiliary head, into RGB pixels. See Figure 1 for an overview. Next, we review RFM (Section 3.1), characterize the VGGT latent space as a product of hyper-spheres (Section 3.2), specialize conditional RFM to this setting (Section 3.3), and describe our architecture (Section 3.4). 
+
+3.1 Riemannian Flow Matching 
+
+We train an RFM model [7] on a corpus of latent tokens {xi} living on a Riemannian manifold M.We briefly review the ingredients we use. 
+
+Flow and probability path . A time-dependent flow on M is a family of diffeomorphisms 
+
+{ψt : M → M} t∈[0 ,1] obtained by integrating a time-dependent vector field ut ∈ Γ( T M ): 
+
+> ddt
+
+ψt(x) = ut(ψt(x)) , ψ0(x) = x.  (1) The flow induces a probability path pt = [ ψt]# p0 between a reference distribution p0 and the data distribution p1, satisfying the continuity equation ∂tpt + div g (ptut) = 0 .
+
+Riemannian Conditional Flow Matching . Since ut is intractable, RFM regresses a neural velocity field vw(xt, t ) against a tractable conditional field ut(x | x1) that generates a per-sample path 
+
+pt(x | x1) with p0(x | x1) = p0(x) and p1(x | x1) ≈ δx1 (x). For the geodesic distance dg and linear schedule κ(t) = 1 − t, the minimal-norm conditional field admits the closed form 
+
+ut(x | x1) = 11−t Log x(x1), (2) yielding the RCFM training objective [7]: 
+
+LRCFM = Et, p (x0), p (x1) vw(xt, t ) − ut(xt | x1) 2
+
+> gxt
+
+, (3) with t ∼ U (0 , 1) and xt = Exp x0 (tLog x0 (x1)) the geodesic interpolant. We compute the target via parallel transport of the initial geodesic velocity to xt, an equivalent form of eq. (2). We give more background and detailed definitions for RCFM in Section A.1. 
+
+3.2 The VGGT latent space as a product of hyperspheres 
+
+Operating on the latent space of VGGT [60] provides a strong 3D prior that our model can rely on to generate consistent 3D geometry. We define this latent space as the input features of the final DPT heads in the VGGT architecture, i.e. , the output of the VGGT encoder, avoiding costly self- and cross-attention operations during decoding. Features in this space take the form x =L 
+
+> i∈{ 4,11 ,17 ,23 }
+
+hi, where ⊕ is concatenation and hi is the output of VGGT’s ith encoder attention layer. Each token has dimension 4C with C = 2048 , yielding x ∈ R8192 . Operating directly on encoder features avoids the reconstruction loss of an additional compression stage, but high-dimensional latents are notoriously difficult to model with Euclidean diffusion or flow matching [70, 79, 34]. This failure is typically attributed to the manifold hypothesis: data lies on a low-dimensional manifold within ambient space, and Euclidean probability paths traverse large off-manifold regions. 
+
+Explicit manifold structure. In our case, the manifold structure is not hypothesized but explicit. Before x is processed by the DPT heads, each hi passes through a separate LayerNorm. This first 4removes the per-token mean (orthogonal projection onto the zero-mean hyperplane H = {z ∈ RC :
+
+⟨1, z ⟩ = 0 }), then rescales the result to a fixed norm √C, projecting it onto the hypersphere 
+
+SC−2 = {x ∈ RC : ∥x∥2 = √C, ⟨1, x ⟩ = 0 } (4) 
+
+embedded in H. The accompanying figure on the right illustrates this construction for three dimensions. Conse-quently, operating directly on SC−2 incurs no loss of in-formation relative to the post-LayerNorm representation, allowing us to fully exploit the learned affine parameters of LayerNorm and any downstream weights that act on these normalized features. The full latent space is therefore the product manifold 
+
+M =  SC−2K , K = 4 of four zero-mean hyperspheres of radius √C. Euclidean Flow Match-ing [37] on R4C would therefore force probability paths through the low-density interior of these hyperspheres, leading to mode collapse and decoding ambiguities [31]. We instead operate directly on M via Riemannian Flow Matching, fully leveraging the geometric prior encoded by VGGT’s normalization layers. For training, we rescale each block to unit radius and undo the scaling before decoding. 
+
+Geometry of one block . The tangent space at x ∈ S C−2 is TxSC−2 = {v ∈ RC : ⟨v, x ⟩ =0, ⟨1, v ⟩ = 0 }, i.e., vectors orthogonal to x that also satisfy the zero-mean constraint. With the induced metric, the exponential and logarithm maps are 
+
+Exp x(v) = cos( ∥v∥) x + sin( ∥v∥) 
+
+> ∥v∥
+
+v, Log x(y) = θ 
+
+> sin θ
+
+ y − ⟨ x, y ⟩x, (5) with θ = arccos( ⟨x, y ⟩), and the tangent projection is Πx(p) = p − ⟨ 1, p ⟩ 1/C − ⟨ x, p ⟩x (enforcing the zero-mean and orthogonality constraints, respectively). 
+
+Product structure . M is endowed with the product metric dM(x, x ′) =
+
+(d(x1, x ′
+
+> 1
+
+), . . . , d (xK , x ′ 
+
+> K
+
+)) p=1 , and all maps act blockwise: Exp x = (Exp x1 , . . . , Exp xK ), and similarly for Log x and Πx. Eq. (3) and (6) therefore apply independently to each of the four blocks. Hence, we describe the remaining construction on a single sphere without loss of generality. 
+
+3.3 Conditional RFM on VGGT latents 
+
+For guided novel view synthesis, we condition on context tokens c from observed views and a target camera pose π ∈ SE (3) . In this conditional regime, our objective shifts from modeling the marginal target distribution p(x1) to modeling the conditional target distribution p(x1 | c, π ). Consequently, the true time-dependent vector field driving the flow, ut(x | c, π ), must be explicitly informed by both c and π to properly guide the probability paths across the product manifold M toward valid, view-consistent 3D latents. The conditional RCFM loss expands the expectation over the joint distribution p(x1, c, π ):
+
+Lcond RCFM = Et, p (x0), p (x1,c,π ) vw(xt, t, c, π ) − ut(xt | x1) 2
+
+> gxt
+
+. (6) Note that the target field ut(x | x1) depends only on the endpoints x0 and x1 alone: conditioning on 
+
+(c, π ) shapes the joint distribution of (x1, c, π ) from which training pairs are sampled, but not the geodesic from x0 to x1 nor the velocity along it. At inference time, we sample an initial noise state x0 ∼ Unif( M) by sampling Gaussian noise and projecting it to M. We integrate the learned vector field over the time domain t ∈ [0 , 1] , where 
+
+t = 0 corresponds to the noise prior and t = 1 corresponds to the data distribution. To ensure the integration path remains strictly on the manifold, we employ a Riemannian ODE solver ( e.g. , the Riemannian Euler method), iteratively updating the latent state via the exponential map: 
+
+xt+∆ t = Exp xt (∆ t · ˜vw(xt, t )) , (7) where ˜vw ∈ T xt M is the modified velocity field evaluated at time t.53.4 Network architecture 
+
+We parameterize vw(xt, t, c, π ) as a transformer that maps manifold-valued inputs to tangent vec-tors. Each of the four spherical components of xt is projected to RD/ 4 by a separate linear layer and concatenated into a working representation h ∈ RD (D = 512 ). The backbone interleaves self-attention (SA) and cross-attention (CA) blocks in the pattern SA-CA-SA 4-CA-SA 4. The final model has ˜ 50 Mio. parameters. SA blocks use Rotary Position Embeddings (RoPE) [56] for spa-tial structure and inject the diffusion time t via AdaLN modulation. CA blocks attend from latent queries h to context tokens c as keys and values; the target pose π is injected directly into these CA operations via Projective Positional Encoding (ProPE) [33]. Output tokens are mapped back to the ambient space RC for each of the four blocks by independent linear heads, and we apply the tangent projection Πxt to obtain a valid velocity vw(xt, t, c, π ) ∈ T xt M. Moreover, we train an additional DPT head separately on GT latent VGGT tokens to transform tokens into RGB colors, thus enabling novel view synthesis (details in Section B.1). Figure 1 provides an overview of the method. 
+
+## 4 Experiments 
+
+The generative nature of our approach enables plausible geometry and appearance to be generated for unseen regions, while faithfully preserving those of observed regions. We evaluate our method against baselines spanning the relevant design space. Because our method produces depth alongside RGB as a direct output of the frozen VGGT decoder, we evaluate generated views on both modalities wherever ground-truth geometry is available. The geometric structure of generated views is our method’s primary focus; RGB metrics are reported for completeness and direct comparison. 
+
+Datasets . We train our model on the training sets of RealEstate10K (RE10K) [81] and Scan-Net++ [71], totaling 59103 scenes. For each scene, we subsample in an equidistant manner 150 frames. The two datasets are complementary: ScanNet++ provides dense indoor captures with rich camera motion, while RE10K contributes outdoor and large-scale indoor scenes with markedly dif-ferent trajectory characteristics, smoother motion, and predominantly forward-facing viewpoints. Evaluation is done in 50 randomly sampled scenes from RE10K’s test split [81] and the 50 avail-able evaluation scenes from ScanNet++ [71]. We use the 13 training scenes of ETH3D [54] to test 3D scene generation in an out-of-distribution setting, with scenes physically around 7× larger than those of ScanNet++. 
+
+Baselines . We compare against two representative methods spanning reconstruction and generation. 
+
+DepthSplat [69] is a deterministic feed-forward reconstruction method that directly predicts 3D Gaussians and multi-view depth from sparse posed views. Gen3R [18] is the closest work to ours, also leveraging VGGT. Different from our work, it trains an adapter to map VGGT tokens into the latent space of a pretrained video diffusion model, then fine-tunes the diffusion model to jointly generate appearance and geometry latents. More details about the baselines are given in B.2. 
+
+Evaluation protocols . Each baseline method has distinct architectural constraints that define its evaluation protocol. While our method is permutation-invariant to the input context views, Gen3R ,built on video diffusion models, only supports either one-sided or two-sided context (see Fig. C.2). Moreover, Gen3R requires the posed context views plus additional camera matrices for all interme-diate frames between the context views and the target in the trajectory. DepthSplat requires at least two posed context views to generate a Gaussian splatting representation. In contrast, our model has no such restrictions: it accepts any number of unposed context views in arbitrary order and requires only the relative camera pose for the target view. To enable comparison against all methods, we adopt the one-sided and two-sided view setup of Gen3R while varying the number of context views (N ∈ { 1, 2, 3, 4}). In the one-sided setting, we sample a sequence of N + 1 images from a trajec-tory, use the first N as context, and the last as the target view. In the two-sided setting, the target view is the middle image of the sequence, with N/ 2 context views on each side (see Fig. C.2 for an illustration). We report results under two overlap regimes: high overlap (approximately 60% overlap between target and context for ScanNet++ and 95% for RE10K) and low overlap (approxi-mately 35% overlap for ScanNet++ and 88% for RE10K). For the 3D scan generation experiments, we use the two-sided high overlap settings on ScanNet++ and, similarly, overlapping frames for ETH3D (approximately 40% overlap). We aggregate point maps from both the context and two target views enclosed by the context views into a single scene cloud, align them to ground truth using the Umeyama algorithm [58], and downsample both the prediction and ground truth to 20 k6Table 1: Novel view generation on ScanNet++ (depth). We report the best performance in bold .                                                                                                                               
+
+> High overlap Low overlap NMethod RMSE ↓ARel ↓δ↑FID ↓RMSE ↓ARel ↓δ↑FID ↓
+> one-sided
+> 1Gen3R 0.341 0.207 0.744 55.13 0.461 0.235 0.633 65.37 Ours 0.197 0.107 0.899 47.89 0.283 0.130 0.841 57.95
+> 2DepthSplat 0.488 0.295 0.582 48.47 0.540 0.289 0.590 52.85 Ours 0.191 0.094 0.911 40.24 0.279 0.125 0.848 51.88
+> 3DepthSplat 0.461 0.274 0.606 40.98 0.541 0.294 0.581 50.45 Ours 0.194 0.092 0.911 33.09 0.277 0.121 0.850 48.56
+> 4DepthSplat 0.441 0.249 0.634 32.99 0.536 0.289 0.581 48.83 Ours 0.191 0.085 0.924 24.13 0.275 0.118 0.857 45.31
+> two-sided
+> 2
+> DepthSplat 0.457 0.258 0.630 30.72 0.526 0.298 0.557 53.30 Gen3R 0.303 0.159 0.818 27.10 0.422 0.223 0.670 49.60 Ours 0.202 0.085 0.913 23.47 0.249 0.115 0.873 42.41
+> 4DepthSplat 0.378 0.201 0.713 20.37 0.453 0.263 0.607 35.73 Ours 0.200 0.081 0.921 12.29 0.208 0.089 0.911 25.41
+
+points using Farthest Point Sampling (FPS). See Section C for additional details and description of the evaluation protocol. 
+
+Metrics . Following prior work in novel view generation [18, 69, 65] and depth estimation bench-marks [60, 69], we report PSNR, SSIM [62], LPIPS [78], and FID [16], for RGB outputs, and RMSE, AbsRel, δ< 1.25 , and FID [16] for depth map predictions. For ScanNet++, where GT depth is available, we compute a visibility mask for each target frame that defines the regions observed in the context views. FID is computed by inpainting the predicted unobserved region into the GT target frame, while all other metrics are computed solely over observed regions, to fairly evaluate novel view synthesis and generation of plausible unobserved or occluded regions (see Section C.3 for more details). For 3D pointmap evaluation, we follow [60, 18] and report Accuracy, Completeness, and Chamfer distance between ground truth point clouds and predicted point maps. 
+
+Training details . We train our model for 320 k steps using Adam [29] without weight decay. The learning rate follows a schedule with linear warmup over the first 10 k steps to a peak value of 
+
+10 −3, followed by cosine decay to 10 −6. We maintain an exponential moving average (EMA) of the model weights with a decay of 0.9999 , which we use at inference time. Gradients are clipped to a maximum norm of 1.0, and training is performed in bfloat16 mixed precision with a global batch size of 256 frame sequences per step, distributed across 16 H100 GPUs. Within each scene, we randomly sample both the context and target views as well as the number of context views, from one to four, encouraging the model to generalize across varying input configurations. Frame sequences are drawn with equal probability from RE10K and ScanNet++. Instead of the uniform schedule 
+
+t ∼ U (0 , 1) used in vanilla flow matching, we sample training timesteps from a shifted uniform distribution that concentrates supervision near the noisy end of the trajectory. Concretely, we first draw τ ∼ U (0 , 1) and then apply the shift t = ττ +s (1 −τ ) , with shift parameter s > 0. In our convention t=0 corresponds to noise and t=1 to clean tokens, so s > 1 biases samples towards the noise end. We use s = 6 .0 in all experiments. 
+
+Inference . For all our results, we use the Riemannian Euler ODE solver with 20 generation steps. Step count ablation is provided in Section D.2. Generating latent tokens with 20 steps takes approx. 
+
+0.88 s on an RTX A6000 GPU per sample. 
+
+4.1 Novel view generation 
+
+We evaluate all baselines under the one-sided and two-sided protocols described above. As the number of context views increases, the model receives stronger geometric and appearance cues from the observed trajectory. Therefore, performance should improve from N = 1 to N = 4 , although the improvement may saturate when additional views provide redundant information or when the target view involves large occluded regions. 
+
+Depth prediction . Table 1 presents the results on ScanNet++ for the depth map predictions. In this experiment, we improve upon both baselines across all configurations, with the largest gains in the one-sided setting. Interestingly, our approach and Gen3R consistently outperform DepthSplat ,7Table 2: Novel view generation on ScanNet++ (RGB). We report the best performance in bold .                                                                                                                               
+
+> High overlap Low overlap NMethod PSNR ↑SSIM ↑LPIPS ↓FID ↓PSNR ↑SSIM ↑LPIPS ↓FID ↓
+> one-sided
+> 1Gen3R 15.39 0.543 0.143 65.78 13.86 0.475 0.153 77.66 Ours 17.92 0.659 0.110 57.21 16.71 0.597 0.104 71.55
+> 2DepthSplat 13.51 0.514 0.239 94.03 11.20 0.365 0.294 137.2 Ours 17.97 0.659 0.129 47.68 16.86 0.610 0.117 66.40
+> 3DepthSplat 15.15 0.607 0.201 67.18 11.94 0.417 0.280 117.7 Ours 18.01 0.661 0.146 40.10 16.89 0.613 0.128 62.08
+> 4DepthSplat 16.63 0.661 0.181 44.24 12.47 0.441 0.280 108.6 Ours 18.08 0.662 0.166 29.99 16.86 0.614 0.138 57.98
+> two-sided
+> 2
+> DepthSplat 17.50 0.647 0.166 41.02 12.56 0.469 0.270 92.42 Gen3R 17.27 0.596 0.159 34.77 14.00 0.498 0.214 67.73 Ours 18.12 0.661 0.163 30.49 16.67 0.615 0.151 57.00
+> 4DepthSplat 20.31 0.730 0.143 20.45 16.34 0.599 0.224 44.62 Ours 18.50 0.675 0.180 15.23 17.24 0.635 0.187 33.66
+
+Table 3: Novel view generation on RE10K. For this dataset, we report RGB metrics only, as RE10K does not provide ground-truth depth. We report the best performance in bold .                                                                                                                               
+
+> High overlap Low overlap NMethod PSNR ↑SSIM ↑LPIPS ↓FID ↓PSNR ↑SSIM ↑LPIPS ↓FID ↓
+> one-sided
+> 1Gen3R 14.66 0.475 0.367 40.94 14.24 0.463 0.397 43.27
+> Ours 15.37 0.509 0.397 75.74 14.90 0.498 0.419 77.74
+> 2DepthSplat 10.39 0.321 0.537 148.1 9.63 0.277 0.591 169.0 Ours 15.39 0.511 0.394 75.24 14.92 0.500 0.416 77.82
+> 3DepthSplat 11.38 0.371 0.511 145.6 10.49 0.322 0.563 166.32 Ours 15.44 0.514 0.390 74.62 14.30 0.472 0.454 73.46
+> 4DepthSplat 11.62 0.385 0.507 146.6 10.79 0.339 0.556 162.6 Ours 15.49 0.515 0.387 74.29 15.05 0.505 0.409 76.85
+> two-sided
+> 2
+> DepthSplat 24.61 0.833 0.092 28.99 20.54 0.724 0.192 61.53 Gen3R 21.27 0.718 0.113 25.84 18.02 0.598 0.214 47.81
+> Ours 17.53 0.579 0.290 74.50 16.30 0.533 0.353 93.04
+> 4DepthSplat 24.20 0.845 0.094 33.40 21.98 0.778 0.143 52.32
+> Ours 17.89 0.592 0.275 72.97 17.06 0.558 0.316 87.25
+
+even when DepthSplat has 4 context frames, as opposed to 1 or 2 for Gen3R or ours, indicating that using VGGT as a strong geometry prior is beneficial. For our proposed method, depth prediction in the low-overlap setting yields better performance than Gen3R and DepthSplat in the high-overlap setting. Further, our method exhibits the smallest relative degradation in δ accuracy when moving from the high- to the low-overlap regime, with a worst-case drop of only 7.3% (one-sided, N =4 ), compared to 14 .9% for DepthSplat (two-sided, N =4 ) and 18 .1% for Gen3R (two-sided, N =2 ). This shows that operating directly in the latent space of a geometry foundation model, without compression, enables accurate geometry prediction even under large camera movements. Figure 2 highlights these results. Since DepthSplat has no generative capabilities, it can only predict depth maps for the regions that were reconstructed with the Gaussian splats. While Gen3r has generative capabilities, it struggles with the large camera movements present in ScanNet++. Overall, operating generatively on the VGGT manifold preserves the geometric properties of the underlying backbone while extending it to unobserved regions required for novel-view generation. This is reflected in the consistently bigger gap between our method and the baselines in all setting, despite using strictly less camera information than the baselines (no input poses and no intermediate trajectory between context and target). 
+
+RGB prediction . Tables 2 and 3 report results on ScanNet++ and RE10K under the one-sided and two-sided protocols for RGB predictions. In these experiments on ScanNet++, we observe a similar trend to that observed with depth maps. We match or improve over DepthSplat and Gen3R , and our advantage becomes more pronounced as overlap decreases. DepthSplat remains competitive in the two-sided setting with four context views, where dense bracketing coverage and high overlap make the reconstruction problem well-posed. Gen3R also performs better in a two-sided setup than 8Table 4: 3D scan generation quality. Accuracy, Completeness, and Chamfer distance (cm) on fused point clouds. We report the best performance in bold .                               
+
+> ScanNet++ ETH3D Method Acc ↓Comp ↓CH ↓Rel %Acc ↓Comp ↓CH ↓Rel %
+> Gen3R 17.31 22.74 20.03 2.756 171.5 183.8 177.7 8.560 Ours 11.33 11.07 11.20 1.471 56.67 36.06 46.37 1.233
+
+in the one-sided setup, yielding a richer input signal. For RE10K, the camera movements are much softer, with smoother transitions and mostly forward motion, resulting in higher overlaps (see Sec-tion C.4). In the one-sided setting, we are comparable to Gen3r and outperform Depthsplat, which is constrained to interpolate within the visible support of its predicted Gaussians and degrades sharply when triangulation-based reconstruction is ill-posed. In the two-sided setting, yet DepthSplat shines, yielding the highest results apart from the FID metric, given its lack of generative capability. In gen-eral, the improvements in RGB quality are comparatively smaller than those observed for geometry. This is likely due to the VGGT token representation being optimized for geometric inference, while our RGB decoder must repurpose these features for appearance prediction, a task for which com-peting baselines were more directly designed, either through explicit 3D representations or video generative priors. As shown in Fig. 2, while both DepthSplat and Gen3R produce strong RGB results, each exhibits characteristic failure modes. DepthSplat, lacking generative capability, is bound to interpolate within the visible support and therefore introduces empty regions and artifacts wherever the target view ex-tends beyond it. Gen3R, in turn, struggles to render the correct viewpoint: its camera pose is often slightly off, as visible in the RE10K and ScanNet++ results. Finally, we observe that a convinc-ing RGB prediction does not guarantee correct geometry; in several cases, the appearance looks plausible while the underlying depth is wrong, with texture effectively masking missing structure. 
+
+4.2 3D scan generation 
+
+Because we evaluate the point maps of the context frames jointly with those of their enclosed target views, this experiment probes not only 3D reconstruction and generation quality, but also the con-sistency between the generated frames and the context frames. Table 4 reports 3D reconstruction results on ScanNet++ and ETH3D. Our approach clearly outperforms Gen3R, reducing the Chamfer distance by over 40% on ScanNet++ and by more than 70% on ETH3D. The absolute errors grow from ScanNet++ to ETH3D, as ETH3D scenes are physically about 7× larger; the scale-normalized Rel metric, however, remains low and stable for our method while Gen3R degrades sharply. This indicates that our method generalizes substantially better to the out-of-distribution ETH3D setting. Figure 3 shows these differences qualitatively. Given the context RGB frames, we compare the fused point clouds against the ground truth, VGGT (upper bound), and Gen3R. Our reconstruction most closely matches the ground truth in both geometry and structural consistency, whereas Gen3R exhibits noticeably larger distortions and misaligned frames. This is consistent with the quantitative gap in Table 4, and confirms that our method produces coherent, well-aligned 3D scans even when combining generated target views with the context. 
+
+4.3 Euclidean vs. Riemannian flow matching 
+
+We compare standard Euclidean flow matching against our Riemannian formulation, which respects the spherical geometry of the VGGT token space (Table 5), evaluated on ScanNet++ in the two-sided setting at N =2 on the high-overlap subset. Replacing our Riemannian variant with Euclidean flow matching degrades every metric on both modalities, with appearance affected most: LPIPS worsens by ∼44% and RGB FID by ∼29%, while the depth metrics degrade more mildly but consistently (∼11–18%). This confirms that explicitly modeling the manifold structure of the latent space is beneficial rather than incidental. Additional ablations on the flow prediction target are provided in Section D. 9GT Ours Gen3R DepthSplat GT Ours Gen3R DepthSplat 
+
+> ScanNet++ RE10K Context Context
+
+Figure 2: Qualitative novel view generation on ScanNet++ and RE10K. For each dataset we show the context view(s) followed by RGB and depth predictions for Ours, Gen3R, and DepthSplat. Results are shown for the one-sided setup with a single context view (left) and the two-sided setup with two context views (right). DepthSplat, lacking generative capability, leaves empty regions and artifacts where the target extends beyond its reconstructed support, while Gen3R often renders a slightly incorrect viewpoint and struggles with accurate depth prediction. Our method produces coherent geometry and appearance across both regimes. Table 5: Euclidean vs. Riemannian flow matching. We compare our Riemannian flow matching model with an Euclidean flow on ScanNet++ in the two-sided setting at N =2 on the high-overlap subset.                                  
+
+> RGB Depth Variant PSNR ↑SSIM ↑LPIPS ↓FID ↓RMSE ↓ARel ↓δ↑FID ↓
+> Euclidean flow 16.20 0.585 0.235 61.24 0.225 0.100 0.902 33.48 Ours 18.12 0.661 0.163 47.50 0.202 0.085 0.913 31.15
+
+## 5 Conclusion 
+
+We introduce a generative framework for 3D scene modeling that performs flow matching directly in the latent space of a frozen geometric foundation model, VGGT, rather than committing to an ex-plicit downstream representation such as Gaussians, meshes, or video-VAE latents. The key observa-tion is that VGGT’s post-LayerNorm tokens do not occupy a Euclidean space but a product manifold of four zero-mean hyperspheres, on which standard flow matching fails. Our conditional Rieman-nian flow matching formulation respects this geometry, keeping generated tokens on the valid data manifold required by the frozen decoding heads. The resulting model is order-invariant in the con-text views, operates from as few as a single unposed view, and requires only the relative target pose, 10 GT VGGT Ours Gen3R Context 
+
+> ETH3D ScanNet++
+
+Figure 3: Qualitative results for 3D scan generation on ScanNet++ and ETH3D. Given the context RGB frames (left), we show the fused point clouds for the ground truth, VGGT (upper bound), our method, and Gen3R. Our approach yields reconstructions that are geometrically closer to the ground truth and more consistent across frames, while Gen3R suffers from distortions and frame misalignment. removing the trajectory and adjacency assumptions of video-diffusion and explicit-reconstruction baselines. On ScanNet++ and RE10K it improves over recent scene-generation methods in per-view geometry and remains competitive in appearance, and on the 3D scan generation task it produces co-herent, well-aligned point clouds that generalize to the out-of-distribution ETH3D setting. Together these results establish latent-space Riemannian flow matching on geometric foundation models as a viable paradigm for generative 3D reconstruction. 
+
+Limitations and future work . Our current framework generates one target view at a time. The 3D scan experiment shows that jointly decoded frames already remain mutually consistent, yet ex-tending it to joint multi-view generation could improve global consistency across synthesized views. More broadly, casting reconstruction as a flow on VGGT’s latent manifold opens directions unavail-able to a purely feed-forward model: sampling the flow yields a distribution over plausible scenes, offering a natural route to uncertainty estimation in unobserved regions, while the structure of the learned trajectories invites exploration for tasks such as multi-view alignment and scene editing. 
+
+Acknowledgements 
+
+TB acknowledges support from the UKRI Engineering and Physical Sciences Research Council (EP-SRC) through the Future Leaders Fellowship [grant number MR/Y018818/1]. Authors are grateful for support from the UK AI Research Resource (AIRR) through grant 0251-4584-0945-1. 11 References 
+
+[1] Barron, J.T., Mildenhall, B., Tancik, M., Hedman, P., Martin-Brualla, R., Srinivasan, P.P.: Mip-nerf: A multiscale representation for anti-aliasing neural radiance fields. In: Proceedings of the IEEE/CVF international conference on computer vision. pp. 5855–5864 (2021) 3 [2] Bose, J., Akhound-Sadegh, T., Huguet, G., FATRAS, K., Rector-Brooks, J., Liu, C.H., Nica, A.C., Korablyov, M., Bronstein, M.M., Tong, A.: Se (3)-stochastic flow matching for protein backbone generation. In: The Twelfth International Conference on Learning Representations (2024) 3 [3] Boumal, N.: An introduction to optimization on smooth manifolds. Cambridge University Press (2023) 18 [4] Bu, T., Wang, C., Ma, H., Zheng, H., Lu, X., Wu, T.: Ggball: Graph generative model on poincar \’e ball. arXiv preprint arXiv:2506.07198 (2025) 4 [5] Charatan, D., Li, S.L., Tagliasacchi, A., Sitzmann, V.: pixelsplat: 3d gaussian splats from image pairs for scalable generalizable 3d reconstruction. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 19457–19467 (2024) 1, 3 [6] Chen, A., Xu, Z., Zhao, F., Zhang, X., Xiang, F., Yu, J., Su, H.: Mvsnerf: Fast generaliz-able radiance field reconstruction from multi-view stereo. In: Proceedings of the IEEE/CVF international conference on computer vision. pp. 14124–14133 (2021) 3 [7] Chen, R.T.Q., Lipman, Y.: Flow matching on general geometries. In: The Twelfth International Conference on Learning Representations (2024) 2, 4, 17 [8] Chen, W., Bi, J., Huang, Y., Zheng, W., Duan, Y.: Scenecompleter: Dense 3d scene completion for generative novel view synthesis. arXiv preprint arXiv:2506.10981 (2025) 2, 3 [9] Chen, Y., Xu, H., Zheng, C., Zhuang, B., Pollefeys, M., Geiger, A., Cham, T.J., Cai, J.: Mvs-plat: Efficient 3d gaussian splatting from sparse multi-view images. In: European conference on computer vision. pp. 370–386. Springer (2024) 1, 3 [10] Deng, K., Liu, A., Zhu, J.Y., Ramanan, D.: Depth-supervised nerf: Fewer views and faster training for free. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 12882–12891 (2022) 3 [11] Elata, N., Kawar, B., Ostrovsky-Berman, Y., Farber, M., Sokolovsky, R.: Novel view synthesis with pixel-space diffusion models. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 26756–26766 (2025) 1, 3 [12] Fischer, T., Bul` o, S.R., Yang, Y.H., Keetha, N., Porzi, L., M¨ uller, N., Schwarz, K., Luiten, J., Pollefeys, M., Kontschieder, P.: Flowr: Flowing from sparse to dense 3d reconstructions. In: Proceedings of the IEEE/CVF International Conference on Computer Vision. pp. 27702– 27712 (2025) 3 [13] Frolova, D., Daulbaev, T., Sevryugov, E., Nikolenko, S.A., Ivankov, D.N., Oseledets, I., Pak, M.A.: Matcha: Multi-stage riemannian flow matching for accurate and physically valid molec-ular docking. arXiv preprint arXiv:2510.14586 (2025) 3 [14] Gao*, R., Holynski*, A., Henzler, P., Brussee, A., Martin-Brualla, R., Srinivasan, P.P., Barron, J.T., Poole*, B.: Cat3d: Create anything in 3d with multi-view diffusion models. Advances in Neural Information Processing Systems (2024) 3 [15] He, Y., Tiwari, G., Birdal, T., Lenssen, J.E., Pons-Moll, G.: Nrdf: Neural riemannian distance fields for learning articulated pose priors. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 1661–1671 (2024) 3 [16] Heusel, M., Ramsauer, H., Unterthiner, T., Nessler, B., Hochreiter, S.: Gans trained by a two time-scale update rule converge to a local nash equilibrium. Advances in neural information processing systems 30 (2017) 7 [17] Huang, B., Yu, Z., Chen, A., Geiger, A., Gao, S.: 2d gaussian splatting for geometrically accurate radiance fields. In: ACM SIGGRAPH 2024 conference papers. pp. 1–11 (2024) 3 [18] Huang, J., Yang, Y., Yang, B., Ma, L., Ma, Y., Liao, Y.: Gen3r: 3d scene generation meets feed-forward reconstruction. arXiv preprint arXiv:2601.04090 (2026) 2, 3, 6, 7, 19 12 [19] Huguet, G., Vuckovic, J., Fatras, K., Thibodeau-Laufer, E., Lemos, P., Islam, R., Liu, C., Rector-Brooks, J., Akhound-Sadegh, T., Bronstein, M., et al.: Sequence-augmented se (3)-flow matching for conditional protein generation. Advances in neural information processing systems 37 , 33007–33036 (2024) 3 [20] Jain, A., Tancik, M., Abbeel, P.: Putting nerf on a diet: Semantically consistent few-shot view synthesis. In: Proceedings of the IEEE/CVF international conference on computer vision. pp. 5885–5894 (2021) 3 [21] Jang, W., Agapito, L.: Nvist: In the wild new view synthesis from a single image with trans-formers. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recog-nition (CVPR). pp. 10181–10193 (June 2024) 1 [22] Jang, W., Tremblay, J., Agapito, L.: Dt-nvs: Diffusion transformers for novel view synthesis (2025) 1, 3 [23] Jang, W., Jeon, S., Han, J., Choi, J., Kwon, M., Kim, S., Xie, S., Liu, S.: Repurposing ge-ometric foundation models for multi-view diffusion. arXiv preprint arXiv:2603.22275 (2026) 3[24] Jin, H., Jiang, H., Tan, H., Zhang, K., Bi, S., Zhang, T., Luan, F., Snavely, N., Xu, Z.: Lvsm: A large view synthesis model with minimal 3d inductive bias. In: The Thirteenth Interna-tional Conference on Learning Representations (2025), https://openreview.net/forum? id=QQBPWtvtcn 1, 3 [25] Kerbl, B., Kopanas, G., Leimk¨ uhler, T., Drettakis, G., et al.: 3d gaussian splatting for real-time radiance field rendering. ACM Trans. Graph. 42 (4), 139–1 (2023) 1, 3 [26] Kim, E., Ryu, H., Mitchel, T.W., Sitzmann, V.: Scaling view synthesis transformers. In: arXiv preprint arXiv:2602.21341 (2026) 1, 3 [27] Kim, M., Seo, S., Han, B.: Infonerf: Ray entropy minimization for few-shot neural volume rendering. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 12912–12921 (2022) 3 [28] Kim, N., Kim, S., Kim, M., Park, J., Ahn, S.: Mofflow: Flow matching for structure prediction of metal-organic frameworks. arXiv preprint arXiv:2410.17270 (2024) 3 [29] Kingma, D.P., Ba, J.: Adam: A method for stochastic optimization. arXiv preprint arXiv:1412.6980 (2014) 7 [30] Kong, H., Yang, X., Wang, X.: Generative sparse-view gaussian splatting. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 26745–26755 (2025) 3 [31] Kumar, A., Patel, V.M.: Learning on the manifold: Unlocking standard diffusion transformers with representation encoders. arXiv preprint arXiv:2602.10099 (2026) 2, 3, 4, 5 [32] Leroy, V., Cabon, Y., Revaud, J.: Grounding image matching in 3d with mast3r. In: Proceed-ings of the European Conference on Computer Vision (2024) 3 [33] Li, R., Yi, B., Liu, J., Gao, H., Ma, Y., Kanazawa, A.: Cameras as relative positional encoding. arXiv preprint arXiv:2507.10496 (2025) 6 [34] Li, T., He, K.: Back to basics: Let denoising generative models denoise. arXiv preprint arXiv:2511.13720 (2025) 4 [35] Lim, B., Kim, J., Kim, J., Lee, Y., Park, F.C.: Equigraspflow: Se (3)-equivariant 6-dof grasp pose generative flows. In: 8th Annual Conference on Robot Learning (2024) 3 [36] Lin, H., Chen, S., Liew, J., Chen, D.Y., Li, Z., Shi, G., Feng, J., Kang, B.: Depth anything 3: Recovering the visual space from any views. arXiv preprint arXiv:2511.10647 (2025) 3 [37] Lipman, Y., Chen, R.T., Ben-Hamu, H., Nickel, M., Le, M.: Flow matching for generative modeling. In: The Eleventh International Conference on Learning Representations (2023) 2, 3, 5 [38] Liu, F., Sun, W., Wang, H., Wang, Y., Sun, H., Ye, J., Zhang, J., Duan, Y.: Reconx: Reconstruct any scene from sparse views with video diffusion model (2024), https://arxiv.org/abs/ 2408.16767 2, 3 13 [39] Liu, R., Wu, R., Van Hoorick, B., Tokmakov, P., Zakharov, S., Vondrick, C.: Zero-1-to-3: Zero-shot one image to 3d object. In: Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV). pp. 9298–9309 (October 2023) 1, 3 [40] Lu, X., Fu, J., Zhang, J., Song, Z., Jia, C., Ma, S.: Prosplat: Improved feed-forward 3d gaussian splatting for wide-baseline sparse views. arXiv preprint arXiv:2506.07670 (2025) 3 [41] Mildenhall, B., Srinivasan, P.P., Tancik, M., Barron, J.T., Ramamoorthi, R., Ng, R.: Nerf: Representing scenes as neural radiance fields for view synthesis. Communications of the ACM 
+
+65 (1), 99–106 (2021) 1, 3 [42] Miller, B.K., Chen, R.T., Sriram, A., Wood, B.M.: Flowmm: Generating materials with rie-mannian flow matching. In: International Conference on Machine Learning. pp. 35664–35686. PMLR (2024) 3 [43] Morehead, A., Cheng, J.: Flowdock: Geometric flow matching for generative protein-ligand docking and affinity prediction. In: Intelligent Systems for Molecular Biology (ISMB) (2025) 3[44] M¨ uller, T., Evans, A., Schied, C., Keller, A.: Instant neural graphics primitives with a multires-olution hash encoding. ACM transactions on graphics (TOG) 41 (4), 1–15 (2022) 3 [45] Nadar, J., Foti, S., Birdal, T.: Posed-flow: Versatile and guided flow matching model of human pose. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recogni-tion. pp. 21165–21175 (2026) 3 [46] Nair, N.G., Kaza, S., Luo, X., Patel, V.M., Lombardi, S., Park, J.: Scaling transformer-based novel view synthesis with models token disentanglement and synthetic data. In: Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV). pp. 28567–28576 (October 2025) 1, 3 [47] Niemeyer, M., Barron, J.T., Mildenhall, B., Sajjadi, M.S., Geiger, A., Radwan, N.: Regnerf: Regularizing neural radiance fields for view synthesis from sparse inputs. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 5480–5490 (2022) 3[48] Ouyang, W., Ye, Q., Wang, J., Xu, Z., Chen, J.: Rfmpose: Generative category-level object pose estimation via riemannian flow matching. In: The Thirty-ninth Annual Conference on Neural Information Processing Systems (2025) 3 [49] Ranftl, R., Bochkovskiy, A., Koltun, V.: Vision transformers for dense prediction. In: Proceed-ings of the IEEE/CVF international conference on computer vision. pp. 12179–12188 (2021) 19 [50] Ren, X., Shen, T., Huang, J., Ling, H., Lu, Y., Nimier-David, M., M¨ uller, T., Keller, A., Fi-dler, S., Gao, J.: Gen3c: 3d-informed world-consistent video generation with precise camera control. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recog-nition (CVPR). pp. 6121–6132 (June 2025) 2, 3 [51] Rombach, R., Blattmann, A., Lorenz, D., Esser, P., Ommer, B.: High-resolution image synthe-sis with latent diffusion models. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 10684–10695 (2022) 3 [52] Sch¨ onberger, J.L., Frahm, J.M.: Structure-from-motion revisited. In: Conference on Computer Vision and Pattern Recognition (CVPR) (2016) 3 [53] Sch¨ onberger, J.L., Zheng, E., Pollefeys, M., Frahm, J.M.: Pixelwise view selection for un-structured multi-view stereo. In: European Conference on Computer Vision (ECCV) (2016) 3[54] Schops, T., Schonberger, J.L., Galliani, S., Sattler, T., Schindler, K., Pollefeys, M., Geiger, A.: A multi-view stereo benchmark with high-resolution images and multi-camera videos. In: Proceedings of the IEEE conference on computer vision and pattern recognition. pp. 3260– 3269 (2017) 6 [55] Seo, J., Fukuda, K., Shibuya, T., Narihira, T., Murata, N., Hu, S., Lai, C.H., Kim, S., Mitsu-fuji, Y.: Genwarp: Single image to novel views with semantic-preserving generative warping. Advances in Neural Information Processing Systems (NeurIPS) (2024) 2, 3 [56] Su, J., Ahmed, M., Lu, Y., Pan, S., Bo, W., Liu, Y.: Roformer: Enhanced transformer with rotary position embedding. Neurocomputing 568 , 127063 (2024) 6 14 [57] Sun, X., Wang, S., Zhang, F., Liu, L., Jia, C., Song, Z., Huang, Z., Luo, Y.: Vggt-world: Trans-forming vggt into an autoregressive geometry world model. arXiv preprint arXiv:2603.12655 (2026) 3 [58] Umeyama, S.: Least-squares estimation of transformation parameters between two point pat-terns. IEEE Transactions on pattern analysis and machine intelligence 13 (4), 376–380 (1991) 6, 22 [59] Verninas, H., Korkmaz, C., Zafeiriou, S., Birdal, T., Foti, S.: Parallelised differentiable straightest geodesics for 3d meshes. In: Proceedings of the IEEE/CVF Conference on Com-puter Vision and Pattern Recognition. pp. 14637–14647 (2026) 3 [60] Wang, J., Chen, M., Karaev, N., Vedaldi, A., Rupprecht, C., Novotny, D.: Vggt: Visual geom-etry grounded transformer. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (2025) 2, 3, 4, 7, 19 [61] Wang, S., Leroy, V., Cabon, Y., Chidlovskii, B., Revaud, J.: Dust3r: Geometric 3d vision made easy. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (2024) 2, 3 [62] Wang, Z., Bovik, A.C., Sheikh, H.R., Simoncelli, E.P.: Image quality assessment: from error visibility to structural similarity. IEEE transactions on image processing 13 (4), 600–612 (2004) 7[63] Wang, Z., Yuan, Z., Wang, X., Li, Y., Chen, T., Xia, M., Luo, P., Shan, Y.: Motionctrl: A unified and flexible motion controller for video generation. In: ACM SIGGRAPH 2024 Con-ference Papers (2024). https://doi.org/10.1145/3641519.3657518 2, 3 [64] Wei, J., Leutenegger, S., Schaefer, S.: Gsfix3d: Diffusion-guided repair of novel views in gaussian splatting. arXiv preprint arXiv:2508.14717 (2025) 3 [65] Wewer, C., Raj, K., Ilg, E., Schiele, B., Lenssen, J.E.: latentsplat: Autoencoding variational gaussians for fast generalizable 3d reconstruction. In: European conference on computer vi-sion. pp. 456–473. Springer (2024) 3, 7 [66] Wu, H., Wu, D., He, T., Guo, J., Ye, Y., Duan, Y., Bian, J.: Geometry forcing: Marrying video diffusion and 3d representation for consistent world modeling. International Conference on Learning Representations (ICLR) (2026) 2, 3 [67] Wu, R., Mildenhall, B., Henzler, P., Park, K., Gao, R., Watson, D., Srinivasan, P.P., Verbin, D., Barron, J.T., Poole, B., Hoły´ nski, A.: Reconfusion: 3d reconstruction with diffusion priors. In: 2024 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) (2024). https://doi.org/10.1109/CVPR52733.2024.02036 2, 3 [68] Wu, S., Xu, C., Huang, B., Geiger, A., Chen, A.: Genfusion: Closing the loop between recon-struction and generation via videos. In: Proceedings of the IEEE/CVF Conference on Com-puter Vision and Pattern Recognition. pp. 6078–6088 (2025) 3 [69] Xu, H., Peng, S., Wang, F., Blum, H., Barath, D., Geiger, A., Pollefeys, M.: Depthsplat: Connecting gaussian splatting and depth. In: Proceedings of the Computer Vision and Pattern Recognition Conference. pp. 16453–16463 (2025) 3, 6, 7, 20 [70] Yao, J., Yang, B., Wang, X.: Reconstruction vs. generation: Taming optimization dilemma in latent diffusion models. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (2025) 4 [71] Yeshwanth, C., Liu, Y.C., Nießner, M., Dai, A.: Scannet++: A high-fidelity dataset of 3d in-door scenes. In: Proceedings of the IEEE/CVF International Conference on Computer Vision. pp. 12–22 (2023) 6 [72] Yim, J., Campbell, A., Foong, A.Y., Gastegger, M., Jim´ enez-Luna, J., Lewis, S., Satorras, V.G., Veeling, B.S., Barzilay, R., Jaakkola, T., et al.: Fast protein backbone generation with se (3) flow matching. arXiv preprint arXiv:2310.05297 (2023) 3 [73] Yin, X., Zhang, Q., Chang, J., Feng, Y., Fan, Q., Yang, X., Pun, C.M., Zhang, H., Cun, X.: Gsfixer: Improving 3d gaussian splatting with reference-guided video diffusion priors. arXiv preprint arXiv:2508.09667 (2025) 3 [74] Yu, A., Ye, V., Tancik, M., Kanazawa, A.: pixelnerf: Neural radiance fields from one or few images. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 4578–4587 (2021) 1, 3 15 [75] Yu, W., Xing, J., Yuan, L., Hu, W., Li, X., Huang, Z., Gao, X., Wong, T.T., Shan, Y., Tian, Y.: ViewCrafter: Taming Video Diffusion Models for High-fidelity Novel View Synthesis . IEEE Transactions on Pattern Analysis & Machine Intelligence (2025). https://doi.org/10.1109/TPAMI.2025.3613256 2, 3 [76] Zhang, K., Bi, S., Tan, H., Xiangli, Y., Zhao, N., Sunkavalli, K., Xu, Z.: Gs-lrm: Large reconstruction model for 3d gaussian splatting. In: European Conference on Computer Vision. pp. 1–19. Springer (2024) 1, 3 [77] Zhang, Q., Zhai, S., Martin, M.A.B., Miao, K., Toshev, A., Susskind, J., Gu, J.: World-consistent video diffusion with explicit 3d modeling. In: Proceedings of the IEEE/CVF Con-ference on Computer Vision and Pattern Recognition (CVPR). pp. 21685–21695 (June 2025) 1, 3 [78] Zhang, R., Isola, P., Efros, A.A., Shechtman, E., Wang, O.: The unreasonable effectiveness of deep features as a perceptual metric. In: Proceedings of the IEEE conference on computer vision and pattern recognition. pp. 586–595 (2018) 7 [79] Zheng, B., Ma, N., Tong, S., Xie, S.: Diffusion transformers with representation autoencoders. In: The Fourteenth International Conference on Learning Representations (2026) 2, 3, 4 [80] Zhou, J., Zhang, W., Liu, Y.S.: Diffgs: Functional gaussian splatting diffusion. In: Advances in Neural Information Processing Systems (2024) 3 [81] Zhou, T., Tucker, R., Flynn, J., Fyffe, G., Snavely, N.: Stereo magnification: Learning view synthesis using multiplane images. In: SIGGRAPH (2018) 6 [82] Zhou, Z., Dan, T., Wu, G.: Brainflow: A holistic pathway of dynamic neural system on man-ifold. In: The Thirty-ninth Annual Conference on Neural Information Processing Systems (2025) 3 [83] Zhu, H., Wang, Y., Zhou, J., Chang, W., Zhou, Y., Li, Z., Chen, J., Shen, C., Pang, J., He, T.: Aether: Geometric-aware unified world modeling. In: Proceedings of the IEEE/CVF Interna-tional Conference on Computer Vision (ICCV). pp. 8535–8546 (October 2025) 1 16 Appendix A Theoretical background 
+
+A.1 Riemannian Flow Matching Definition 1 (Riemannian Flow [7]) . A time-dependent flow is a one-parameter family of diffeo-morphisms {ψt : M → M} 1 
+
+> t=0
+
+defined by integrating instantaneous deformations represented by a time-dependent vector field ut ∈ Γ( T M ) on the tangent space (Riemannian flow-matching field). 
+
+ψt is defined by solving the following Riemannian ordinary differential equation (ODE) on M over 
+
+t ∈ [0 , 1] :
+
+ddt ψt(x) = ut (ψt(x)) , ψ0(x) = x.  (A.1) 
+
+We also denote the flow map at t = 1 by ψ1 : M → M : ψ1 (x0) = x(1) , a smooth cost 
+
+L : M → R+, and the source-point objective L (x0) = L (ψ1 (x0)) .
+
+Definition 2 (Probability path) . Let P(M) denote the space of probability distributions on M. A probability path pt : [0 , 1] → P (M) interpolates between two distributions p0, p 1 ∈ P (M) indexed by t ∈ [0 , 1] . pt is said to be generated by ψt if it pushes forward p0 := p(x0) to p1 := p(x1)
+
+following ut, i.e. pt = [ ψt]#(p0). We define a smooth probability path between data p1 and a reference p0 as 
+
+pt(x) = 
+
+Z
+
+> M
+
+pt(x | x1) p1(x1) d V (x1), (A.2) 
+
+where pt(x | x1) is a geodesic Gaussian kernel with smooth schedulers αt, σ t > 0 with α0 = 0 (see suppl. material). 
+
+Remark 1 (Velocity field) . pt satisfies a continuity (Liouville) equation on the manifold: ∂tpt +div g (ptut) = 0 , where ut is the velocity field transporting probability mass along the manifold, where div g is the divergence on M.
+
+We are now ready to define Riemannian-FM (RFM). 
+
+Definition 3 (RFM) . Given a probability path pt, subject to the boundary conditions p0 = psource 
+
+and p1 = ptarget , as well as an associated flow ψt, Riemannian flow matching learns a continuous normalizing flow by directly regressing ut through a neural network vw(x, t ) parametrized by w.
+
+Definition 4 (Riemannian Conditional FM) . The vanilla RFM objective is intractable as we do not have access to the closed-form ut generating pt. Instead, we regress vw against a tractable 
+
+conditional vector field ut(x | x1), generating a conditional probability path pt(x | x1) which can recover the target unconditional path by marginalization: 
+
+ut(x) = 
+
+Z
+
+> M
+
+ut(x | x1) pt(x | x1)p(x1)
+
+pt(x) dV x1 . (A.3) 
+
+Definition 5 (Generating conditional vector field) . RFM defines a vector field ut (x | x1) that gener-ates pt(x | x1) through a distance d by enforcing d (ψt (x | x1) , x 1) = κ(t)d (x, x 1). The minimal-norm conditional field is [7]: 
+
+ut (x | x1) = ddt log κ(t) d (x, x 1)
+
+∥∇ d (x, x 1)∥2
+
+> g
+
+∇d (x, x 1) . (A.4) 
+
+For the geodesic distance d := dg and κ(t) := 1 − t, ∥∇ dg ∥g = 1 and dg ∇dg = ∇ 12 d2 
+
+> g
+
+=
+
+−Log x (x1), giving 
+
+ut (x | x1) = 11 − t Log x (x1) (A.5) With this choice of time scheduling Chen & Lipman [7] then define an explicit Riemannian condi-tional FM (RCFM) objective for learning as: 
+
+LRCFM = Et,p (x1),p (x0) vw(xt, t ) + d(x0, x 1) grad d(xt, x 1)
+
+∥grad d(xt, x 1)∥2
+
+> g
+> 2
+> g
+
+, (A.6) 17 whose gradient is the same as that of RFM. We use eq. (A.6) to train our model, i.e. , to obtain the parameters w of vw. Here, t ∈ U (0 , 1) and d(·, ·) is the geodesic distance. 
+
+Parallel-Transport Form of the RCFM Target . In our implementation, we compute the condi-tional target velocity via parallel transport rather than the gradient form of eq. (A.6). The two are equivalent on constant-speed geodesics, as we now show. Recall that the conditional vector field at xt is 
+
+ut(xt | x1) = 11 − t Log xt (x1). (A.7) Let Px0→xt : Tx0 M → Txt M denote parallel transport 1 along the geodesic from x0 to xt defined by xt = Exp x0 (t · Log x0 (x1)) . Then 
+
+ut(xt | x1) = Px0→xt
+
+ Log x0 (x1). (A.8) To see this, note that Log x0 (x1) ∈ Tx0 M is the initial velocity of the geodesic with magnitude 
+
+dg (x0, x 1). Parallel transport preserves both the angle and the magnitude, so Px0→xt (Log x0 (x1)) 
+
+has magnitude dg (x0, x 1) at xt in the geodesic direction. Independently, Log xt (x1) has magnitude 
+
+dg (xt, x 1) = (1 − t) dg (x0, x 1) in the same direction, so 11−t Log xt (x1) has magnitude dg (x0, x 1)
+
+— matching the parallel-transported vector exactly. Both expressions therefore yield the same vector in Txt M.In our implementation we use eq. (A.8) because it makes the tangent space of comparison explicit and avoids dividing by 1 − t near the data ( t → 1). 
+
+Optimal-Coupling RFM . The conditional RCFM objective above samples endpoints indepen-dently,  x0 ∼ p0 and  x1 ∼ p1. An alternative is to replace the independent endpoint law  p0 ⊗ p1 by an optimal coupling between the source and target distributions. Let 
+
+Π( p0, p 1) = {γ ∈ P (M × M ) : (Π 0)#γ = p0, (Π 1)#γ = p1} (A.9) denote the set of couplings between  p0 and  p1 (marginals). For the cost induced by the geodesic distance  dg , define 
+
+γ⋆ ∈ arg min 
+
+> γ∈Π( p0,p 1)
+
+Z
+
+> M×M
+
+dg (x0, x 1)2 dγ(x0, x 1). (A.10) Given  (x0, x 1) ∼ γ⋆, define the geodesic interpolant (as in the typical RFM case) 
+
+xt = Exp x0
+
+ t Log x0 (x1) , t ∼ U (0 , 1) , (A.11) and the corresponding conditional target velocity (as derived earlier) 
+
+ut(xt | x0, x 1) = 11 − t Log xt (x1) = Px0→xt Log x0 (x1). (A.12) The optimal-coupling RFM objective is then 
+
+LOC -RCFM = Et, (x0,x 1)∼γ⋆
+
+h
+
+∥vw(xt, t ) − ut(xt | x0, x 1)∥2
+
+> gxt
+
+i
+
+. (A.13) In the conditional setting used in our work, the target law is  p(x1 | c, π ) where c denotes the context tokens extracted from context views and a target pose π. Thus, for each conditioning pair  (c, π ),define the conditional optimal coupling :
+
+γ⋆c,π ∈ arg min 
+
+> γ∈Π( p0,p (·| c,π ))
+
+Z
+
+> M×M
+
+dg (x0, x 1)2 dγ(x0, x 1). (A.14) The conditional optimal-coupling RFM objective becomes 
+
+Lcond OC -RCFM = Ep(c,π )Et, (x0,x 1)∼γ⋆c,π 
+
+h
+
+∥vw(xt, t, c, π ) − ut(xt | x0, x 1)∥2
+
+> gxt
+
+i
+
+. (A.15) All maps and norms are evaluated on the product manifold  M and therefore act blockwise on the four hypersphere factors. 
+
+> 1Often used to compare tangent vectors at distinct points [3].
+
+18 B Implementation details 
+
+B.1 RGB head: architecture and training 
+
+Since VGGT [60] produces depth, point, and camera predictions but no RGB output, we attach a dedicated RGB head to the frozen aggregator tokens to enable comparison with novel view synthesis baselines. The head consumes the concatenated multi-layer aggregator features of shape [B, S, P, 4·
+
+2·1024] and predicts a 3-channel RGB image at input resolution of the images that where used to get the latent tokens. Its design follows the DPT [49] decoder used by VGGT’s other prediction heads, with three modifications motivated by visual artefacts (blur and faint checkerboarding) we observed in an initial baseline: • Two-stage upsampling. The coarsest resize stage of the standard DPT head applies a single 4× bilinear upsample followed by a 3 × 3 convolution. We replace this with two successive 2× bilinear upsamples, each followed by its own 3 × 3 convolution. A single 
+
+3 × 3 kernel cannot fully mix the interpolation grid produced by a 4× upsample, leaving residual high-frequency structure; two stacked 2× stages give the kernel a grid it can fully cover at each step. • 3 × 3 output convolution. The final 1 × 1 output convolution of the standard head is replaced with a 3 × 3 convolution. The last layer at native resolution is the only module whose spatial receptive field directly shapes sub-pixel structure; a 1×1 kernel has no spatial context, so we give it one. • No output-stage positional embedding. The standard head adds a UV-grid positional embedding both before the resize layers (at low resolution) and again at output resolution. We remove the second application: a small additive grid-aligned signal at output resolution can imprint a faint grid bias that mimics checkerboard artefacts. The pre-resize embedding still provides the spatial prior. 
+
+Loss . The head is trained with a weighted combination of pixel, perceptual, and structural losses, 
+
+L = λpix L1(ˆ x, x ) + λlpips LPIPS(ˆ x, x ) + λssim 
+
+ 1 − MS -SSIM(ˆ x, x ), (B.1) with λpix = 1 .0, λlpips = 0 .3, and λssim = 0 .1.
+
+Training details . We use AdamW with an initial learning rate of 10 −4, aweight decay of 0.05 ,gradient clipping at norm 1.0, a batch size of 12 per GPU, and bfloat16 mixed precision. Training runs for 5 epochs ( 163 ,440 optimizer steps) on 20 GPUs (global batch size 240 ), with a 15 ,000 -step linear warm-up followed by a cosine decay to 10 −6. An EMA of the head weights (decay 0.999 ) is maintained for evaluation and visualization. 
+
+Distribution-matching fine-tuning . Training the RGB head on clean VGGT tokens alone leads to a distribution mismatch at inference time, where the head must decode tokens generated by our flow model rather than ground-truth backbone outputs. To close this gap, we fine-tune the head for an additional 1k steps on a mixture of clean VGGT tokens and tokens produced by our trained flow model, sampled with equal probability. The reconstruction target remains the corresponding ground-truth RGB image in both cases. This brief fine-tuning stage adapts the head to the residual statistical differences between the two token distributions without compromising its reconstruction quality on clean tokens. 
+
+B.2 Baselines 
+
+Each baseline was designed around a different set of assumptions, Gen3R expects a full camera trajectory, while DepthSplat requires at least two posed context views, and neither shares our fully pose- and order-agnostic interface. Rather than force them into a setting they were not built for, we adapt our evaluation protocol to each method’s constraints while keeping the comparison as fair as possible. Below, we detail the exact model, inputs, and hyperparameters used for each. 
+
+Gen3R . Gen3R [18] is the closest baseline to ours: a video-diffusion novel-view synthesizer built on the VGGT geometry backbone. Unlike our method, it expects a full camera trajectory and iteratively extends a partially observed scene, rather than being conditioned on a single arbitrary target pose. To ensure a fair comparison, for each context-target pairing we condition on the context view(s) and 19 synthesize the target by generating a short video along a camera trajectory that passes through the target pose; the novel view is then read off at the trajectory index assigned to the target camera. We follow Gen3R’s official preprocessing throughout. 
+
+Trajectory. We use a 49 -frame anchor-based trajectory, with one generation pass per target. The anchors are the context and target cameras: each anchor’s pose is kept exactly at its assigned index, and intermediate frames between two consecutive anchors are filled by interpolation, rotation via spherical linear interpolation (SLERP) and translation linearly. 
+
+One-sided vs. two-sided. In the two-sided setting the context views are spread evenly around the target, so the target is an interpolation between them (context → target → context). In the one-sided 
+
+setting the context views are the ones farthest from the target, all lying on one side, so the target is reached by extrapolating the camera path outward. 
+
+Sampling. We use classifier-free guidance with scale 5.0, the text prompt "a realistic scene" ,negative prompt "bad detailed" , bf16 precision, and a fixed seed ( 42 ) for reproducibility. 
+
+DepthSplat . DepthSplat [69] is a deterministic feed-forward method that combines multi-view stereo with 3D Gaussian splatting, predicting depth and Gaussians in a single forward pass. We use the public gs-large checkpoint ( depthsplat-gs-large-re10k-256x256-view2 ), trained on RealEstate10K at 256 × 256 . The encoder is a large ViT with a cost-volume module whose depth candidates span [near , far ], sampled in sampled in inverse depth. We set this range per dataset to match each domain’s metric extent: 0.5–100 for RealEstate10K (the training values) and 0.1–10 for ScanNet++ (obtain from ScanNet++ training scenes). Target depth is obtained as the z-buffer of the splatted Gaussians at the target pose, so RGB and depth share the same 256 × 256 resolution. 
+
+## C Additional details of the evaluation protocol 
+
+C.1 Resolution unification for cross-method evaluation 
+
+Each method we compare against preprocesses its inputs differently and therefore predicts a different sub-region of the scene at a different resolution. Per-pixel metrics such as PSNR, SSIM, RMSE, AbsRel and δ are only comparable if every method is scored on the same scene region sampled at the same pixel grid. Naively scoring each method on its own preprocessed output would conflate synthesis quality with differences in field of view (FOV) and sampling density. We resolve this with a single common grid per dataset, constructed so that (i) all methods are eval-uated on exactly the scene region that all of them predict, and (ii) no method is ever upsampled. Both the predictions and the ground truth are mapped onto this grid before any metric is computed, including the distributional FID. 
+
+Common-grid construction . Let the original frame have resolution (H, W ). For each method 
+
+m, we determine the rectangle of the original frame it actually predicts, expressed in original pixel coordinates, which we call its FOV Fm = ( Hfov  
+
+> m
+
+, W fov  
+
+> m
+
+). The three FOVs are obtained by inverting each method’s preprocessing: • Gen3R resizes the shorter side to 560 and centre-crops a square, so it predicts a centered square of the original: FG = ( s, s ) with s = min( H, W ).• DepthSplat fits the original into its 256 × 256 crop with the cover scale σ =max(256 /H, 256 /W ), retaining FD =  min( ⌊256 /σ ⌉, H ), min( ⌊256 /σ ⌉, W ).• Ours resizes width to 518 , sets height to the nearest multiple of 14 , and center-crops/pads to the canonical 294 × 518 . This keeps the full original width and crops height, so FO
+
+retains the full width and a centred vertical band of the original. The only region predicted by all methods is the elementwise intersection of the three rectangles: 
+
+F∩ =
+
+
+
+min  
+
+> m
+
+Hfov  
+
+> m
+
+, min  
+
+> m
+
+W fov 
+
+> m
+
+
+
+. (C.1) To avoid upsampling any method, we sample F∩ at the coarsest native resolution among the meth-ods. For method m with output size Sm on a given axis covering an FOV extent Fm of the original, 20 Original frame 1752 × 1168       
+
+> Ours
+> (binds H)
+> Gen3R / DepthSplat
+> (bind W)
+> Intersection FOV
+> 981 ×1168
+> →common grid 215 ×256
+
+Figure C.1: Resolution unification on ScanNet++. Gen3R and DepthSplat bind the width; our method binds the height. Their green intersection defines the 
+
+215 × 256 common grid. Gen3R and DepthSplat coin-cide on these datasets; in general they need not. Table C.1: Common grids resulting from the unification, fixed per dataset. ETH3D DSLR images vary slightly across scenes, hence the ≈.                        
+
+> Dataset Orig. ( W×H)Grid ( H×W)RE10K 640 ×360 256 ×256
+> ScanNet++ 1752 ×1168 215 ×256
+> ETH3D ≈6205 ×4135 215 ×256
+
+the native sampling density is ρm = Sm/F m (output pixels per original pixel). We use a single isotropic scale 
+
+r = min  
+
+> m
+
+ρm, (C.2) taken over both axes of all methods, which preserves the aspect ratio of F∩ and guarantees r ≤ ρm
+
+for every method, i.e. no method is upsampled. The common grid is 
+
+(Hg , W g ) =  ⌊r H fov  
+
+> ∩
+
+⌉, ⌊r W fov  
+
+> ∩
+
+⌉. (C.3) Applying this construction yields a fixed grid per dataset, summarised in Table C.1 and an illustration for the ScanNet++ dataset is given in Fig. C.1 . 
+
+Mapping predictions and ground truth onto the grid . Each method’s prediction is center-cropped to the intersection sub-rectangle within its own output frame and then resampled to (Hg , W g ). The ground truth is center-cropped from the original frame to F∩ and resampled identically. For RGB, we resample with Lanczos interpolation. For depth, we resample with nearest-neighbor, since blend-ing across depth discontinuities would create spurious surfaces; invalid pixels are preserved exactly rather than averaged into their neighbors. All metrics are then computed on the common grid. 
+
+C.2 3D metric scales alignment 
+
+VGGT’s predicted depth and point maps are up to an unknown scale and shift. So before calculating the metrics, we align predictions to the ground truth’s metric scale. 
+
+Depth maps . For depth maps, we do so by a single least-squares scale-and-shift fit over the valid pixels/points of the first context frame: 
+
+(a⋆, b ⋆) = arg min 
+
+> a,b
+
+X
+
+> i∈valid
+
+ a ˆdi + b − di
+
+2, (C.4) where di and ˆdi are the ground truth and predicted depth for a valid pixel i.The valid set of pixels consists of those for which the ground truth depth is positive. Pixels without a sensor return (or without a laser hit) are excluded from the fit. The resulting affine is then applied to the predicted target frame, 
+
+˜di = a⋆ ˆdi + b⋆. (C.5) Depth metrics are calculated over all valid pixels after alignment. 21 Point maps . For point maps we align via a similarity transform (R, s, t ) ∈ SO (3) × R>0 × R3
+
+using Umeyama’s closed-form solution [58], 
+
+(R⋆, s ⋆, t ⋆) = arg min 
+
+> R,s,t
+
+X
+
+> i∈V
+
+s R ˆpi + t − pi
+
+> 2
+
+, (C.6) where ˆpi and pi are corresponding predicted and ground-truth world-space points. The joint validity mask V contains pixels where the predicted point is finite, and the ground-truth depth is positive, taken over the context and generated target frames jointly. A single transform is fit for context frames and applied uniformly to every frame’s point cloud. To prevent a small number of noisy predicted points from biasing the fit we apply Umeyama in two passes. A tentative fit brings the predicted cloud into the ground-truth frame; we then run a statistical outlier filter on the aligned prediction, dropping any point whose mean distance to its 25 
+
+nearest neighbours exceeds μ + 1 .25 σ (with μ and σ the mean and standard deviation of these per-point mean distances across the cloud). The joint mask is updated to exclude the removed points, and Umeyama is re-fit on the cleaned correspondences. Metrics are computed on the aligned clouds after uniform voxel downsampling (voxel size 5 mm) followed by farthest-point subsampling to K = 20 ,000 points per side, so that scenes are compared on matched point budgets rather than raw per-frame pixel counts. 
+
+C.3 Reconstructed and generated region split 
+
+To separate reconstruction of observed content from hallucination of occluded or unseen content, we additionally split each unified target view into a visible and a generated region. The split is a per-pixel mask over the same unified pixels (see Section C.1). Crucially, the mask depends only on ground-truth geometry and is thus identical across methods, making the per-region numbers directly comparable. A target pixel is labeled VISIBLE if back-projecting its ground-truth depth into world space and reprojecting it into at least one context view lands on a consistent depth, |zctx − Dctx (π)| < τ D ctx 
+
+with τ = 0 .05 (relative); GENERATED if the target pixel has valid depth but is seen by no context view; and UNKNOWN if the target depth is invalid. The same mask is shared across RGB and depth, since both live on the same grid. On the visible region, we report reconstruction metrics (PSNR/SSIM/LPIPS for RGB, RMSE/AbsRel/ δ for depth). On the generated region we report the generation metric FID. For depth, we apply a single global scale-and-shift alignment over all valid pixels as explained in Sec-tion C.2 and only then split. 
+
+Region-wise LPIPS and FID . LPIPS was computed on the full unified 215 × 256 image with non-visible pixels zeroed in both prediction and ground truth before passing to AlexNet-LPIPS, the identical masking on both sides drives the non-visible contribution toward zero, so the reported value is dominated by the visible pixels. FID was accumulated over the generated region only via a composite-onto-GT variant, fake = gt ·(1 −mgen )+pred ·mgen against real = gt , so the distribution shift measured by FID isolates the hallucinated pixels without letting a black background bias the Inception statistics. 
+
+C.4 High and low overlapping categories description 
+
+In order to evaluate a smooth transition from reconstruction to generation, the model’s ability to generate consistent and plausible geometry for seen as well as hallucinated areas, we categorize context and target pairings in high overlapping or low overlapping categories, based on the relative camera poses. Pairings are characterized by three measures computed from the world-to-camera extrinsics: • Rotation θrot (degrees): the geodesic distance (angle) in SO(3) between the two rotation matrices. • Lateral translation tlat (meters): the magnitude of the relative camera position projected onto the context camera’s image plane (i.e. the x-y components in context-camera coordi-nates). 22 Table C.2: Thresholds used to classify context and target frame pairings. Rotation bounds are relative to the context camera’s horizontal field of view ( FoV x ≈ 109 ◦ on ScanNet++, ≈ 91 ◦ on RE10K); translations are absolute (m).                                             
+
+> ScanNet++ RE10K Category θrot tlat tlong θrot tlat tlong
+> High overlap ≤0.10 FoV x≤0.20 ≤0.50 ≤0.15 FoV x≤0.25 ≤0.70
+> Low overlap ≤0.60 FoV x≤1.50 ≤3.00 ≤0.70 FoV x≤1.50 ≤3.20
+> One-sided setup Two-sided setup
+> N= 1
+> N= 2
+> N= 3
+> N= 4
+> Context RGB Target
+> Context RGB
+> Context RGB Target
+> Context RGB
+> Context RGB
+> Context RGB Target
+> Context RGB
+> Context RGB
+> Context RGB
+> Context RGB Target
+> Context RGB Target Context RGB
+> Context RGB
+> Context RGB Target Context RGB
+> Context RGB
+
+Figure C.2: We use two setups, one-sided and two-sided setups. In one-sided, we provide the model a set of consecutive frames within a trajectory and task the model to predict a target view following the given frames. We provide experiments for a variable context length, N ∈ { 1, 2, 3, 4}. In two-sided, we provide frames from the beginning and end of a trajectory and request the model to predict an intermediate frame of such a trajectory. We evaluate model with two context lengths, N ∈ { 2, 4}.• Longitudinal translation tlong (meters): the absolute value of the context-camera z-component of the relative position (motion along the optical axis). The rotation threshold is scaled by the context camera’s horizontal field of view FoV x, since a fixed angular displacement removes a larger fraction of pixels under a narrow lens. Translations are absolute. A context - target pairing is labeled high overlapping if there is one context frame for the target frame at hand, where all three measures lie within the high-overlap bounds (θh, ℓ h, z h),and low overlapping if all three measures lie within the looser low-overlap bounds (θl, ℓ l, z l) but the pairing is not already classified as high overlapping. Table C.2 lists the FoV-relative bounds. We compute FoV x from the camera intrinsics of the ground truth, which gives FoV x ≈ 109 ◦ on ScanNet++ and FoV x ≈ 91 ◦ on RE10K; the absolute rotation bounds are then θhScanNet++ ≈ 11 ◦,
+
+θlScanNet++ ≈ 66 ◦, θhRE10K ≈ 14 ◦, θlRE10K ≈ 64 ◦.RE10K’s bounds are widened relative to ScanNet++ to account for the smoother, slower camera motion typical of real-estate captures. To prevent high-overlap 2-sided sequences from collapsing onto temporally adjacent, meaning almost identical, frames on RE10K, every edge of the four-context setup ( S0 → S1 → T → S2 → S3) and every context-target pair is required to span at least 12 frames. ScanNet++ uses a frame gap of 1, since the aequidistant subsampling to 150 frames per scene already provides a wider gap. An illustration of the one-sided vs. two-sided evaluation setup is given in Fig. C.2. 
+
+Percentage overlap . We measure the actual per-pixel overlap between each target view and its context views on the unified evaluation grid (Table C.3). For ScanNet++ we compute overlap exactly from ground-truth depth; for RE10K, which lacks GT depth, we use a constant-depth ( Z = 4 m) proxy, so the two datasets are not directly comparable in absolute terms. We report the mean fraction of target pixels covered under four context-aggregation rules, the union of all context frames, and the maximum, median, and minimum coverage from any single context frame, which together bracket the best- and worst-case visibility a model can exploit. On ScanNet++, coverage drops sharply from the high- to the low-overlap tier under every aggrega-tion rule (e.g. union coverage falls from 0.82 to 0.47 one-sided and from 0.92 to 0.79 two-sided), so the low-overlap tier genuinely demands more generation of unobserved content. The two-sided setup consistently yields higher coverage than the one-sided one, as bracketing the target between 23 Table C.3: Per-pair overlap between the target view and its context views, on the unified evaluation grid. Val-ues are the mean fraction of target pixels covered under four context-aggregation rules (union of all four con-text frames; max / median / min over individual con-text frames). ScanNet++ uses exact overlap from GT depth; RE10K uses a constant-Z = 4 m proxy.                                             
+
+> ScanNet++ RE10K high low high low one-sided  ntargets 500 500 500 500 union-of-4 0.82 0.47 0.93 0.89 max-ctx 0.78 0.44 0.93 0.89 med-ctx 0.59 0.31 0.93 0.88 min-ctx 0.42 0.21 0.92 0.87 two-sided  ntargets 500 494 364 228 union-of-4 0.92 0.79 1.00 1.00 max-ctx 0.85 0.60 1.00 1.00 med-ctx 0.65 0.38 0.95 0.90 min-ctx 0.44 0.17 0.82 0.59
+
+Table C.4: ETH3D pixel-overlap on the unified evaluation grid, computed exactly from GT depth. Values are fractions of valid target pixels (with valid GT depth) visible from the context frames; median across samples with [p5 , p95 ] in brack-ets. Union-of-2 counts pixels visible from at least one of the two context frames; max/med/min-ctx report the best / typical / worst per-context visibility fraction.      
+
+> ETH3D ( ntargets = 26 )Median [p5, p95] Union-of-2 0.61 [0.47, 0.89] Max-ctx 0.45 [0.29, 0.83] Med-ctx 0.38 [0.27, 0.64] Min-ctx 0.29 [0.01, 0.59]
+
+context views leaves fewer unseen regions. On RE10K the overlaps are uniformly higher even in the low-overlap tier ( ≥ 0.87 union), reflecting the smooth, forward-facing motion of real-estate captures. For the ETH3D scenes used in the 3D scan generation experiment, we report the analogous overlap statistics in Table C.4. Here, the overlap is again computed exactly from ground-truth depth on the unified 215 × 256 crop, over all n = 26 target samples ( 13 scenes, one two-context/two-target window each), and we report the median with [p5 , p95 ] range rather than the mean, given the small sample count. Even under the union of both context frames the median target-pixel coverage is only 
+
+0.61 , and drops to 0.29 for the worst single context frame; this makes ETH3D a substantially harder and sparser setting than ScanNet++. 
+
+## D Additional experiments and ablations 
+
+D.1 Prediction target: x vs. v. 
+
+We ablate the network prediction target, comparing direct x-prediction (endpoint prediction with v-loss reweighting) against v-prediction (velocity prediction), in both our Euclidean and Riemannian flow matching variants (Table D.1). For this experiment, we use the two-sided setting at N =2 on the high-overlap subset of ScanNet++. Under Euclidean flow matching, v-prediction is clearly prefer-able on the depth metrics: it improves RMSE from 0.270 to 0.225 , ARel from 0.133 to 0.100 , and δ
+
+from 0.855 to 0.902 , at a comparable depth FID. Under our Riemannian formulation, this ordering reverses across nearly all metrics: x-prediction is better on both depth (RMSE, ARel, δ) and appear-ance (PSNR, SSIM, LPIPS), with only FID marginally favoring v-prediction. The absolute gaps, however, remain small throughout. Two effects plausibly explain this. First, the spread between prediction targets is far smaller in the Riemannian setting (e.g. an RMSE gap of 0.003 versus 0.045 
+
+in the Euclidean case), indicating that once the flow is constrained to the data manifold, the choice of target becomes largely inconsequential: the geometry, rather than the parameterization, dominates. Second, endpoint prediction is defined directly on the manifold, so under the Riemannian formu-lation, x-prediction targets a point that is guaranteed to be a valid manifold element, which may make it marginally better conditioned than regressing a tangent-space velocity. Given its small but consistent edge across both depth and appearance metrics, we adopt x-prediction in our final model. 
+
+D.2 ODE solver step count 
+
+We ablate the number of ODE integration steps used at inference. Table D.2 reports RGB and depth metrics on the high-overlap, two-sided N =2 ScanNet++ protocol as we vary the step count from 5
+
+24 Table D.1: We compare endpoint prediction (x-pred) with velocity prediction (v-pred) for the Eu-clidean and Riemannian flow models.                                                  
+
+> RGB Depth Variant PSNR ↑SSIM ↑LPIPS ↓FID ↓RMSE ↓ARel ↓δ↑FID ↓
+> Euclidean flow v-pred 16.20 0.585 0.235 61.24 0.225 0.100 0.902 33.48
+> Euclidean flow x-pred 15.72 0.584 0.236 51.29 0.270 0.133 0.855 34.17 Ours v-pred 17.93 0.658 0.164 47.12 0.205 0.087 0.910 31.05
+> Ours x-pred 18.12 0.661 0.163 47.50 0.202 0.085 0.913 31.15
+
+Table D.2: Effect of the number of generation steps on region-split RGB and depth metrics evaluated on the high overlap, 2-sided ScanNet++ protocol.                                                                  
+
+> RGB Depth Steps PSNR ↑SSIM ↑LPIPS ↓FID ↓RMSE ↓AbsRel ↓δ1↑FID ↓
+> 518.452 0.673 0.157 47.983 0.192 0.079 0.922 30.588 10 18.283 0.666 0.159 47.645 0.197 0.081 0.920 30.820 20 18.119 0.661 0.163 47.499 0.202 0.085 0.913 31.194 30 18.068 0.659 0.164 47.554 0.204 0.087 0.911 31.276 50 18.046 0.658 0.164 47.802 0.209 0.090 0.907 31.352 100 17.971 0.657 0.165 47.310 0.206 0.088 0.912 30.973
+
+to 100 . The overriding observation is stability: across the entire range RMSE moves by under 0.02 ,PSNR by under 0.5 dB, and δ1 by under 0.02 , so our Riemannian sampler is robust to the step count and does not require many integration steps to converge. Looking more closely, the two modalities trade off slightly differently. On depth, the visible-region metrics mildly favor fewer steps (e.g. RMSE 0.192 → 0.209 and δ1 0.922 → 0.907 from 5 to 50 
+
+steps): since visible depth is already well constrained by the context, additional integration tends to perturb this geometry slightly rather than improve it. On RGB, the visible metrics are similarly flat but we observe qualitatively that few-step samples are noticeably smoother and less detailed, while more steps recover fine appearance structure; the generated-region FID, which is not pixel-aligned, stays essentially constant throughout. We therefore choose 20 steps in all experiments as a balance: enough integration to synthesize sharp, detailed appearance for generated regions, while staying in the regime where visible geometry remains accurate and inference stays fast ( ≈ 0.88 s per sample on an RTX A6000). 25

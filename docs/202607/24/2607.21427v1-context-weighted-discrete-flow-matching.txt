@@ -1,0 +1,1499 @@
+Title: Context-weighted Discrete Flow Matching
+
+URL Source: https://arxiv.org/pdf/2607.21427v1
+
+Published Time: Fri, 24 Jul 2026 01:06:26 GMT
+
+Number of Pages: 22
+
+Markdown Content:
+# Context-weighted Discrete Flow Matching 
+
+Daniil Cherniavskii ∗
+
+University of Amsterdam 
+
+d.cherniavskii@uva.nl 
+
+Daniel Severo 
+
+Meta FAIR 
+
+dsevero@meta.com 
+
+Karen Ullrich 
+
+Meta FAIR 
+
+karenu@meta.com 
+
+## Abstract 
+
+Discrete flow matching provides a flexible framework for generative modeling on discrete structures [ 1]. However, the standard factorized training objective exposes the model to targets of varying difficulty, mixing well-conditioned, predictable tokens with ambiguous, high-entropy ones. We empirically demonstrate that the uncertainty over the value of each token is closely related to the density of available context in its neighborhood. Motivated by this observation, we propose a simple modification to the underlying Continuous-Time Markov Chain (CTMC) that incorporates local context information. Our context-weighted sampler improves generation quality with negligible computational overhead, while our scaled cross-entropy loss function reweights the training signal from different tokens and reduces generative perplexity by up to 63% on OpenWebText [ 2]. Moreover, our approach matches a strong semi-autoregressive block diffusion baseline [ 3] in quality while retaining the ability for any-order generation. These results highlight the role of local context as an important factor in discrete generative modeling and show that simple context-aware modifications can significantly improve both sampling and training efficiency. 
+
+## 1 Introduction 
+
+Figure 1: A motivational example. The target word “Red” is much more predictable in the second sentence because of the available local context. Generative modeling over discrete data has recently expanded beyond autoregressive approaches to include diffusion and flow matching methods [ 1 , 4]. These methods have been successfully applied to image generation with discrete latents [ 5], molecular design [ 6, 7], and text generation [ 8]. Among them, Discrete Flow Matching (DFM) is a particularly general instance of this family: it learns generative dynamics via continuous-time Markov processes [ 9 , 1], enabling parallel and any-order generation through learned probability paths. 
+
+> ∗Work done during an internship at Meta FAIR. Preprint. arXiv:2607.21427v1 [cs.LG] 23 Jul 2026
+
+In DFM and discrete diffusion, the probability path and factorized training objective decompose generation into coordinate-wise prediction problems. Unlike autoregressive models, which condition on a fixed prefix, these methods effectively marginalize over all possible token order permutations, requiring the model to predict tokens under a much broader set of partial contexts. As a result, tokens have widely varying amounts of conditioning information, leading to substantial variation in prediction difficulty [ 10 ]. Some tokens are strongly constrained by context and easy to predict, while others remain ambiguous (see fig. 1). Existing approaches mitigate this imbalance by enforcing structured generation orders [ 11 , 3, 12 ] or adapting the sampler at inference time [ 13 ], but they do not incorporate uncertainty directly into the generative dynamics. In this work, we empirically observe that prediction difficulty is closely tied to available local context, measured by the number of unmasked tokens in each target token’s neighborhood. Motivated by this, we modify the CTMC update probabilities to depend on local context while preserving the per-token marginal probability of being unmasked along the probability path. This keeps the same noise and data endpoints, but shifts intermediate updates toward better-conditioned tokens. The resulting formulation provides both an inference-time sampler that requires no fine-tuning, and a scaled cross-entropy objective that reweights the training signal. Context-weighted sampling improves generation quality across domains: on OpenWebText [ 2 ], it improves MAUVE by up to 24%, while for molecule generation [ 14 ], it increases the number of valid and novel samples by up to 2.8× and 
+
+1.9×, respectively. Our loss objective reduces generative perplexity on OpenWebText by up to 63%, and matches a strong block diffusion baseline while retaining any-order generation. Our contributions are: • We empirically show that prediction entropy is closely linked to available local context, with denser unmasked neighborhoods leading to lower uncertainty. • We modify the CTMC transition dynamics to depend on local context while preserving the per-token marginal unmasking probability. • We derive two practical context-aware mechanisms: a sampler applicable to pre-trained models without fine-tuning, and a scaled cross-entropy objective that reweights the training signal from different tokens, resulting in significant gains in generation quality. The remainder of the paper is organized as follows: section 2 reviews Discrete Flow Matching and probability path design, section 3 presents our empirical motivation and context-weighted formulation, section 4 evaluates the proposed sampler and training objective on text and molecular generation tasks, and section 5 summarizes the work and discusses limitations and future directions. 
+
+## 2 Background 
+
+2.1 Discrete Flow Matching 
+
+We consider finite discrete sequences x ∈ D N , where D is a finite vocabulary, and N is the sequence length. Discrete Flow Matching (DFM)[ 1] typically defines a conditional probability path 
+
+pt(x | x0, x 1) between a source noise sample x0 ∼ p0 and a data sample x1 ∼ pdata . In this work, we consider two common source distributions: a fully masked source, where all coordinates are initialized to a special mask token, and a uniform source, where coordinates are initialized from the vocabulary uniformly at random. For both sources, we say that coordinate i is unmasked whenever 
+
+xi = xi
+
+> 1
+
+, and masked otherwise. The path satisfies the endpoint conditions 
+
+p0(x | x0, x 1) = δ(x0, x ), p1(x | x0, x 1) = δ(x1, x ).
+
+where δ(z, x ) denotes the Kronecker delta, equal to 1 when x = z and 0 otherwise. This path is realized as a Continuous-Time Markov Chain (CTMC). For a small step h, its transition kernel can be written as 
+
+P(Xt+h = y | Xt = x) = δ(x, y ) + h u t(y, x | x0, x 1) + o(h),
+
+where ut(y, x | x0, x 1) is the probability velocity, or transition rate, from state x to state y, and o(h)
+
+denotes a remainder term r(h) satisfying r(h)/h → 0 as h → 0. DFM uses factorized velocities, 2where transitions change one coordinate at a time: 
+
+ut(y, x | x0, x 1) = 
+
+> N
+
+X
+
+> i=1
+
+δ(yi, x i)uit(yi, x | x0, x 1).
+
+where i ∈ {1, . . . , N } indexes a token position in the sequence, and xi denotes 
+
+(x1, . . . , x i−1, x i+1 , . . . , x N ), i.e. all coordinates of x except i. This factorization enables effi-cient coordinate-wise simulation, although the path distribution pt(x | x0, x 1) itself may not factorize across coordinates. The probability path and the velocity are linked by the Kolmogorov forward equation: choosing a path determines a family of corresponding velocities, and simulating the CTMC with this velocity recovers the path marginals. A common choice is the convex mixture path [9, 1], defined independently for each coordinate as 
+
+pt(xi | x0, x 1) = (1 − κt)δ(xi, x i
+
+> 0
+
+) + κtδ(xi, x i
+
+> 1
+
+),
+
+where κt ∈ [0 , 1] is a scalar noise scheduler that increases with time. Its corresponding coordinate-wise velocity is 
+
+uit(yi, x | x0, x 1) = ˙κt
+
+1 − κt
+
+δ(yi, x i
+
+> 1
+
+) − δ(yi, x i) .
+
+Thus each coordinate moves from its source value toward its data value at the same global rate, independent of how much context is available around that coordinate. A natural extension is to let the per-coordinate update rate depend on the current state xt, so that coordinates can be updated differently while retaining coordinate-wise simulation. The model is trained to predict the data endpoint from a partially noised state Xt ∼ pt(· | x0, x 1)
+
+using the factorized Conditional Matching objective [1] 
+
+LCM (θ) = −Et,X 0,X 1,X t
+
+> N
+
+X
+
+> i=1
+
+log pθ,i 
+
+> 1|t
+
+(Xi 
+
+> 1
+
+| Xt).
+
+Thus training decomposes into coordinate-wise prediction problems, where each token is predicted from the same partially noised context but all coordinates are weighted uniformly. 
+
+2.2 Probability Path Design 
+
+The choice of probability path determines the family of conditional prediction problems encountered during training and sampling. In masked diffusion, different token orderings induce conditionals of widely varying difficulty, and learning all such factorizations can be substantially harder than following a favorable one [ 10 ]. When the data admit an intrinsic structure, aligned orderings yield low-entropy, well-conditioned predictions, whereas unfavorable ones lead to ambiguous, high-entropy targets. Existing approaches address this by restricting the set of factorizations: for example, Halton schedules impose spatially uniform token selection in MaskGIT, while neighboring autoregressive decoding exploits local spatial dependencies in vision models [ 11 , 15 ]. Semi-autoregressive and block-wise decoding strategies similarly constrain the generation process by revealing continuous groups of tokens rather than arbitrary subsets [ 3 , 12 , 16 – 21 ]. While these methods improve the induced conditionals, they hard-code an ordering, which may be suboptimal for individual samples and reduces the flexibility of order-agnostic generation. Test-time ordering methods instead adapt the generation order using confidence, margin, or entropy-based criteria [ 22 , 10 , 13 ], but rely on the model’s own uncertainty estimates and leave the training objective and probability path unchanged. General path formulations and kinetic-optimal path design offer a more direct way to modify discrete probability paths [ 23 ], but primarily target global path geometry rather than connecting locality of context to token-level prediction uncertainty. This leaves open how to incorporate such uncertainty into the probability path in a way that can inform both training and inference. 
+
+## 3 Context-weighted Discrete Flow Matching 
+
+3.1 Local Context and Token Uncertainty 
+
+Following the view that probability path design induces the conditional prediction problems, we now ask what makes some tokens easier to predict than others. We empirically find that local 
+
+30 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16                 
+
+> Number of Unmasked Neighbors
+> 1
+> 2
+> 3
+> 4
+> 5
+> 6
+> 7
+> Entropy
+> 012345678910 11 12 13 14 15 16
+> Number of Unmasked Neighbors
+> 1
+> 2
+> 3
+> 4
+> 5
+> 6
+> 7
+> Negative Log-Likelihood
+> t = 0.2
+> t = 0.4
+> t = 0.6
+> t = 0.8
+
+Figure 2: The average entropy (left) and negative log-likelihood (right) of the masked token vs. the number of its unmasked neighbors in the vicinity of size 2r = 16 . Both metrics decrease monotonically as the amount of available local context increases. 
+
+context provides a simple proxy for prediction difficulty in Discrete Flow Matching: the number of unmasked neighbors around a token is strongly correlated with both the entropy of the model prediction and the negative log-likelihood of the true token. Using a pre-trained DFM model on OWT [ 2], we sample partially masked states Xt ∼ pt(· | x0, x 1)
+
+and for each masked token measure the prediction entropy and the negative log-likelihood as a function of the number of unmasked neighbors within a fixed local window. As shown in fig. 2, both quantities decrease consistently as more local context becomes available, indicating that nearby observed tokens make the prediction both less uncertain and more accurate (see more details in Appendix section B.3). This variation matters because the standard CM objective weights all coordinate-wise targets uni-formly, even though their reducible learning signal may differ. For a fixed partially noised state Xt,with Xi 
+
+> 1
+
+∼ pi
+
+> 1|t
+
+(· | Xt), the expected loss of the model predictor pθ,i  
+
+> 1|t
+
+decomposes as 
+
+EXi
+
+> 1∼pi
+> 1|t(·| Xt)
+
+h
+
+− log pθ,i 
+
+> 1|t
+
+(Xi 
+
+> 1
+
+| Xt)
+
+i
+
+= H
+
+
+
+pi
+
+> 1|t
+
+(· | Xt)
+
+| {z }
+
+> irreducible uncertainty
+
++ KL 
+
+
+
+pi
+
+> 1|t
+
+(· | Xt) ∥ pθ,i 
+
+> 1|t
+
+(· | Xt)
+
+| {z }
+
+> model error
+
+.
+
+Thus the per-token loss contains both an irreducible uncertainty term and a reducible model error term. For high-entropy coordinates, a large part of the loss comes from intrinsic ambiguity in the conditional distribution, so a single sampled target gives a less informative training signal. Low-entropy coordinates, in contrast, correspond to more determined targets and provide sharper supervision. Ideally, a weighting scheme should emphasize the reducible component of the loss rather than uniformly weighting raw per-token losses, which can be dominated by irreducible uncertainty. Since the true entropy is unavailable during training, we use local context as an inexpensive proxy for this token-level difficulty. 
+
+3.2 Context-weighted CTMC 
+
+In this section, we propose the context-aware modification to the standard CTMC process [ 1]. In order to keep coordinate-wise simulation tractable, we will employ only factorized velocities. Consider a context weight function α : DN → RN 
+
+> +
+
+. To integrate it into the CTMC, we define a new factorized velocity vt as: 
+
+vit(xi, z | x0, x 1) := αi(z) · uit(xi, z | x0, x 1)
+
+Note that it is a valid probability velocity, since it satisfies the rate conditions: 4X
+
+> xi∈[d]
+
+vit(xi, z ) = X
+
+> xi∈[d]
+
+αi(z)uit(xi, z ) = αi(z) X
+
+> xi∈[d]
+
+uit(xi, z ) = 0 
+
+and vit(xi, z ) ≥ 0, ∀xi̸ = zi . We emphasize that α depends only on the z (current state) and controls which token positions will be changed, but not the actual value of the token, since it is independent of 
+
+x. This new velocity vt(y, x ) generates a new conditional probability path ˜pt(x | x0, x 1), defined as the solution to the corresponding Kolmogorov forward equation (see section 2.1 for details). A necessary requirement for ˜pt is to connect noise and data distributions, imposing boundary conditions 
+
+˜pt=0 (x | x0, x 1) = δ(x, x 0) and ˜pt=1 (x | x0, x 1) = δ(x, x 1). Satisfying them in the general case requires solving the aforementioned equation for ˜pt, which we find intractable. However, for the standard convex mixture path, we are able to derive the conditions on the context weight function αi
+
+to satisfy the boundary conditions and preserve the marginal distribution. 
+
+Theorem 1. Let ˜pt(· | x0, x 1) denote the context-weighted discrete path associated with the standard convex probability path. If 
+
+> N
+
+X
+
+> i=1
+
+αi(xt) δ(xit, x i
+
+> 0
+
+) = 
+
+> N
+
+X
+
+> i=1
+
+δ(xit, x i
+
+> 0
+
+),
+
+then ˜pt satisfies the endpoint constraints 
+
+˜p0(x | x0, x 1) = δ(x, x 0), ˜p1(x | x0, x 1) = δ(x, x 1),
+
+and induces the same distribution over the number of updated tokens as the standard convex path. If, moreover, α is equivariant under circular shifts, in the sense that 
+
+αi+k(shift k(x)) = αi(x) ∀i, k, 
+
+where indices are taken modulo N , and depends only on the binary mask reveal, i.e. 
+
+αi(x) = ¯ αi(b(x)) 
+
+where ¯α : {0, 1}N → RN 
+
+> +
+
+and bj (x) = 1[xj = xj
+
+> 1
+
+], then for every coordinate i the marginal law matches that of the standard convex path: 
+
+P(Xit = xi 
+
+> 1
+
+| x0, x 1) = κt.
+
+The first condition is equivalent to requiring that the weights average to 1 over the currently masked coordinates. Intuitively, this preserves the total update rate, and therefore the distribution of the number of tokens updated along the path. The second condition is a symmetry requirement: under circular-shift equivariant weighting, count preservation also yields matching per-coordinate marginals. The formal proof is given in section A. 
+
+Inference-time sampling. Our formulation enables a purely inference-time modification of the sampling procedure. Assuming theorem 1 conditions, i.e. the probability velocity vt remains factorized and the per-token marginals are preserved, we can alter the dynamics in-place, without any fine-tuning or computational overhead. Specifically, we inject a multiplicative weight αi(x)
+
+into each coordinate of the Euler solver [9, 1] for ut, obtaining a context-weighted update rule: 
+
+P(Xt+h = y | Xt = x) = 
+
+(exp ( α(x) · hu t(x, x )) , y = x 
+
+> ut(y,x )
+> |ut(y,x )|
+
+(1 − exp ( α(x) · hu t(x, x ))) , y̸ = x
+
+Using a pre-trained Discrete Flow Matching model, at each timestep t and for each token xit, we weight the jump coefficients with αi(Xt). This modification leaves the computational complexity almost unchanged, while allowing the sampling process to adapt to the local context. We introduce two context-weighted solvers: Neighbor-weighted and Entropy-weighted. Both define position-wise weights αi(xt), normalized with a softmax inverse temperature s so that they satisfy the boundary conditions of theorem 1. We provide a verification of this in the Appendix section A.3. 5For the Neighbor-weighted solver, we use the number of unmasked tokens in a local window of radius r:
+
+αi
+
+> NW
+
+(x) ∝
+
+> i+r
+
+X
+
+> j=i−r
+
+1[xj = xj
+
+> 1
+
+]
+
+For the Entropy-weighted solver, we use token-level predictive entropy available at test time: 
+
+αi
+
+> EW
+
+(x) ∝ H
+
+
+
+pθ,i 
+
+> 1|t
+
+(· | x)
+
+−1
+
+In practice, we use s > 0 for Neighbor-weighted and s < 0 for Entropy-weighted, so locally well-contextualized or low-entropy positions receive larger weights. Unlike Ben-Hamu et al. [13] , our Entropy-weighted sampler is applicable to arbitrary source distributions and uses entropy only to select which positions to update, while preserving the stepwise distribution of the number of updated tokens. 
+
+Train-time path ˜pt sampling. For general context weights αi(x), the context-weighted path ˜pt is not available in an analytic form, and therefore, simulation-free sampling is impossible. Moreover, the token values are no longer conditionally independent for ˜pt, so sampling cannot be reduced to a simple parallel factorized procedure. A straightforward approach would therefore rely on time-wise simulation of the path, which is quite costly. Instead, we leverage the fact that the distribution of the number of unmasked tokens Mt is known, which allows us to construct an exact token-wise sampler with O(N ) complexity (see algorithm 1). We first sample a number of unmasked tokens Mt, and then update the tokens one-by-one. This eliminates the need for costly simulation along the time axis while still returning exact samples from ˜pt. We prove the exactness of the algorithm in the Appendix section A.3. 
+
+Algorithm 1: Train-time ˜pt(x) sampling 
+
+Input: N , κt, x0, x1, δ, α
+
+Output: A sample ˜Xt ∼ ˜pt 
+
+> 1
+
+Sample m ∼ Binomial( N, κ t) ; // Total number of unmasked tokens  
+
+> 2
+
+Set ˜Xt ← x0; 
+
+> 3
+
+for step = 1 to m do  
+
+> 4
+
+Sample i ∼ (1 − δ( ˜Xit , x i
+
+> 1
+
+)) · αi( ˜Xt) ; // Choose masked token position  
+
+> 5
+
+Set ˜Xit ← xi 
+
+> 1
+
+; // Unmask the token  
+
+> 6
+
+return ˜Xt;
+
+Scaled Cross-Entropy. Motivated by the empirical link between prediction uncertainty and the available local context (see section 3.1), we introduce Scaled Cross-Entropy as a plug-in alternative to the standard Discrete Flow Matching objective: 
+
+Lα(θ) = −Et,X 1,X 0,X t
+
+" NX
+
+> i=1
+
+αi(Xt) log pθ,i 
+
+> 1|t
+
+(Xi 
+
+> 1
+
+| Xt)
+
+#
+
+.
+
+Here, the context weight function αi reweights the contribution of each coordinate, upweighting better-conditioned coordinates and downweighting ambiguous ones. It leaves the train-time path sampling unchanged, and therefore retains the efficiency of standard training and any-order sampling at inference time, while capturing the context-weighted importance of different token updates. 
+
+## 4 Experiments 
+
+We evaluate our method on two domains: text and molecular generation. For text, we use Open-WebText (OWT) [ 2 ], a large-scale corpus, while for molecules we use QM9 in SMILES format [ 14 ], a significantly smaller dataset that allows us to study performance in the low-data regime. We follow the MDLM architecture and training setup to ensure fair comparison [ 8 ]. Our OWT model has approximately 170M parameters; for QM9, we modify only the vocabulary, resulting in a model with 6128 256 512 1024 2048 4096           
+
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> MAUVE
+> 128 256 512 1024 2048 4096
+> 75
+> 100
+> 125
+> 150
+> 175
+> 200
+> 225
+> Generative perplexity
+> Euler
+> Entropy-weighted (ours)
+> Neighbor-weighted (ours)
+> 128 256 512 1024 2048 4096
+> 7.9
+> 8.0
+> 8.1
+> 8.2
+> 8.3
+> Entropy
+
+Figure 3: Neighbor-weighted sampling improves generation quality without fine-tuning or computational overhead. At larger NFE, it outperforms both the Euler baseline and the model-uncertainty-based Entropy-weighted solver in MAUVE and generative perplexity, while maintaining comparable token-level entropy. 8 16 32 64 128 256      
+
+> 100
+> 200
+> 300
+> 400
+> 500
+> Valid Count
+> 816 32 64 128 256
+> 50
+> 100
+> 150
+> 200
+> 250
+> Novel Count
+> Euler
+> Entropy-weighted (ours)
+> Neighbor-weighted (ours)
+
+Figure 4: Local context can be more reliable than model uncertainty in low-data regimes. On the small QM9 dataset, Neighbor-weighted sampling outperforms both Euler and Entropy-weighted baselines across all NFE levels, nearly tripling the number of valid molecules and doubling the number of novel molecules. approximately 92M parameters. For text, we report generative perplexity (Gen. PPL), computed with GPT-2[ 24 ], entropy to measure text diversity, and MAUVE as a balanced quality–diversity metric [ 25 ]. For QM9, we report the number of valid molecules and the number of novel samples (out of 1024 generations). All setup details are provided in the appendix section B.1. 
+
+4.1 Inference-time context-weighted sampling Context-weighted sampling improves generation quality at negligible computational cost. On OpenWebText with uniform source noise, the Neighbor-weighted solver improves MAUVE by up to 23% and reduces generative perplexity by 22% relative to Euler, while preserving comparable entropy (see fig. 3). Similar perplexity gains are observed with masked-source noise (see fig. 7 in the Appendix). The two solvers behave differently across compute regimes. Entropy-weighted sampling is stronger at low NFE, whereas Neighbor-weighted sampling benefits from more update steps: it overtakes Euler in MAUVE from NFE = 256 and in perplexity from NFE = 512 , and eventually surpasses Entropy-weighted sampling from NFE = 1024 . We attribute the weaker low-NFE behavior to local inconsistencies caused by neighboring tokens being updated too independently when only few updates are performed. 
+
+Local context information is robust in the low-data regime. On QM9, Neighbor-weighted sampling yields much larger gains than Entropy-weighted sampling, increasing valid molecules by approximately ×2.8 and novel molecules by approximately ×1.9 over Euler (see fig. 4). This suggests that, when data is limited, model-based uncertainty estimates can be noisy, while local context remains a stable signal for guiding updates. 70.5 1.0 1.5 2.0       
+
+> a
+> 0.68
+> 0.70
+> 0.72
+> 0.74
+> 0.76
+> 0.78
+> MAUVE
+> 0.5 1.0 1.5 2.0
+> a
+> 30
+> 35
+> 40
+> 45
+> 50
+> 55
+> 60
+> 65
+> Generative perplexity
+> 0.5 1.0 1.5 2.0
+> a
+> 7.5
+> 7.6
+> 7.7
+> 7.8
+> 7.9
+> Entropy
+> = 5
+> = 15
+> No corrector
+
+Figure 5: Context-weighted sampling is complementary to predictor–corrector sampling. Adding Neighbor-weighted updates to a predictor–corrector sampler further lowers generative perplexity and slightly improves MAUVE, showing that local-context weighting provides an additional quality-improving mechanism. 
+
+Context-weighted sampling is complementary to predictor–corrector schemes. To test whether local-context weighting provides gains beyond stronger samplers, we combine Neighbor-weighted scaling with the predictor–corrector framework of Gat et al. [1] . We search over correctors of the form 
+
+αt = 1 + αt a(1 − t)b,
+
+with a = b to reduce the search space. On a pre-trained DFM with uniform source noise, the combined sampler further improves MAUVE and generative perplexity, at the cost of lower entropy (see fig. 5). 
+
+4.2 Train-time modifications and ablations 
+
+Table 1: Context-weighted Discrete Flow Matching approaches strong semi-autoregressive block diffusion baselines in MAUVE while substantially improving over non-autoregressive baselines. Type Method MAUVE ( ↑) Gen. PPL ( ↓) Entropy ( ↑ )Data - 0.890 ±0.008 14.66 ±0.13 7.86 ±0.01 
+
+(Semi-)AR AR 0.817 ±0.017 12.72 ±0.25 7.57 ±0.02 
+
+BD3LM ( L′ = 4 ) 0.784 ±0.025 24.19 ±0.08 7.69 ±0.01 
+
+BD3LM ( L′ = 8 ) 0.734 ±0.022 29.47 ±0.08 7.70 ±0.01 
+
+BD3LM ( L′ = 16 ) 0.727 ±0.023 32.95 ±0.39 7.71 ±0.01 
+
+Non-AR SEDD 0.574 ±0.024 110.23 ±0.63 8.14 ±0.01 
+
+MDLM 0.685 ±0.021 41.73 ±0.49 7.73 ±0.01 
+
+DFM, Uniform 0.628 ±0.030 82.17 ±0.84 7.93 ±0.01 
+
+DFM, Mask 0.672 ±0.024 40.90 ±0.08 7.64 ±0.01 
+
+DFM+SCE, Uniform 0.777 ±0.017 30.20 ±0.22 7.66 ±0.01 
+
+DFM+SCE, Mask 0.690 ±0.010 38.85 ±0.50 7.67 ±0.01 
+
+Scaled Cross-Entropy brings Discrete Flow Matching close to strong semi-autoregressive baselines with a minimal modification. Scaled Cross-Entropy yields large improvements in generation quality, despite requiring only a simple plug-in change to the standard loss (see table 1). In the uniform-source setting, it improves MAUVE ( 0.628 → 0.777 ) and reduces generative perplexity by 63% (82 .17 → 30 .20 ). This is sufficient to bring Discrete Flow Matching close to the strong semi-autoregressive block diffusion baselines ( L′ = 4 , 8), while preserving the flexibility of any-order generation and the standard Euler sampler. Moreover, it clearly outperforms other non-autoregressive baselines such as SEDD and MDLM, showing that better weighting of the training signal alone can account for a substantial portion of the quality gap. 
+
+Scaled Cross-Entropy is the strongest loss among the considered training objectives. We compare the standard cross-entropy (CE) [ 1 ], NELBO [ 8], Bregman divergence [ 9], and our Scaled Cross-Entropy (SCE), with results reported in table 2. SCE delivers the best overall performance across 8Table 2: DFM trained with scaled cross-entropy achieves lower perplexity while maintaining reason-able entropy. OWT QM9 Source Loss MAUVE (↑) Gen. PPL (↓) Entropy (↑) Valid (↑) Novel (↑)
+
+Uniform CE 0.628 ±0.030 82.17 ±0.84 7.93 ±0.01 475.4 ±17 .1 287.0 ±15 .6
+
+NELBO 0.677 ±0.035 74.18 ±0.40 7.88 ±0.01 481.4 ±14 .4 299.0 ±15 .8
+
+Bregman 0.682 ±0.015 63.06 ±0.53 7.85 ±0.01 494.4 ±10 .4 308.0 ±8.7
+
+SCE (ours) 0.777 ±0.017 30.20 ±0.22 7.66 ±0.01 556.0 ±16 .1 297.6 ±10 .1
+
+Mask CE 0.672 ±0.024 40.90 ±0.31 7.64 ±0.01 134.8 ±12 .4 114.8 ±10 .5
+
+NELBO 0.685 ±0.020 40.46 ±0.24 7.66 ±0.01 158.8 ±7.0 128.6 ±7.4
+
+Bregman 0.594 ±0.018 51.02 ±0.50 7.74 ±0.01 119.8 ±4.7 98.2 ±6.9
+
+SCE (ours) 0.690 ±0.010 38.85 ±0.50 7.67 ±0.01 177.2 ±11 .3 137.8 ±7.6
+
+the considered settings. Its advantage is especially pronounced for the uniform source, where it substantially improves both MAUVE and generation perplexity on OWT relative to all alternative losses, while preserving reasonable entropy. On QM9, it also achieves the highest number of valid molecules and remains competitive in novelty. This suggests that context-weighted loss reweighting is a more effective training signal than the commonly used alternatives. Table 3: Mixture ( pt) vs. neighbor ( ˜pt) path comparison. OWT QM9 Source Path MAUVE (↑) Gen. PPL (↓) Entropy (↑) Valid (↑) Novel (↑)
+
+Uniform pt 0.777 ±0.017 30.20 ±0.22 7.66 ±0.01 556.0 ±16 .1 297.6 ±10 .1
+
+˜pt 0.768 ±0.017 37.45 ±0.38 7.70 ±0.01 658.4 ±20 .3 310.2 ±19 .6
+
+Mask pt 0.690 ±0.010 38.85 ±0.50 7.67 ±0.01 177.2 ±11 .3 137.8 ±7.6
+
+˜pt 0.751 ±0.012 36.25 ±0.52 7.65 ±0.01 298.0 ±13 .6 181.6 ±9.62 
+
+Training with the context-weighted path is more effective for low-data settings. We next compare training on the standard mixture path pt and the context-weighted path ˜pt, while using SCE as loss function in both cases; the results are shown in table 3. On OWT with the uniform source, replacing the mixture pt with the neighbor ˜pt path does not improve MAUVE or generation perplexity, although it yields a modest increase in entropy. In contrast, the context-weighted path is substantially more beneficial in the masked-source setting, where it improves both MAUVE and generation perplexity. The gains are even more pronounced on QM9, where ˜pt improves both validity and novelty for both source distributions, with especially large improvements for the masked source, nearly doubling the number of valid generated molecules. An intermediate neighborhood radius provides the best quality–diversity trade-off. We ablate the vicinity radius r used in the Neighbor-weighted scaling αi(x) under the SCE objective (see fig. 9 in Appendix). As r increases, both generative perplexity and entropy decrease, indicating more confident but less diverse predictions. MAUVE peaks at r = 3 , suggesting that moderate context aggregation best balances coherence and diversity. 
+
+## 5 Conclusion 
+
+We studied local context in Discrete Flow Matching. Our results suggest three main takeaways. First, context-dependent sampling provides a cost-efficient inference-time improvement, orthogonal to predictor-corrector sampling techniques. Second, the context-weighted loss substantially improves training and closes much of the gap to semi-autoregressive baselines while preserving any-order generation. Finally, context-weighted paths are particularly useful in constrained and low-data regimes. Overall, local context appears to be an important factor in both training and sampling for Discrete Flow Matching. 9Several limitations remain. Neighbor-weighted sampling is less effective at very low NFE, and our experiments focus on small models and one-dimensional discrete sequences, leaving open how local-context weighting behaves for larger models, longer contexts, and higher-dimensional data such as images. Future work should develop better proxies for token-level uncertainty and use them for more adaptive probability path design, while further narrowing the gap to strong autoregressive models. 
+
+## References 
+
+[1] Itai Gat, Tal Remez, Neta Shaul, Felix Kreuk, Ricky T. Q. Chen, Gabriel Synnaeve, Yossi Adi, and Yaron Lipman. Discrete flow matching. In The Thirty-eighth Annual Conference on Neural Information Processing Systems , 2024. URL https://openreview.net/forum?id= GTDKo3Sv9p .[2] Aaron Gokaslan and Vanya Cohen. Openwebtext corpus. http://Skylion007.github.io/ OpenWebTextCorpus , 2019. [3] Marianne Arriola, Aaron Gokaslan, Justin T Chiu, Zhihan Yang, Zhixuan Qi, Jiaqi Han, Subham Sekhar Sahoo, and Volodymyr Kuleshov. Block diffusion: Interpolating between autoregressive and diffusion language models. arXiv preprint arXiv:2503.09573 , 2025. [4] Andrew Campbell, Joe Benton, Valentin De Bortoli, Thomas Rainforth, George Deligiannidis, and Arnaud Doucet. A continuous time framework for discrete denoising models. Advances in Neural Information Processing Systems , 35:28266–28279, 2022. [5] Shuyang Gu, Dong Chen, Jianmin Bao, Fang Wen, Bo Zhang, Dongdong Chen, Lu Yuan, and Baining Guo. Vector quantized diffusion model for text-to-image synthesis. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 10696–10706, 2022. [6] Clement Vignac, Igor Krawczuk, Antoine Siraudin, Bohan Wang, Volkan Cevher, and Pas-cal Frossard. Digress: Discrete denoising diffusion for graph generation. In The Eleventh International Conference on Learning Representations , 2023. [7] Filip Ekström Kelvinius, Oskar B Andersson, Abhijith S Parackal, Dong Qian, Rickard Armiento, and Fredrik Lindsten. Wyckoffdiff–a generative diffusion model for crystal symmetry. In Forty-second International Conference on Machine Learning , 2025. [8] Subham Sekhar Sahoo, Marianne Arriola, Aaron Gokaslan, Edgar Mariano Marroquin, Alexan-der M Rush, Yair Schiff, Justin T Chiu, and Volodymyr Kuleshov. Simple and effective masked diffusion language models. In The Thirty-eighth Annual Conference on Neural Information Processing Systems , 2024. URL https://openreview.net/forum?id=L4uaAR4ArM .[9] Yaron Lipman, Marton Havasi, Peter Holderrieth, Neta Shaul, Matt Le, Brian Karrer, Ricky T. Q. Chen, David Lopez-Paz, Heli Ben-Hamu, and Itai Gat. Flow matching guide and code, 2024. URL https://arxiv.org/abs/2412.06264 .[10] Jaeyeon Kim, Kulin Shah, Vasilis Kontonis, Sham M. Kakade, and Sitan Chen. Train for the worst, plan for the best: Understanding token ordering in masked diffusions. In Forty-second International Conference on Machine Learning , 2025. URL https://openreview.net/ forum?id=DjJmre5IkP .[11] Victor Besnier, Mickael Chen, David Hurych, Eduardo Valle, and Matthieu Cord. Halton scheduler for masked generative image transformer. In The Thirteenth International Conference on Learning Representations , 2025. [12] Itai Gat, Heli Ben-Hamu, Marton Havasi, Daniel Haziza, Jeremy Reizenstein, Gabriel Synnaeve, David Lopez-Paz, Brian Karrer, and Yaron Lipman. Set block decoding is a language model inference accelerator. arXiv preprint arXiv:2509.04185 , 2025. [13] Heli Ben-Hamu, Itai Gat, Daniel Severo, Niklas Nolte, and Brian Karrer. Accelerated sampling from masked diffusion models via entropy bounded unmasking. arXiv preprint arXiv:2505.24857 , 2025. 10 [14] Raghunathan Ramakrishnan, Pavlo O Dral, Matthias Rupp, and O Anatole Von Lilienfeld. Quantum chemistry structures and properties of 134 kilo molecules. Scientific data , 1(1):1–7, 2014. [15] Yefei He, Yuanyu He, Shaoxuan He, Feng Chen, Hong Zhou, Kaipeng Zhang, and Bohan Zhuang. Neighboring autoregressive modeling for efficient visual generation. arXiv preprint arXiv:2503.10696 , 2025. [16] Yuxuan Song, Zheng Zhang, Cheng Luo, Pengyang Gao, Fan Xia, Hao Luo, Zheng Li, Yuehang Yang, Hongli Yu, Xingwei Qu, et al. Seed diffusion: A large-scale diffusion language model with high-speed inference. arXiv preprint arXiv:2508.02193 , 2025. [17] Shen Nie, Fengqi Zhu, Zebin You, Xiaolu Zhang, Jingyang Ou, Jun Hu, JUN ZHOU, Yankai Lin, Ji-Rong Wen, and Chongxuan Li. Large language diffusion models. In ICLR 2025 Workshop on Deep Generative Model in Machine Learning: Theory, Principle and Efficacy , 2025. [18] Fengqi Zhu, Rongzhen Wang, Shen Nie, Xiaolu Zhang, Chunwei Wu, Jun Hu, Jun Zhou, Jianfei Chen, Yankai Lin, Ji-Rong Wen, et al. Llada 1.5: Variance-reduced preference optimization for large language diffusion models. arXiv preprint arXiv:2505.19223 , 2025. [19] Tiwei Bie, Maosong Cao, Kun Chen, Lun Du, Mingliang Gong, Zhuochen Gong, Yanmei Gu, Jiaqi Hu, Zenan Huang, Zhenzhong Lan, Chengxi Li, Chongxuan Li, Jianguo Li, Zehuan Li, Huabin Liu, Ling Liu, Guoshan Lu, Xiaocheng Lu, Yuxin Ma, Jianfeng Tan, Lanning Wei, Ji-Rong Wen, Yipeng Xing, Xiaolu Zhang, Junbo Zhao, Da Zheng, Jun Zhou, Junlin Zhou, Zhanchao Zhou, Liwang Zhu, and Yihong Zhuang. Llada2.0: Scaling up diffusion language models to 100b, 2025. URL https://arxiv.org/abs/2512.15745 .[20] Tiwei Bie, Maosong Cao, Xiang Cao, Bingsen Chen, Fuyuan Chen, Kun Chen, Lun Du, Daozhuo Feng, Haibo Feng, Mingliang Gong, Zhuocheng Gong, Yanmei Gu, Jian Guan, Kaiyuan Guan, Hongliang He, Zenan Huang, Juyong Jiang, Zhonghui Jiang, Zhenzhong Lan, Chengxi Li, Jianguo Li, Zehuan Li, Huabin Liu, Lin Liu, Guoshan Lu, Yuan Lu, Yuxin Ma, Xingyu Mou, Zhenxuan Pan, Kaida Qiu, Yuji Ren, Jianfeng Tan, Yiding Tian, Zian Wang, Lanning Wei, Tao Wu, Yipeng Xing, Wentao Ye, Liangyu Zha, Tianze Zhang, Xiaolu Zhang, Junbo Zhao, Da Zheng, Hao Zhong, Wanli Zhong, Jun Zhou, Junlin Zhou, Liwang Zhu, Muzhi Zhu, and Yihong Zhuang. Llada2.1: Speeding up text diffusion via token editing, 2026. URL 
+
+https://arxiv.org/abs/2602.08676 .[21] Haopeng Li, Jinyue Yang, Guoqi Li, and Huan Wang. Autoregressive image generation with randomized parallel decoding. arXiv preprint arXiv:2503.10568 , 2025. [22] Lin Zheng, Jianbo Yuan, Lei Yu, and Lingpeng Kong. A reparameterized discrete diffusion model for text generation. In First Conference on Language Modeling , 2024. URL https: //openreview.net/forum?id=PEQFHRUFca .[23] Neta Shaul, Itai Gat, Marton Havasi, Daniel Severo, Anuroop Sriram, Peter Holderrieth, Brian Karrer, Yaron Lipman, and Ricky TQ Chen. Flow matching with general discrete paths: A kinetic-optimal perspective. In The Thirteenth International Conference on Learning Represen-tations , 2025. [24] Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, Ilya Sutskever, et al. Language models are unsupervised multitask learners. OpenAI blog , 1(8):9, 2019. [25] Krishna Pillutla, Swabha Swayamdipta, Rowan Zellers, John Thickstun, Sean Welleck, Yejin Choi, and Zaid Harchaoui. Mauve: Measuring the gap between neural text and human text using divergence frontiers. Advances in Neural Information Processing Systems , 34:4816–4828, 2021. [26] Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization. In International Conference on Learning Representations , 2019. URL https://openreview.net/forum? id=Bkg6RiCqY7 .[27] Aaron Lou, Chenlin Meng, and Stefano Ermon. Discrete diffusion modeling by estimating the ratios of the data distribution. In Forty-first International Conference on Machine Learning ,2024. URL https://openreview.net/forum?id=CNicRIVIPA .11 [28] Stephen Merity, Caiming Xiong, James Bradbury, and Richard Socher. Pointer sentinel mixture models, 2016. [29] Denis Paperno, Germán Kruszewski, Angeliki Lazaridou, Ngoc-Quan Pham, Raffaella Bernardi, Sandro Pezzelle, Marco Baroni, Gemma Boleda, and Raquel Fernández. The lambada dataset: Word prediction requiring a broad discourse context. In Proceedings of the 54th annual meeting of the association for computational linguistics (volume 1: Long papers) , pages 1525–1534, 2016. [30] Anton Lozhkov, Loubna Ben Allal, Leandro von Werra, and Thomas Wolf. Fineweb-edu: the finest collection of educational content, 2024. URL https://huggingface.co/datasets/ HuggingFaceFW/fineweb-edu .
+
+## A Theoretical results 
+
+A.1 Discrete Flow Matching background 
+
+We consider discrete sequences x ∈ D N of length N , where D is a finite vocabulary. We denote the i-th coordinate of x by xi and the sequence without the i-th coordinate by xi. For a ∈ D ,we write δ(xi, a ) = 1[xi = a] for a Dirac delta function. We consider independent coupling 
+
+(X0, X 1) ∼ p(X0)q(X1), where X0 is sampled from a simple source noise distribution p(X0) and 
+
+X1 ∼ pdata is a data point. Discrete Flow Matching [ 1] defines a probability path pt(x | x0, x 1) between x0 and x1, and models its evolution via a Continuous-Time Markov Chain (CTMC). The dynamics are governed by the Kolmogorov forward equation: 
+
+ddt pt(x | x0, x 1) = X
+
+> z∈D N
+> N
+
+X
+
+> i=1
+
+δ(xi, z i) pt(z | x0, x 1) uit(xi, z | x0, x 1),
+
+where uit(xi, z | x0, x 1) denotes the coordinate-wise probability velocity, specifying the rate of transition at position i.One key aspect of the standard DFM setup is that the velocity factorizes over coordinates: 
+
+ut(x, z | x0, x 1) = 
+
+> N
+
+X
+
+> i=1
+
+uit(xi, z | x0, x 1).
+
+Importantly, this factorization does not imply that the distribution pt(x | x0, x 1) factorizes across coordinates. However, it enables efficient coordinate-wise sampling, as the CTMC can be simulated using an Euler discretization, updating the tokens independently of each other. A common choice in DFM is the convex mixture path, defined independently for each coordinate as 
+
+pt(xi | x0, x 1) = (1 − κt)δ(xi, x i
+
+> 0
+
+) + κtδ(xi, x i
+
+> 1
+
+),
+
+where κt is a monotonically increasing scheduler. The corresponding coordinate-wise velocity is then given by 
+
+uit(xi, z | x0, x 1) = ˙κt
+
+1 − κt
+
+δ(xi, x i
+
+> 1
+
+) − δ(xi, z ) .
+
+This construction leads to a simple and efficient training and sampling procedure, but treats all coordinates uniformly, regardless of their conditioning context. At inference time, DFM simulates the learned CTMC on a grid 0 = t0 < t 1 < · · · < t K = 1 . Given the current state Xt, the model first samples a clean-token proposal for each coordinate, 
+
+Xi 
+
+> 1
+
+∼ pθ,i 
+
+> 1|t
+
+(· | Xt).
+
+It then applies an Euler step using the conditional velocity obtained by replacing the data endpoint xi
+
+> 1
+
+in the convex-path velocity with the sampled proposal Y i:
+
+Xit+h ∼ δXit (·) + h u it(·, X t | X0, X 1),
+
+Thus the Euler step either keeps coordinate i unchanged or moves it toward the model-sampled clean token Xi 
+
+> 1
+
+with rate ˙κt/(1 − κt).12 A.2 Boundary conditions and marginals 
+
+We prove Theorem 1 in three steps. First, we show that under the standard convex path, the number of unmasked tokens follows a pure-birth CTMC with binomial marginals. Second, we show that the normalization condition on α makes the context-weighted path induce the same CTMC for this count process, which gives the endpoint constraints. Finally, under permutation equivariance, the unmasked coordinates are exchangeable, so matching the count distribution also gives the correct per-coordinate marginals. For a path Xt, define the number of unmasked tokens 
+
+Mt =
+
+> N
+
+X
+
+> i=1
+
+1[Xit = xi
+
+> 1
+
+].
+
+Under the standard convex path, each coordinate is unmasked independently with probability κt,hence 
+
+Mt ∼ Binomial( N, κ t).
+
+The following proposition describes the corresponding count process. 
+
+Proposition 1. Mt is a CTMC 
+
+P(Mt+h = y | Mt = x) = δ(y, x ) + hq (y, x ) + o(h2)
+
+where 
+
+q(y, x ) = 
+
+
+
+(N − x) ˙κt 
+
+> 1−κt
+
+, y = x + 1 
+
+−(N − x) ˙κt 
+
+> 1−κt
+
+, y = x
+
+0, otherwise Proof. Let’s derive the transition probabilities from pt(m) = P(Mt = m):
+
+ddt pt(m) = ddt 
+
+Nm
+
+
+
+(κt)m(1 − κt)N −m
+
+= m
+
+Nm
+
+
+
+(κt)m−1(1 − κt)N −m ˙κt + ( N − m)
+
+Nm
+
+
+
+(κt)m(1 − κt)N −m−1(−κt)= ˙κt
+
+1 − κt
+
+m
+
+Nm
+
+
+
+(κt)m−1(1 − κt)N −(m−1) − ˙κt
+
+1 − κt
+
+(N − m)
+
+Nm
+
+
+
+(κt)m(1 − κt)N −m
+
+= ˙κt
+
+1 − κt
+
+(N − (m − 1)) 
+
+ Nm − 1
+
+
+
+(κt)m−1(1 − κt)N −(m−1) − ˙κt
+
+1 − κt
+
+(N − m)pt(m)= ˙κt
+
+1 − κt
+
+(N − (m − 1)) pt(m − 1) − ˙κt
+
+1 − κt
+
+(N − m)pt(m)
+
+Note the transition probabilities 
+
+qt(m, m − 1) = ˙κt
+
+1 − κt
+
+(N − (m − 1)) 
+
+qt(m, m ) = − ˙κt
+
+1 − κt
+
+(N − m)
+
+and so 
+
+ddt pt(m) = qt(m, m − 1) pt(m − 1) + q(m, m )pt(m) = 
+
+> N
+
+X
+
+> z=0
+
+q(m, z )pt(z)
+
+which is exactly the Kolmogorov forward equation with q(y, x ).13 We next show that the context-weighted path has the same count process whenever the weights are normalized over the masked coordinates. This is the key property needed for the endpoint constraints: if ˜Mt has the same law as Mt, then ˜M0 = 0 and ˜M1 = N almost surely. 
+
+Proposition 2. A sufficient condition for ˜Mt ∼ Binomial (N, κ t) is: 
+
+> N
+
+X
+
+> i=1
+
+αi(xt) · δ(xit, x i
+
+> 0
+
+) = 
+
+> N
+
+X
+
+> i=1
+
+δ(xit, x i
+
+> 0
+
+)
+
+Proof. First, note that probability of Mt not changing in [t, t + h) is the same as probability of Xt
+
+not changing: 
+
+P(Xt+h = x | Xt = x, X 0 = x0, X 1 = x1) = 1 + h
+
+> N
+
+X
+
+> i=1
+
+uit(xi, x | x0, x 1) + o(h)= 1 + h
+
+> N
+
+X
+
+> i=1
+
+˙κt
+
+1 − κt
+
+δ(xi, x i
+
+> 1
+
+) − 1 + o(h)= 1 − h ˙κt
+
+1 − κt
+
+(N −
+
+> N
+
+X
+
+> i=1
+
+δ(xi, x i
+
+> 1
+
+)) + o(h)= 1 − h ˙κt
+
+1 − κt
+
+(N − m) + o(h)= P(Mt+h = m | Mt = m)
+
+which makes sense since xi 
+
+> 1
+
+is absorbing for each token, so no cyclic movements ( xi 
+
+> 0
+
+→ xi 
+
+> 1
+
+→ xi
+
+> 0
+
+)are allowed. Now, if we plug in vit instead of uit in the same derivation 
+
+P( ˜Xt+h = x | ˜Xt = x, ˜X0 = x0, ˜X1 = x1) = 1 + h
+
+> N
+
+X
+
+> i=1
+
+vit(xi, x | x0, x 1) + o(h)= 1 − h ˙κt
+
+1 − κtNX
+
+> i=1
+
+αi(x)δ(xi, x i
+
+> 0
+
+) + o(h)
+
+so if PNi=1 αi(x)δ(xi, x i
+
+> 0
+
+) = PNi=1 δ(xi, x i
+
+> 0
+
+) = N − m, we have 
+
+P ( ˜Xt+h = x | ˜Xt = x, ˜X0 = x0, ˜X1 = x1) = P(Xt+h = x | Xt = x, X 0 = x0, X 1 = x1)
+
+and so ˜Mt is following the same CTMC as Mt.Thus the normalization condition preserves the distribution of the number of unmasked tokens. Since 
+
+κ0 = 0 and κ1 = 1 , it follows that ˜M0 = 0 and ˜M1 = N almost surely, which implies 
+
+˜p0(x | x0, x 1) = δ(x, x 0), ˜p1(x | x0, x 1) = δ(x, x 1).
+
+Equivalently, the normalization condition requires the weights to average to one over the currently masked coordinates: 1
+
+|{ i : zi = xi
+
+> 0
+
+}| 
+
+X  
+
+> i:zi=xi
+> 0
+
+αi(z) = 1 .
+
+This controls only the total number of updates, not which coordinates receive them. For example, a positional bias such as αi(z) ∝ (N − i) can preserve the total rate while making left-most coordinates transition earlier. To recover the standard per-coordinate marginals, we additionally 14 require the weighting rule to treat positions symmetrically. Let shift k(x) denote a circular shift of x
+
+by k positions, i.e. 
+
+shift k(x)i = xi−k (mod N ).
+
+Proposition 3. Let Bt ∈ { 0, 1}N denote the binary reveal mask, where Bit = 1 if coordinate i has transitioned to xi
+
+> 1
+
+, and Bit = 0 otherwise. Suppose that the context weights depend only on the reveal mask, i.e., there exists a function 
+
+¯α : {0, 1}N → RN
+
+> +
+
+such that 
+
+αi( ˜Xt) = ¯ αi(Bt) ∀i. 
+
+Assume that ¯α is equivariant under circular shifts: 
+
+¯αi+k shift k(b) = ¯ αi(b) ∀b ∈ { 0, 1}N , ∀i, k, 
+
+with indices taken modulo N , and that the normalization condition in proposition 2 holds. Then 
+
+P(Bit = 1 | x0, x 1) = P( ˜Xit = xi 
+
+> 1
+
+| x0, x 1) = κt ∀i. 
+
+Proof. Let 
+
+St = {i : Bit = 1 }
+
+be the set of revealed coordinates, so that 
+
+|St| = ˜Mt.
+
+Since ¯α is equivariant under circular shifts, shifting the reveal mask and the corresponding coordinate by the same offset preserves all transition rates. Since B0 = 0 is invariant under circular shifts, the law of Bt is also invariant under circular shifts. Hence, for every offset k,
+
+P(St = S | x0, x 1) = P St = shift k(S) | x0, x 1
+
+.
+
+Thus all coordinates have the same marginal probability of being revealed. Indeed, for any i, j , there exists a circular shift mapping i to j, and therefore 
+
+P(i ∈ St | x0, x 1) = P(j ∈ St | x0, x 1).
+
+Denote this common probability by pt. Then 
+
+E[ ˜Mt | x0, x 1] = E[|St| | x0, x 1] = 
+
+> N
+
+X
+
+> i=1
+
+P(i ∈ St | x0, x 1) = N p t.
+
+By proposition 2, the normalization condition implies 
+
+˜Mt ∼ Binomial( N, κ t),
+
+and hence 
+
+E[ ˜Mt | x0, x 1] = N κ t.
+
+Combining the two equalities gives 
+
+pt = κt.
+
+Therefore, 
+
+P( ˜Xit = xi 
+
+> 1
+
+| x0, x 1) = κt.
+
+Now, we are ready to prove the theorem 1. 
+
+Proof of theorem 1. By proposition 2, the normalization condition implies that ˜Mt has the same law as the count process of the standard convex path, namely Binomial( N, κ t). Since κ0 = 0 and 
+
+κ1 = 1 , this gives the endpoint constraints. If α is additionally equivariant under circular shifts, proposition 3 gives the coordinate-wise marginal 
+
+P( ˜Xit = xi 
+
+> 1
+
+| x0, x 1) = κt
+
+for every coordinate i.15 A.3 Correctness of sampling Solver normalization and marginals. Both Neighbor-weighted and Entropy-weighted solvers are normalized over the currently masked coordinates. If ˜αi(xt) denotes the raw score, we set 
+
+αi(xt) ∝ exp( s˜αi(xt)) , i ∈ M t = {i : xit = xi
+
+> 0
+
+},
+
+and choose the proportionality constant so that 
+
+1
+
+|M t|
+
+X
+
+> i∈M t
+
+αi(xt) = 1 .
+
+Therefore both solvers satisfy the normalization condition in proposition 2 and preserve the distribu-tion of the total number of unmasked tokens. For Neighbor-weighted, if local windows are computed with circular padding, the rule is shift-equivariant: shifting the sequence shifts all neighbor counts by the same amount. Hence all positions are treated symmetrically, and the per-coordinate marginals are preserved by proposition 3. For Entropy-weighted, the normalization still preserves the total number of updates, and therefore the endpoint constraints. However, exact circular-shift equivariance of the model predictions is not guaranteed: 
+
+H
+
+
+
+pθ, (i+k mod N )(· | shift k(xt)) 
+
+̸
+
+= H pθ,i (· | xt)
+
+in general. Therefore, Entropy-weighted sampling is not covered by the per-coordinate marginal preservation result: the model may induce position- or value-dependent preferences over the reveal order. 
+
+Exactness of train-time path sampling. algorithm 1 avoids simulating the full continuous-time trajectory by separating the process into the number of jumps and their identities. By proposition 2, the number of unmasked tokens at time t is preserved: 
+
+˜Mt ∼ Binomial( N, κ t).
+
+Thus we can first sample m ∼ Binomial( N, κ t). It remains to sample which m coordinates are unmasked. Under the context-weighted CTMC, if the current state is x, a masked coordinate i has transition rate 
+
+αi(x) ˙κt
+
+1 − κt
+
+.
+
+Therefore, conditioned on a jump occurring, the next coordinate is selected with probability 
+
+αi(x)
+
+P 
+
+> j:xj=xj
+> 0
+
+αj (x) ,
+
+since the time-dependent factor cancels. This is exactly the sequential selection rule used in algo-rithm 1. Hence the algorithm samples the same time marginal ˜pt as the continuous-time process. 
+
+A.4 Evidence Lower Bound (ELBO) 
+
+In the case of the mixture path, Shaul et al. [23] presents a formula for evidence lower bound (ELBO) 
+
+log pθ
+
+> 1
+
+(x1) ≥ − Et,X 0,X t∼pt|0,1
+
+X
+
+> i
+
+D
+
+
+
+uit(·, X it | X0, x 1), u θ,i t (·, X t)
+
+
+
+where 
+
+D
+
+
+
+uit(·, x i | x0, x 1), u θ,i t (·, x )
+
+
+
+= ˙κt
+
+1 − κt
+
+h δ(xi
+
+> 1
+
+, x i) − 1 log pθ,i 
+
+> 1|t
+
+(xi 
+
+> 1
+
+| x) + δ(xi
+
+> 1
+
+, x i) − pθ,i 
+
+> 1|t
+
+(xi | x)
+
+i
+
+16 Proposition 4. Consider the context-weighted velocity 
+
+vit(·, x | x0, x 1) = αi(x)uit(·, x | x0, x 1),
+
+where αi(x) ≥ 0 does not depend on the target state. Let the learned marginal velocity be parame-terized as 
+
+vθ,i t (·, x ) = αi(x)uθ,i t (·, x ).
+
+For the CTMC rate divergence 
+
+D(a, b ) = a log ab − a + b, 
+
+applied coordinate-wise over transition rates, we have 
+
+D
+
+
+
+vit(·, x | x0, x 1), v θ,i t (·, x )
+
+
+
+= αi(x)D
+
+
+
+uit(·, x | x0, x 1), u θ,i t (·, x )
+
+
+
+.
+
+Thus the corresponding NELBO term is reweighted by αi(x).Proof. Since vit = αi(x)uit and vθ,i t = αi(x)uθ,i t , it is enough to use the positive homogeneity of the CTMC rate divergence. For scalar rates, 
+
+D(αa, αb ) = αa log αa αb − αa + αb = α
+
+
+
+a log ab − a + b
+
+
+
+= αD (a, b ).
+
+Summing over possible target states preserves the same factor, since αi(x) is independent of the target state. Therefore, 
+
+D
+
+
+
+vit(·, x | x0, x 1), v θ,i t (·, x )
+
+
+
+= αi(x)D
+
+
+
+uit(·, x | x0, x 1), u θ,i t (·, x )
+
+
+
+.
+
+A.5 Loss Functions Analysis 
+
+The Bregman divergence objective in DFM can be written as 
+
+D
+
+
+
+uit(·, x i | x0, x 1), u θ,i t (·, x )
+
+
+
+= ˙κt
+
+1 − κt
+
+h
+
+(δ(xi
+
+> 1
+
+, x i) − 1) log pθ,i 
+
+> 1|t
+
+(xi 
+
+> 1
+
+| x) + δ(xi
+
+> 1
+
+, x i) − pθ,i 
+
+> 1|t
+
+(xi | x)
+
+i
+
+The loss is scaled by the jump coefficient ˙κt/(1 − κt), which depends only on time. For common schedules this coefficient increases as t approaches 1, giving more weight to later, less-masked states and less weight to heavily masked ones. This captures a coarse notion of prediction difficulty through the amount of global context, but it does not distinguish tokens within the same state. In particular, two masked tokens at the same time step receive the same global scaling even if one has many visible neighbors and the other has little local context. Therefore, Bregman and NELBO-style objectives [ 8]still mix token-level prediction problems of different difficulty, motivating an explicit local-context weighting. 17 B Experiments 
+
+B.1 Experimental setup Datasets. We use OpenWebText (OWT) [ 2 ] as our main training dataset to remain comparable with standard text diffusion baselines such as MDLM and BD3LM. OWT contains roughly 8M web documents, making it a suitable large-scale text benchmark. As a smaller alternative from a different domain, we use QM9 [ 14 ], which contains about 134k small molecules. We represent QM9 molecules in SMILES format, a linear encoding of molecular graphs, where local token neighborhoods often correspond to meaningful local chemical structure; therefore, locality remains a relevant inductive signal. 
+
+Metrics. For text, we report generative perplexity, computed with GPT-2[ 24 ], as a proxy for coherence; token entropy, computed with log 2 as in DFM [ 1], as a measure of token-level diversity; and MAUVE [ 25 ] as our main quality–diversity metric. For QM9, we report the number of valid SMILES strings (V ALID ) and the number of generated molecules that do not appear in the training set (N OVEL ), both measured out of 1024 generated samples. For all metrics except MAUVE, we estimate standard deviations by splitting generated samples into 5 folds. Since MAUVE is a two-sample metric and depends on sample size, we instead estimate its variance using 5 bootstrap resamples. For the data row in table 1, we compute MAUVE between two independent subsets of 5000 validation samples. Although the theoretical upper bound is 1.0 in the infinite-sample limit, we report this finite-sample estimate as a more realistic reference point and a fairer comparison for generated samples of the same size. 
+
+Training and inference. For training models with Discrete Flow Matching, we employ the Trans-former model, with the same architecture and setup as in Sahoo et al. [8] . On OWT, we train with a total batch size of 512 samples with a fixed length of 1024 for 1 million steps. We use AdamW optimizer [ 26 ], setting β1 = 0 .9 and β2 = 0 .999 , with peak learning rate of 3 × 10 −4 and cosine annealing to 3 × 10 −6, and a warmup of 2.5k steps. The training takes around 4.5 days on 8 NVIDIA H100 GPUs. Training on QM9 took 30 minutes with the same GPU setup. For testing models trained on OWT, we follow Sahoo et al. [8] and generate 5000 samples with nucleus sampling p = 0 .9. For models trained on QM9, we set p = 1 .0 (no nucleus sampling) and generate 5120 samples in total. See complete setup in table 4. Table 4: Training, inference and flow hyperparameters Parameter OWT QM9 # parameters 169M 92M Batch size 512 2048 Length 1024 32 Peak LR 3 × 10 −4 3 × 10 −5
+
+Min LR 3 × 10 −6 3 × 10 −7
+
+warmup 2500 1000 Weight decay 0.03 0.01 
+
+(β1, β 2) (0.9, 0.999) (0.9, 0.999) # training steps 1000k 25k Scheduler κ(t) t2 t2
+
+# gen. samples 5000 5120 Nucleus p 0.9 1.0 Temperature 1.0 1.0 
+
+Baselines. Our main direct baseline is standard Discrete Flow Matching (DFM) [ 1], trained and sampled with the same architecture, data, and evaluation setup as our method. We also compare against autoregressive and semi-autoregressive language modeling baselines, including AR and BD3LM [ 3] with different block lengths L′, which provide strong references for generation quality under more structured decoding orders. Finally, we include representative discrete diffusion baselines, 18 SEDD [ 27 ] and MDLM [ 8 ], to compare against non-autoregressive diffusion-style models trained on the same text generation setting. 
+
+B.2 Sweeps Inference-time experiments. For neighbor-weighted and entropy-weighted solvers, we run the sweep on r ∈ { 1, 2, 3}, s ∈ { 0.5, 1.0, 2.0, 3.0, 4.0, 5.0} and β ∈ { 1.0, 2.0, . . . , 7.0}.Table 5: Best hyperparameters for Entropy-weighted (β) and Neighbor-weighted (r, s ) solvers Source Dataset r s β
+
+Uniform OWT 1 5.0 6.0 QM9 1 4.0 7.0 Mask OWT 1 5.0 6.0 QM9 1 4.0 6.0 
+
+Trained models. For SCE-trained models, we use only Euler solver, no hyperparameter sweeps. We find that using Neighbor-weighted solver provides no improvement. For CW-DFM ( ˜pt), on OWT, we set r = 3 and run training with s ∈ { 0.5, 1.0}. We run the sweep on neighbor-weighted solver with the trained model on r ∈ { 1, 2, 3} and s ∈ { 0.5, 1.0, 2.0}. For training CW-DFM and SCE in QM9, we performed the sweep in r ∈ { 1, 2, 3} and s ∈ { 0.5, 1.0, 2.0}. For CW-DFM, we also run the sweep at the test time to find the optimal neighbor solver parameters. 
+
+B.3 Additional results Entropy, NLL and Local context. To illustrate the locality bias, we took a pre-trained DFM baseline model with masked source distribution trained on OpenWebText (OWT) [ 2]. We sample 
+
+x1 from the validation subset and sample xt ∼ pt(x | x0, x 1) at various timesteps for a total of 16k samples. For each masked token i in each xt, we measured the entropy of the model prediction 
+
+H
+
+
+
+pθ,i 
+
+> 1|t
+
+(· | xt)
+
+
+
+and the negative log-likelihood of the correct token, Li = − log pθ,i 
+
+> 1|t
+
+(xi 
+
+> 1
+
+| xt), a.k.a. the error of the prediction. We then evaluated two simple locality statistics: the number of unmasked tokens within a radius r = 8 , and the distance to the nearest unmasked token (see fig. 6). In both cases, stronger local context corresponds to lower entropy and lower NLL: increasing the number of visible neighbors decreases both metrics, while increasing the distance to the nearest visible token increases them. This suggests that several simple locality measures can serve as inexpensive proxies for prediction uncertainty. 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16                 
+
+> Distance to Nearest Unmasked Token
+> 2
+> 3
+> 4
+> 5
+> 6
+> 7
+> Entropy
+> 012345678910 11 12 13 14 15 16
+> Distance to Nearest Unmasked Token
+> 2
+> 3
+> 4
+> 5
+> 6
+> 7
+> Negative Log-Likelihood
+> t = 0.2
+> t = 0.4
+> t = 0.6
+> t = 0.8
+
+Figure 6: The distance to the nearest unmasked token provides another proxy for the token-level uncertainty. Both the entropy and negative negative log likelihood increase with the distance, but saturate quite early. Vicinity radius r = 16 , κ(t) = t2.19 128 256 512 1024 2048 4096           
+
+> 0.45
+> 0.50
+> 0.55
+> 0.60
+> 0.65
+> 0.70
+> MAUVE
+> 128 256 512 1024 2048 4096
+> 30
+> 35
+> 40
+> 45
+> 50
+> 55
+> Generative perplexity
+> Euler
+> Entropy-weighted (ours)
+> Neighbor-weighted (ours)
+> 128 256 512 1024 2048 4096
+> 7.45
+> 7.50
+> 7.55
+> 7.60
+> 7.65
+> 7.70
+> Entropy
+
+Figure 7: Context-weighted sampling remains effective with masked source noise. With a masked source distribution, context-weighted solvers improve generative perplexity over Euler sampling while maintaining comparable token-level entropy. 8 16 32 64 128 256 
+
+> 200
+> 300
+> 400
+> 500
+> 600
+> 700
+
+Valid Count      
+
+> 816 32 64 128 256
+> 100
+> 150
+> 200
+> 250
+> 300
+> 350
+
+Novel Count 
+
+> Euler
+> Entropy-weighted (ours)
+> Neighbor-weighted (ours)
+
+Figure 8: Neighbor-weighted sampling improves molecular validity with uniform source noise. 
+
+On QM9, Neighbor-weighted sampling generates more valid molecules than the baselines across NFE, while maintaining a comparable number of novel molecules out of 1024 samples. 
+
+Training dynamics. fig. 10 shows that SCE follows a smooth training trajectory and leads to substantially lower generative perplexity. The validation objectives are not directly comparable, since CE and SCE use different token weightings. The accompanying moderate entropy decrease suggests that SCE makes generations more coherent without collapsing diversity. Table 6: Test perplexity ( ↓) for a variety of datasets. Model Source Wikitext103 LAMBADA FineWeb-Edu DFM Uniform ≤ 63.38 ≤ 84.33 ≤ 48.20 DFM+SCE Uniform ≤ 91.53 ≤ 133.25 ≤ 72.90 DFM Mask ≤ 45.33 ≤ 57.88 ≤ 35.00 DFM+SCE Mask ≤ 45.27 ≤ 59.59 ≤ 34.80 
+
+Test perplexity. We report test perplexity on Wikitext103[ 28 ], LAMBADA[ 29 ], and FineWeb-Edu [ 30 ] datasets in table 6. We observe a discrepancy between test perplexity and generation quality: models trained with SCE can have higher test perplexity under the standard evaluation, while producing better samples according to generative perplexity, MAUVE, and qualitative inspection. This is expected because SCE deliberately changes the weighting of the prediction problem rather than optimizing the unweighted likelihood of all coordinates equally. Standard test perplexity evaluates all token predictions uniformly, including highly ambiguous positions with little available context, whereas SCE prioritizes well-contextualized predictions that provide a sharper learning signal. As a 20 1 2 3 4 5 6 7 8 9 10 11 12                          
+
+> r
+> 0.68
+> 0.70
+> 0.72
+> 0.74
+> 0.76
+> 0.78
+> 0.80
+> MAUVE
+> 12345678910 11 12
+> r
+> 30
+> 35
+> 40
+> 45
+> 50
+> 55
+> 60
+> 65
+> Generative perplexity
+> 12345678910 11 12
+> r
+> 7.52
+> 7.60
+> 7.68
+> 7.76
+> 7.84
+> Entropy
+> s= 0.5
+> s= 1.0
+> s= 2.0
+
+Figure 9: Moderate local neighborhoods give the best quality–diversity trade-off. For DFM trained with SCE on OpenWebText, increasing the neighborhood radius reduces the perplexity but also the entropy; MAUVE peaks at an intermediate radius, suggesting that too little or too much context aggregation is suboptimal. 0 200k 400k 600k 800k 1000k           
+
+> 3.8
+> 4.0
+> 4.2
+> 4.4
+> 4.6
+> 4.8
+> Validation Loss
+> DFM
+> CW-DFM
+> 0200k 400k 600k 800k 1000k
+> 40
+> 60
+> 80
+> 100
+> 120
+> 140
+> 160
+> Generative Perplexity
+> 0200k 400k 600k 800k 1000k
+> 7.6
+> 7.7
+> 7.8
+> 7.9
+> 8.0
+> 8.1
+> Entropy
+
+Figure 10: SCE changes the optimization trajectory toward lower generative perplexity. Al-though the weighted SCE validation loss is not directly comparable to standard CE, SCE decreases smoothly during training and yields generations with lower perplexity and a moderate reduction in entropy. result, SCE may be less favorable under the standard perplexity objective, but better aligned with the iterative sampling process, where improving reliable local updates can compound into more coherent generations. A fully aligned likelihood-style evaluation would require accounting for the same context-dependent weighting or path used during training. 
+
+Self-correction. Naturally, we observe that Neighbor-weighted solver performs more updates per token than the standard Euler sampler (see fig. 11). For Euler solver, the average number of per-token corrections was 1.033 ±0.001 , whereas for Neighbor-weighted solver, we have 1.157 ±0.001 corrections (uniform source). There is very little redundancy in these updates, since the proportion of loops for Neighbor-weighted sampling with uniform source is 0.02%. 
+
+Scale ablation. table 7 ablates the inverse-temperature parameter s used in the context-weighted path ˜pt. Increasing s makes the weighting more selective, which generally lowers generative perplexity but can also reduce entropy. The best value depends on the source distribution: for the uniform source, s = 0 .5 gives slightly higher MAUVE and diversity, while s = 1 .0 yields much lower perplexity; for the masked source, s = 1 .0 provides the best overall trade-off. 
+
+Societal impact. This work is methodological and aims to improve the efficiency and controllability of discrete generative models. Potential positive impacts include reducing sampling cost and improv-ing the accessibility of generative modeling research. At the same time, stronger generative models can be misused for synthetic text generation at scale, including spam or disinformation. Our work does not introduce a deployed system or use sensitive data, but future applications should consider appropriate monitoring and safeguards. 21 Figure 11: Distribution of the number of per-token updates for Euler and Neighbor-weighted solver, uniform source. The Neighbor-weighted solver has higher number of per-token corrections on average. Table 7: Ablation of the scale parameter s for CW-DFM ( ˜pt). Source s MAUVE Gen. PPL Entropy Uniform 0.5 0.779 ±0.017 48.91 ±0.29 7.83 ±0.01 
+
+1.0 0.768 ±0.017 37.45 ±0.38 7.70 ±0.01 
+
+Mask 0.5 0.712 ±0.023 35.48 ±0.26 7.60 ±0.01 
+
+1.0 0.751 ±0.012 36.25 ±0.52 7.65 ±0.01 
+
+22
