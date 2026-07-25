@@ -1,0 +1,1461 @@
+Title: Parallel Noising in Neural Markov Logic Networks
+
+URL Source: https://arxiv.org/pdf/2607.19126v1
+
+Published Time: Wed, 22 Jul 2026 01:05:02 GMT
+
+Number of Pages: 30
+
+Markdown Content:
+# Parallel Noising in Neural Markov Logic Networks 
+
+## Peter Jung 1, Giuseppe Marra 2, Ondˇ rej Kuˇ zelka 11Czech Technical University, Prague, Czech Republic 
+
+> 2
+
+## Department of Computer Science, KU Leuven, Leuven, Belgium July 22, 2026 
+
+Abstract 
+
+Neural Markov Logic Networks (NMLNs) are a flexible neurosymbolic relational model. Previous work has shown that, although NMLNs achieve strong performance as generative models for small relational structures, they underperform diffusion-based generative graph models on larger structures. In this paper, we strengthen NMLNs along two main dimensions: (i) we increase the expressive capacity of their potential functions using graph neural networks, and (ii) we develop a new training and inference algorithm inspired by parallel-tempering Markov chain Monte Carlo methods, which we name parallel noising . Together, these enhancements enable NMLNs to attain strong performance in graph generation relative to general diffusion-based generative graph models. Furthermore, they allow NMLNs to match the performance of specialized text-based recurrent models when generating small molecular structures. 
+
+# 1 Introduction 
+
+Neural Markov Logic Networks (NMLNs) are a flexible neurosymbolic relational model that combines the maximum-entropy semantics of Markov logic [Richardson and Domingos, 2006] with learnable (neural) relational potentials [Marra and Kuˇ zelka, 2021, Jung et al., 2024]. A persistent obstacle for using NMLNs in practice is inference : likelihood training and downstream tasks require sampling from high-dimensional, multi-modal distributions over possible worlds, yet classical single-chain Gibbs sampling mixes poorly and is brittle in the presence of near-deterministic constraints [Marra and Kuˇ zelka, 2021]. A natural first attempt to improve mixing is parallel tempering (also known as replica exchange [Swendsen and Wang, 1986, Geyer, 1991, Hukushima and Nemoto, 1996]), which runs multiple chains targeting related “flattened” distributions and swaps their states so that “hot” chains can help the “cold” chain cross energy barriers. In practice, however, as also confirmed by our initial experiments, temperature ladders can be brittle for NMLNs: the effective energy scale depends on model parameters and can drift substantially during training, so a ladder that yields good swap acceptance early on may quickly become ineffective. We therefore propose parallel noising : a replica-exchange MCMC scheme for NMLNs that replaces temperature ladders with a ladder of data-space corruptions . Concretely, we fix Bernoulli corruption levels 0 ≤ νN < · · · < ν 1 ≤ 1 and define a ladder of intermediate targets indexed by these noise rates. During inference, each level performs within-level MCMC updates and we regularly attempt swaps of adjacent levels using the standard replica-exchange Metropolis ratio, evaluated under the (unnormalized) NMLN log-potentials at the two noise levels rather than under temperature-rescaled energies. The lowest-noise chain targets the desired NMLN, while higher-noise chains are easier to explore and help the sampler cross energy barriers. Parallel noising offers two advantages that we make precise: (i) it is an exact replica-exchange algorithm for an arbitrary ladder of target distributions, so the lowest-noise marginal is the desired target at stationarity (Proposition 1); and (ii) because the ladder is defined by a fixed corruption operator rather than an energy rescaling, it remains well-behaved under time-varying targets (e.g., during training), where temperature schedules are difficult to tune (Appendix A.3 (toy example)). 
+
+Contributions. 
+
+1arXiv:2607.19126v1 [cs.LG] 21 Jul 2026 • Parallel noising for NMLNs: we introduce a corruption-defined replica-exchange sampler that stays well-behaved under time-varying targets during learning, and combine it with global GNN energies to form NMLN*. 
+
+• Why it works: we characterize swap acceptance via distributional overlap and derive simple, distribution-free bounds for Bernoulli noising schedules. 
+
+• Empirical impact: NMLN* substantially improves mixing and sample quality on molecular graph generation benchmarks compared to prior NMLNs and strong generative baselines (Sec. 8). 
+
+Organization. Section 3 reviews replica-exchange MCMC and the NMLN learning objective. Section 4 defines NMLNs and the Bernoulli corruption operator used to build a noise ladder. Section 5 summarizes the main bottlenecks of existing NMLNs—limited expressiveness of fragment-based potentials and slow-mixing Gibbs inference—and motivates our two remedies. Section 6 introduces NMLN* with global GNN energies and the parallel noising sampler. Section 7 develops theoretical properties and connects parallel noising to parallel tempering. Section 8 presents experiments. 
+
+# 2 Related Work 
+
+Replica-exchange MCMC and tempering. Replica exchange (parallel tempering) couples chains targeting a ladder of related distributions and proposes swap moves so that exploratory (“hot”) chains help the target (“cold”) chain traverse energy barriers [Swendsen and Wang, 1986, Geyer, 1991, Hukushima and Nemoto, 1996]. Most practical variants define the ladder by temperature scaling , and performance depends on maintaining sufficient overlap between adjacent temperatures. For discrete energy-based models, this can be brittle because the effective energy scale can drift during learning, motivating adaptive and non-reversible tempering variants [Desjardins et al., 2010, Miasojedow et al., 2013, Syed et al., 2022]. 
+
+Corruption/noising for discrete structures. Corruption operators are widely used to smooth discrete distributions and stabilize learning, including in denoising/diffusion models for graphs and molecules [Vignac et al., 2023]. In NMLNs, injecting noise during training was introduced as a pragmatic way to avoid near-deterministic constraints that can break Gibbs sampling [Marra and Kuˇ zelka, 2021]. Our contribution is to use corruption to define a replica-exchange ladder: PN remains an exact sampler for the chosen intermediate targets, and these targets remain meaningful even when the underlying model evolves during training. 
+
+Neurosymbolic probabilistic logic and inference. NeSy systems include constraint- and fuzzy-logic approaches [Diligenti et al., 2017, Van Krieken et al., 2022, Badreddine et al., 2022, Xu et al., 2018] and probabilistic-logic approaches [Manhaeve et al., 2018, Marra et al., 2020, Li et al., 2023, Ahmed et al., 2022, Winters et al., 2022, van Krieken et al., 2025]. Within probabilistic NeSy, undirected energy-based models—including Markov logic networks [Richardson and Domingos, 2006] and probabilistic soft logic models [Pryor et al., 2023]—are particularly relevant here; relational neural machines provide another closely related energy-based formulation [Marra et al., 2020]. NMLNs [Marra and Kuˇ zelka, 2021, Jung et al., 2024] sit in this family but replace hand-specified first-order rules with neural potentials that can learn soft constraints from data. Exact inference in probabilistic NeSy systems such as DeepProbLog uses weighted model counting [Manhaeve et al., 2018], which is #P-hard in general [Abboud et al., 2020]. To scale inference and learning, practical systems use several distinct computational strategies: A*-like search over high-probability proofs [Manhaeve et al., 2021]; provenance-semiring-based differentiable reasoning [Li et al., 2023]; learned neural approximations to symbolic inference [van Krieken et al., 2023]; neural approximate model counting [Abboud et al., 2020]; sampling-based learning objectives [Verreet et al., 2024]; specialized gradient estimators for categorical random variables [De Smet et al., 2023]; hybrid approximate Bayesian inference, automated reasoning, and gradient estimation for sequential NeSy models [De Smet et al., 2025]; and general MCMC methods [Robert and Casella, 1999], including Gibbs sampling in NMLNs [Marra and Kuˇ zelka, 2021]. Our focus is on making MCMC-style inference effective even when the learned energy encodes highly deterministic structure. 2Generative NeSy models. A subset of NeSy models extends these frameworks to generative tasks, e.g., via constrained deep generative models, including GANs [Di Liello et al., 2020, Stoian et al., 2024], VAEs [Misino et al., 2022], sequential neurosymbolic Markov models [De Smet et al., 2025], or diffusion models [Huang et al., 2024, Scassola et al., 2023]. These methods span heterogeneous output domains, including tabular records, symbolic music, sequential latent states, and perceptual data. By contrast, NMLNs directly define joint distributions over complete symbolic worlds and can be used as generative models for graphs and relational databases. van Krieken et al. [2025] use diffusion to model dependencies among symbolic concepts in perceptual NeSy pipelines, whereas NMLNs directly model complete symbolic worlds. 
+
+# 3 Preliminaries 
+
+We briefly review replica-exchange MCMC (parallel tempering) notation and highlight the acceptance mechanism that underlies PN. The key idea is to run a ladder of related MCMC chains, each targeting a related distribution, and allow state swaps so that exploratory chains help the target-level chain cross energy barriers. A more detailed review (including an illustrative example) is in Appendix A.1. 
+
+## 3.1 Replica Exchange and Parallel Tempering 
+
+Replica exchange runs N Markov chains targeting a ladder of distributions {πi}Ni=1 and regularly proposes swaps between adjacent levels. Writing πi(ω) ∝ exp (ρi(ω)), the swap of states ( ωi, ω i+1 ) is accepted with probability 
+
+αi,i +1 = min 
+
+n
+
+1, exp  ρi(ωi+1 ) − ρi(ωi)+ ρi+1 (ωi) − ρi+1 (ωi+1 )o
+
+.
+
+(1) Overlaps between adjacent levels govern swap rates: when πi and πi+1 concentrate on very different regions, swaps are rarely accepted and the ladder decouples. Practical schedules therefore aim to keep adjacent targets sufficiently close (e.g., by geometric temperature spacing in PT or by gradual corruption increments in PN). 
+
+# 4 Neural Markov Logic Networks 
+
+## 4.1 Model definition and learning 
+
+In Neural Markov Logic Networks, we consider a function-free first-order logic language L, which is built from a set of constants CL and predicates RL = S 
+
+> i
+
+Ri, where Ri contains the predicates of arity i. For 
+
+c1, c 2, . . . , c m ∈ C L and R ∈ R m, we call R(c1, c 2, . . . , c m) a ground atom . We define possible world ω to be the pair ( C, A), where C ⊆ C L, A is a subset of the set of all ground atoms that can be built from the constants in C and any relation in RL. We define Ω L to be the set of all possible worlds over L. Intuitively, a given possible world defines a set of true facts one can state using the constants (entities) and the relations of the language L.Let Φ( ω; w) : Ω L → R be a parametric relational potential implemented by a relational neural network that maps a possible world ω to a scalar score. Given a set of potential functions Φ 1, . . . , Φ m, a neural Markov logic network (NMLN) [Marra and Kuˇ zelka, 2021] is the parametric exponential-family distribution over possible worlds from a given Ω L:
+
+P (ω) = 1
+
+Z exp X
+
+> i
+
+βiΦi(ω; wi)
+
+!
+
+,
+
+where βi and wi are parameters and Z = P 
+
+> ω∈ΩL
+
+exp ( P 
+
+> i
+
+βiΦi(ω; wi)) is the normalization constant (partition function). Given a training set of possible worlds Y, NMLNs can be learned by maximizing the following 3log-likelihood by some gradient-based method [Marra and Kuˇ zelka, 2021]: max 
+
+> wi,β i
+
+( X
+
+> ˆω∈Y
+> m
+
+X
+
+> i=1
+
+βiΦi(bω; wi) − log Z
+
+)
+
+. (2) The gradient of the log-likelihood function of NMLNs, given the data bω (here bω is an example from the training data, represented as a possible world) takes the form: 
+
+∂ log P (bω)
+
+∂w i,j 
+
+= βi
+
+ ∂Φi(bω; wi)
+
+∂w i,j 
+
+− Eω∼P
+
+ ∂Φi(ω; wi)
+
+∂w i,j 
+
+ 
+
+(3) 
+
+∂ log P (bω)
+
+∂β i
+
+= Φ i(bω; wi) − Eω∼P [Φ i(ω; wi)] (4) Hence, what we need to be able to compute in order to perform the gradient-based learning are the four types of quantities: Φ i(bω; wi), ∂Φi(bω;wi) 
+
+> ∂w i,j
+
+, Eω∼P
+
+h ∂Φi(ω;wi)
+
+> ∂w i,j
+
+i
+
+, and Eω∼P [Φ i(ω; wi)]. The first one can be computed by evaluating the potential function Φ i on the training example bω, the second can also be obtained jointly for all j using the standard backpropagation algorithm. The remaining two are more difficult to compute because they involve expectation over samples from the distribution given by the current weights. We can use sampling to approximate these expectations. In particular, Gibbs Sampling is used in the original version of NMLNs, where it is used not only for computing the gradients but also for predictions—both for marginal and conditional inference (i.e., computing marginal and conditional probabilities) and for sampling in generative settings. A significant drawback of Gibbs sampling is that it often requires a large number of steps before converging to the target distribution [Casella and Berger, 2024]. 
+
+## 4.2 Bernoulli corruption and corruption ladders 
+
+A practical difficulty for MCMC in relational models is the prevalence of near-deterministic structure: hard or almost-hard constraints can create extremely sharp modes separated by regions of negligible probability mass. In such regimes, single-chain Gibbs sampling mixes poorly, because most local moves are rejected or trapped in a narrow basin. We therefore introduce a Bernoulli corruption operator on possible worlds. Fix a domain size and identify a possible world ω with the binary vector of its ground atoms in a fixed vocabulary; let d denote the number of such atoms. For a noise parameter ν ∈ [0 , 1], define the bit-flip channel Kν by independently flipping each atom with probability ν. That is, for worlds ω, ω ′ ∈ Ω, 
+
+Kν (ω → ω′) = 
+
+> d
+
+Y
+
+> j=1
+
+h
+
+(1 − ν)1{ω′ 
+
+> j
+
+= ωj } + ν 1{ω′
+
+> j
+
+̸ = ωj }
+
+i
+
+. (5) For any target distribution π on Ω (e.g., the NMLN defined by learned potentials), the ν-noised distribution is the pushforward 
+
+πν (ω′) = X
+
+> ω∈Ω
+
+π(ω) Kν (ω → ω′).
+
+Corruption for molecular graphs. The theoretical development treats ω as a binary vector of ground atoms. In the molecule experiments, each molecule is represented as a finite relational structure over a fixed vocabulary of predicates encoding (i) node labels (atom types) and (ii) edge labels (bond types). Concretely, we use unary predicates Atom t(v) for atom type t at node v and binary predicates Bond b(u, v ) for bond type 
+
+b on an (undirected) edge {u, v }. Categorical attributes are encoded by one-hot groups of ground atoms. Our corruption operator acts independently across these groups but preserves the one-hot constraints within each group: with probability 1 − ν we keep the current category, and with probability ν we resample a category 4uniformly from the remaining options. 1 For undirected bonds we corrupt only pairs with u<v and mirror the result to enforce symmetry. We do not hard-enforce chemical validity (valence constraints, aromaticity, etc.) during MCMC; instead, validity is an evaluation property (Section 8). In practice, the learned energy assigns low probability to invalid structures once such constraints are captured by the potentials. Intuitively, increasing ν smooths the distribution and reduces the severity of narrow deterministic basins. In Section 6, we use these noised distributions to construct a ladder of intermediate targets for replica exchange. 
+
+# 5 Limitations of Existing NMLNs 
+
+Section 4 defined NMLNs and reviewed the Bernoulli corruption operator that has been used in prior work to smooth otherwise sharp energies. While NMLNs are conceptually flexible, existing instantiations and learning pipelines still run into two bottlenecks that have limited their performance on larger structured domains: (i) local potential families whose effective receptive field is controlled by a fragment width parameter, and (ii) sampling-based inference that relies on Gibbs-style local updates and becomes brittle as the learned energy approaches deterministic constraints. These limitations motivate two changes: GNN-based relational potentials and the replica-exchange sampler which we describe in Section 6. 
+
+## 5.1 Limited Expressive Power 
+
+In the original NMLN formulation [Marra and Kuˇ zelka, 2021] (and its recent extensions [Jung et al., 2024]), potentials are built by aggregating scores of small induced fragments. This also means that capturing long-range relational regularities (e.g., connectivity or path-based constraints in graphs) typically requires increasing the fragment width, quickly leading to O(nk) fragments and correspondingly expensive computation. This intuition is formalized by Jung et al. [2024]: they show (Theorem 1 in [Jung et al., 2024]) that NMLNs with potential functions of width k can represent the same distributions as classical Markov Logic Networks [Richardson and Domingos, 2006] whose formulas use at most k variables, but without quantifiers or constants. The restriction to quantifier-free, bounded-variable logic is limiting in practice; for example, even simple global graph properties such as “no isolated vertices” cannot be captured with constant width (see [Jung et al., 2024] for additional examples). The work of Jung et al. [2024] also proposes more expressive variants and relates them to Quantified Markov Logic Networks [Guti´ errez-Basulto et al., 2018], which allow ∃/∀ quantifiers in prenex normal form with at most k variables. However, as soon as the desired dependency spans longer paths, prenex restrictions again force k to grow, and the model size and computation scale in the same prohibitive way as increasing fragment width. These results motivate potential families with hierarchical aggregation and an expanding receptive field at fixed parameter size. In short, fragment-based potential families face a hard tradeoff between expressivity and scalability: capturing long-range relational structure typically forces the fragment width to grow, leading to an O(nk)blow-up in the number of induced fragments and in the cost of evaluating the energy. 
+
+## 5.2 Inference (Sampling) 
+
+The second limitation, already highlighted in the introduction, is inference. Exact marginal inference and exact sampling in NMLNs are generally intractable under standard complexity assumptions. 2 Accordingly, existing NMLN implementations rely on (variants of) Gibbs sampling in practice. 3
+
+> 1Equivalently, this is a simple symmetric categorical channel; the bit-flip channel is recovered for truly binary predicates.
+> 2This follows from the complexity of first-order model counting [Beame et al., 2015], since WFOMC can be solved given access to an oracle for marginal inference in NMLNs. This follows the same reasoning as similar arguments done before for Markov Logic Networks in the literature, exploiting the fact that classical MLNs can be represented as NMLNs with suitably chosen potential functions.
+> 3Marra and Kuˇ zelka [2021] also introduce variants of blocked Gibbs sampling to speed up inference, but their implementation still relies on Gibbs-style local updates.
+
+5Unfortunately, Gibbs mixes poorly for the kinds of rugged, multi-modal energies that arise once the model starts to encode near-deterministic constraints. In classical MLNs one can sometimes handle hard constraints using MC-SAT [Poon and Domingos, 2006], but MC-SAT requires an explicit logical encoding of the deterministic clauses. In NMLNs, constraints are encoded implicitly by neural potentials, so this route is unavailable. The original NMLN paper therefore injected noise during training: at the beginning of each epoch, each ground atom of a training world is flipped with probability πn [Marra and Kuˇ zelka, 2021]. While this can make Gibbs sampling feasible, it couples modeling and inference: the model is optimized for a corrupted 
+
+data distribution, and truly deterministic structure can only be approximated. As a result, the amount of corruption becomes a brittle hyperparameter and sample quality degrades when the task requires crisp constraints. 
+
+## 5.3 Transient corruption as an auxiliary ladder 
+
+This motivates using the corruption operator Kν (Section 4.2) only as a transient exploration device : we keep the (nearly) clean NMLN at the lowest noise level νN as the learning target—typically νN = 0, but it can also be a small positive noise—and use higher corruption levels to define a sequence of auxiliary intermediate distributions that are easier to mix. In parallel, we alleviate the expressivity bottleneck with global GNN energies (Section 6.1). Building on these two ingredients, parallel noising runs a replica-exchange sampler across noise levels and swaps states, allowing highly corrupted chains to traverse modes while preserving the lowest-noise chain as an exact sampler of the desired target distribution (Section 6.2). In our experiments we set the target level to a small but nonzero noise, νN = 10 −3, so the lowest-noise chain samples from a lightly corrupted target. Setting νN = 0 recovers the fully clean NMLN when desired. More generally, one can choose νN to be any sufficiently small positive noise if the application calls for a slightly smoothed target. Higher-noise levels are auxiliary and exist solely to accelerate exploration of the target chain. 
+
+# 6 NMLN*: Global Potentials and Parallel Noising 
+
+We propose NMLN* , an NMLN variant that addresses the two bottlenecks from Section 5: (i) limited expressive power of fragment-based potentials, and (ii) poor mixing of Gibbs-style inference on sharp, multi-modal energies. NMLN* combines two orthogonal changes: global graph neural network (GNN) energies (Section 6.1) and a corruption-defined replica-exchange sampler that we call parallel noising (Sections 6.2–6.5). 
+
+## 6.1 Global potentials via GNNs 
+
+Prior NMLN variants commonly rely on local fragment-based potentials (e.g., DeepSet-style aggregation), which can miss global structural signals needed for larger relational structures (and larger molecules). We therefore instantiate Φ( ω; w) as a global GNN energy: we convert a world ω into a labeled graph whose node/edge labels correspond to unary/binary predicates (atom/bond types in molecules), apply message passing with relation-specific parameters (e.g., an R-GCN-like layer), pool node representations, and map the pooled vector to a scalar energy via an MLP [Schlichtkrull et al., 2018]. This change is independent of PN: any potential family can be used at each noise level, but sharper (more expressive) targets typically make mixing harder, increasing the benefit of replica exchange. Additional architectural details are given in Appendix B. 
+
+## 6.2 Parallel noising: replica exchange over corruption levels 
+
+Parallel noising follows the standard replica-exchange template [Swendsen and Wang, 1986, Geyer, 1991, Hukushima and Nemoto, 1996] (Section 3.1), but replaces temperature scaling with a ladder indexed by corruption levels. 6Algorithm 1 One sweep of Gibbs sampling with Parallel Noising (PN)  
+
+> 1:
+
+Input: states ( ω1, . . . , ω N ), potentials ( ρ1, . . . , ρ N ), within-level kernels ( K1, . . . , K N ) 
+
+> 2:
+
+for i = 1 to N do  
+
+> 3:
+
+ωi ∼ Ki(ωi, ·) {within-level update (e.g., blocked Gibbs) } 
+
+> 4:
+
+end for  
+
+> 5:
+
+for phase ∈ { even , odd } do  
+
+> 6:
+
+start ← 1 if phase is even else 2  
+
+> 7:
+
+for i = start to N − 1 step 2 do  
+
+> 8:
+
+propose swap ( ωi, ω i+1 ) ← (ωi+1 , ω i) 
+
+> 9:
+
+accept with probability αi,i +1 (ωi, ω i+1 ) in (6)  
+
+> 10:
+
+end for  
+
+> 11:
+
+end for  
+
+> 12:
+
+Output: updated states ( ω1, . . . , ω N )
+
+Noise ladder and level-wise targets. Fix noise levels 0 ≤ νN < ν N −1 < · · · < ν 1 ≤ 1, where νN is the smallest noise (the target level). For each level i ∈ { 1, . . . , N } we define a target distribution πi with an unnormalized log-density ρi : Ω → R:
+
+πi(ω) = exp( ρi(ω)) 
+
+Zi
+
+, Zi = X
+
+> ω′∈Ω
+
+exp( ρi(ω′)) .
+
+In the learning setup of Section 6.3, each πi is an NMLN with its own parameters θi trained on data corrupted at rate νi; we then write ρi(ω) = ρθi (ω). The sampling algorithm itself only requires that we can evaluate each ρi(ω) up to an additive constant. 
+
+Within-level updates and swaps. Parallel noising targets the product distribution on Ω N ,Π( ω1, . . . , ω N ) = 
+
+> N
+
+Y
+
+> i=1
+
+πi(ωi),
+
+and alternates: (i) within-level updates using any Markov kernels Ki that leave πi invariant (e.g., blocked Gibbs / Metropolis-within-Gibbs on ωi), and (ii) swap proposals between adjacent levels. A swap proposal exchanges ( ωi, ω i+1 ) 7 → (ωi+1 , ω i) and is accepted with the Metropolis probability 
+
+αi,i +1 (ωi, ω i+1 ) = min 
+
+
+
+1, πi(ωi+1 )
+
+πi(ωi) · πi+1 (ωi)
+
+πi+1 (ωi+1 )
+
+
+
+= min {1, exp(∆ i,i +1 )} ,
+
+(6) where ∆i,i +1 = ρi(ωi+1 ) − ρi(ωi) + ρi+1 (ωi) − ρi+1 (ωi+1 ).
+
+This is the standard replica-exchange ratio (Remark 1), but it does not require defining or tuning temperatures. Algorithm 1 summarizes one sweep. 
+
+## 6.3 Training objective and estimator 
+
+A central motivation for PN is to stabilize likelihood training by improving the quality of model samples used in the negative phase. The noise levels define auxiliary targets that help mixing; we fit one NMLN per level (no parameter sharing across levels) and ultimately care about the lowest-noise model. 
+
+Per-level likelihood objectives. Let pdata denote the empirical distribution over training worlds in Ω. For each level i, define the corrupted-data distribution qi := pdata Kνi (Section 4.2). We fit an NMLN at each level i with parameters θi and potential ρθi , inducing 
+
+πθi (ω) ∝ exp  ρθi (ω).
+
+7Algorithm 2 One SGD step for training per-level NMLNs with PN  
+
+> 1:
+
+Input: minibatch B, noise levels ν1: N , parameters {θi}Ni=1 , persistent states {ω(r) 
+
+> i
+
+}i,r , PN steps T 
+
+> 2:
+
+for r = 1 to R do  
+
+> 3:
+
+for t = 1 to T do  
+
+> 4:
+
+(ω(r)1 , . . . , ω (r) 
+
+> N
+
+) ← PN-Sweep (( ω(r)1 , . . . , ω (r) 
+
+> N
+
+), {ρθi }Ni=1 ) {Alg. 1 } 
+
+> 5:
+
+end for  
+
+> 6:
+
+end for  
+
+> 7:
+
+for i = 1 to N do  
+
+> 8:
+
+Sample corrupted minibatch eBi by corrupting each ω ∈ B with Kνi 
+
+> 9:
+
+bLi(θi) ← 1 
+
+> |eBi|
+
+P  
+
+> ˜ω∈eBi
+
+ρθi (˜ ω) − 1
+
+> R
+
+PRr=1 ρθi (ω(r) 
+
+> i
+
+) 
+
+> 10:
+
+Update θi ← θi + η ∇θi
+
+bLi(θi) 
+
+> 11:
+
+end for 
+
+Training maximizes the sum of per-level log-likelihoods max 
+
+> θ1,...,θ N
+> N
+
+X
+
+> i=1
+
+Eω∼qi
+
+ρθi (ω) − log Zθi , (7) where Zθi = P 
+
+> ω′∈Ω
+
+exp( ρθi (ω′)). The gradient for level i has the usual positive/negative-phase form 
+
+∇θi ℓi = Eω∼qi
+
+∇θi ρθi (ω) − Eω∼πθi
+
+∇θi ρθi (ω),
+
+where the negative-phase expectation is approximated by MCMC. 
+
+Persistent PN chains for the negative phase. We maintain R persistent PN replicas (Section 6.2), each containing states ( ω(r)1 , . . . , ω (r) 
+
+> N
+
+). At each SGD step we advance each replica by a small, fixed number 
+
+T of PN sweeps (Algorithm 1), and we approximate the model expectation at level i using the current 
+
+snapshot {ω(r) 
+
+> i
+
+}Rr=1 . We do not store or average over full chain histories; this yields a persistent stochastic gradient estimator analogous in spirit to persistent contrastive divergence [Tieleman, 2008], which maintains Markov chains across parameter updates, rather than ordinary contrastive divergence [Hinton, 2002], which reinitializes chains from data. Algorithm 2 shows one SGD step. 
+
+## 6.4 Why corruption levels are attractive in changing models 
+
+During likelihood training, the target distribution changes as parameters are updated. In temperature-based parallel tempering, swap acceptance can deteriorate abruptly when the effective energy scale drifts, so temperature ladders may require frequent retuning. In PN, the ladder is defined by the fixed corruption operator Kν and fixed noise levels {νi}; Section 7 provides overlap and tracking guarantees that depend on the corruption increments rather than on a temperature scale. 
+
+## 6.5 Choosing the noising schedule in practice 
+
+PN requires choosing the noise levels ν1 > · · · > ν N . As with all replica-exchange methods, performance hinges on overlap between adjacent targets: if πi and πi+1 concentrate on disjoint regions, swaps are rarely accepted and the ladder decouples. Section 7 makes this connection precise by relating expected swap acceptance to an overlap quantity (Proposition 2) and by providing a distribution-free sanity bound for Bernoulli noising (Proposition 3). In practice, these results suggest using sufficiently fine spacing in ν so that adjacent levels retain non-trivial overlap, and validating this by monitoring swap acceptance rates. 
+
+# 7 Theoretical Properties of Parallel Noising 
+
+This section summarizes the key guarantees that guide practical PN design; proofs are in Appendix C and Appendix D, except for Proposition 2, which is a standard replica-exchange identity that we cite. 8Correctness (exactness). PN is standard replica exchange on the product target Π( ω1: N ) = QNi=1 πi(ωi): within-level kernels preserve each πi, and Metropolis swaps preserve Π. Consequently, in stationarity the marginal of the lowest-noise chain is exactly the desired target πN (Proposition 1). 
+
+Proposition 1 (Correctness of PN) . Assume that for each level i, the within-level kernel Ki leaves πi
+
+invariant. Let K = NNi=1 Ki be the product update on ΩN and let Si,i +1 be the Metropolis swap kernel between adjacent levels i and i+1 with acceptance probability as in Eq. (6) . Then: 1. K leaves the product distribution Π( ω1, . . . , ω N ) = QNi=1 πi(ωi) invariant; 2. for each i, Si,i +1 leaves Π invariant; 3. any composition of K and swap kernels (e.g., Algorithm 1) leaves Π invariant; and 4. in stationarity, the marginal distribution of the lowest-noise chain ωN is exactly πN .Proof. See Appendix D. 
+
+Relation to temperature-based PT. Parallel tempering corresponds to replica exchange over a ladder of temperature-scaled targets, typically of the form πi(ω) ∝ exp (βiρ(ω)) for a base energy ρ [Swendsen and Wang, 1986, Geyer, 1991, Hukushima and Nemoto, 1996]. Under this temperature-scaled choice, our swap acceptance in Eq. (6) reduces to the standard PT ratio. In contrast, PN constructs intermediate targets via Bernoulli corruption in data space; this ladder is generally not equivalent to temperature scaling, so we do 
+
+not claim that PT can be obtained from Bernoulli-corrupted ladders. Rather, PT and PN are two different instantiations of the same replica-exchange template with different intermediate distributions. 
+
+Acceptance as distributional overlap. Expected swap acceptance between adjacent levels equals an overlap quantity: it is high exactly when adjacent targets have substantial overlap (Proposition 2). This motivates selecting {νi} so that adjacent acceptance rates remain non-trivial during training (we monitor this directly). 
+
+Proposition 2 (Expected acceptance equals overlap) . Let μ = πi ⊗πi+1 and μswap = πi+1 ⊗πi. If (X, Y ) ∼ μ,then 
+
+Eαi,i +1 (X, Y ) =
+
+Z
+
+min {dμ, dμ swap } = 1 − ∥ μ − μswap ∥TV ,
+
+i.e., the mean swap acceptance equals an overlap coefficient between adjacent targets [Kofke, 2002]. 
+
+A simple worst-case sanity bound for Bernoulli noising. For Bernoulli corruption on d ground atoms, the total variation distance between adjacent noise levels admits a distribution-free bound proportional to 
+
+d|ν − ν′| (Appendix Proposition 3), yielding a corresponding acceptance lower bound (Appendix Corollary 2). While typically loose, it clarifies that schedules with large jumps in ν can destroy overlap on high-dimensional worlds. 
+
+Time-varying targets during learning. Because temperature ladders implicitly depend on an evolving energy scale, PT swap rates can degrade as parameters drift. With PN the ladder is defined by a fixed corruption operator. We show in the appendix, on a toy example, that PN may continue to perform well even in situations where PT already degrades. 
+
+# 8 Experiments 
+
+We evaluate NMLN* (GNN potentials + PN) on four molecular benchmarks (ChEMBL, QM9, ZINC250k, MOSES). We report results only on ChEMBL and defer the full suite, ablations, and implementation details to Appendix B. 9NMLN* DiGress D DiGress C 0 200000 400000 600000 
+
+> #valid & unique molecules by freq.
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> 0.8
+> Recall
+
+(a) ChEMBL 10 0.0 0.2 0.4 0.6 0.8 1.0 1.2   
+
+> #valid & unique molecules by freq. 1e6
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> Recall
+
+(b) ChEMBL 15 0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4   
+
+> #valid & unique molecules by freq. 1e6
+> 0.00
+> 0.01
+> 0.02
+> 0.03
+> 0.04
+> 0.05
+> Recall
+
+(c) ChEMBL 20 
+
+Figure 1: Recall curves on ChEMBL: NMLN* vs. DiGress (discrete and continuous). NMLN*     
+
+> NMLN s.3
+> NMLN s.4
+> NMLN s.2
+> NMLN s.1
+> NMLN s.5 0200000 400000 600000 800000
+
+#valid & unique molecules by freq. 
+
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> 0.8
+> Recall
+
+Figure 2: ChEMBL-10 recall curves. NMLN* (GNN + PN) improves recall over prior NMLN variants; full results and ablations are in the appendix. 
+
+Protocol and metric. Following Jung et al. [2024], we generate 2M samples per method and report recall curves : among the t most frequently generated unique molecules, how many occur in the test set (frequency as a proxy for model probability). 
+
+Baselines. We compare against the strongest available NMLN baseline (DeepSet-NMLN [Jung et al., 2024]) and a general diffusion model for graphs (DiGress; discrete and continuous [Vignac et al., 2023]). Additional molecule-specific generators (MoleculeRNN variants; PaccMann) are reported in Appendix B. 
+
+Q1: Can NMLN* outperform state-of-the-art diffusion models? 
+
+We compare NMLN* to DiGress [Vignac et al., 2023] (continuous and discrete). Figure 1 shows that NMLN* substantially improves recall across ChEMBL sizes. 
+
+Q2: How much do the improvements matter? 
+
+To disentangle stronger potentials implemented as GNNs from better inference due to parallel noising, we run compute-aware ablations. 
+
+Baseline (old) NMLNs. We consider NMLN s.1 , the DeepSet-NMLN of Jung et al. [2024] (8 parallel chains), and NMLN s.2 , which increases this to 40 chains (still practical to train). NMLN* uses N = 510 noise levels with R=100 replicas (500 chains total) and reports samples from the coldest level. Scaling DeepSet-NMLN further (e.g., 100 chains) was prohibitively slow due to dense local potentials. 
+
+Effect of the potential family (sampler fixed). Keeping plain multi-chain Gibbs sampling, NMLN s.3 (GNN + Gibbs) replaces DeepSet potentials with GNN potentials at the default chain count. 
+
+Effect of the sampler (potential fixed). Fixing the GNN potential, we vary sampling strategy and compute: 
+
+• NMLN s.4 (GNN + Gibbs, 100 chains) matches the number of coldest-level replicas in NMLN*. 
+
+• NMLN s.5 (GNN + Gibbs, 500 chains) matches the total chain count ( N × R) of NMLN*. 
+
+• NMLN* (GNN + PN) runs the full parallel-noising ladder ( N =5, R=100) with swap moves. 
+
+Results. Figure 2 shows that both improvements matter , and that their combination is clearly the best-performing configuration .First, replacing DeepSet potentials with GNN potentials already yields a clear improvement under the same plain Gibbs sampler (compare s.3 against the older NMLN baselines s.1 and s.2 ). Second, improving the sampler with parallel noising (PN) provides additional gains beyond what can be explained by simply running more Gibbs chains. In particular, s.4 and s.5 increase the number of Gibbs chains to match the coldest-level replicas and the total chain count of NMLN*, respectively, yet NMLN* (GNN + PN) still performs better . Actually, simply increasing the number of parallel chains without a replica exchange scheme seems to hurt performance. Therefore, the improvement is not a pure compute/chain-count effect: PN yields better inference than multi-chain Gibbs at matched compute .
+
+# 9 Conclusions 
+
+We introduced NMLN*, a strengthened Neural Markov Logic Network that tackles two practical bottlenecks: limited expressivity of fragment-based potentials and brittle, slow-mixing Gibbs inference under near-deterministic learned constraints. On the modeling side, we instantiate NMLN potentials with global GNN energies to capture long-range structure. On the inference side, we propose parallel noising , an exact replica-exchange sampler that couples chains across a ladder of fixed corruption levels rather than temperatures, which stays well-behaved even as the target distribution changes during training. Empirically, NMLN* improves recall and sample quality on molecular generation benchmarks. 
+
+# References 
+
+Ralph Abboud, Ismail Ceylan, and Thomas Lukasiewicz. Learning to reason: Leveraging neural networks for approximate DNF counting. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 34, pages 3097–3104, 2020. doi: 10.1609/aaai.v34i04.5705. Kareem Ahmed, Stefano Teso, Kai-Wei Chang, Guy Van den Broeck, and Antonio Vergari. Semantic probabilistic layers for neuro-symbolic learning. Advances in Neural Information Processing Systems , 35: 29944–29959, 2022. Samy Badreddine, Artur d’Avila Garcez, Luciano Serafini, and Michael Spranger. Logic tensor networks. 
+
+Artificial Intelligence , 303:103649, 2022. Paul Beame, Guy Van den Broeck, Eric Gribkoff, and Dan Suciu. Symmetric weighted first-order model counting. In Proceedings of the 34th ACM SIGMOD-SIGACT-SIGAI Symposium on Principles of Database Systems , pages 313–328, 2015. 11 Jannis Born, Matteo Manica, Ali Oskooei, Joris Cadow, Greta Markert, and Mar´ ıa Rodr´ ıguez Mart´ ınez. PaccMannRL: De novo generation of hit-like anticancer molecules from transcriptomic data via reinforcement learning. iScience , 24(4):102269, 2021. doi: 10.1016/j.isci.2021.102269. URL https://www.cell.com/iscience/ fulltext/S2589-0042(21)00237-6. George Casella and Roger L. Berger. Statistical Inference . Chapman and Hall/CRC, 2 edition, 2024. ISBN 9781032593036. Lennert De Smet, Emanuele Sansone, and Pedro Zuidberg Dos Martires. Differentiable sampling of categorical distributions using the CatLog-derivative trick. Advances in Neural Information Processing Systems , 36: 30416–30428, 2023. Lennert De Smet, Gabriele Venturato, Luc De Raedt, and Giuseppe Marra. Relational neurosymbolic markov models. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 39, pages 16181–16189, 2025. Guillaume Desjardins, Aaron Courville, Yoshua Bengio, Pascal Vincent, and Olivier Delalleau. Tempered markov chain monte carlo for training of restricted boltzmann machines. In Proceedings of the thirteenth international conference on artificial intelligence and statistics , pages 145–152. JMLR Workshop and Conference Proceedings, 2010. Luca Di Liello, Pierfrancesco Ardino, Jacopo Gobbi, Paolo Morettin, Stefano Teso, and Andrea Passerini. Efficient generation of structured objects with constrained adversarial networks. Advances in neural information processing systems , 33:14663–14674, 2020. Michelangelo Diligenti, Marco Gori, and Claudio Sacc` a. Semantic-based regularization for learning and inference. Artificial Intelligence , 244:143–165, 2017. Charles J. Geyer. Markov chain monte carlo maximum likelihood. In Proceedings of the 23rd Symposium on the Interface: Computing Science and Statistics , pages 156–163, 1991. V´ ıctor Guti´ errez-Basulto, Jean Christoph Jung, and Ondrej Kuzelka. Quantified markov logic networks. In Michael Thielscher, Francesca Toni, and Frank Wolter, editors, Principles of Knowledge Representation and Reasoning: Proceedings of the Sixteenth International Conference, KR 2018 , pages 602–612. AAAI Press, 2018. URL https://aaai.org/ocs/index.php/KR/KR18/paper/view/18046. Geoffrey E. Hinton. Training products of experts by minimizing contrastive divergence. Neural Computation ,14(8):1771–1800, August 2002. doi: 10.1162/089976602760128018. Yujia Huang, Adishree Ghatare, Yuanzhe Liu, Ziniu Hu, Qinsheng Zhang, Chandramouli Shama Sastry, Siddharth Gururani, Sageev Oore, and Yisong Yue. Symbolic music generation with non-differentiable rule guided diffusion. In Proceedings of the 41st International Conference on Machine Learning , volume 235 of 
+
+Proceedings of Machine Learning Research , pages 19772–19797. PMLR, 2024. URL https://proceedings. mlr.press/v235/huang24g.html. Koji Hukushima and Koji Nemoto. Exchange monte carlo method and application to spin glass simulations. 
+
+Journal of the Physical Society of Japan , 65(6):1604–1608, 1996. John J. Irwin and Brian K. Shoichet. ZINC—a free database of commercially available compounds for virtual screening. Journal of Chemical Information and Modeling , 45(1):177–182, 2005. doi: 10.1021/ci049714+. URL https://doi.org/10.1021/ci049714+. PMID: 15667143. Peter Jung, Giuseppe Marra, and Ondˇ rej Kuˇ zelka. Quantified neural markov logic networks. International Journal of Approximate Reasoning , 171:109172, 2024. David A. Kofke. On the acceptance probability of replica-exchange monte carlo trials. The Journal of Chemical Physics , 117(15):6911–6914, 2002. doi: 10.1063/1.1507776. David A. Kofke. Erratum: “on the acceptance probability of replica-exchange monte carlo trials” [J. chem. phys. 117, 6911 (2002)]. The Journal of Chemical Physics , 120(22):10852, 2004. doi: 10.1063/1.1738103. 12 Mario Krenn, Florian H¨ ase, Akshat Kumar Nigam, Pascal Friederich, and Alan Aspuru-Guzik. Self-referencing embedded strings (SELFIES): A 100% robust molecular string representation. Machine Learning: Science and Technology , 1(4):045024, oct 2020. doi: 10.1088/2632-2153/aba947. URL https://dx.doi.org/10.1088/ 2632-2153/aba947. Ziyang Li, Jiani Huang, and Mayur Naik. Scallop: A language for neurosymbolic programming. Proceedings of the ACM on Programming Languages , 7(PLDI):1463–1487, 2023. Robin Manhaeve, Sebastijan Dumanˇ ci´ c, Angelika Kimmig, Thomas Demeester, and Luc De Raedt. Deep-ProbLog: Neural probabilistic logic programming. Advances in Neural Information Processing Systems , 31, 2018. Robin Manhaeve, Giuseppe Marra, and Luc De Raedt. Approximate inference for neural probabilistic logic programming. In 18th International Conference on Principles of Knowledge Representation and Reasoning (KR) , pages 475–486, 2021. Giuseppe Marra and Ondˇ rej Kuˇ zelka. Neural markov logic networks. In Proceedings of the Thirty-Seventh Conference on Uncertainty in Artificial Intelligence , volume 161 of Proceedings of Machine Learning Research , pages 908–917. PMLR, 2021. URL https://proceedings.mlr.press/v161/marra21a.html. Giuseppe Marra, Michelangelo Diligenti, Francesco Giannini, Marco Gori, and Marco Maggini. Relational neural machines. In ECAI 2020 , pages 1340–1347. IOS Press, 2020. Bla˙ zej Miasojedow, Eric Moulines, and Matti Vihola. An adaptive parallel tempering algorithm. Journal of Computational and Graphical Statistics , 22(3):649–664, 2013. doi: 10.1080/10618600.2013.778779. Eleonora Misino, Giuseppe Marra, and Emanuele Sansone. VAEL: Bridging variational autoencoders and probabilistic logic programming. Advances in Neural Information Processing Systems , 35:4667–4679, 2022. PaccMann contributors. paccmann rl: Pipeline for the PaccMannRL study. https://github.com/PaccMann/ paccmann \ rl, 2021. GitHub repository. Daniil Polykovskiy, Alexander Zhebrak, Benjamin Sanchez-Lengeling, Sergey Golovanov, Oktai Tatanov, Stanislav Belyaev, Rauf Kurbanov, Aleksey Artamonov, Vladimir Aladinskiy, Mark Veselov, Artur Kadurin, Simon Johansson, Hongming Chen, Sergey Nikolenko, Alan Aspuru-Guzik, and Alex Zhavoronkov. Molecular Sets (MOSES): A Benchmarking Platform for Molecular Generation Models. Frontiers in Pharmacology , 11: 565644, 2020. doi: 10.3389/fphar.2020.565644. URL https://www.frontiersin.org/journals/pharmacology/ articles/10.3389/fphar.2020.565644/full. Hoifung Poon and Pedro M. Domingos. Sound and efficient inference with probabilistic and deterministic dependencies. In Proceedings, The Twenty-First National Conference on Artificial Intelligence and the Eighteenth Innovative Applications of Artificial Intelligence Conference , pages 458–463. AAAI Press, 2006. Connor Pryor, Charles Dickens, Eriq Augustine, Alon Albalak, William Yang Wang, and Lise Getoor. NeuPSL: Neural probabilistic soft logic. In Proceedings of the Thirty-Second International Joint Conference on Artificial Intelligence , pages 4145–4153, 2023. doi: 10.24963/ijcai.2023/461. Raghunathan Ramakrishnan, Pavlo O Dral, Matthias Rupp, and O Anatole von Lilienfeld. Quantum chemistry structures and properties of 134 kilo molecules. Scientific Data , 1:140022, 2014. doi: 10.1038/sdata.2014.22. URL https://www.nature.com/articles/sdata201422. Matthew Richardson and Pedro Domingos. Markov logic networks. Machine learning , 62(1):107–136, 2006. Christian P. Robert and George Casella. Monte Carlo Statistical Methods . Springer Texts in Statistics. Springer, 1999. doi: 10.1007/978-1-4757-3071-5. URL https://doi.org/10.1007/978-1-4757-3071-5. Lars Ruddigkeit, Ruud van Deursen, Lorenz C. Blum, and Jean-Louis Reymond. Enumeration of 166 billion organic small molecules in the chemical universe database GDB-17. Journal of Chemical Information and Modeling , 52(11):2864–2875, 2012. doi: 10.1021/ci300415d. URL https://doi.org/10.1021/ci300415d. PMID: 23088335. 13 Mehdi S. M. Sajjadi, Olivier Bachem, Mario Lucic, Olivier Bousquet, and Sylvain Gelly. Assessing generative models via precision and recall. Advances in Neural Information Processing Systems , 31, 2018. Davide Scassola, Sebastiano Saccani, Ginevra Carbone, and Luca Bortolussi. Zero-shot conditioning of score-based diffusion models by neuro-symbolic constraints. arXiv preprint arXiv:2308.16534 , 2023. Michael Schlichtkrull, Thomas N. Kipf, Peter Bloem, Rianne van den Berg, Ivan Titov, and Max Welling. Modeling relational data with graph convolutional networks. In The Semantic Web , volume 10843 of 
+
+Lecture Notes in Computer Science , pages 593–607. Springer, 2018. doi: 10.1007/978-3-319-93417-4 38. Wentao Shi. Molecule-RNN: A recurrent neural network that generates drug-like molecules for drug discovery. https://github.com/shiwentao00/Molecule-RNN, 2025. GitHub repository; accessed 2025-04-15. Mihaela C˘ at˘ alina Stoian, Salijona Dyrmishi, Maxime Cordy, Thomas Lukasiewicz, and Eleonora Giunchiglia. How realistic is your synthetic data? constraining deep generative models for tabular data. In The Twelfth International Conference on Learning Representations , 2024. URL https://openreview.net/forum?id= ejAtqNNuXZ. Robert H. Swendsen and Jian-Sheng Wang. Replica monte carlo simulation of spin-glasses. Physical Review Letters , 57(21):2607–2609, 1986. Saifuddin Syed, Alexandre Bouchard-Cˆ ot´ e, George Deligiannidis, and Arnaud Doucet. Non-reversible parallel tempering: a scalable highly parallel mcmc scheme. Journal of the Royal Statistical Society Series B: Statistical Methodology , 84(2):321–350, 2022. Tijmen Tieleman. Training restricted boltzmann machines using approximations to the likelihood gradient. In Proceedings of the 25th International Conference on Machine Learning , pages 1064–1071. ACM, 2008. doi: 10.1145/1390156.1390290. URL https://doi.org/10.1145/1390156.1390290. Emile Van Krieken, Erman Acar, and Frank Van Harmelen. Analyzing differentiable fuzzy logic operators. 
+
+Artificial Intelligence , 302:103602, 2022. Emile van Krieken, Thiviyan Thanapalasingam, Jakub Tomczak, Frank Van Harmelen, and Annette Ten Teije. A-NeSI: A scalable approximate method for probabilistic neurosymbolic inference. Advances in Neural Information Processing Systems , 36:24586–24609, 2023. Emile van Krieken, Pasquale Minervini, Edoardo Ponti, and Antonio Vergari. Neurosymbolic diffusion models. In Advances in Neural Information Processing Systems , volume 38, 2025. URL https://arxiv.org/abs/2505. 13138. Victor Verreet, Lennert De Smet, Luc De Raedt, and Emanuele Sansone. EXPLAIN, AGREE, LEARN: Scaling learning for neural probabilistic logic. In ECAI 2024: 27th European Conference on Artificial Intelligence , volume 392 of Frontiers in Artificial Intelligence and Applications , pages 1349–1356. IOS Press, 2024. URL https://arxiv.org/abs/2408.08133. Cl´ ement Vignac and Pascal Frossard. DiGress: Discrete denoising diffusion for graph generation. https: //github.com/cvignac/DiGress, 2023. GitHub repository; accessed 2025-04-17. Cl´ ement Vignac, Igor Krawczuk, Antoine Siraudin, Bohan Wang, Volkan Cevher, and Pascal Frossard. DiGress: Discrete denoising diffusion for graph generation. In The Eleventh International Conference on Learning Representations , 2023. URL https://openreview.net/forum?id=UaAD-Nu86WX. Thomas Winters, Giuseppe Marra, Robin Manhaeve, and Luc De Raedt. DeepStochLog: Neural stochastic logic programming. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 36, pages 10090–10100, 2022. Jingyi Xu, Zilu Zhang, Tal Friedman, Yitao Liang, and Guy Van den Broeck. A semantic loss function for deep learning with symbolic knowledge. In Proceedings of the 35th International Conference on Machine Learning , volume 80 of Proceedings of Machine Learning Research , pages 5502–5511. PMLR, 2018. URL https://proceedings.mlr.press/v80/xu18h.html. 14 Barbara Zdrazil, Eloy Felix, Fiona Hunter, Emma J. Manners, James Blackshaw, Sybilla Corbett, Marleen de Veij, Harris Ioannidis, David Mendez Lopez, Juan F. Mosquera, Maria Paula Magarinos, Nicolas Bosc, Ricardo Arcila, Tevfik Kizil¨ oren, Anna Gaulton, A. Patr´ ıcia Bento, Melissa F. Adasme, Peter Monecke, Gregory A. Landrum, and Andrew R. Leach. The ChEMBL database in 2023: A drug discovery platform spanning multiple bioactivity data types and time periods. Nucleic Acids Research , 52(D1):D1180–D1192, January 2024. ISSN 0305-1048. doi: 10.1093/nar/gkad1004. URL https://doi.org/10.1093/nar/gkad1004. 
+
+# Appendix A Parallel Noising versus Parallel Tempering 
+
+## A.1 Parallel Tempering MCMC 
+
+Parallel tempering MCMC [Swendsen and Wang, 1986, Geyer, 1991, Hukushima and Nemoto, 1996, Desjardins et al., 2010], which is also known as replica exchange MCMC , is a classical method for sampling from complex distributions where plain Gibbs sampling would be inefficient. It improves mixing by simulating several Markov chains in parallel, which may exchange samples (explained below). Each chain is associated with an inverse temperature parameter βi ∈ (0 , 1], where the chain with βk = 1 targets the true distribution we want to sample from—lower βi’s correspond to flatter versions of this distribution. Formally, each chain samples from the tempered distribution 
+
+Pi(x) = 1
+
+Zi
+
+exp( −βiE(x)) ,
+
+where E(x) is the energy function of the target distribution and Zi is the normalization constant, known as 
+
+partition function . The idea is that chains at lower inverse temperatures (i.e., higher temperatures) are better at exploring the space due to the flattened energy landscape, while the chain at βk = 1 provides samples from the true target. To allow information sharing between chains, the algorithm performs swap attempts between adjacent chains x(i) and x(i+1) . The proposed swap ( x(i), x (i+1) ) 7 → (x(i+1) , x (i)) is accepted with probability 
+
+α = min 
+
+
+
+1, Pi(x(i+1) ) · Pi+1 (x(i))
+
+Pi(x(i)) · Pi+1 (x(i+1) )
+
+
+
+= min 
+
+n
+
+1, exp 
+
+
+
+− βiE(x(i+1) ) + βiE(x(i))
+
+−βi+1 E(x(i)) + βi+1 E(x(i+1) )
+
+o 
+
+which ensures that each chain samples from the correct corresponding distribution. It turns out that it is also beneficial to perform the swapping in “odd” and “even” phases, where in the “odd” phases, the swaps are attempted for chains with odd number i and their neighbor i + 1, and analogically for even phases [Syed et al., 2022]. The motivation behind this technique is that chains at higher temperatures are more likely to traverse low-probability regions and can thus escape local modes. The swap mechanism then allows this exploratory information to be propagated back to the lower-temperature chains. 
+
+Example 1. Figure 3 shows, as an illustration, results of sampling from a given bimodal density with and without parallel tempering—as can be seen, parallel tempering helps the sampler to cross the region of low density separating the two modes. 
+
+Remark 1. It will be convenient for the exposition further in the paper to make the substitution ρi(x) = 
+
+−βiE(x). Here, we just absorbed the inverse temperature parameter and the energy function into the potential function ρi. The swap probability in parallel tempering then becomes α = min {1, exp 
+
+
+
+ρi(x(i+1) ) − ρi(x(i)) + 
+
+ρi+1 (x(i)) − ρi+1 (x(i+1) )
+
+
+
+}.
+
+15 Figure 3: Sampling from a bi-modal distribution: No PT vs. PT 
+
+## A.2 Intuition: Parallel Noising vs. Parallel Tempering 
+
+Parallel noising (PN) and parallel tempering (PT) are both replica-exchange methods: they run a ladder of auxiliary chains and use swap moves to transfer exploratory states back toward the target distribution. The crucial difference is how the auxiliary distributions are constructed. PT builds its ladder by rescaling the energy with different temperatures. High-temperature chains flatten the energy landscape and can therefore move more easily between modes. This works well when the temperature ladder is well matched to the energy scale of the target: adjacent chains must have enough distributional overlap for swap moves to be accepted. However, this requirement can become problematic when the target is very sharp, highly constrained, or changing during training. In such cases, a fixed temperature ladder may either be too coarse, leading to low swap acceptance, or too mild, giving hot chains that are not exploratory enough. PN instead builds its ladder by corrupting the state space. Rather than changing the energy scale, it defines auxiliary chains corresponding to increasingly noised versions of the structured object. The higher-noise chains explore relaxed versions of the same combinatorial problem, while the lowest-noise chain remains the target of interest. This can be more robust when the difficulty comes from sharp symbolic or combinatorial constraints, because the ladder is tied to the structure of the data rather than to a temperature scale that may be hard to tune. The next two subsections illustrate this distinction in controlled settings. The first diagnostic uses a synthetic Boolean distribution whose energy scale changes over time, showing how PT can become sensitive to the temperature schedule. The second diagnostic uses a pixel-based n-queens generation task with CNN potentials, where the goal is to sample configurations with few or no queen attacks. 
+
+## A.3 Time-varying Boolean tracking example 
+
+This toy example isolates the issue of changing energy scales during learning. It shows how a fixed temperature ladder can become poorly matched to a target distributions whose low energy barriers grow over time due to learning from deterministic distributions. 
+
+Target. Let x ∈ { 0, 1}d and let k = ∥x∥1 be its Hamming weight. At time t we define 
+
+πt(x) ∝ exp {− Et(x)},Et(x) ≡ Et(k) = βt min {k, d − k} − ht(2 k − d).
+
+The first term creates two wells around 0 d and 1 d; increasing βt raises the barrier between them. The second term tilts the distribution toward one well, and we sweep ht from negative to positive so that the preferred well changes during the run. We track the magnetization 
+
+m(x) = 1
+
+d
+
+> d
+
+X
+
+> j=1
+
+(2 xj − 1) = 2k − dd ∈ [−1, 1] ,
+
+whose exact expectation can be computed by summing over Hamming weights with multiplicities  dk
+
+.16 0 20 40 60 80 100 120 140    
+
+> time step t (target steepens; preference flips mid-way)
+> 1.0
+> 0.5
+> 0.0
+> 0.5
+> 1.0
+> magnetization  m(x) = (2|x| -d)/d  Tracking a time-varying Boolean two-well target (beta_max=35, n_runs=5)
+> Ground truth E[m] under _t
+> PT cold replica (fixed T ladder, T_max=4)
+> PN cold replica (fixed ladder)
+
+Figure 4: Tracking a time-varying Boolean two-well target. Ground truth Eπt [m] is computed exactly by summing over Hamming weights. PT uses a fixed temperature ladder, while PN uses a fixed noising ladder. Curves for PT and PN average the cold-replica magnetization over inner-chain samples and multiple random seeds. 
+
+PT and PN configurations. For PT, the replicas target πt,T ℓ (x) ∝ exp {− Et(x)/T ℓ} using a geometrically spaced temperature ladder Tℓ = T ℓ/ (L−1) max , with Tmax = 4 and L = 10. For PN, the replicas target corrupted distributions πt,ν = πtKν , where Kν is the independent bit-flip channel. We use the quadratic noise schedule 
+
+νℓ = 12 (ℓ/ (Lν − 1)) 2, which is denser near the clean target. Both samplers use local bit-flip moves and odd–even adjacent swaps. 
+
+Result. Figure 4 shows the cold-replica estimate of Eπt [m], averaged across inner-chain samples and random seeds. As the barrier increases, PT with a fixed temperature range increasingly lags behind the changing target. PN tracks the change more closely because high-noise replicas remain close to uniform even when the underlying energy becomes sharp. This supports the use of corruption levels as a robust auxiliary ladder when training gradually learns near-deterministic constraints. 
+
+## A.4 Pixel-based n-queens generation 
+
+We also evaluate PN and PT on a pixel-based n-queens generation task. A board is represented as a binary image, with a queen indicated by an active pixel. The energy is parameterized by a convolutional neural network, so the task tests whether the sampler can explore a learned, image-level potential whose high-probability states satisfy a global combinatorial constraint. 
+
+Metric. For each generated board, we count the number of attacking queen pairs, i.e., pairs of active pixels that share a row, column, or diagonal. We report the average number of attacks over generated samples; lower is better, and zero attacks corresponds to a solved board when the board also contains the required number of queens. This metric directly measures how much hard constraint violation remains in the generated samples. 
+
+Comparison. We use the same CNN potential and the same within-level local updates for both methods. PT uses a temperature ladder beginning at the clean target ( T = 1) and increasing through 
+
+{1.0, 1.08 , 1.1664 , 1.259712 , 1.360489 }. PN uses the corruption ladder ν ∈ { 0, 0.02 , 0.05 , 0.1, 0.2}. In both cases, we report the clean/cold chain, and the curves correspond to independent runs. 
+
+Result. Figure 5 shows that both methods rapidly reduce the number of attacks from the random initialization, but their long-run behavior differs. PT plateaus at a higher number of remaining conflicts, whereas PN continues to reduce the average number of attacks across the run. The final samples in Figure 6 give a qualitative view of the same effect: high-noise PN levels remain exploratory, while the clean PN chain 17 0 500 1000 1500 2000 2500 
+
+> Samples
+> 10 1
+> 10 2
+> Avg. Number of Attacks
+> Queens Attacks
+> PN 1
+> PN 2
+> PN 3
+> PN 4
+> PT 1
+> PT 2
+> PT 3
+> PT 4
+
+Figure 5: Pixel-based n-queens diagnostic. Average number of attacking queen pairs as a function of generated samples. Lower is better. PN reaches consistently lower attack counts than PT after the initial burn-in, indicating better exploration of low-conflict boards under the learned CNN potential. produces less conflicted boards than the corresponding cold PT chain. This diagnostic supports the main claim that noising ladders can be better suited than fixed temperature ladders for learned energies with crisp combinatorial structure. 18 (a) PT levels. (b) PN levels. 
+
+Figure 6: Representative final n-queens samples at different temperature/noise levels. The cold/clean level is shown at the top of each panel. 
+
+# B Additional experimental results and ablations 
+
+## B.1 Compared Models 
+
+Besides the latest version of NMLN, we compare NMLN* with the following two diffusion-based algorithms from [Vignac et al., 2023]: 
+
+• DiGress Discrete [Vignac et al., 2023], implemented in [Vignac and Frossard, 2023], utilizes a discrete diffusion process that progressively edits graphs with noise, through the process of adding or removing edges and changing the labels. 
+
+• DiGress Continuous which is the continuous version using Gaussian noise. We also compare with molecule-specific generators that use string encodings such as SMILES or SELFIES [Krenn et al., 2020]. SELFIES guarantees molecular validity for strings over its alphabet, whereas SMILES does not. These methods exploit chemistry-specific representations and therefore do not apply to arbitrary relational domains, but they provide informative domain-specialized baselines: 
+
+• Molecule-RNN Char [Shi, 2025] is a recurrent neural network designed to generate novel molecules from the distribution of a molecular training dataset. This method is based on the SMILES representation. 
+
+• Molecule-RNN Regex A more structured approach using regular expressions, where elements such as square-bracketed atoms (e.g., ”[O-]”) are treated as individual tokens. 
+
+• Molecule-RNN Selfies [Krenn et al., 2020] uses the Selfies representation of molecules—this model therefore generates only valid molecules. 
+
+• PaccMann [Born et al., 2021], implemented by the PaccMannRL pipeline [PaccMann contributors, 2021], is a VAE-based generative model guided by reinforcement learning, where a learned reward function predicts molecule–target interactions, enabling the targeted generation of novel compounds for given protein or transcriptomic inputs. 19 B.2 Datasets 
+
+We report experimental results on four datasets restricted to molecules of sizes 9, 10, 15, and 20. These datasets are: 
+
+• ChEMBL [Zdrazil et al., 2024], which is a manually curated database of bioactive molecules with drug-like properties, 
+
+• QM9 [Ruddigkeit et al., 2012, Ramakrishnan et al., 2014] contains stable small organic molecules made up of carbon, hydrogen, oxygen, nitrogen, and fluorine atoms, 
+
+• ZINC250k [Irwin and Shoichet, 2005], which is a free database of commercially available compounds for virtual screening, and 
+
+• MOSES [Polykovskiy et al., 2020], which is a curated and cleaned subset of the ZINC database, prepared specifically for benchmarking molecular generative models. The number of molecules in the subsets of these datasets which we use are reported in Table 1. 
+
+Dataset Size 9 Size 10 Size 15 Size 20 
+
+ChEMBL 1 684 2 589 14 658 44 222 QM9 109 813 - - -MOSES - - 579 195 650 ZINC250k 28 90 1 766 8 590 Table 1: Number of molecules in the datasets with a given number of heavy atoms. 
+
+## B.3 Methodology 
+
+We mainly follow the experimental methodology from [Jung et al., 2024] where it was advocated to use a variant of ROC curves, called coverage or recall curves (we use the latter term in this paper), and motivated by Sajjadi et al. [2018], obtained as follows: We let the model generate N samples and we collect all the unique ones. For each unique sample, we store its frequency, i.e., how many times they were generated. Here, frequency is understood as a proxy for the probability of the molecule given by the learned model. As a generative performance indicator, we compute how many of the t most frequently generated molecules are in the test set. We then plot this measure w.r.t. frequency thresholds t. This metric is related to a ROC curve, but in the generative setting. To ensure a fair comparison, we let all methods generate a fixed number of 2M samples per model and dataset. While some methods may require longer generation times, this can be considered negligible in the context of real-world molecular synthesis where the top-ranking molecules suggested by the models may need to eventually be synthesized and tested. 
+
+## B.4 Detailed Experimental Settings 
+
+Datasets are partitioned into training and test sets using an 80/20 split. All models were trained using their default hyperparameters as provided in the respective open-source repositories. The only modifications involved adjusting the generation pipeline to produce 2,000,000 samples, saving outputs in the SMILES format, and, in some cases, disabling third-party post-processing filters that would otherwise exclude invalid samples. The GNN potentials in NMLN* consist of 10 R-GCN layers with a hidden dimensionality of 128 and ReLU activations. The update function is implemented as a standard linear layer with a matching hidden size and activation. The output of the GNN is formed by aggregating all intermediate layer outputs and applying a final MLP with three linear layers, each using ReLU activations and the same hidden size. 20 NMLN*     
+
+> NMLN s.3
+> NMLN s.4
+> NMLN s.2
+> NMLN s.1
+> NMLN s.5 0200000 400000 600000 800000
+> #valid & unique molecules by freq.
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> 0.8
+> Recall
+
+Figure 7: Recall curves for different variants of NMLN on the dataset ChEMBL 10. 
+
+## B.5 Experimental Questions and Results 
+
+In this section, we state several research questions and address them experimentally. 
+
+Q1: Does NMLN* outperform the latest NMLN? 
+
+We compared NMLN* with two baselines derived from the previous model: NMLN s.1, which uses the DeepSet-NMLN settings, and NMLN s.2, which increases the number of parallel chains from 8 in the DeepSet-NMLN to 40, which is still trainable in a reasonable time. In NMLN*, we run R=100 replicas over N = 5 noise levels (500 chains total); we report samples from the coldest level (setting it to 100 for the DeepSet-NMLN already lead to unacceptably high runtime, which is a consequence of the dense local potential functions used in the original NMLNs). As shown in Figure 7, the NMLN* models outperform both NMLN competitors already for molecules with 10 atoms by a significant margin, demonstrating the effectiveness of the proposed modifications. 
+
+Q2: How much do the improvements matter? 
+
+To separate the two contributions— stronger potentials and better inference —we consider a set of compute-aware ablations, all summarized in Figure 7. 
+
+Effect of the potential family (sampler fixed). We compare the original DeepSet potentials (NMLN s.1/s.2 from Q1) against GNN potentials while keeping the sampler as plain multi-chain Gibbs: 
+
+• NMLN s.3 (GNN + Gibbs) replaces the DeepSet potential with the GNN potential but keeps the default chain count. 
+
+Effect of the sampler (potential fixed). We then keep the GNN potential fixed and vary the sampling strategy and compute budget: 
+
+• NMLN s.4 (GNN + Gibbs, 100 chains) increases the number of Gibbs chains to match the number of replicas at the coldest level of NMLN*. 
+
+• NMLN s.5 (GNN + Gibbs, 500 chains) matches the total number of maintained chains ( N × R)in NMLN*. 
+
+• NMLN* (GNN + PN) uses the full parallel-noising ladder with N = 5 levels and R=100 replicas (500 chains total), including swap moves. 21 NMLN* DiGress D DiGress C 0 100000 200000 300000 400000 500000 
+
+> #valid & unique molecules by freq.
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> Recall
+
+(a) ChEMBL 9 0 200000 400000 600000  
+
+> #valid & unique molecules by freq.
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> 0.8
+> Recall
+
+(b) ChEMBL 10 0.0 0.2 0.4 0.6 0.8 1.0 1.2  
+
+> #valid & unique molecules by freq. 1e6
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> Recall
+
+(c) ChEMBL 15 0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4   
+
+> #valid & unique molecules by freq. 1e6
+> 0.00
+> 0.01
+> 0.02
+> 0.03
+> 0.04
+> 0.05
+> Recall
+
+(d) ChEMBL 20 
+
+Figure 8: Recall curves for different sizes on the dataset ChEMBL. 
+
+Compute note. Replica exchange incurs overhead (swap evaluations) beyond within-level updates. To avoid overstating improvements, we report results both at matched chain count (s.4) and at matched total chain count (s.5), and we use the same generation budget (2M produced samples) across all methods. To keep within-level updates tractable with a global GNN energy, we batch many candidate local edits on the GPU and reuse intermediate message-passing activations whenever possible; for the molecule sizes considered here (up to 20 heavy atoms), a full forward recomputation per proposed edit is also feasible and remains a small fraction of overall training time. As shown in Figure 7, each individual modification contributes to performance improvements, but the full NMLN* configuration achieves the highest performance overall. 
+
+Q3: Can NMLN* outperform state-of-the-art diffusion models? 
+
+To answer this question, we compared NMLN* with DiGress [Vignac et al., 2023], both in the continuous and in the discrete versions. DiGress is another general graph-generation method and therefore a direct competitor to NMLNs. In Appendix Figure 8, 9, 10, and 11, we compare the recall curves. On most of the datasets, NMLN* significantly outperforms diffusion models. On size 20, the recall is small for both models as the number of possible molecules is huge, but NMLN* still achieves a higher recall. We also observed that NMLN* was able to generate a significantly larger number of valid samples on the larger molecules. 
+
+Q4: How does NMLN* compare to specialized models for molecules? 
+
+We further compared NMLN* against molecule-specific generative methods, which leverage domain-specific representations such as SMILES or SELFIES. These representations inherently encode chemical rules, enabling 22 NMLN* DiGress D DiGress C 0 200000 400000 600000 800000 
+
+> #valid & unique molecules by freq.
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> Recall
+
+(a) MOSES15 0.0 0.2 0.4 0.6 0.8 1.0 1.2   
+
+> #valid & unique molecules by freq. 1e6
+> 0.00
+> 0.01
+> 0.02
+> 0.03
+> 0.04
+> 0.05
+> 0.06
+> Recall
+
+(b) MOSES20 
+
+Figure 9: Recall curves for different sizes on the dataset MOSES. 0 100000 200000 300000 400000 500000   
+
+> #valid & unique molecules by freq.
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Recall
+> NMLN* DiGress D DiGress C
+
+Figure 10: Recall curves for the QM9. such models to achieve higher validity and more efficient exploration of molecular space. In Appendix Figure 12, 13, 14, and 15 we show that NMLN* outperforms molecule-specific baselines on smaller molecule sizes (9 and 10 heavy atoms), which shows their effectiveness even without relying on handcrafted molecular priors. However, at sizes 15 and 20, where both NMLN* and DiGresses begin to exhibit performance degradation, molecule-specific methods continue to cover a substantial portion of the test set. This suggests that the inductive biases encoded in molecular representations become increasingly beneficial as molecular complexity grows. 
+
+A Peek Into the Chains of NMLNs* Validity Across Noise Levels Intuitively, chains in parallel noising with less noise should produce samples that are valid molecules more often than chains with more noise. We measured the fraction of valid molecules produced at each of the five NMLN* noise levels in parallel noising (Fig. 17). Validity was near zero at the highest noise level (0.1) and increased monotonically as noise decreased, with the lowest level (0.001) yielding almost exclusively valid samples. 
+
+Recall Across Noise Levels Figure 16 illustrates the recall curves of the five levels of single NMLN* from a single experiment, corresponding to progressively lower noise levels: 0.1, 0.01, 0.005, 0.0025, and 0.001. As expected, the first level (noise = 0.1) demonstrates limited recall due to its high stochasticity and exploratory behavior. In contrast, the final level (noise = 0.001) achieves the highest recall. 23 DiGress D NMLN* DiGress C 0 50000 100000 150000 200000 250000 
+
+#valid & unique molecules by freq. 
+
+0.00 
+
+0.02 
+
+0.04 
+
+0.06 
+
+0.08 
+
+0.10 
+
+0.12 
+
+0.14 
+
+> Recall
+
+(a) ZINC250k 9 0 100000 200000 300000 400000 500000 
+
+#valid & unique molecules by freq. 
+
+0.00 
+
+0.05 
+
+0.10 
+
+0.15 
+
+0.20 
+
+0.25 
+
+0.30  
+
+> Recall
+
+(b) ZINC250k 10 0.0 0.2 0.4 0.6 0.8 1.0 1.2 
+
+#valid & unique molecules by freq. 1e6 
+
+0.00 
+
+0.05 
+
+0.10 
+
+0.15 
+
+0.20 
+
+> Recall
+
+(c) ZINC250k 15 0.0 0.2 0.4 0.6 0.8 1.0 1.2 
+
+#valid & unique molecules by freq. 1e6 
+
+0.000 
+
+0.005 
+
+0.010 
+
+0.015 
+
+0.020 
+
+0.025 
+
+0.030 
+
+0.035  
+
+> Recall
+
+(d) ZINC250k 20 
+
+Figure 11: Recall curves for different sizes on the dataset ZINC250k. 24 NMLN* Molecule-RNN R Molecule-RNN S Molecule-RNN C Paccmann 0 100000 200000 300000 400000 500000 600000 
+
+#valid & unique molecules by freq. 
+
+0.0 
+
+0.2 
+
+0.4 
+
+0.6 
+
+0.8 
+
+> Recall
+
+(a) ChEMBL 9 0 100000 200000 300000 400000 500000 
+
+#valid & unique molecules by freq. 
+
+0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+0.4 
+
+0.5 
+
+0.6 
+
+0.7 
+
+0.8  
+
+> Recall
+
+(b) ChEMBL 10 0.0 0.2 0.4 0.6 0.8 1.0 1.2 
+
+#valid & unique molecules by freq. 1e6 
+
+0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+0.4 
+
+> Recall
+
+(c) ChEMBL 15 0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4 
+
+#valid & unique molecules by freq. 1e6 
+
+0.00 
+
+0.05 
+
+0.10 
+
+0.15 
+
+0.20  
+
+> Recall
+
+(d) ChEMBL 20 
+
+Figure 12: Recall curves for different sizes on the dataset ChEMBL. NMLN* Molecule-RNN R Molecule-RNN C Molecule-RNN S Paccmann 0.0 0.2 0.4 0.6 0.8 1.0 1.2 
+
+#valid & unique molecules by freq. 1e6 
+
+0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+0.4 
+
+0.5 
+
+0.6 
+
+0.7 
+
+> Recall
+
+(a) MOSES15 0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4 
+
+#valid & unique molecules by freq. 1e6 
+
+0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+0.4  
+
+> Recall
+
+(b) MOSES20 
+
+Figure 13: Recall curves for different sizes on the dataset MOSES. 25 0 100000 200000 
+
+#valid & unique molecules by freq. 
+
+0.0 
+
+0.2 
+
+0.4 
+
+0.6 
+
+0.8 
+
+1.0 
+
+> Recall
+
+NMLN* 
+
+Molecule-RNN R 
+
+Molecule-RNN C 
+
+Paccmann Figure 14: Recall curves for the QM9. NMLN* Molecule-RNN C Molecule-RNN R Molecule-RNN S Paccmann 0 25000 50000 75000 100000 125000 150000 175000 
+
+#valid & unique molecules by freq. 
+
+0.00 
+
+0.02 
+
+0.04 
+
+0.06 
+
+0.08 
+
+0.10 
+
+0.12 
+
+0.14 
+
+> Recall
+
+(a) ZINC250k 9 0 100000 200000 300000 400000 
+
+#valid & unique molecules by freq. 
+
+0.00 
+
+0.05 
+
+0.10 
+
+0.15 
+
+0.20 
+
+0.25  
+
+> Recall
+
+(b) ZINC250k 10 0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4 
+
+#valid & unique molecules by freq. 1e6 
+
+0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+0.4 
+
+0.5 
+
+0.6 
+
+0.7 
+
+> Recall
+
+(c) ZINC250k 15 0.0 0.2 0.4 0.6 0.8 1.0 1.2 
+
+#valid & unique molecules by freq. 1e6 
+
+0.00 
+
+0.01 
+
+0.02 
+
+0.03 
+
+0.04 
+
+0.05  
+
+> Recall
+
+(d) ZINC250k 20 
+
+Figure 15: Recall curves for different sizes on the dataset ZINC250k. 26 0 1 2
+
+#all molecules in time 
+
+> 1e6
+
+0.0 
+
+0.2 
+
+0.4 
+
+0.6 
+
+0.8 
+
+> Recall
+
+5. level of NMLN* 
+
+3. level of NMLN* 
+
+4. level of NMLN* 
+
+2. level of NMLN* 
+
+1. level of NMLN* Figure 16: Recall curve of NMLN* on different levels on the dataset ChEMBL. 0.0 0.5 1.0 
+
+#steps 1e6 
+
+0.0 
+
+0.2 
+
+0.4 
+
+0.6 
+
+0.8 
+
+> Validity
+
+5. level of NMLN* 
+
+4. level of NMLN* 
+
+3. level of NMLN* 
+
+2. level of NMLN* 
+
+1. level of NMLN* 
+
+Figure 17: Validity of NMLN* on different levels on the dataset ChEMBL 10. 27 C Full Theory for Parallel Noising 
+
+This section develops properties of parallel noising (PN) that are useful both conceptually and for designing practical ladders. Throughout, Ω is a finite state space of possible worlds (for a fixed domain size) and each level i targets πi(ω) ∝ exp( ρi(ω)) as in Section 6. 
+
+## C.1 Swap acceptance and distributional overlap 
+
+Let μ = πi ⊗ πi+1 and μswap = πi+1 ⊗ πi be distributions on Ω 2. Denote total variation distance by ∥ · ∥ TV .
+
+Corollary 1 (A simple lower bound) .
+
+Eαi,i +1 (X, Y ) ≥ 1 − 2∥πi − πi+1 ∥TV .
+
+Proof. Write δ = πi − πi+1 . Then 
+
+μ − μswap = πi ⊗ πi+1 − πi+1 ⊗ πi
+
+= δ ⊗ πi+1 − πi+1 ⊗ δ. 
+
+Using ∥A∥TV = 12 ∥A∥1, the triangle inequality, and ∥δ ⊗ π∥1 = ∥δ∥1∥π∥1 = ∥δ∥1,
+
+∥μ − μswap ∥TV ≤ 12 (∥δ∥1 + ∥δ∥1)= ∥δ∥1
+
+= 2 ∥πi − πi+1 ∥TV .
+
+Apply Proposition 2. 
+
+## C.2 A distribution-free bound for Bernoulli noising 
+
+We now specialize to the Bernoulli corruption operator Kν from Section 4.2. For any distribution p on {0, 1}d,let pν = pK ν denote the ν-noised distribution. 
+
+Proposition 3 (Total variation between adjacent noise levels) . For any p and any ν, ν ′ ∈ [0 , 1] ,
+
+∥pν − pν′ ∥TV ≤ d |ν − ν′|.
+
+Interpretation. Proposition 3 is a distribution-free (worst-case) sanity check: it depends on the ambient dimension d of the ground-atom encoding and can therefore be extremely loose for realistic relational or molecular representations (where d may be in the thousands or more). In particular, the implied acceptance lower bound in Corollary 2 becomes vacuous once d|νi − νi+1 | is not small. We therefore do not use this bound to tune noise schedules. Instead, in practice we select and validate ladders using the overlap/acceptance characterization from Section C.1: we monitor adjacent swap acceptance rates during training and choose {νi} such that adjacent pairs maintain non-trivial acceptance. We also report recall/quality as a function of compute (number of energy evaluations) when comparing different ladders or numbers of replicas (Section 8). 
+
+Proof. Construct a coupling ( Y, Y ′) with Y ∼ pν and Y ′ ∼ pν′ as follows: sample X ∼ p, sample i.i.d. 
+
+U1, . . . , U d ∼ Unif (0 , 1), set Bj = 1{Uj < ν } and B′ 
+
+> j
+
+= 1{Uj < ν ′}, and define Yj = Xj ⊕ Bj and 
+
+Y ′ 
+
+> j
+
+= Xj ⊕ B′ 
+
+> j
+
+. Then P(Y̸ = Y ′) ≤ Pdj=1 P(Bj̸ = B′ 
+
+> j
+
+) = d|ν − ν′|. By the coupling characterization of total variation, ∥pν − pν′ ∥TV ≤ P(Y̸ = Y ′) ≤ d|ν − ν′|.
+
+Corollary 2 (Lower bound on expected swap acceptance) . Assume (idealized) that two adjacent PN levels target πi = pνi and πi+1 = pνi+1 for a common underlying distribution p. Then in stationarity, 
+
+Eαi,i +1 (X, Y ) ≥ 1 − 2d|νi − νi+1 |.
+
+This worst-case bound is informative only when 2d|νi − νi+1 | ≪ 1; otherwise the right-hand side becomes vacuous (and may be negative). Proof. Combine Corollary 1 with Proposition 3. 28 C.3 Invariance under potential shifts 
+
+Proposition 4 (Shift-invariance of swap decisions) . Replacing ρi by ˜ρi = ρi + ci for any constants ci ∈ R
+
+leaves the swap acceptance probability (6) unchanged. Proof. In ∆ i,i +1 , each ρi appears once with a plus and once with a minus sign, so additive constants cancel. 
+
+# D Proofs 
+
+Proof for Proposition 1. 
+
+Proof. Let Ω be the (discrete) single-replica state space and Ω N the joint state space. For each noise level 
+
+j ∈ { 1, . . . , N }, let πj : Ω → [0 , 1] be the target pmf and Kj : Ω × Ω → [0 , 1] a Markov kernel satisfying invariance P 
+
+> ˜ω∈Ω
+
+πj ( ˜ω) Kj ( ˜ω, ω ) = πj (ω) for all ω ∈ Ω. All distributions and kernels are over a discrete state space, so we work with probability mass functions and sums. Let Π( ω1, . . . , ω N ) = 
+
+> N
+
+Y
+
+> j=1
+
+πj (ωj )and 
+
+K(˜ ω, ω ) = 
+
+> N
+
+Y
+
+> j=1
+
+Kj (˜ ωj , ω j ).
+
+(1) Product updates. For any ω = ( ω1, . . . , ω N ), (Π K)( ω) = X
+
+> ˜ω∈ΩN
+
+Π(˜ ω) K(˜ ω, ω )= X
+
+> ˜ω1,..., ˜ωN
+> N
+
+Y
+
+> j=1
+
+πj (˜ ωj ) Kj (˜ ωj , ω j )=
+
+> N
+
+Y
+
+> j=1
+
+ X 
+
+> ˜ωj∈Ω
+
+πj (˜ ωj ) Kj (˜ ωj , ω j )
+
+
+
+=
+
+> N
+
+Y
+
+> j=1
+
+πj (ωj ) = Π( ω),
+
+where we used the assumed invariance of each coordinate kernel, P 
+
+> ˜ωj
+
+πj ( ˜ωj )Kj ( ˜ωj , ω j ) = πj (ωj ), and applied repeated distributivity, which allowed us to change the order of summation and multiplication. Thus K leaves Π invariant. 
+
+(2) Swap updates. Fix i and define the swap map T on Ω N by exchanging coordinates i and i+1: 
+
+T (ω1, . . . , ω i, ω i+1 , . . . , ω N ) = ( ω1, . . . , ω i+1 , ω i, . . . , ω N ). For any state x ∈ ΩN ,Π( T (x)) Π( x) = πi(xi+1 ) πi+1 (xi)
+
+πi(xi) πi+1 (xi+1 ) ,
+
+so the Metropolis acceptance probability α(x) = min {1, Π( T (x)) /Π( x)} coincides with (6) . The swap proposal is deterministic and involutive ( T (T (x)) = x), hence symmetric, and we have the pointwise identity Π( x) α(x) = min {Π( x), Π( T (x)) } = Π( T (x)) α(T (x)) .
+
+Since the swap kernel Si,i +1 only transitions from x to T (x) (with probability α(x)) or stays at x, this equality is exactly the detailed balance condition for the pair ( x, T (x)), implying Π Si,i +1 = Π. 
+
+(3) Compositions. If Π P = Π and Π Q = Π, then Π( P Q ) = (Π P )Q = Π Q = Π. Therefore any finite composition of product updates K and swap updates Si,i +1 leaves Π invariant, and so does the overall transition kernel used in Algorithm 1. 
+
+(4) Marginal correctness of the lowest-noise chain. By construction, the ωN -marginal of Π is πN .Hence, when the joint chain is at stationarity, ωN ∼ πN .29 Remark on Proposition 2. This expected-acceptance/overlap identity is standard in replica exchange; see Kofke [2002] and its erratum [Kofke, 2004], which give an exact expression for the mean exchange acceptance probability in terms of the overlap of adjacent energy distributions (Eq. (7) of the original article). 
+
+Proof for Corollary 1. 
+
+Proof. Write δ = πi − πi+1 . Then 
+
+μ − μswap = πi ⊗ πi+1 − πi+1 ⊗ πi
+
+= δ ⊗ πi+1 − πi+1 ⊗ δ. 
+
+Using ∥A∥TV = 12 ∥A∥1, the triangle inequality, and ∥δ ⊗ π∥1 = ∥δ∥1∥π∥1 = ∥δ∥1,
+
+∥μ − μswap ∥TV ≤ 12 (∥δ∥1 + ∥δ∥1)= ∥δ∥1
+
+= 2 ∥πi − πi+1 ∥TV .
+
+Apply Proposition 2. 
+
+Proof for Proposition 3. 
+
+Proof. Construct a coupling ( Y, Y ′) with Y ∼ pν and Y ′ ∼ pν′ as follows: sample X ∼ p, sample i.i.d. 
+
+U1, . . . , U d ∼ Unif (0 , 1), set Bj = 1{Uj < ν } and B′ 
+
+> j
+
+= 1{Uj < ν ′}, and define Yj = Xj ⊕ Bj and 
+
+Y ′ 
+
+> j
+
+= Xj ⊕ B′ 
+
+> j
+
+. Then P(Y̸ = Y ′) ≤ Pdj=1 P(Bj̸ = B′ 
+
+> j
+
+) = d|ν − ν′|. By the coupling characterization of total variation, ∥pν − pν′ ∥TV ≤ P(Y̸ = Y ′) ≤ d|ν − ν′|.
+
+Proof for Corollary 2. 
+
+Proof. Combine Corollary 1 with Proposition 3. 
+
+Proof for Proposition 4. 
+
+Proof. In ∆ i,i +1 , each ρi appears once with a plus and once with a minus sign, so additive constants cancel. 30
