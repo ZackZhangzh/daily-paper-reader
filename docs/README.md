@@ -18,58 +18,38 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-25
-- 运行时间：2026-07-25 21:10:16 UTC
+- 最新运行日期：2026-07-26
+- 运行时间：2026-07-26 21:06:57 UTC
 - 运行状态：成功
-- 本次总论文数：12
-- 精读区：7
+- 本次总论文数：6
+- 精读区：1
 - 速读区：5
 
 ### 今日简报（AI）
-今日精读7篇，聚焦图像生成与编辑，其中两篇扩散模型工作均斩获9.0高分，值得重点关注。  
-最值得深挖的是原生分辨率生成框架Mage-Flow，以及基于源先验驱动的选择性适配微调方法，两者都显著提升了效率与可控性。  
-普通读者若想跟进，建议先理解扩散模型的基础原理，再对比这两篇的改进策略，可快速把握生成式AI的最新实用方向。
-- 详情：[/202607/25/README](/202607/25/README)
+今日精读1篇、速读5篇，重点聚焦语言模型推理策略与生成式图像融合。最值得关注的是《Uncovering Latent Reasoning Strategies》揭示的隐式推理路径，以及《Coarse-to-fine Framework》提出的粗到细MEF生成框架。普通读者可优先精读第一篇以理解模型决策逻辑，速读后两篇跟进视觉生成前沿即可。
+- 详情：[/202607/26/README](/202607/26/README)
 
 ### 精读区论文标签
-1. [Mage-Flow: An Efficient Native-Resolution Foundation Model for Image Generation and Editing](/202607/25/2607.19064v2-mage-flow-an-efficient-native-resolution-foundation-model-for-image-generation-and-editing)  
-   标签：评分：9.0/10、query:fm
-   evidence：使用整流流匹配进行高效文本到图像生成
-2. [Source-Prior-Driven Selective Adaptation for Efficient Diffusion Model Finetuning](/202607/25/2607.20913v1-source-prior-driven-selective-adaptation-for-efficient-diffusion-model-finetuning)  
-   标签：评分：9.0/10、query:fm
-   evidence：扩散模型微调
-3. [Generative World Renderer at the Speed of Play](/202607/25/2607.18703v1-generative-world-renderer-at-the-speed-of-play)  
+1. [Uncovering Latent Reasoning Strategies in Language Models](/202607/26/2607.17674v1-uncovering-latent-reasoning-strategies-in-language-models)  
    标签：评分：8.0/10、query:fm
-   evidence：物理引擎驱动的生成式世界渲染器
-4. [ROMS-IMLE: A Minimalist Approach to Competitive Single-Step Generative Modelling](/202607/25/2607.19332v1-roms-imle-a-minimalist-approach-to-competitive-single-step-generative-modelling)  
-   标签：评分：8.0/10、query:fm
-   evidence：极简单步生成模型挑战流匹配
-5. [Axolotl3D: a Unified Framework for Faithful 3D Shape Completion](/202607/25/2607.20660v1-axolotl3d-a-unified-framework-for-faithful-3d-shape-completion)  
-   标签：评分：8.0/10、query:fm
-   evidence：用于形状补全的3D扩散模型
-6. [Diffusion Language Model for Recommendation](/202607/25/2607.21519v1-diffusion-language-model-for-recommendation)  
-   标签：评分：8.0/10、query:fm
-   evidence：用于推荐的离散扩散语言模型
-7. [Inference-Time Scaling of Diffusion Models via Progressive Seed Pruning](/202607/25/2607.21591v1-inference-time-scaling-of-diffusion-models-via-progressive-seed-pruning)  
-   标签：评分：8.0/10、query:fm
-   evidence：流匹配与扩散模型的推理时缩放
+   evidence：潜在变量分解
 
 ### 速读区论文标签
-1. [Text2Villa: Hierarchical Generation of 3D Indoor Environments with Physics-Aware Analysis-by-Synthesis](/202607/25/2607.17145v1-text2villa-hierarchical-generation-of-3d-indoor-environments-with-physics-aware-analysis-by-synthesis)  
+1. [Coarse-to-fine Framework for Generative MEF via Implicit Neural Representation](/202607/26/2607.17611v1-coarse-to-fine-framework-for-generative-mef-via-implicit-neural-representation)  
    标签：评分：7.0/10、query:fm
-   evidence：带物理约束的生成式3D室内场景
-2. [Parallel Noising in Neural Markov Logic Networks](/202607/25/2607.19126v1-parallel-noising-in-neural-markov-logic-networks)  
+   evidence：基于扩散的生成融合
+2. [3D-GIMP: When 3D Gaussian Inpainting Meets PatchMatch](/202607/26/2607.20789v1-3d-gimp-when-3d-gaussian-inpainting-meets-patchmatch)  
    标签：评分：7.0/10、query:fm
-   evidence：生成模型与基于扩散的图生成
-3. [STEREOFLOW: Progressive Stereo Matching with StereoDiT and Transition Flow Matching](/202607/25/2607.19986v1-stereoflow-progressive-stereo-matching-with-stereodit-and-transition-flow-matching)  
-   标签：评分：7.0/10、query:fm
-   evidence：过渡流匹配用于生成式立体匹配
-4. [Importance-Aware OBS Pruning for Diffusion Models](/202607/25/2607.20048v1-importance-aware-obs-pruning-for-diffusion-models)  
-   标签：评分：7.0/10、query:fm
-   evidence：扩散模型的重要性感知剪枝
-5. [Toward a mechanistic understanding of inference in visual cortex and diffusion models](/202607/25/2607.15693v1-toward-a-mechanistic-understanding-of-inference-in-visual-cortex-and-diffusion-models)  
+   evidence：使用扩散模型进行3D高斯修复
+3. [One-step lowest-variance selection in a Gaussian random-field model motivated by masked diffusion: Total correlation and a square root collision threshold](/202607/26/2607.17522v1-one-step-lowest-variance-selection-in-a-gaussian-random-field-model-motivated-by-masked-diffusion-total-correlation-and-a-square-root-collision-threshold)  
    标签：评分：6.0/10、query:fm
-   evidence：扩散模型与潜在变量
+   evidence：受掩蔽扩散启发的理论分析
+4. [Learning Explicit Physical Parameter Control and Benchmarking for Video Generation](/202607/26/2607.18924v1-learning-explicit-physical-parameter-control-and-benchmarking-for-video-generation)  
+   标签：评分：6.0/10、query:fm
+   evidence：带物理参数控制的视频生成
+5. [Text Template Tokens Are Implicit Semantic Registers in Diffusion Transformers](/202607/26/2607.19139v1-text-template-tokens-are-implicit-semantic-registers-in-diffusion-transformers)  
+   标签：评分：6.0/10、query:fm
+   evidence：扩散概率模型分析
 
 
 <div class="dpr-home-promo-card dpr-home-panel">
