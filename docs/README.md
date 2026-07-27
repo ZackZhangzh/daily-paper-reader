@@ -18,38 +18,49 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-26
-- 运行时间：2026-07-26 21:06:57 UTC
+- 最新运行日期：2026-07-27
+- 运行时间：2026-07-27 21:17:06 UTC
 - 运行状态：成功
-- 本次总论文数：6
-- 精读区：1
-- 速读区：5
+- 本次总论文数：9
+- 精读区：2
+- 速读区：7
 
 ### 今日简报（AI）
-今日精读1篇、速读5篇，重点聚焦语言模型推理策略与生成式图像融合。最值得关注的是《Uncovering Latent Reasoning Strategies》揭示的隐式推理路径，以及《Coarse-to-fine Framework》提出的粗到细MEF生成框架。普通读者可优先精读第一篇以理解模型决策逻辑，速读后两篇跟进视觉生成前沿即可。
-- 详情：[/202607/26/README](/202607/26/README)
+1) 今日精读2篇、速读7篇，核心聚焦扩散模型的理论进阶与语音合成的轻量化落地。  
+2) 最值得关注：扩散模型从“分数近似”迈向“分布近似”的理论突破，以及用层级剪枝蒸馏将TTS模型压缩为轻量印地语合成器。  
+3) 若时间有限，可先看精读中的理论篇把握趋势，再留意医学图像修复和3D高斯声音生成的速读，捕捉跨领域应用灵感。
+- 详情：[/202607/27/README](/202607/27/README)
 
 ### 精读区论文标签
-1. [Uncovering Latent Reasoning Strategies in Language Models](/202607/26/2607.17674v1-uncovering-latent-reasoning-strategies-in-language-models)  
+1. [From Score Approximation to Distribution Approximation in Score-Based Diffusion Models](/202607/27/2607.22199v1-from-score-approximation-to-distribution-approximation-in-score-based-diffusion-models)  
+   标签：评分：9.0/10、query:fm
+   evidence：基于得分的扩散模型直接理论分析
+2. [Staged Depth-Pruning Distillation of a Flow-Matching Text-to-Speech Teacher: A Compact Hindi Speech Synthesizer](/202607/27/2607.18662v1-staged-depth-pruning-distillation-of-a-flow-matching-text-to-speech-teacher-a-compact-hindi-speech-synthesizer)  
    标签：评分：8.0/10、query:fm
-   evidence：潜在变量分解
+   evidence：流匹配蒸馏用于语音合成
 
 ### 速读区论文标签
-1. [Coarse-to-fine Framework for Generative MEF via Implicit Neural Representation](/202607/26/2607.17611v1-coarse-to-fine-framework-for-generative-mef-via-implicit-neural-representation)  
+1. [FillGauss: Fine-Grained Filling-Aware Impact Sound Generation for 3D Gaussian Splatting](/202607/27/2607.17773v1-fillgauss-fine-grained-filling-aware-impact-sound-generation-for-3d-gaussian-splatting)  
+   标签：评分：7.0/10、query:dgs-physics
+   evidence：基于3DGS的冲击声音生成，物理声学建模
+2. [Diffusion Models in Medical Image Inpainting: Challenges, Solution Taxonomy, and Future Directions](/202607/27/2607.21904v1-diffusion-models-in-medical-image-inpainting-challenges-solution-taxonomy-and-future-directions)  
    标签：评分：7.0/10、query:fm
-   evidence：基于扩散的生成融合
-2. [3D-GIMP: When 3D Gaussian Inpainting Meets PatchMatch](/202607/26/2607.20789v1-3d-gimp-when-3d-gaussian-inpainting-meets-patchmatch)  
+   evidence：扩散模型用于医学图像修复
+3. [InnoText: A Unified Model for Visual Text Generation and Editing](/202607/27/2607.22101v1-innotext-a-unified-model-for-visual-text-generation-and-editing)  
    标签：评分：7.0/10、query:fm
-   evidence：使用扩散模型进行3D高斯修复
-3. [One-step lowest-variance selection in a Gaussian random-field model motivated by masked diffusion: Total correlation and a square root collision threshold](/202607/26/2607.17522v1-one-step-lowest-variance-selection-in-a-gaussian-random-field-model-motivated-by-masked-diffusion-total-correlation-and-a-square-root-collision-threshold)  
+   evidence：基于DiT的统一视觉文本生成与编辑模型
+4. [BoxTwin: Learning Elastoplastic Articulated Object Dynamics from Videos](/202607/27/2607.17132v1-boxtwin-learning-elastoplastic-articulated-object-dynamics-from-videos)  
+   标签：评分：6.0/10、query:dgs-physics
+   evidence：从视频学习弹塑性铰接物体动力学，物理仿真
+5. [AniGS: Bridging Rendering and Diffusion Prior for 3D Scene Animation](/202607/27/2607.18539v1-anigs-bridging-rendering-and-diffusion-prior-for-3d-scene-animation)  
+   标签：评分：6.0/10、query:dgs-physics
+   evidence：3DGS动画变形场，非物理驱动
+6. [TG-Diff: Coupling Discrete Topology Diffusion and Topology-conditioned Geometry Diffusions for B-Rep Generation](/202607/27/2607.21928v1-tg-diff-coupling-discrete-topology-diffusion-and-topology-conditioned-geometry-diffusions-for-b-rep-generation)  
    标签：评分：6.0/10、query:fm
-   evidence：受掩蔽扩散启发的理论分析
-4. [Learning Explicit Physical Parameter Control and Benchmarking for Video Generation](/202607/26/2607.18924v1-learning-explicit-physical-parameter-control-and-benchmarking-for-video-generation)  
+   evidence：基于扩散的B-Rep生成，解耦拓扑与几何
+7. [Twins: Learn to Predict Unified Representations with Focal Loss](/202607/27/2607.22531v1-twins-learn-to-predict-unified-representations-with-focal-loss)  
    标签：评分：6.0/10、query:fm
-   evidence：带物理参数控制的视频生成
-5. [Text Template Tokens Are Implicit Semantic Registers in Diffusion Transformers](/202607/26/2607.19139v1-text-template-tokens-are-implicit-semantic-registers-in-diffusion-transformers)  
-   标签：评分：6.0/10、query:fm
-   evidence：扩散概率模型分析
+   evidence：使用扩散Transformer进行生成
 
 
 <div class="dpr-home-promo-card dpr-home-panel">

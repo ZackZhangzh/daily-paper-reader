@@ -1,0 +1,568 @@
+Title: TG-Diff: Coupling Discrete Topology Diffusion and Topology-conditioned Geometry Diffusions for B-Rep Generation
+
+URL Source: https://arxiv.org/pdf/2607.21928v1
+
+Published Time: Mon, 27 Jul 2026 00:20:53 GMT
+
+Number of Pages: 15
+
+Markdown Content:
+# TG-Diff: Coupling Discrete Topology Diffusion and Topology-conditioned Geometry Diffusions for B-Rep Generation 
+
+# MINGZE SUN, University of Chinese Academy of Sciences, China 
+
+# HAIYONG JIANG, University of Chinese Academy of Sciences, China 
+
+# BINGCHEN YANG, Nanyang Technological University, Singapore 
+
+# HAOXUAN SONG, University of Chinese Academy of Sciences, China 
+
+# YIDI LI, University of Chinese Academy of Sciences, China 
+
+# JUN XIAO, University of Chinese Academy of Sciences, China 
+
+# PETER WONKA, King Abdullah University of Science and Technology (KAUST), Saudi Arabia (a) Quality Metrics  (c) Unconditional Generations (b) Runtime Metrics 
+
+Fig. 1. Overview of B-rep generation results. (a) The proposed TG-Diff consistently outperforms the competing methods across all geometric quality metrics, including validity (valid), COV, MMD, and JSD on both the DeepCAD-0-30 dataset and the ABC-0-50 dataset. (b) TG-Diff demonstrates superior runtime efficiency (time, GFLOPs, Params). (c) Our framework can produce structurally diverse B-rep models in unconditional generation scenarios. 
+
+Boundary representation (B-rep) is the standard format for computer-aided design (CAD). This article proposes a lightweight two-stage diffusion-based B-rep generation framework TG-Diff that achieves efficient, high-quality B-rep generation by decoupling topology and geometric modeling. In con-trast to previous work that generates topology as a collection of vertices, edges, and surfaces and their relationships, TG-Diff represents the topol-ogy only as a collection of surfaces and their adjacency relationships. This surface-centric representation inherently alleviates the geometric and topo-logical inconsistencies between separately generated surfaces, edges, and vertices, simplifying the generation process. Based on the surface-centric representation, we develop two independent diffusion models that generate surface adjacency relationships and surface latents, respectively. By using topology as guidance, the surface generation process becomes more stable, leading to stronger structural completeness in the generated B-rep models. The topology diffusion model adopts a Discrete Diffusion Model (D3PM) 
+
+Authors’ Contact Information: MingZe Sun, 1834521663@qq.com, University of Chi-nese Academy of Sciences, Beijing, China; Haiyong Jiang, haiyong.jiang@ucas.ac.cn, University of Chinese Academy of Sciences, School of Artificial Intelligence, Beijing, China; Bingchen Yang, bingchenyang@ntu.edu.sg, Nanyang Technological University, Singapore, Singapore; Haoxuan Song, songhaoxuan241@mails.ucas.ac.cn, University of Chinese Academy of Sciences, Beijing, China; Yidi Li, liyidi@ucas.ac.cn, University of Chinese Academy of Sciences, Beijing, China; Jun Xiao, xiaojun@ucas.ac.cn, University of Chinese Academy of Sciences, Beijing, China; Peter Wonka, pwonka@gmail.com, King Abdullah University of Science and Technology (KAUST), Saudi Arabia. 
+
+This work is licensed under a Creative Commons Attribution 4.0 International License. 
+
+© 2026 Copyright held by the owner/author(s). ACM 1557-7368/2026/7-ART https://doi.org/10.1145/3563045.3563055 
+
+for efficient binary sampling, avoiding the slow inference of autoregressive methods. The surface latent generation adapts a conditional latent diffusion model with a lightweight DiT architecture, where surface adjacency guides geometry generation while reducing computational cost. Finally, edges and vertices are derived from the decoded adjacent surfaces via post-processing to form a final watertight B-rep. Despite its compact computational footprint (82.18M parameters and 2.2GFLOPs), TG-Diff excels in the validity metric while achieving superior performance on all COV, MMD, and JSD metrics across the DeepCAD and the ABC dataset. CCS Concepts: • Computing methodologies → Parametric curve and surface models .Additional Key Words and Phrases: Boundary representation, CAD modeling, 3D diffusion 
+
+ACM Reference Format: 
+
+MingZe Sun, Haiyong Jiang, Bingchen Yang, Haoxuan Song, Yidi Li, Jun Xiao, and Peter Wonka. 2026. TG-Diff: Coupling Discrete Topology Diffusion and Topology-conditioned Geometry Diffusions for B-Rep Generation. ACM Trans. Graph. 1, 1 (July 2026), 15 pages. https://doi.org/10.1145/3563045. 3563055 
+
+1 Introduction 
+
+Boundary representation (B-rep) is the de facto industry standard for 3D Computer-Aided Design (CAD), valued for its compactness, ana-lytic geometric precision, and topological flexibility during editing. Despite these advantages, B-rep generation remains a formidable challenge. 
+
+ACM Trans. Graph., Vol. 1, No. 1, Article . Publication date: July 2026. arXiv:2607.21928v1 [cs.CG] 24 Jul 2026 2 • MingZe Sun, Haiyong Jiang, Bingchen Yang, Haoxuan Song, Yidi Li, Jun Xiao, and Peter Wonka                               
+
+> Table 1. Comparison of B-rep generation pipelines.
+> Topology Generation Geometry Generation Topology Representation Architecture Geometry Representation Diffusion Stages W/ Topo Cond BrepGen N/A N/A Surface, edge, vertex 4×
+> DTGBrepGen Surfaces, edge, vertex adjacency AutoRegressive Surface, edge, vertex 4✓
+> BrepDiff N/A N/A Surface 1×
+> Hola N/A N/A Surface 1×
+> Ours Surfaces adjacency D3PM Surface 1✓
+
+Initial exploration on B-rep generation favored autoregressive (AR) models. AR-based methods [Jayaraman et al . 2023; Li et al .2025f; Para et al . 2021; Xu et al . 2025, 2022], while being compatible with LLMs, often suffer from quantization limitations and accumu-lated sequence errors. More recently, diffusion-based models are being used. We can distinguish two sets of diffusion approaches. The first set of meth-ods generates the geometry first and recovers the topology in a post-process. In this context, BrepGen [Xu et al . 2024a] pioneered the explicit generation of a geometric hierarchy comprising vertices, curves, and surfaces via a multi-stage diffusion process. HoLa [Liu et al . 2025] learns a latent distribution via a variational autoencoder (VAE), enabling the joint generation of surfaces and curves while im-plicitly capturing topological relationships. Similarly, BrepDiff [Lee et al . 2025] adopts a single-stage diffusion model to directly gen-erate surfaces, with topology inferred afterward through mesh in-tersection–based post-processing, but without explicitly enforcing topological consistency during generation. The main disadvantage of these methods is that B-Rep generation is a heavily constrained problem, and it is easy to have failed generations due to inconsis-tencies and misalignments between surfaces, edges, and vertices. To combat this difficulty, the second set of methods generates the topology first, and uses the topology as a condition for geometry generation. DTGBrepGen [Li et al . 2025b] introduces a topology-first strategy by explicitly generating surface–edge and edge–vertex relationships using an autoregressive (AR) scheme prior to geome-try synthesis, thereby improving structural consistency. However, explicitly generating vertices, edges, and surfaces leads to two key limitations: 1) The topology description is overly complex and re-dundant, and the topology itself can become inconsistent. 2) The redundant description in topology and geometry leads to bigger-than-necessary latent spaces in both generation phases. Our work directly addresses these two limitations. To this end, we introduce TG-Diff, a two-stage diffusion frame-work for B-rep generation. Compared to DTGBrepGen, we pro-pose to eliminate vertices and edges from the topology (and ge-ometry) representation during diffusion and employ a surface-only B-rep topology and geometry representation. The topology diffusion learns the distribution of surface adjacency as topology using a dis-crete diffusion model. Subsequently, we encode B-rep surfaces into a compact latent space using a topology-aware variational autoen-coder. Afterward, we extend the Diffusion Transformer (DiT) [Pee-bles and Xie 2023] with a topology modulation and lightweight representation learning using a six-layer low-dimensional DiT layer and a two-layer high-dimensional DiT layer. Finally, the predicted topology and B-rep surfaces can be postprocessed to form an in-tegrated B-rep shape with surface trimming and stitching. In our approach, vertices and edges are not explicitly generated but are induced via surface intersections during post-processing. Adopting a surface-centric approach offers several critical advan-tages. First, focusing on surfaces significantly reduces the diffusion space complexity, as the number of surfaces is significantly smaller than the number of edges and vertices. A compact latent space is a major contributor to a successful diffusion model. Second, a surface-centric representation inherently mitigates geometric-topological misalignment. An independently generated edge might not lie pre-cisely on its corresponding surface. By deriving edges directly from surface intersections, we ensure that every edge is, by definition, per-fectly located within its parent surfaces. Furthermore, modeling the full B-rep hierarchy requires maintaining consistency across mul-tiple levels (Face-Loop-Edge-Vertex). A surface-centric approach simplifies this into a single adjacency graph, preventing orphan geometric entities. We show the conceptual comparisons of these methods in Tab. 1. Experimental results demonstrate the superiority of our method over previous works. Moreover, the runtime statistics show that the method is much more efficient in both parameters and running time. See Fig. 1 for an overview of generation results. 
+
+2 Related Works 
+
+Boundary representation and CAD command sequences stand as two primary formats for structural CAD shapes. This section reviews generative models for B-rep models and CAD command sequences. 
+
+2.1 B-rep Generation 
+
+B-rep models comprise a hierarchical assembly of geometric entities, including vertices, edges, and surfaces, coupled with complex topo-logical relationships that define their connectivity. This intricate interdependence between geometry and topology renders B-Rep generation significantly formidable. Depending on the underlying generative models, we categorize existing research into autoregres-sive and diffusion-based B-rep generation. Autoregressive-based B-rep generation frames the task as a se-quential generation of B-rep geometric entities and topologies. As a pioneering effort, SolidGen [Jayaraman et al . 2023] progressively constructs B-Reps by predicting vertices, edges, and surfaces us-ing separate networks. SolidGen encodes topological connectivity by generating each hierarchical level (e.g., surfaces) contingent                          
+
+> ACM Trans. Graph., Vol. 1, No. 1, Article . Publication date: July 2026. TG-Diff: Coupling Discrete Topology Diffusion and Topology-conditioned Geometry Diffusions for B-Rep Generation •3B-Rep Model
+> B=(S,T)
+> Topology 𝑇
+> Encoder
+> Decoder
+> Topology -aware Surface Latent Encoding ( Sec 3.2)
+> 𝑇 𝑡
+> ⊺𝑄 𝑡 𝑇 𝑡 −1
+> ...
+> 𝜔 (𝑇 𝑡 ,𝑁 𝑖 ,𝑡 )
+> 𝑇 𝑡 𝑇 0
+> ...
+> 𝑇 𝑇
+> Topology Diffusion ( Sec 3.1 )
+> All -Masked Graph Denoised Graph
+> 𝑇 𝑡 −1
+> ......
+> Noise
+> 𝜀 𝜃 (𝑍 𝑡 ,𝑇 0,𝑡 )
+> 𝑍 𝑡 𝑍 𝑇 𝑍 𝑡 −1𝑍 0
+> Topology -conditioned Surface Diffusion ( Sec 3.3)
+> Masked UV Grid
+> Post
+> Processing
+> (Sec 3.4)
+> Watertight CAD
+> Output
+> UV Sampling
+> Surface S
+
+Fig. 2. The pipeline of the method. We represent a B-rep model as masked UV grid surfaces S and their mutual adjacency as a topology matrix T. The B-rep generation consists of a topology diffusion process for topology generation, a topology-aware surface latent encoding network, and a topology-conditioned surface diffusion for surface generation. The generated topology and surfaces are post-processed to form watertight B-rep models. Note that the encoded surface latents are denoted as Z.
+
+upon the preceding geometric entities (e.g., edges and vertices) via a pointer network mechanism [Vinyals et al . 2015]. Stitch-a-Shape [Li et al . 2025e] extends SolidGen by interleaving explicit topology-prediction modules within the geometric generation pro-cess, thereby constraining subsequent geometric stages with previ-ously inferred topology. AutoBrep [Xu et al . 2025] presents a novel topology tokenization that encodes surface-edge connections as a local reference to surfaces, allowing for a unified sequence of dis-crete tokens for autoregressive predictions. BrepGPT [Li et al . 2025f] decomposes B-rep models into unified local Voronoi Half-Patches (VHPs) and then generates VHPs autoregressively. CMT [Wu et al. 2025] generates edge and surface latents using a MAR model [Li et al . 2024], respectively, and employs cross-attention over these latent features to predict the surface–edge adjacency. BrepARG [Li et al . 2026] represents B-rep geometry and topology as a unified token sequence and applies a decoder-only Transformer for autore-gressive B-rep generation. Although AR methods achieve strong performance, their discrete token representation and sequential generation limit geometric precision and inference efficiency. Another category of works is based on diffusion models [Ho et al . 2020; Song et al . 2021]. The seminal work BrepGen [Xu et al .2024a] presents a top-down generation strategy, first generating sur-faces and then sequentially predicting the boundary edges and ver-tices for each surface. A post-processing step subsequently merges duplicated edges and vertices to stitch the generated primitives into a complete B-rep. DTGBrepGen [Li et al . 2025b] augments BrepGen by conditioning the multi-stage generation process on an autoregressively generated surface adjacency graph. HoLa [Liu et al . 2025] represents B-rep primitives and their topological de-pendencies through a unified set of holistic latent codes, enabling effective diffusion-based generation. BrepGiff [Guo et al . 2025] em-ploys an edge-guided discrete graph diffusion model [Chen et al .2023] to generate each surface and its connection with other sur-faces progressively. BrepDiff [Lee et al . 2025] employs a single-stage diffusion model with a masked UV-grid surface representation to mitigate non-deterministic dependencies between multi-stage gen-eration. BR-DF [Zhang et al . 2025a] presents volumetric distance functions for B-reps, avoiding the generation of complex topology structures. GraphBRep [Li et al . 2025a] adopts a multi-stage gen-eration framework for B-Rep modeling. It first generates surface geometries, then predicts surface adjacency relationships through graph diffusion, and finally synthesizes edge geometries based on the generated topology graph, improving topology generation ef-ficiency and reducing redundant edge representations. This work presents a two-stage diffusion framework for B-rep surface and topology generation. 
+
+2.2 CAD Command Sequence Generation 
+
+Learning the generation of the CAD command process goes beyond B-rep shapes and enables the understanding of inherent design in-tents. DeepCAD [Wu et al . 2021] presents a seminal CAD dataset and organizes CAD operations as a common structure for gener-ative CAD learning. Following works improve generative models by introducing geometry-aware tokenization and autoregressive models [Xu et al . 2023, 2022]. Different from SkexGen, which au-toregressively generates sketch-and-extrude CAD construction se-quences, SketchDNN [Chereddy and Femiani 2025] uses diffusion to generate 2D sketch primitives with both discrete types and continu-ous geometry. Thereafter, the emergence of Large Language Models (LLMs) motivates recent explorations of LLM-based CAD sequence generation [Li et al . 2025d; Wang et al . 2025; Xu et al . 2024b; You et al . 2024; Zhang et al . 2025b]. However, annotated CAD command datasets suitable for model training or fine-tuning remain scarce, and most existing datasets cover only a limited range of command types, primarily sketch and extrude commands. This limitation sub-stantially restricts the diversity and expressiveness of the generated CAD models.   
+
+> ACM Trans. Graph., Vol. 1, No. 1, Article . Publication date: July 2026. 4•MingZe Sun, Haiyong Jiang, Bingchen Yang, Haoxuan Song, Yidi Li, Jun Xiao, and Peter Wonka
+
+2.3 Primitive Fitting for B-rep Generation 
+
+In contrast to native B-rep generation, another choice is to construct B-rep shapes from 3D shapes generated by off-the-shelf 3D gener-ative models [Long et al . 2024; Xiang et al . 2025]. This eases the learning of 3D generation, but the additional primitive fitting and connection are still quite challenging and prone to errors. Previous methods explore different kinds of primitive fitting strategies, in-cluding detection-based methods [Guo et al . 2022; Li et al . 2025c], implicit surface fitting for clustered points [Liu et al . 2024b], Voronoi-based geometric decomposition [Liu et al . 2024a], or direct primitive prediction from point clouds [Ma et al . 2025]. While conceptually straightforward, such a pipeline is sensitive to geometric noise and involves time-consuming optimization for fine-grained topological consistency. 
+
+3 Methodology 
+
+We aim at the unconditional generation of B-rep models using a surface-centric representation. This representation prioritizes sur-face topology and geometry, avoiding the complexity of explicitly modeling multi-level vertex and edge hierarchies, and directly uses the generated surfaces to intersect and obtain edges and vertices via post-processing. Formally, we represent a B-rep model as B = (S, T) with S denot-ing the set of 𝑁 parametric surfaces (geometry) and T ∈ { 0, 1, 2}𝑁 ×𝑁 
+
+denoting the surface adjacency relationships (topology). T𝑖 𝑗 repre-sents a categorical variable with 𝐾 = 3 states. Specifically, T𝑖 𝑗 = 1
+
+indicates that surface 𝑖 and surface 𝑗 are adjacent (i.e., they intersect at a shared edge), T𝑖 𝑗 = 0 denotes no such adjacency, and T𝑖 𝑗 = 2
+
+represents the padding token. During batch training, the model is also required to identify and predict padding positions. Following BrepGen [Xu et al . 2024a], each surface S ∈ R𝑁 ×16 ×16 ×4 is repre-sented with a uniformly sampled masked UV grid of resolution 
+
+16 × 16 . The four channels include 3D coordinates Scoord for each grid point and a binary mask Smask indicating whether a grid point lies on the final trimmed B-rep surface. Based on the surface-centric representation, we decouple B-rep generation into discrete topology generation and surface geome-try generation. As illustrated in Fig. 2, the framework first learns the generation of surface topology T via a discrete diffusion pro-cess. Subsequently, we learn the encoding of surface latents and generate surface latents through a topology-conditioned latent dif-fusion model. The diffusion process is conditioned on the generated topology T via self-attention-based modulation to enhance global structural awareness. Finally, parametric surfaces decoded from generated surface latents are post-processed to form watertight B-reps. 
+
+3.1 Topology Diffusion 
+
+We use Discrete Diffusion Probabilistic Models (D3PM) [Austin et al . 2021] for topology generation, to accommodate the discrete nature of adjacency relationships. The diffusion process consists of a forward and a reverse diffusion process. The forward diffusion process at timestep 𝑡 is defined as: 𝑞 (T𝑡 |
+
+T𝑡 −1) := T⊤ 
+
+> 𝑡
+
+Q𝑡 T𝑡 −1, where Q𝑡 denotes the transition probability matrix between topology states. Then the marginal probability can be derived as: 
+
+𝑞 (T𝑡 | T0) := T⊤ 
+
+> 𝑡
+
+¯Q𝑡 T0, ¯Q𝑡 = Q𝑡 Q𝑡 −1 · · · Q1. (1) Meanwhile, the backward process of the framework can be described as: 
+
+𝑞 (T𝑡 −1 | T𝑡 , T0) :=
+
+ T⊤ 
+
+> 𝑡
+
+Q𝑡 T𝑡 −1
+
+   T⊤  
+
+> 𝑡 −1
+
+¯Q𝑡 −1T0
+
+
+
+T⊤ 
+
+> 𝑡
+
+¯Q𝑡 T0
+
+, (2) Following VQ-Diffusion [Gu et al . 2022], we introduce an additional absorbing [MASK] state into the transition matrix to explicitly indi-cate corrupted positions, resulting in 𝐾 + 1 discrete states. 
+
+Q𝑡 ∈ R(𝐾 +1) × ( 𝐾 +1) can be formulated as: 
+
+Q𝑡 =
+
+𝛼 𝑡 I𝐾 + 𝛽 𝑡 1𝐾 1⊤ 
+
+> 𝐾
+
+0
+
+𝛾 𝑡 1⊤ 
+
+> 𝐾
+
+1
+
+
+
+, (3) where I𝐾 ∈ R𝐾 ×𝐾 denotes the identity matrix and 1𝐾 ∈ R𝐾 is the all-ones vector. For Q𝑡 ∈ R(𝐾 +1) × ( 𝐾 +1) , the transition probability of replacing a non-mask state with the [MASK] state is 𝛾 𝑡 . The transition probability between different categorical states is 𝛽 𝑡 . Consequently, an entity remains unchanged with probability 𝛼 𝑡 = 1 − 𝐾𝛽 𝑡 − 𝛾 𝑡 . The [MASK] 
+
+itself always preserves its state. The reverse diffusion step 𝑝 𝜃 1 (T𝑡 −1 |T𝑡 ) maps a noisy topology T𝑡 
+
+to a less noisy topology T𝑡 −1 via a denoising network 𝜔 𝜃 1 (T𝑡 , 𝑁 𝑖 , 𝑡 )
+
+that is conditioned on the surface count 𝑁 𝑖 and the time step 𝑡 . To accelerate and stabilize training, we use BLISS [Junttila and Kaski 2007, 2011] for canonical labeling of the surface sequences, which reduces permutation ambiguity in advance. Surface  num  N Time t       
+
+> Embed Embed Embed
+> DiT -Block
+> MLP
+> 8X
+> Flatten
+> MLP
+> Topo logits 𝑙𝑜𝑔 𝑝 𝜃 1(𝑇 |𝑇 𝑡 )
+> Noisy topo Tt
+> Fig. 3. The architecture for the topology denoising network. Flatten per-forms a flattening operation on the last two dimensions of a tensor.
+
+The topological denoising network is illustrated in Fig. 3. It be-gins by mapping T𝑡 to an initial embedding with De= 8 channels. Here, T𝑡 denotes the noisy topology at diffusion step 𝑡 . Rather than treating each entry embedding as an individual token, we concatenate the embeddings along each row to form feature vectors 
+
+F𝑡 ∈ R𝑁 × ( 𝑁 ·8) . These are then projected via an MLP into topology tokens F𝑖 ∈ R𝑁 ×𝐷 (𝐷 = 512 ). This design significantly reduces memory consumption during training while increasing the informa-tion density and semantic completeness of each token. Moreover,   
+
+> ACM Trans. Graph., Vol. 1, No. 1, Article . Publication date: July 2026. TG-Diff: Coupling Discrete Topology Diffusion and Topology-conditioned Geometry Diffusions for B-Rep Generation •5
+
+this representation is highly interpretable: each token corresponds to one surface and explicitly encodes its adjacency relations to all other surfaces. Empirically, we observe that this row-wise tokeniza-tion achieves a substantially higher generation success rate than approaches that treat adjacency relations as independent scalar embeddings and rely on the network to implicitly learn structural dependencies. Subsequently, the topology tokens and global con-ditioning signals are processed by a stack of DiT [Peebles and Xie 2023] blocks to model global interactions. The conditioning signals consist of the number of surfaces and the embedding encoding of time t. The Transformer output is projected via an MLP and re-shaped into an 𝑁 × 𝑁 × 8 feature matrix. To ensure the topological consistency of the undirected adjacency graph, we enforce symme-try constraints by averaging the feature matrix with its transpose. Finally, an output MLP produces logits of shape 𝑁 × 𝑁 × 3, repre-senting the categorical distribution of the adjacency states {0, 1, 2}.The diffusion process is trained with the D3PM losses, combining a variational bound L𝑣𝑏 and an auxiliary loss on the reverse process: 
+
+LD3PM = L𝑣𝑏 + 0.02 · E𝑞 (T) E𝑞 (T𝑡 |T)
+
+− log 𝑝 𝜃 1 (T|T𝑡 ) , (4) where 𝑞 (T) is the topology distribution of the training dataset and 
+
+𝑝 𝜃 1 (T0 = T|T𝑡 ) can be derived from 𝑝 𝜃 1 (T𝑡 −1 |T𝑡 ).During inference, the noisy topology T𝑇 is initialized as a set of mask tokens. We progressively denoise the representation into 
+
+T0, conditioned on the diffusion time step and the surface count 
+
+𝑁 𝑖 . For the latter, we sample 𝑁 𝑖 from the empirical distribution of the training dataset to ensure realistic complexity. To regulate the diversity of adjacency generated, we introduce a time-dependent scaling factor 𝜂 on the output logits during inference. By acting on the logarithmic outputs of D3PM, similar to the inverse temperature factor, the determinacy of the generation process can be effectively adjusted: its essence is to use the linear scaling of the logarithmic function to change the smoothness of the original probability distri-bution, reshape the entropy value of the Softmax distribution, and achieve a controllable balance between sample quality (Fidelity) and diversity (Diversity). A larger 𝜂 further amplifies the differences among the output logits, which sharpens the resulting probability distribution and consequently yields a higher degree of certainty. 
+
+𝜂 = 1 + 𝑚 
+
+
+
+1 − 𝑡 𝑇 
+
+
+
++ 𝑛, 𝑚 ≥ 0, (5) where 𝑚, 𝑛 govern the sharpness of the predicted probability dis-tribution. By scheduling 𝜂 over sampling step 𝑡 , we ensure high structural diversity during the initial diffusion steps ( 𝜂 → 1 + 𝑛 )and gradually increasing prediction confidence toward the final steps ( 𝜂 → 1 + 𝑚 + 𝑛 ) to ensure the validity of generated adjacency relationships. For D3PM, we adopt a cosine noise scheduler, which ensures a smooth signal-to-noise ratio (SNR) evolution over timesteps, leading to more stable optimization and improved convergence for discrete state transitions. 
+
+3.2 Topology-aware Surface Latent Encoding 
+
+To encode the parametric surfaces S into a latent space, we employ a Variational AutoEncoder (VAE) with an encoder–decoder architec-ture primarily inspired by the UNet design in [Rombach et al . 2022], adopting an attention-augmented convolutional (AttnBlock-based) structure. In addition, we incorporate a central interaction mecha-nism after feature flattening, inspired by [Liu et al . 2025], to further enhance feature representation learning; unlike their surface-edge graph convolution, our design operates solely on a surface-level graph convolution. AttnDownBlock     
+
+> Self -Attn
+> MLP
+> GNN
+> Z
+> Self -Attn
+> AttnUpBlock
+> Embed MLP MLP
+> X3 X3
+> Surface coordinates Surface mask Reconstruct Surface
+> Fig. 4. The architecture for the surface VAE network.
+
+The surface VAE network is illustrated in Fig. 4. The encoder takes as input Smask and Scoord , respectively. Each input is mapped to feature tensors of size R𝑁 ×4×16 ×16 and R𝑁 ×16 ×16 ×16 via dedicated embedding layers, then concatenated channel-wise to form a joint 
+
+R𝑁 ×20 ×16 ×16 representation. This representation is then processed by three convolutional encoder blocks with two downsampling operations, yielding feature maps of size R𝑁 ×8×4×4. The spatial fea-tures are further flattened into 128-dimensional feature vectors for each surface. On top of the flattened features, two graph neural net-work layers [Chen et al . 2020] are applied, where surface adjacency is used to guide message passing and explicitly model topologi-cal relationships among surfaces, followed by two self-attention layers to further aggregate global contextual information. The en-coder outputs the Gaussian mean and variance for latent sampling 
+
+𝜇, 𝜎 ∈ R𝑁 ×𝐷 . We denote the encoded latent with Z.The decoder takes as input a sampled surface latent ˆZ ∼ N ( 𝜇, 𝜎 2) ∈ 
+
+R𝑁 ×𝐷 . The sampled latents are first processed by two self-attention layers and then reshaped into spatial feature maps of size 𝑁 ×8×4×4.Subsequently, three convolutional decoder blocks with two upsam-pling operations are applied. The decoder then branches into two output heads of the surface coordinate map ˆScoord ∈ R𝑁 ×3×16 ×16 
+
+and a binary validity mask ˆSmask ∈ R𝑁 ×1×16 ×16 .The overall objective for VAE optimization LVAE combines a sur-face reconstruction loss Lrec between ˆS and S, a Kullback-Leibler (KL) divergence LKL , and a Maximum Mean Discrepancy (MMD) regularization LMMD that aligns the latent distribution with the stan-dard Normal distribution. The implementation of LKL and LMMD 
+
+follows [Zhao et al . 2019], while the reconstructio loss is defined as 
+
+Lrec = ∥Scoord − ˆScoord ∥2 + 0.001 · BCE (Smask , ˆSmask ).The loss definitions are as follows: 
+
+LVAE = 𝑤 1 LVAE-rec + 𝑤 2 Lreg + 𝑤 3 LMMD , (6)           
+
+> ACM Trans. Graph., Vol. 1, No. 1, Article . Publication date: July 2026. 6•MingZe Sun, Haiyong Jiang, Bingchen Yang, Haoxuan Song, Yidi Li, Jun Xiao, and Peter Wonka Scale, Shift
+> Layer Norm
+> Input tokens
+> Scale
+> Pointwise
+> FFN
+> FiLM
+> Attention
+> DiT Block
+> 𝑠 !,𝑏 !
+> 𝑔 !
+> DiT -L Block
+> DiT -H Block
+> 𝑣 -prediction
+> MLP
+> T"#$
+> ×6
+> s%,b%
+> 𝑔 %
+> ×2
+> Time tLatent Z&Topology T
+> MLP
+> Surface Denoising Network 𝐃𝐢𝐓 𝐃𝐇
+> Embedding Embedding MLP
+> Scale, Shift
+> Layer Norm
+> Scale
+> MLP
+> Time t
+> 𝐞 )**
+> 1+ 𝐞 +,-
+> 𝐪 𝐤 ⊺
+> Softmax
+
+Fig. 5. The architecture for the surface denoising network. Left: overall network. Right: DiT block detail in DiT DH , DiT-L and DiT-H differ only in the feature dimension. 
+
+where BCE (·) denotes the binary cross-entropy loss and balancing weights are set as 𝑤 1 = 1, 𝑤 2 = 10 −7, 𝑤 3 = 10 −4.
+
+3.3 Topology-Conditioned Surface Diffusion 
+
+The surface diffusion model learns the distribution of surface latents 
+
+Z. The Geometry denoising network is illustrated in Fig. 5. First, the network embeds the input features. The noisy latent features Z𝑡 
+
+are encoded into 𝐷 -dimensional input tokens using an MLP. The timestep 𝑡 is encoded using a sinusoidal positional embedding fol-lowed by an MLP to channel-wise modulation parameters 𝑠 𝑖 , 𝑏 𝑖 , 𝑔 𝑖 .The generated topology T is first embedded as T𝑒𝑚𝑏 and then fed to an MLP, outputting attention modulation parameters emul , eadd .Subsequently, embedded inputs are fed to a DiT-based network [Pee-bles and Xie 2023]. Our denoising network design is inspired by the 
+
+DiT DH architecture proposed in [Zheng et al . 2025] and consists of six DiT-L blocks and two DiT-H blocks. This design is introduced to improve training efficiency by reducing parameters and compu-tational cost while maintaining high-quality generation. The first six DiT-L blocks use a smaller feature dimension of 384 to reduce overhead, and their outputs are propagated to subsequent DiT-H blocks with higher feature dimensions of 768, enabling the network to progressively refine geometric details while achieving a more parameter-efficient design without compromising geometric fidelity. Within each DiT-L and DiT-H block, standard self-attention is re-placed by FiLM-style modulated attention [Perez et al . 2018] in order to incorporate topology for consistency between surface topology and surface geometry. Since the topology condition does not use positional encoding and each face only attends to its adjacent faces, the topology representation is permutation-invariant. Consequently, permuting the rows and columns of the topology matrix results in an equivalent topology during topology generation. Denoting the query and key of head 𝑖 as q and k, the FiLM modulated attention map is computed as Attn = softmax (1 + emul ) ⊙ qk ⊤
+
+√𝑑 + eadd 
+
+!
+
+, (7) where ⊙ denotes element-wise multiplication. This mechanism mod-ulates the attention scores with topology information, enforcing topology-aware feature interactions. Specifically, for a multi-head self-attention with 𝐻 heads, the topology embedding Temb is first mapped via an MLP into a modulation tensor of size 𝑁 × 𝑁 × 2𝐻 .This tensor is then chunked along the last dimension to produce the per-head scale s ∈ R𝑁 ×𝑁 ×𝐻 and bias b ∈ R𝑁 ×𝑁 ×𝐻 for each attention head. The overall diffusion process is trained with a velocity prediction objective [Salimans and Ho 2022]: 
+
+L𝑣 −pred = EZ,𝑡, T
+
+h
+
+v𝜃 2 (Z𝑡 , 𝑡, T) − 𝑣 𝑡 22
+
+i
+
+, (8) where the target velocity 𝑣 𝑡 is defined as 
+
+𝑣 𝑡 = √ ¯𝛼 𝑡 𝝐 − √1 − ¯𝛼 𝑡 Z0. (9) We adopt the velocity parameterization instead of directly predict-ing the noise, as it provides improved training stability and better empirical performance. 
+
+3.4 Post-processing Inputs                
+
+> Cutting surfaces
+> Surface being cut
+> Extend surfaces Intersections: Vertices
+> Step 1. Compute surface intersections
+> Step 2. Filter and extract loops
+> Valid edges Closed loops
+> Step 3. Trim surfaces
+> Trim surface with loops
+> Output
+> Trimmed
+> Surface
+
+Fig. 6. An illustration of the surface trimming algorithm. Left: The algorithm has multiple cutting surfaces and a target surface as input. Middle: The algorithm proceeds in three steps. Right: The output is the trimmed target surface. 
+
+Our post-processing pipeline takes as input the generated surface adjacency and surface geometry and outputs the post-processed B-rep shape. We first identify the surface type for each surface by fitting its point set with candidate analytic surfaces, including planes, cylinders, cones, tori, and spheres, and selecting the type that yields the minimum fitting error. If the bidirectional fitting error is below a threshold of 0.025 , the face is replaced by its corresponding analytic surface representation; otherwise, a B-spline surface is constructed from the predicted points. The fitting parameters are specific to the surface type, for example, a cylinder with parameters of radius, height, and orientation angle, and a cone with parameters of the slope and angle. Next, we trim each surface with a surface-cutting module based on surface adjacency, as illustrated in Fig. 6. The input consists of a surface to be cut and multiple cutting surfaces. All surfaces are first extended along the UV direction to ensure robust intersection, after which pairwise surface intersections are computed to obtain candidate intersection curves. Intersections among these curves further yield vertex positions. Based on the   
+
+> ACM Trans. Graph., Vol. 1, No. 1, Article . Publication date: July 2026. TG-Diff: Coupling Discrete Topology Diffusion and Topology-conditioned Geometry Diffusions for B-Rep Generation •7
+
+extracted vertices, curve segments are filtered such that only those with two valid intersection endpoints are retained. Subsequently, a minimum-cycle detection algorithm [Kavitha et al . 2007] is applied to partition the retained curve segments into closed loops. This process ensures that the extracted loops correspond to the tightest bounded regions without internal boundaries, thereby preventing the formation of overlapping or composite loops. Finally, Boolean operations are used to handle cases where one loop encloses another, ensuring that all trimmed faces are non-overlapping. Faces are then filtered by enforcing that every edge has degree 2. After surface trimming, all surfaces are assembled into a Brep model based on their mutual adjacency. Before After  
+
+> Missing intersection Stable intersection
+
+Fig. 7. An illustration for surface trimming for near-tangent cases. Left: Near-tangent surfaces have a missing intersection. Right: After angle adjustments, most problematic cases can be resolved. 
+
+Though the surface-cutting module can handle most cases, it may fail to obtain intersection curves when the intersected surfaces are nearly tangent, as illustrated in Fig. 7. This problem is also noted in the appendix of BRepDiff [Lee et al . 2025]. To address this issue, we slightly adjust the angular parameters of circular surfaces, which increases the likelihood of surface intersections when a closed edge loop cannot be formed. We adopt an iterative dynamic trimming strategy that only adjusts the angles of failed surfaces. This approach (with at most three retries) effectively overcomes tangency issues. To further demonstrate the post-processing effects, Fig. 8 illus-trates several typical examples. 
+
+4 Experiments 4.1 Experimental Setups 
+
+Datasets. We evaluate our method on the DeepCAD [Wu et al . 2021], ABC [Koch et al . 2019] datasets, and furniture dataset collected from the OnShape dataset repository, adopting the preprocessing protocols and partition splits established by BrepGen [Xu et al .2024a]: the DeepCAD subset (DeepCAD-0-30) is restricted to shapes with a maximum of 30 surfaces and 20 edges per surface, while the ABC dataset (ABC-0-50) and furniture dataset (Furniture-0-50) are filtered to include models with up to 50 surfaces and 30 edges per surface. Furthermore, we introduce DeepCAD-7-30 , a subset specifically curated by selecting models with 7 to 30 faces. We use this dataset for ablation experiments. The number of training samples is 83,755 for DeepCAD-0-30, 63,418 for DeepCAD-7-30, 293,457 for ABC-0-50, and 1,341 for Furniture-0-50. 
+
+Training Details. All models in our framework, including the VAE, topology diffusion model, and geometry diffusion model, are trained on four NVIDIA RTX 3090 GPUs. We use the Adam optimizer for all components, with a learning rate of 5 × 10 −4, momentum (a)    
+
+> (b) Failure
+> (c) Tuning angles
+> (d)
+> Success
+> Recoverable
+> failure
+> （finetune ）
+> Irrecoverable
+> failure
+> （Not finetunable ）
+> One -pass
+> One -pass
+> Tuning angles
+
+Fig. 8. Typical examples for post-processing results. Case (a) corresponds to a successful single-pass post-processing result that requires no further adjustment, which accounts for the majority of cases. Case (b) represents a rare failure case where the model is geometrically incorrect from a human perspective and cannot be resolved by post-processing. Case (c) corresponds to a typical failure case, where an initial post-processing failure is resolved by adjusting the fitting parameters of the failed surfaces in subsequent retries. Case (d) corresponds to a failure case, which may be caused either by topological inconsistencies or by overly complex geometry leading to geometric generation errors and post-processing failures. In this case, sur-faces cannot form a valid solid regardless of the number of retries. 
+
+parameters 𝛽 = (0.90 , 0.95 ), and a weight decay of 1 × 10 −6. A cosine learning rate scheduler with warmup is applied throughout training. The VAE is trained for 1000 epochs with a batch size of 
+
+512 , during which random rotations of the entire shape are applied as data augmentation. The topology diffusion model is trained with 
+
+200 denoising steps and a batch size of 3072 for 6000 epochs. The geometry diffusion model is trained with 1000 denoising steps and a batch size of 1024 for 6000 epochs. 
+
+Inference. During inference, the number of surfaces is first sam-pled according to the empirical distribution observed in the original training dataset [You et al . 2018]. Specifically, we estimate the pro-portion of shapes corresponding to each surface count and randomly sample the surface number following this distribution. Then, we generate surface topology by denoising an initial topology with all [MASK] states, conditioned on the sampled surface count. Surface geometry is generated by progressively denoising from Gaussian noise, conditioned on the generated topology. The final solid is ob-tained through our post-processing procedure, which relies solely on the predicted topology and input surfaces. By extending adjacent surfaces and computing their intersections, a B-rep shape is formed. The inference configuration is 1 × RTX 3090 GPU with batch size of 4096, and post-processing on CPU. 
+
+Metrics. We follow the standard evaluation metrics for 3D genera-tion used in prior work [Xu et al . 2024a], and additionally introduce several complementary metrics. All metrics are listed as follows.   
+
+> ACM Trans. Graph., Vol. 1, No. 1, Article . Publication date: July 2026. 8•MingZe Sun, Haiyong Jiang, Bingchen Yang, Haoxuan Song, Yidi Li, Jun Xiao, and Peter Wonka
+
+• Coverage (COV.) ↑ measures how well the generated set covers the diversity of the ground-truth dataset. 
+
+• Minimum Matching Distance (MMD.) ↓ measures the overall quality of generated shapes by computing, for each ground-truth shape, the distance to its closest generated shape and averaging over all ground-truth samples. 
+
+• Jensen–Shannon Divergence (JSD.) ↓ measures distribution sim-ilarity between real and generated shapes based on statistical properties. 
+
+• Validity (Valid.) ↑ measures the proportion of generated CAD models that are a valid B-rep shape with watertight surfaces. 
+
+• Cyclomatic Complexity (CC) ↑ measures the structural com-plexity of a B-Rep model by counting independent cycles in its wireframe graph representation, following Contero et al. [Con-tero et al. 2023]. 
+
+• Vision-Language Model Complexity (VLM-C) ↑ measures the reasoning difficulty for a vision-language model to interpret a generated shape, reflecting the structural complexity of the underlying geometry. 
+
+• Vision-Language Model Quality (VLM-Q) ↑ evaluates the per-ceived geometric and visual quality of generated shapes using a vision-language model, reflecting surface smoothness, structural plausibility, and overall fidelity. For evaluation, we randomly generate 3000 shapes to compute the metrics, and use * to represent the indicators for results without post-processing, such as (COV*), (MMD*), (JSD*). Additionally, we adopt the Qwen3-VL-8B [Bai et al . 2023] for VLM-based evalua-tion. To validate the effectiveness of the VLM-based metrics, we conducted a user study with 20 college-educated participants. Users were asked to evaluate the complexity and regularity of 110 B-rep shapes. We then compared the VLM predictions with human judg-ments, achieving a consistency rate of 90.4% for the quality scores and 86.5% for the complexity scores. 
+
+4.2 Comparison Study 
+
+We evaluate our approach against DeepCAD [Wu et al . 2021] and several recent diffusion-based methods [Lee et al . 2025; Li et al .2025b; Xu et al . 2024a]. We did not compare with HoLa [Liu et al .2025] as there is no available code for evaluation. All methods were evaluated using their publicly available code and checkpoints re-trained by us on the standardized training sets of DeepCAD-0-30 and ABC-0-50. This section presents extensive comparisons in uncondi-tional generation, topology generation, and running performance. 
+
+Unconditional Generation. We analyze the distribution of sur-face counts and surface types of the generated results, as shown in Fig. 9. Surface counts are directly computed, while surface types are estimated via patch fitting. For surface counts, as shown in (a) and (b), our method better matches the training datasets and achieves higher average surface numbers on both the DeepCAD and the ABC dataset. This is because our model produces fewer samples with low surface counts and more samples with high surface counts. In par-ticular, we significantly outperform prior methods in the ranges of 23–30 surfaces on DeepCAD and 43–50 surfaces on ABC. For surface types, as shown in (c), curved surfaces dominate in our generated results, with proportions close to DTGBrepGen. As illustrated in (a) N umber  of Solids in  DeepCAD  (b) Number of Solids  in  ABC   
+
+> (c) Number of Type in DeepCAD (d) Number of Type in ABC
+> Percentage(%) Percentage(%)
+> Percentage(%) Percentage(%)
+> Fig. 9. Distribution of the dataset and generated results of different methods. Ours is closest to the ground truth distribution.
+
+(d), our method maintains higher proportions across various curved surface types, indicating that our generated shapes better match the training dataset distribution in terms of structural complexity. Tab. 2 presents the quantitative results for unconditional B-rep generation on the DeepCAD-0-30 and ABC-0-50 datasets. We com-pare the results with post-processing enabled for all competing methods. Our method achieves significant improvements across metrics on both datasets. Our method achieves the best performance in terms of COV, MMD, JSD, and validity, outperforming all other baselines. In addition, it obtains the highest CC values, indicating that our generated results are structurally more complex. In the VLM-based assessment, our method leads for ABC and is second for DeepCAD. Visual results in Fig. 10 and Fig. 11 demonstrate that our method generates significantly more diverse geometric struc-tures. In particular, our results exhibit complex hole patterns, rich combinations of curved surfaces, and repetitive structures such as cylindrical holes and pillars. In contrast, competing methods tend to produce geometries dominated by flat surfaces, with only simple curved regions and limited hole structures. Moreover, the results produced by BrepGen and BrepDiff frequently exhibit cracks or irregular meshes, as highlighted, whereas such artifacts are largely absent in our outputs. Tab. 3 reports the results without post-processing, where metrics are computed directly from the raw patches output by the network. This provides a coarse evaluation of the model’s intrinsic generation capability. For consistency, the reference data are obtained via UV sampling followed by B-spline fitting and contains uncut points (see the left and right figures in Fig. 8 for an example). Because there is no post-processing and only the results generated by the network are considered, there is no validity metric available. As shown in the results, our method achieves the best performance across all metrics, demonstrating strong intrinsic generation capability and better alignment with the underlying data distribution. Note that the metrics in Tab. 2 and Tab. 3 are not directly comparable, as the GT reference is different (fitted B-spline patches vs GT B-rep surfaces).   
+
+> ACM Trans. Graph., Vol. 1, No. 1, Article . Publication date: July 2026. TG-Diff: Coupling Discrete Topology Diffusion and Topology-conditioned Geometry Diffusions for B-Rep Generation •9
+
+Table 2. Quantitative comparison of unconditioned B-rep generation on the DeepCAD-0-30 and ABC-0-50 datasets. We report unconditional generation results. Please note that MMD and JSD values are multiplied by 100, while COV and validity metrics are expressed as percentages. All experiments are run 10 times and are reported on average. In addition, the maximum value of VLM metrics is 10. 
+
+DeepCAD-0-30 COV(%) ↑ MMD( 10 −2) ↓ JSD( 10 −2) ↓ Valid(%) ↑ CC(%) ↑ VLM-C(%) ↑ VLM-Q(%) ↑
+
+DeepCAD 71.1 1.19 1.70 63.1 8.8 4.2 7.6 BrepGen 71.7 1.34 1.95 50.5 9.1 4.7 6.5 DTGBrepGen 73.9 1.10 1.32 75.6 11.4 5.7 8.8 
+
+BrepDiff 73.5 1.14 1.41 59.3 9.4 5.4 6.9 Ours 77.9 1.03 1.07 85.6 12.6 6.6 8.7 ABC-0-50 COV(%) ↑ MMD( 10 −2) ↓ JSD( 10 −2) ↓ Valid(%) ↑ CC(%) ↑ VLM-C(%) ↑ VLM-Q(%) ↑
+
+BrepGen 69.1 1.46 2.08 41.4 11.0 5.4 5.9 DTGBrepGen 72.3 1.23 1.54 52.9 13.2 6.3 8.2 BrepDiff 71.9 1.29 1.56 30.1 11.9 6.1 6.5 Ours 74.3 1.17 1.13 61.4 15.1 7.2 8.5 DeepCAD BrepGen 
+
+## complex simple 
+
+> DTGBrepGen BrepDiff Ours
+
+Fig. 10. Visual comparisons of unconditional generation on the DeepCAD-0-30 dataset. From left to right, the complexity of the generated B-rep increases. 
+
+Topology Generation. We further evaluate our approach against the autoregressive surface topology generation of DTGBrepGen, specifically on topological generation. In this assessment, valid-topo ↑ denotes whether the generated topology is fully connected and symmetric, while uniqueness ↑ quantifies the proportion of non-isomorphic structures within the generated set. Two topologies are defined as isomorphic if a permutation of elements exists that maps one to the other. To identify duplicates, we utilize the BLISS   
+
+> ACM Trans. Graph., Vol. 1, No. 1, Article . Publication date: July 2026. 10 •MingZe Sun, Haiyong Jiang, Bingchen Yang, Haoxuan Song, Yidi Li, Jun Xiao, and Peter Wonka BrepGen
+
+complex simple 
+
+> DTGBrepGen BrepDiff Ours
+> Fig. 11. Visual comparisons of unconditional generation on the ABC-0-50 dataset. From left to right, the complexity of the generated B-rep increases.
+> Fig. 12. Visual comparisons of unconditional generation on the Furniture-0-50 dataset.
+
+method [Junttila and Kaski 2007, 2011] to reduce two topologies to a canonical form, subsequently checking for adjacency matches. For both methods, metrics are computed based on 1,000 randomly generated samples. As shown in Tab. 4, our method achieves a topology success rate exceeding 95% on both the DeepCAD and ABC datasets. On the ABC-0-50 dataset, our approach improves the success rate by approximately 9% compared to DTGBrepGen. Furthermore, the vol-ume of non-isomorphic topologies generated by our model is nearly double that of the baseline on DeepCAD-0-30 and remains superior to that of the baseline on ABC-0-50. These results indicate that our framework significantly outperforms autoregressive topology generation in both structural validity and diversity. 
+
+Post-processing Comparison. Tab. 5 presents a comparison be-tween our post-processing method and that of BrepDiff on the DeepCAD-0-30 dataset. Since both approaches are surface-based generation methods, the results show that incorporating topology-aware post-processing outperforms methods without such geomet-ric and topological guidance. Moreover, as the number of surfaces increases, particularly in the range of 21 to 30, our method demon-strates a significant advantage, achieving approximately three times higher rationality than BrepDiff. We compare different post-processing methods in Tab. 6, high-lighting that all methods require post-processing of comparable complexity. Only our method and DTGBrepGen employ primitive   
+
+> ACM Trans. Graph., Vol. 1, No. 1, Article . Publication date: July 2026. TG-Diff: Coupling Discrete Topology Diffusion and Topology-conditioned Geometry Diffusions for B-Rep Generation •11
+
+Table 3. Quantitative comparison of unconditioned B-rep generation on the DeepCAD-0-30 and ABC-0-50 datasets without post-processing. 
+
+DeepCAD-0-30 COV*(%) ↑ MMD*( 10 −2) ↓ JSD*( 10 −2) ↓
+
+BrepGen 73.7 1.25 1.58 DTGBrepGen 77.6 0.88 1.21 BrepDiff 78.2 0.86 1.18 Ours 80.8 0.80 1.04 
+
+ABC-0-50 COV*(%) ↑ MMD*( 10 −2) ↓ JSD*( 10 −2) ↓
+
+BrepGen 72.5 1.35 1.68 DTGBrepGen 75.1 1.12 1.36 BrepDiff 78.2 1.15 1.31 Ours 80.1 0.97 1.10 
+
+Table 4. Comparison of the rationality of generated topology. 
+
+DeepCAD-0-30 ABC-0-50 Ours DTGBrepGen Ours DTGBrepGen Valid-topo (%) ↑ 99.8 97.5 96.5 86.8 Uniqueness (%) ↑ 36.2 19.8 46.5 42.5 
+
+Table 5. Comparing the validity of using raw data only after post-processing in DeepCAD-0-30 dataset, using different ranges of surface numbers. 
+
+0-10 11-20 21-30 all Ours 99.2 87.3 74.5 95.6 
+
+BrepDiff 92.6 62.3 26.5 80.5 
+
+fitting, and our approach demonstrates more stable and robust fit-ting results than DTGBrepGen. Both BrepGen and DTGBrepGen explicitly generate edges, while BrepDiff obtains edges during post-processing by performing mesh intersection followed by fitting. HOLA infers edge existence and intersections via a VAE-based pre-diction of intersecting surfaces. In contrast, our method fits surfaces into OCC geometry and derives edges through extended intersection operations. Geometry refinement is commonly involved in all post-processing pipelines. BrepGen and DTGBrepGen apply 200 steps of gradient descent to better fit edges to surfaces, along with three thresholding attempts to prevent errors when converting patch points to B-splines. BrepDiff only uses the three thresholding at-tempts. Meanwhile, to maintain consistency, our method performs at most three post-processing steps, where each step only adjusts the fitting angles of failed surfaces, while planar surfaces remain unchanged. 
+
+Table 6. Comparison of post-processing methods.                  
+
+> Primitive Fitting Edge extraction Geometry tuning BrepGen ×Generated 200-step Optimization and Threshold DTGBrepGen ✓Generated 200-step Optimization and Threshold BrepDiff ×Intersection(Mesh) Threshold Hola ×Intersection(VAE) N/A Ours ✓Intersection(Geom) Adjust fitting angle
+
+Runtime Performance. Tab. 7 shows the runtime performance averaged for generating 100 samples. The measured metrics include: the total number of parameters (Param, M), the computational cost of one-time inference (GFLOPs), the inference time (s), the post-processing time averaged over successful samples (s), the memory consumption of intermediate variables in topology diffusion (T.Mem, MB), and the memory consumption of intermediate variables in geometry diffusion (G.Mem, MB). 
+
+Table 7. Runtime Performance. T.Mem refers to the memory used by topol-ogy, measured in MB. G.Mem refers to the memory used by geometry entities or latents.                              
+
+> Params GFLOPs Inference Postprocess T.Mem G.Mem BrepGen 291.57 83.69 3.16 1.56 N/A 26.48 DTGBrepGen 145.21 7.25 0.62 5.93 1.45 1.39 BrepDiff 259.71 3.51 0.34 15.56 N/A 0.088 Ours 82.18 2.20 0.21 2.34 0.058 0.043
+
+Our method significantly outperforms competing approaches in computational efficiency, requiring 1.76 × fewer parameters, 1.59 ×
+
+fewer GFLOPs, and achieving a 1.85 × reduction in total runtime. BrepGen benefits from a relatively fast post-processing pipeline. The reason is that BrepGen’s post-processing relies on the network-generated results and follows a very simple process. BrepDiff is also quite efficient in terms of inference time, however, it lags far behind others on post-processing time because of the reliance on surface reconstruction and mesh intersection. The intermediate memory consumption of our topology generation network (T.Mem) and geometry generation network (G.Mem) is the lowest among all methods. In addition, our method achieves a 615 × improvement over BrepGen in geometry generation efficiency. We further evaluate the reconstruction performance of the VAE. Compared to BrepGen, our method achieves a lower reconstruction error of 0.000003 (vs. 0.000011) on DeepCAD and 0.000013 (vs. 0.000016) on the ABC dataset.Although our VAE uses a latent space with three times the dimensionality of BrepGen, it achieves a final KL loss of 274.4 (vs. 74.2). After normalizing by the latent dimensionality (274.4/3 = 91.4), the KL loss remains higher than BrepGen (91.4 vs. 74.2), indicating a more informative latent representation. 
+
+Failure Comparison. Fig. 13 illustrates failure cases of compet-ing methods. BrepGen and DTGBrepGen jointly generate vertices, edges, and surfaces, making them prone to incorrect connectivity. Conversely, BrepDiff lacks explicit topological modeling, leading to missing surfaces and self-intersections. We manually evaluated 500 samples to assess how often cases that are considered valid by post-processing but actually invalid (Fig. 13) occur. The failure rates on DeepCAD-0-30 are BrepGen: 41.2%, BrepDiff: 19.6%, DTGBrepGen: 5.7%, and ours: 3.1%. Our approach can avoid the aforementioned failures to some extent, owing to the surface-centric representation and the topology-guided geometry generation. Overall, our method usually fails when generating complex shapes and may produce incorrectly trimmed surfaces and small redundant surfaces.        
+
+> ACM Trans. Graph., Vol. 1, No. 1, Article . Publication date: July 2026. 12 •MingZe Sun, Haiyong Jiang, Bingchen Yang, Haoxuan Song, Yidi Li, Jun Xiao, and Peter Wonka BrepGen DTGBrepGen BrepDiff Ours
+> (1) (2) (3) (4) (5) (6)
+> Fig. 13. Comparison of failure cases.
+
+4.3 Ablation Study 
+
+We conduct ablation studies on the DeepCAD-7-30 dataset. Results are shown in Tab. 8. Replacing the generated topology with the ground truth topology ( w/ GT topology ) achieves only a slightly better metric, indicating the high quality of the generated topology. Including or excluding this component DiT-L/H does not signif-icantly affect the results, validating that the method mainly con-tributes to efficiency improvements rather than performance gains. The lightweight design significantly reduces both the computational cost and the model size, decreasing the GFLOPs from 1.77 to 1.03 and the number of parameters from 87 .1M to 39 .04 M. We remove the GNN module from the VAE to evaluate the impact of surface-to-surface interactions within the VAE on the final results. The results show that removing this component leads to a slight performance degradation, with all metrics experiencing a minor decline. BLISS is a preprocessing step for topology training, used to normalize topologies. We found that removing it significantly affects the final results. Under the same number of training epochs, the efficiency of topology learning drops substantially, leading to failures in generat-ing complex topologies and causing the final outputs to be biased toward simpler topological structures. We change the encoding scheme from treating an entire line of topological elements as a sin-gle token to encoding each individual element as a separate token. Under the same number of training iterations, all metrics decline, significantly impacting the final results. This demonstrates that our original design is indeed effective, as it increases information density and facilitates network learning. As shown in Tab. 9, on the DeepCAD-7-30 dataset, we analyze the impact of different numbers of post-processing retries on the success rate. The success rate achieved with three retries is already close to the highest success rate obtained with ten retries. We choose three retries to align with the three threshold retries used by the other baseline methods. We evaluate the impact of a scaling factor 𝜂 applied to the dis-crete log-probabilities during D3PM inference in Fig. 14. Since D3PM 
+
+> Table 8. Ablation experiment conducted on DeepCAD-7-30.
+
+COV(%) ↑ MMD( 10 −2) ↓ JSD( 10 −2) ↓ Valid(%) ↑
+
+Ours 76.4 1.22 0.87 83.6 + GT Topo 77.2 1.20 0.73 84.3 - DiT-H/L 76.3 1.21 0.85 83.9 - VAE-GNN 76.1 1.24 0.95 79.2 - BLISS 72.6 1.34 1.05 69.8 row -> element 73.7 1.30 1.01 72.4 
+
+> Table 9. Comparison of the success rates under different numbers of post-processing retries.
+
+1 2 3 10 Valid(%) 62.4 76.2 83.6 86.9 
+
+outputs categorical distributions in log-space, 𝜂 functions as a tem-perature control: a higher 𝜂 sharpens the distribution to favor deter-ministic generation, while a lower 𝜂 flattens it to enhance structural diversity.             
+
+> Fig. 14. The impact of hyperparameters 𝑚, 𝑛 of Eq.(5) on the performance. Left: varying 𝑚 with 𝑛 =0; right: varying 𝑛 with 𝑚 =1.
+
+Fig. 14 shows the impact of varying the topology sample parame-ters 𝑚, 𝑛 in Eq.( 5). The overall trends of changing two parameters are similar but with a different slope. Increasing 𝑚, 𝑛 can signifi-cantly improve the success rate of geometric trimming, reaching a peak validity of 90.6% on DeepCAD-7-30. However, excessively high confidence also leads to the deviation of the generated topolo-gies from the true data distribution, leading to worse metrics of JSD, COV, and MMD. We select 𝑚 = 0.8 and 𝑛 = 0.25 as a balance between the generation validity and quality. In addition, we compared the results of two-stage generation (our methods with both topology and geometry generation) and single-stage geometry generation on this dataset. The single-stage setting refers to geometry generation without topological guidance. The indicator results without post-processing are shown in Tab. 10. In terms of evaluation metrics, the two-stage generation consistently outperforms the single-stage setting across all metrics. As shown in Tab. 11, we compare the metrics at the early stage of training to demonstrate that topology conditioning accelerates convergence. Fig. 15 compares the results of single-stage and two-stage gener-ation. Since diffusion models inherently favor distribution fitting           
+
+> ACM Trans. Graph., Vol. 1, No. 1, Article . Publication date: July 2026. TG-Diff: Coupling Discrete Topology Diffusion and Topology-conditioned Geometry Diffusions for B-Rep Generation •13 Disconnected
+> One  Stage Two  Stage
+> Extra face Not closed Missing face Wrong direction Hard Geometry
+> Seamless connectivity, complete surfaces, structural consistency and clean geometry
+
+Fig. 15. Comparison of generated patch results between the one-stage and two-stage settings. Table 10. Comparison of single-stage and two-stage results on DeepCAD-7-30 without post-processing. 
+
+COV*(%) ↑ MMD*( 10 −2) ↓ JSD*( 10 −2) ↓
+
+single-stage 77.8 1.15 0.89 two-stage 79.5 1.01 0.78 
+
+Table 11. Quantitative results without post-processing. (1) denotes genera-tion without topology condition, while (2) denotes generation with topology condition. 
+
+Epochs COV*(%) ↑ MMD*( 10 −2) ↓ JSD*( 10 −2) ↓
+
+(1) (2) (1) (2) (1) (2) 100 72.1 74.2 1.55 1.24 2.81 2.41 200 73.4 75.4 1.42 1.22 2.03 1.82 500 75.0 76.9 1.30 1.18 1.72 1.37 1000 76.1 77.6 1.22 1.16 1.56 1.29 rather than structural variation, the single-stage approach tends to produce CAD entities that resemble those in the training dataset. However, it struggles to accurately model each surface, often leading to issues such as disconnected components, redundant or missing surfaces, and structural inconsistencies. Moreover, its ability to gen-erate complex geometries is significantly weaker than that of the two-stage method. This motivates the introduction of topology as an explicit condition, which stabilizes training and improves the overall completeness of CAD generation. By incorporating topolog-ical guidance, the model can explicitly reason about inter-surface relationships rather than modeling the entire entity holistically. 
+
+4.4 Generation Results on the Furniture Dataset 
+
+We also conduct evaluations on the Furniture dataset. We compare against DTGBrepGen, the only prior method that reports results on this dataset. Due to the limited number of samples, we further perform a user study to demonstrate that our generated results are more complex. The qualitative results are shown in Fig.12. We 
+
+Table 12. Quantitative comparison of unconditioned B-rep generation on the furniture dataset. 
+
+Furniture-0-50 Topo Valid ↑ Valid(%) ↑
+
+DTGBrepGen 92.1 64.2 Ours 95.8 71.2 report the topological success rate and final geometric success rate on the Furniture dataset in Tab. 12. Both methods use the original category distribution for sampling, and the final results are reported as averages. As shown in the table, our method achieves a higher success rate than DTGBrepGen. 
+
+4.5 Topology–Geometry Inconsistency Metric 
+
+As all successfully post-processed B-reps are constructed according to the predicted topology, they are topologically consistent by design. To evaluate the consistency before post-processing, we consider two generated surfaces as geometrically intersecting if they pass a proximity test with a predefined distance threshold, and measure whether the resulting intersections agree with the predicted topo-logical adjacency. The resulting topology–geometry consistency is reported in Table 13. We further evaluate the generated topology by computing the Jensen–Shannon divergence (JSD) between the node degree distributions of the generated and ground-truth topologies (lower is better). 
+
+Table 13. Topology-geometry consistency during geometry generation and topology distribution similarity.         
+
+> Dataset Topology–Geometry Consistency (%) ↑Degree JSD ↓
+> DeepCAD-0-30 94.4 0.012 ABC-0-50 83.5 0.018
+> ACM Trans. Graph., Vol. 1, No. 1, Article . Publication date: July 2026.
+
+14 • MingZe Sun, Haiyong Jiang, Bingchen Yang, Haoxuan Song, Yidi Li, Jun Xiao, and Peter Wonka 
+
+5 Limitations 
+
+Our method constructs watertight solids by extending surfaces to obtain intersection curves, and then computing intersection points from the intersections between these curves. Based on this, we de-sign an algorithm to assemble a closed solid. However, this approach may introduce certain issues. When surfaces are extended too far, cases that should correspond to a single surface may instead pro-duce multiple fragmented surfaces that are later stitched together. Although they are macroscopically equivalent, this can introduce additional internal edges, which are subsequently resolved through surface merging, at the cost of extra computational overhead. In ad-dition, due to limitations of the underlying OCC intersection kernel, intersection curves that are geometrically close and should theoret-ically intersect may still produce large distance values, causing the kernel to fail to generate valid intersection points. This numerical inconsistency effectively behaves like a geometric offset and there-fore requires a relatively large tolerance to resolve the intersections. Finally, the extension-based intersection strategy itself has inher-ent limitations. For geometries such as circular rings or spheres, even after extension, it can still be difficult to obtain meaningful intersection curves, which remains a major challenge of the method. 
+
+6 Conclusions 
+
+We introduced TG-Diff, a two-stage approach that decouples com-plex B-rep generation into surface generation and surface adja-cency modeling. By employing a two-stage diffusion process, our method alleviates the topological inconsistencies typically found in joint geometric modeling. Specifically, incorporating topology as a guiding condition enables the model to focus on global inter-surface relationships rather than isolated surface details. This leads to improved structural integrity and geometric complexity of the generation results. Achieving state-of-the-art results on standard benchmarks (DeepCAD and ABC) with only 82.18M parameters, TG-Diff demonstrates a superior balance between generative ca-pacity and architectural efficiency. This work establishes a scalable paradigm for automated B-rep generation, bridging the gap between generative modeling and industrial designs. 
+
+References 
+
+Jacob Austin, Daniel D. Johnson, Jonathan Ho, Daniel Tarlow, and Rianne van den Berg. 2021. Structured Denoising Diffusion Models in Discrete State-Spaces. In NeurIPS 2021 . 17981–17993. Jinze Bai, Shuai Bai, Shuai Yang, Shuai Wang, Xuefei Tan, et al . 2023. Qwen-VL: A Versatile Vision-Language Model for Understanding, Localization, Text Reading, and Beyond. arXiv preprint arXiv:2308.12966 (2023). Ming Chen, Zhewei Wei, Zengfeng Huang, Bolin Ding, and Yaliang Li. 2020. Simple and Deep Graph Convolutional Networks. In ICML 2020 , Vol. 119. 1725–1735. Xiaohui Chen, Jiaxing He, Xu Han, and Liping Liu. 2023. Efficient and Degree-Guided Graph Generation via Discrete Diffusion Modeling. In ICML 2023 , Vol. 202. 4585– 4610. Sathvik Chereddy and John Femiani. 2025. SketchDNN: Joint Continuous-Discrete Diffusion for CAD Sketch Generation. In Proceedings of the 42nd International Con-ference on Machine Learning . arXiv:2507.11579. Manuel Contero, David Pérez-López, Pedro Company, and Jorge D. Camba. 2023. A quantitative analysis of parametric CAD model complexity and its relationship to perceived modeling complexity. Advanced Engineering Informatics 56 (2023), 101970. doi:10.1016/j.aei.2023.101970 Shuyang Gu, Dong Chen, Jianmin Bao, Fang Wen, Bo Zhang, Dongdong Chen, Lu Yuan, and Baining Guo. 2022. Vector quantized diffusion model for text-to-image synthesis. In CVPR 2022 . 10696–10706. Hao Guo, Xiaoshui Huang, Jiacheng Hao, Yunpeng Bai, Hongping Gan, and Yilei Shi. 2025. BrepGiff: Lightweight Generation of Complex B-rep with 3D GAT Diffusion. In CVPR 2025 . Computer Vision Foundation / IEEE, 26587–26596. Haoxiang Guo, Shilin Liu, Hao Pan, Yang Liu, Xin Tong, and Baining Guo. 2022. Com-plexGen: CAD reconstruction by B-rep chain complex generation. ACM Trans. Graph. 41, 4 (2022), 129:1–129:18. Jonathan Ho, Ajay Jain, and Pieter Abbeel. 2020. Denoising Diffusion Probabilistic Models. In NeurIPS 2020 .Pradeep Kumar Jayaraman, Joseph George Lambourne, Nishkrit Desai, Karl D. D. Willis, Aditya Sanghi, and Nigel J. W. Morris. 2023. SolidGen: An Autoregressive Model for Direct B-rep Synthesis. Trans. Mach. Learn. Res. 2023 (2023). Tommi Junttila and Petteri Kaski. 2007. Engineering an efficient canonical labeling tool for large and sparse graphs. In Proceedings of the Ninth Workshop on Algorithm Engineering and Experiments and the Fourth Workshop on Analytic Algorithms and Combinatorics . SIAM, 135–149. Tommi Junttila and Petteri Kaski. 2011. Conflict Propagation and Component Recursion for Canonical Labeling. In Theory and Practice of Algorithms in (Computer) Systems – First International ICST Conference, TAPAS 2011 (Lecture Notes in Computer Science, Vol. 6595) . 151–162. Telikepalli Kavitha, Kurt Mehlhorn, Dimitrios Michail, Krzysztof Paluch, Piotr Sankowski, Jeremy P Spinrad, and David Williamson. 2007. An 𝑂 (𝑚 2𝑛 ) algo-rithm for minimum cycle basis of graphs. Algorithmica 49 (2007), 243–262. Sebastian Koch, Albert Matveev, Zhongshi Jiang, Francis Williams, Alexey Artemov, Evgeny Burnaev, Marc Alexa, Denis Zorin, and Daniele Panozzo. 2019. ABC: A Big CAD Model Dataset for Geometric Deep Learning. In CVPR 2019 . 9601–9611. Mingi Lee, Dongsu Zhang, Clément Jambon, and Young Min Kim. 2025. BrepDiff: Single-Stage B-rep Diffusion Model. In Proceedings of the SIGGRAPH 2025 Conference Papers . Article 103, 11 pages. doi:10.1145/3721238.3730698 Jiahao Li, Yunpeng Bai, Yongkang Dai, Hao Guo, Hongping Gan, and Yilei Shi. 2026. AutoRegressive Generation with B-rep Holistic Token Sequence Representation. 
+
+arXiv preprint arXiv:2601.16771 (2026). Jing Li, Yihang Fu, and Falai Chen. 2025b. DTGBrepGen: A Novel B-rep Generative Model through Decoupling Topology and Geometry. In CVPR 2025 . 21438–21447. Jiahao Li, Weijian Ma, Xueyang Li, Yunzhong Lou, Guichun Zhou, and Xiangdong Zhou. 2025d. CAD-Llama: Leveraging Large Language Models for Computer-Aided Design Parametric 3D Model Generation. In CVPR 2025 . 18563–18573. Pu Li, Wenhao Zhang, Jinglu Chen, and Dongming Yan. 2025e. Stitch-A-Shape: Bottom-up Learning for B-Rep Generation. In Proceedings of the SIGGRAPH 2025 Conference Papers . Article 104, 12 pages. Pu Li, Wenhao Zhang, Weize Quan, Biao Zhang, Peter Wonka, and Dong-Ming Yan. 2025f. BrepGPT: Autoregressive B-rep Generation with Voronoi Half-Patch. ACM Trans. Graph. 44, 6 (2025), 226:1–226:18. doi:10.1145/3763323 Tianhong Li, Yonglong Tian, He Li, Mingyang Deng, and Kaiming He. 2024. Autore-gressive Image Generation without Vector Quantization. In NeurIPS 2024 .Yuan Li, Cheng Lin, Yuan Liu, Xiaoxiao Long, Chenxu Zhang, Ningna Wang, Xin Li, Wenping Wang, and Xiaohu Guo. 2025c. CADDreamer: CAD Object Generation from Single-view Images. In CVPR 2025 . 21448–21457. Zhen Li et al . 2025a. GraphBRep: Explicit Graph Diffusion of B-Rep Topology for Efficient CAD Generation. Journal of Computational Design and Engineering (2025). Yilin Liu, Jiale Chen, Shanshan Pan, Daniel Cohen-Or, Hao Zhang, and Hui Huang. 2024a. Split-and-Fit: Learning B-Reps via Structure-Aware Voronoi Partitioning. 
+
+ACM Trans. Graph. 43, 4 (2024), 108:1–108:13. Yujia Liu, Anton Obukhov, Jan Dirk Wegner, and Konrad Schindler. 2024b. Point2CAD: Reverse Engineering CAD Models from 3D Point Clouds. In CVPR 2024 . IEEE, 3763– 3772. Yilin Liu, Duoteng Xu, Xingyao Yu, Xiang Xu, Daniel Cohen-Or, Hao Zhang, and Hui Huang. 2025. HoLa: B-Rep Generation using a Holistic Latent Representation. ACM Trans. Graph. 44, 4 (2025), 116:1–116:25. Xiaoxiao Long, Yuan-Chen Guo, Cheng Lin, Yuan Liu, Zhiyang Dou, Lingjie Liu, Yuexin Ma, Song-Hai Zhang, Marc Habermann, Christian Theobalt, and Wenping Wang. 2024. Wonder3D: Single Image to 3D Using Cross-Domain Diffusion. In CVPR 2024 .9970–9980. Xinzhu Ma, Cheng Wang, Chen Tang, Bin Wang, Shixiang Tang, Yuan Meng, Yunhong Wang, and Di Huang. 2025. Point2Primitive: CAD Reconstruction from Point Cloud by Direct Primitive Prediction. arXiv preprint arXiv:2505.02043 (2025). Wamiq Reyaz Para, Shariq Farooq Bhat, Paul Guerrero, Tom Kelly, Niloy J. Mitra, Leonidas J. Guibas, and Peter Wonka. 2021. SketchGen: Generating Constrained CAD Sketches. In Advances in Neural Information Processing Systems 34: Annual Conference on Neural Information Processing Systems 2021, NeurIPS 2021, December 6-14, 2021, virtual . 5077–5088. William Peebles and Saining Xie. 2023. Scalable diffusion models with transformers. In 
+
+ICCV 2023 . 4195–4205. Ethan Perez, Florian Strub, Harm de Vries, Vincent Dumoulin, and Aaron C. Courville. 2018. FiLM: Visual Reasoning with a General Conditioning Layer. In AAAI 2018 .3942–3951. ACM Trans. Graph., Vol. 1, No. 1, Article . Publication date: July 2026. TG-Diff: Coupling Discrete Topology Diffusion and Topology-conditioned Geometry Diffusions for B-Rep Generation • 15 
+
+Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Björn Ommer. 2022. High-Resolution Image Synthesis with Latent Diffusion Models. In CVPR 2022 .IEEE, 10674–10685. Tim Salimans and Jonathan Ho. 2022. Progressive Distillation for Fast Sampling of Diffusion Models. In ICLR 2022 . OpenReview.net. Jiaming Song, Chenlin Meng, and Stefano Ermon. 2021. Denoising Diffusion Implicit Models. In ICLR 2021 .Oriol Vinyals, Meire Fortunato, and Navdeep Jaitly. 2015. Pointer Networks. In NeurIPS 2015 . 2692–2700. Siyu Wang, Cailian Chen, Xinyi Le, Qimin Xu, Lei Xu, Yanzhou Zhang, and Jie Yang. 2025. CAD-GPT: Synthesising CAD Construction Sequence with Spatial Reasoning-Enhanced Multimodal LLMs. In AAAI 25 . AAAI Press, 7880–7888. Jianyu Wu, Yizhou Wang, Xiangyu Yue, Xinzhu Ma, Jinyang Guo, Dongzhan Zhou, Wanli Ouyang, and Shixiang Tang. 2025. Cmt: A cascade mar with topology predictor for multimodal conditional cad generation. In ICCV 2025 . 7014–7024. Rundi Wu, Chang Xiao, and Changxi Zheng. 2021. DeepCAD: A Deep Generative Network for Computer-Aided Design Models. In ICCV 2021 . 6752–6762. Jianfeng Xiang, Zelong Lv, Sicheng Xu, Yu Deng, Ruicheng Wang, Bowen Zhang, Dong Chen, Xin Tong, and Jiaolong Yang. 2025. Structured 3D Latents for Scalable and Versatile 3D Generation. In CVPR 2025 . 21469–21480. Jingwei Xu, Chenyu Wang, Zibo Zhao, Wen Liu, Yi Ma, and Shenghua Gao. 2024b. CAD-MLLM: Unifying Multimodality-Conditioned CAD Generation With MLLM. 
+
+CoRR abs/2411.04954 (2024). arXiv:2411.04954 doi:10.48550/ARXIV.2411.04954 Xiang Xu, Pradeep Jayaraman, Joseph Lambourne, Yilin Liu, Durvesh Malpure, and Pete Meltzer. 2025. AutoBrep: Autoregressive B-Rep Generation with Unified Topology and Geometry. In Proceedings of the SIGGRAPH Asia 2025 Conference Papers . Article 94, 12 pages. doi:10.1145/3757377.3763814 Xiang Xu, Pradeep Kumar Jayaraman, Joseph George Lambourne, Karl D. D. Willis, and Yasutaka Furukawa. 2023. Hierarchical Neural Coding for Controllable CAD Model Generation. In ICML 2023 , Vol. 202. 38443–38461. Xiang Xu, Joseph G. Lambourne, Pradeep Kumar Jayaraman, Zhengqing Wang, Karl D. D. Willis, and Yasutaka Furukawa. 2024a. BrepGen: A B-rep Generative Diffusion Model with Structured Latent Geometry. ACM Trans. Graph. 43, 4 (2024), 119:1– 119:14. Xiang Xu, Karl D. D. Willis, Joseph G. Lambourne, Chin-Yi Cheng, Pradeep Kumar Jayaraman, and Yasutaka Furukawa. 2022. SkexGen: Autoregressive Generation of CAD Construction Sequences with Disentangled Codebooks. In ICML 2022 , Vol. 162. 24698–24724. Jiaxuan You, Rex Ying, Xiang Ren, William L Hamilton, and Jure Leskovec. 2018. GraphRNN: Generating Realistic Graphs with Deep Auto-regressive Models. In 
+
+International Conference on Machine Learning (ICML) . 5708–5717. Yang You, Mikaela Angelina Uy, Jiaqi Han, Rahul Krishna Thomas, Haotong Zhang, Suya You, and Leonidas J. Guibas. 2024. Img2CAD: Reverse Engineering 3D CAD Models from Images through VLM-Assisted Conditional Factorization. CoRR abs/2408.01437 (2024). arXiv:2408.01437 Fuyang Zhang, Pradeep Kumar Jayaraman, Xiang Xu, and Yasutaka Furukawa. 2025a. B-Rep Distance Functions (BR-DF): How to Represent a B-Rep Model by Volumetric Distance Functions? arXiv:2511.14870 [cs.CV] https://arxiv.org/abs/2511.14870 Zhanwei Zhang, Shizhao Sun, Wenxiao Wang, Deng Cai, and Jiang Bian. 2025b. Flex-CAD: Unified and Versatile Controllable CAD Generation with Fine-tuned Large Language Models. In ICLR 2025 .Shengjia Zhao, Jiaming Song, and Stefano Ermon. 2019. InfoVAE: Balancing Learning and Inference in Variational Autoencoders. In AAAI 2019 . AAAI Press, 5885–5892. Boyang Zheng, Nanye Ma, Shengbang Tong, and Saining Xie. 2025. Diffusion Transformers with Representation Autoencoders. CoRR abs/2510.11690 (2025). arXiv:2510.11690 ACM Trans. Graph., Vol. 1, No. 1, Article . Publication date: July 2026.

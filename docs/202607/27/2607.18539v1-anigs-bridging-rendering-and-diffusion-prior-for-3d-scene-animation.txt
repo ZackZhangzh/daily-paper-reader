@@ -1,0 +1,846 @@
+Title: AniGS: Bridging Rendering and Diffusion Prior for 3D Scene Animation
+
+URL Source: https://arxiv.org/pdf/2607.18539v1
+
+Published Time: Wed, 22 Jul 2026 00:17:01 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+# AniGS: Bridging Rendering and Diffusion Prior for 3D Scene Animation 
+
+# YEN-CHI CHENG ∗, University of Illinois Urbana-Champaign, USA 
+
+# CHEN GAO, Waymo, USA 
+
+# CHUHAN CHEN, Carnegie Mellon University, USA 
+
+# TUOTUO LI, Meta, USA 
+
+# RAJVI SHAH, Meta, USA 
+
+# AYUSH SARAF, Meta, USA 
+
+# CHANGIL KIM, Meta, USA 
+
+# LIANGYAN GUI, University of Illinois Urbana-Champaign, USA 
+
+# ALEXANDER SCHWING, University of Illinois Urbana-Champaign, USA 
+
+# JOHANNES KOPF, Meta, USA 
+
+# HUNG-YU TSENG, Waymo, USA Input: static 3D scene reconstruction  Output: dynamic novel view synthesis 
+
+x
+
+t
+
+t
+
+y
+
+t
+
+y
+
+x
+
+t
+
+x
+
+t
+
+t
+
+y
+
+Fig. 1. 3D Scene Animation. Given a static 3D scene ( top-left ) reconstructed with 3D Gaussian Splatting (3DGS), our AniGS method synthesizes an animated 3D scene consisting of ambient motion that supports novel view video rendering. For each example rendered view, we highlight regions of interest and visualize the induced dynamics using space–time slices ( 𝑥 /𝑦 –𝑡 ), showing natural motion in foliage. 
+
+> ∗
+
+Word was done while intern at Meta. Authors’ Contact Information: Yen-Chi Cheng, University of Illinois Urbana-Champaign, Champaign-Urbana, Illinois, USA; Chen Gao, Waymo, Bellevue, Washing-ton, USA; Chuhan Chen, Carnegie Mellon University, Pittsburgh, Pennsylvania, USA; Tuotuo Li, Meta, Bellevue, Washington, USA; Rajvi Shah, Meta, Bellevue, Washington, USA; Ayush Saraf, Meta, Bellevue, Washington, USA; Changil Kim, Meta, Bellevue, Washington, USA; Liangyan Gui, University of Illinois Urbana-Champaign, Champaign-Urbana, Illinois, USA; Alexander Schwing, University of Illinois Urbana-Champaign, Champaign-Urbana, Illinois, USA; Johannes Kopf, Meta, Bellevue, Washington, USA; Hung-Yu Tseng, Waymo, Bellevue, Washington, USA. Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed 
+
+Novel view rendering of large and complex reconstructed scenes is becoming increasingly photorealistic. However, most reconstructions remain static and lack the ambient motion that makes environments immersive. We present 
+
+for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org. 
+
+© 2026 Copyright held by the owner/author(s). Publication rights licensed to ACM. ACM XXXX-XXXX/2026/7-ART https://doi.org/10.1145/nnnnnnn.nnnnnnn , Vol. 1, No. 1, Article . Publication date: July 2026. arXiv:2607.18539v1 [cs.CV] 20 Jul 2026 2 • Cheng et al.      
+
+> AniGS, a method for scene-level animation of 3D Gaussian Splatting (3DGS) reconstructions that adds subtle, distributed dynamics, e.g., vegetation mo-tion, while preserving rigid structures. Unlike existing 3D animation tech-niques which are limited to object-centric subjects or small regions, AniGS is designed for large, cluttered, navigable scenes. AniGS represents the scene with a canonical 3DGS and models motion using a time-conditioned deformation field. To animate the entire scene, we leverage a pretrained video diffusion model and introduce an iterative dataset–model update strat-egy that progressively expands viewpoint coverage and repeatedly updates camera-fixed training videos using a render-and-refine scheme. To prevent artifacts from unintended motion in static areas, we further introduce a composed video-to-video refinement scheme that restricts motion to desired regions. Experiments on five real-world, large-scale outdoor scenes demon-strate that AniGS produces natural ambient dynamics and high-quality novel view videos, enabling more immersive viewing experiences of reconstructed environments. CCS Concepts: •Computing methodologies →Computer vision .Additional Key Words and Phrases: Scene Animation, Video Diffusion Model
+> ACM Reference Format:
+> Yen-Chi Cheng, Chen Gao, Chuhan Chen, Tuotuo Li, Rajvi Shah, Ayush Saraf, Changil Kim, Liangyan Gui, Alexander Schwing, Johannes Kopf, and Hung-Yu Tseng. 2026. AniGS: Bridging Rendering and Diffusion Prior for 3D Scene Animation. 1, 1 (July 2026), 12 pages. https://doi.org/10.1145/nnnnnnn. nnnnnnn
+
+1 Introduction 
+
+Outdoor environments are inherently dynamic even without moving subjects: wind and subtle material movements cause foliage, grass, and surrounding clutter to move all the time. This ambient motion 
+
+is critical for an immersive viewing experience. Although recent advances in 3D Gaussian Splatting (3DGS) [ 6, 8, 13 , 18 , 24 , 37 ] enable fast reconstruction of complex 3D scenes and photorealistic novel view rendering, most reconstructed scenes remain static and miss the ambient dynamics that make a scene feel alive. To bridge this gap, rapid progress has been made in animating static 3D assets, especially object-centric targets [ 10 , 14 , 32 , 33 , 39 ]. However, these methods typically focus on a single subject, such as a plant or a toy, and do not scale to large, cluttered, walkable 3D scenes where motion is distributed across many regions. This work targets scene-level animation of 3D Gaussian Splatting (3DGS) reconstructions to provide a more lifelike viewing experi-ence, as illustrated in Figure 1. Animating an entire 3D scene is challenging for two reasons. First, there is no reliable motion prior or supervision that provides temporally consistent motion across multiple viewpoints for the whole scene. While video diffusion models [ 1, 4 , 35 ] demonstrate outstanding performance in turning images into high-quality videos, they are not designed to gener-ate multi-view consistent videos. Therefore, they cannot provide temporally coherent motion cues across the full scene. Second, the animation must preserve static regions, such as walls and floors, which should remain rigid and not drift. Consider as an example the window view shown in the top-right panel of Fig. 1 (outlined in blue): the window should remain static while the leaves in front sway naturally. The viewing experience degrades noticeably if the static content is not clearly separated from animated regions. Towards scene-level animation, we introduce AniGS , a method that generates an animated 3D scene consisting of ambient mo-tion from a static 3DGS reconstruction. AniGS uses a canonical 3DGS to represent the scene geometry and appearance, and a time-conditioned deformation field [ 25 ] to model the the synthesized motion. We leverage a pretrained video diffusion model [ 4] to pro-vide motion cues. To overcome the limitation of video diffusion models and animate the whole 3D scene consistently, we design an iterative dataset–model update approach [ 5] with an incremental viewpoint expansion strategy. Specifically, in each iteration, we first add a viewpoint that is near the existing views in the dataset. We then update the camera-fixed videos of all viewpoints in the dataset using a “render-and-refine” approach with the video diffusion model. Finally, the updated videos are used as the training data to optimize the canonical 3DGS and deformation field. We repeat this dataset– model update cycle until the scene is fully covered and animated. Furthermore, we observe that the video diffusion model can intro-duce slight motion in static areas, which leads to obvious artifacts in the final animated scene. We address this issue with a composed video-to-video refinement , which restricts motion to desired regions while preserving the static parts of the scene. We evaluate the proposed method on five real-world, large-scale, and cluttered outdoor scenes. Both qualitative and quantitative results show that AniGS 1) adds natural ambient dynamics to appro-priate regions and 2) renders high-quality novel view videos. The results suggest a practical path toward more immersive viewing experiences. We summarize the contributions as follows: 
+
+• We propose AniGS for scene-level 3D animation, targeting non-object-centric, cluttered scenes with navigable areas. 
+
+• We propose an iterative dataset–model update strategy that scales 3D scene animation training to large scenes by pro-gressively generating and incorporating multi-view animated supervision from selected camera viewpoints. 
+
+• We design a composed video-to-video refinement scheme that steers the video diffusion model to synthesize motion only in desired regions while preserving static content. 
+
+2 Related Works 
+
+Dynamic Scene Reconstruction. A large body of work studies reconstruction of time-varying 3D scenes (4D), often by introducing temporal degrees of freedom into a 3D representation and optimiz-ing from dynamic observations. Recent Gaussian-splatting-based methods extend 3D Gaussian Splatting to dynamic settings by learn-ing time-conditioned motion or deformation for Gaussians, enabling efficient novel view rendering of dynamic scenes [ 12 , 25 , 31 ]. Beyond purely reconstruction-driven formulations, several works leverage powerful video generators as priors to recover 4D geometry or enforce multi-view temporal consistency: Shape-of-Motion lifts mo-tion and structure from a single video to a 4D representation [ 29 ], Geo4D uses video generators to regularize geometric 4D scene re-construction [ 11 ], and MV-Performer adapts video diffusion models to produce faithful and synchronized multi-view performer dynam-ics [ 41 ]. While effective when dynamic observations are available, these methods rely on captured time-varying input (or focus on bounded subjects). In contrast, our setting starts from a canonical static scene reconstruction and bootstraps scene-wide animation   
+
+> , Vol. 1, No. 1, Article . Publication date: July 2026. AniGS: Bridging Rendering and Diffusion Prior for 3D Scene Animation •3
+
+Static 3D scene reconstruction 
+
+Dataset 
+
+(before) Position  𝜇  Coefficients  Deformation Time 
+
+∆𝜇 𝑡  ∆𝑞 𝑡 
+
+𝑡 
+
+Deformation 
+
+field  𝐷 𝜙 
+
+iDCT 
+
+Tri -plane 
+
+MLP 
+
+> Refined Videos
+
+Dataset (after) 
+
+## + +
+
+> Loss (Eq. 13, 14, 17)
+
+ℒ
+
+Incremental viewpoint expansion Dynamic scene representation 
+
+𝒬 = [ ] 𝒬 = [ ]
+
+> Render
+> Render
+> all active
+> views
+
+Replace and add data 
+
+3DGS  Viewpoints 
+
+Time 
+
+𝒬 
+
+Inactive 
+
+viewpoints 
+
+View expansion list 
+
+> Rendered Videos
+
+ComposedV2V 
+
+(Fig. 3) 
+
+(𝑥 , 𝑦 , 𝑧 )
+
+Rot.  𝑞   
+
+> Fig. 2. Method overview. (left ) AniGS uses a canonical 3DGS to represent scene geometry and appearance, and a time-conditioned deformation field to model the synthesized motion. The deformation field predicts discrete cosine transform (DCT) coefficients to offset and rotate each splat in the canonical 3DGS. ( right ) To animate the entire 3D scene, we design an iterative dataset–model update scheme with incremental viewpoint expansion strategy. Dataset update: in each iteration, we include an additional viewpoint that has sufficient overlapping with the existing views in the dataset, render camera-fixed videos of all views in the dataset, and refine the videos using the proposed ComposedV2V approach (Figure 3). Model update: the refined videos are considered as the training data for optimizing the dynamic scene representation. We repeat this process iteratively until the scene is fully covered.
+
+without scene-level ground-truth dynamic supervision by iteratively coupling a renderable model with a generative video prior. 
+
+4D Generation. Recent work has made rapid progress on generating 
+
+dynamic 3D/4D content by combining strong diffusion priors with explicit 3D representations. A number of methods generate 4D ob-jects or scenes from text/images/videos by distilling video diffusion models into Gaussian/NeRF-like representations, producing time-varying geometry and appearance (e.g., DreamGaussian4D [ 22 ], 4Dfy [ 2], and Vivid Dream [ 15 ]). More recent approaches further emphasize multi-view and multi-frame consistency for 4D content generation, including autoregressive 4D generation from monocular videos [ 42 ], decoupled video diffusion pipelines for single-image 3D/4D scene creation [ 27 , 40 ], explicit 4D object generation without score distillation [ 26 ], feedforward video-to-4D synthesis [ 38 ], and multi-view video diffusion models that improve spatial-temporal coherence [ 9, 34 , 36 ]. Complementary to content generation, DIMO studies diverse 3D motion generation for arbitrary objects [ 19 ]. De-spite impressive results, most of these methods primarily target 
+
+object-centric content or bounded scenes and rely on generating content from scratch (or from short monocular videos). In contrast, our goal is to animate an entire, cluttered, walkable real-world scene ,starting from a static 3D reconstruction. AniGS leverages a genera-tive video prior to iteratively bootstrap scene-wide supervision that can be distilled into a renderable 3DGS animation model. 
+
+Animating static 3D Objects and Scenes. A related line of work studies generation of motion or animation from an existing static 3D asset (mesh, NeRF/3DGS reconstruction) by leveraging generative video priors. Animate3D [ 10 ] and Bringing Objects to Life [ 20 ] use multi-view/video diffusion guidance to produce view-consistent dynamic renderings and distill them into a time-varying 3D repre-sentation. AnimateAnyMesh [ 32 ] targets feed-forward, text-driven mesh animation, while AKD [ 16 ] distills articulated kinematics from diffusion-generated videos. Gaussians2Life [ 30 ] animates a static 3DGS by generating diffusion guidance and lifting the induced 2D motion into 3D Gaussian deformations. PhysDreamer [ 33 , 39 ] in-stead distills diffusion-predicted motion into physically grounded material parameters via differentiable simulation. PromptVFX [ 14 ]explores text-driven fields for animating 3D Gaussians in open-world settings. Despite strong results, most of these methods are 
+
+object-centric or limited to a small region/viewpoint range, and thus do not address globally consistent scene-level animation in large, cluttered, walkable environments. Differently, AniGS targets whole-scene animation from a canonical static reconstruction by iteratively bootstrapping supervision with a video diffusion prior. 
+
+3 Method 
+
+We first describe our problem setting in Sec. 3.1. We then detail 3D Gaussian Splatting, deformation field, and video diffusion prelimi-naries in Sec. 3.2. Afterwards, we provide an overview of our method in Sec. 3.3. Subsequently, we discuss how our iterative dataset–model update achieves animation of the entire-scene in Sec. 3.4 and Sec. 3.5. Finally, we provide implementation details in Sec. 3.6. 
+
+3.1 Problem definition 
+
+Given a static scene reconstructed by 3D Gaussian Splatting (3DGS) 
+
+G0, we aim to learn a scene-level animated representation that sup-ports novel view rendering of plausible, temporally coherent am-bient motion across the entire environment (e.g., trees, grass, flow-ers, and other foliage), while keeping rigid structures stationary. Formally, the output is a time-varying 3DGS {G 𝑡 }𝑇 𝑡 =0 that can be   
+
+> , Vol. 1, No. 1, Article . Publication date: July 2026. 4•Cheng et al.
+
+rendered from arbitrary viewpoints. In AniGS, we do not explicitly predict a set of 3DGS for each time step. Instead, we represent the animated scene using a canonical static 3DGS and a deformation field, detailed in Section 3.2. 
+
+3.2 Preliminaries 
+
+We review the key components used in AniGS: 1) 3D Gaussian Splatting (3DGS) as the canonical static 3D scene representation, 2) a compact dynamic scene parameterization for ambient motion, and 3) a flow-based video diffusion model that we use as a generative prior to introduce dynamics. 
+
+3D Gaussian Splatting (3DGS). 3DGS represents a scene as a set of 
+
+𝑁 3D Gaussians G = {𝐺 𝑖 }𝑁 𝑖 =1. Each Gaussian is defined by a center 
+
+𝜇 ∈ R3 and a covariance Σ ∈ R3×3:
+
+𝐺 (𝑥 | 𝜇 ; Σ) = exp 
+
+
+
+− 12 (𝑥 − 𝜇 )T Σ−1 (𝑥 − 𝜇 )
+
+
+
+, (1) where Σ is parameterized by a rotation matrix 𝑅 ∈ R3×3 and a diagonal scaling matrix 𝑆 ∈ R3×3 as 
+
+Σ = 𝑅𝑆𝑆 T𝑅 T. (2) In practice, 𝑅 and 𝑆 are commonly represented by a unit quaternion 
+
+𝑞 and scaling factors 𝑠 ∈ R3. Besides geometry, each Gaussian carries appearance attributes such as color 𝑐 and opacity 𝛼 . Rendering is conducted by sorting Gaussians along the ray and accumulating them using the standard over-compositing rule: 
+
+𝐶 =∑︁  
+
+> 𝑖 ∈ N
+
+𝑐 𝑖 𝛼 𝑖 𝑖 −1Ö
+
+> 𝑗 =1
+
+(1 − 𝛼 𝑗 ), (3) where N denotes the ordered set of Gaussians contributing to a pixel. The Gaussian parameters (positions, rotations, scales, col-ors, opacities) are optimized via photometric reconstruction losses between rendered and ground-truth (captured) images. In our system, 3DGS serves as the renderable backbone. We ini-tialize AniGS with a canonical static reconstruction G0, representing the 3D scene geometry and appearance at time-zero reference state. 
+
+Dynamic Scene Representation for Ambient Motion. To model scene-level, ambient dynamics, we parameterize a time-varying deformation on top of a canonical static scene. Inspired by Ambi-entGS [ 25 ], we represent per-Gaussian deformations (e.g., transla-tion and rotation updates) with a compact frequency-domain pa-rameterization based on discrete cosine transform (DCT) bases. Specifically, a time-varying scalar deformation 𝑣 (𝑡 ) (e.g., Δ𝜇 𝑡 along one axis) is modeled as 
+
+𝑣 (𝑡 ) =√︂ 2
+
+𝐾 + 1
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝜙 𝑣,𝑘 cos 
+
+ 𝜋 
+
+2𝑇 (2𝑡 + 1)𝑘 
+
+
+
+, (4) where 𝜙 𝑣,𝑘 are learnable coefficients and 𝐾 controls the basis size. This representation is storage-efficient and generalize smoothly over time; at any timestamp 𝑡 we recover Δ𝜇 𝑖 (𝑡 ) and Δ𝑟 𝑖 (𝑡 ) (via iDCT) and apply them to the canonical Gaussians before rendering. 
+
+Flow-based Video Diffusion Model. We use a flow-based (rectified-flow) video diffusion formulation in latent space to provide the mo-tion cues. Given a clean latent 𝑧 0 (e.g., encoded from a video), we interpolate between 𝑧 0 and Gaussian noise 𝜖 ∼ N ( 0, 𝐼 ) via 
+
+𝑧 𝜏 = (1 − 𝜏 )𝑧 0 + 𝜏𝜖, 𝜏 ∈ [ 0, 1]. (5) Input:         
+
+> Rendered Video
+> SAM2
+> Composed Video
+> (Eq. 8) Video Diffusion Model 𝒱
+> Prompt 𝑙 Noise 𝜀 Mask 𝑀 0
+> Reverse
+> process
+> Noisy latent 𝑧 𝑡 Clean latent 𝑧 0
+> Output: Refined Video
+
+ℰ
+
+> “Animate
+> the scene…”
+
+𝒟             
+
+> Fig. 3. Composed Video-to-Video ( ComposedV2V ). Slight motion intro-duced by the video diffusion model in stationary regions can be amplified over the iterative dataset–model update process. We therefore propose ComposedV2V to re-stabilize the static region in each dataset update. Given a rendered (camera-fixed) video, we estimate the dynamic mask from the first frame, and create the composed video by copying the static pixels of the first frame to all subsequent frames (Eq. (8) ). Intuitively, this enforces stability in stationary areas. Conditioning on the text prompt 𝑙 and noise 𝜖 ,we apply the video diffusion model Vto obtain the refined video.
+
+Instead of predicting 𝜖 , rectified-flow training typically predicts the 
+
+velocity 𝑣 = 𝜖 − 𝑧 0 to balance learning difficulty across diffusion timesteps 𝜏 . During inference, starting from pure noise 𝑧 1, the model integrates the reverse-time ODE using Euler updates: 
+
+𝑧 𝜏 −Δ𝜏 = 𝑧 𝜏 − Δ𝜏 𝑣 𝜃 (𝑧 𝜏 , 𝜏 ). (6) In practice, the objective can also be described as mapping a noisy latent 𝑧 𝜏 𝑖 to the expected clean latent 𝑧 0 (i.e., 𝑣 𝜃 (𝑧 𝜏 𝑖 , 𝜏 𝑖 ) ≈ 𝑧 0), with 
+
+𝑧 𝜏 𝑖 constructed as in Eq. (5). We use pretrained LTX [4] in AniGS. 
+
+3.3 Overview of AniGS 
+
+We now provide an overview of the proposed method (Fig. 2). Our goal is to animate an entire outdoor scene starting from a canoni-cal static reconstruction G0 (Sec. 3.1). A key obstacle is the lack of suitable ground-truth supervision: it is impractical to obtain videos that are temporally consistent for the whole scene . A single camera has a limited field of view and cannot observe all regions at once, while capturing scene-wide, temporally synchronized motion would require multiple calibrated cameras recording the environment con-currently, which is infeasible for typical casual capture. To address this obstacle, AniGS follows an iterative dataset–model update routine that combines a renderable representation with a gen-erative prior from a pretrained (flow-based) video diffusion model (Sec. 3.2). Specifically, we parameterize scene motion with a time-conditioned deformation field 𝐷 𝜙 over the canonical Gaussians, producing G𝑡 = 𝐷 𝜙 (G 0, 𝑡 ) and rendering frames from arbitrary viewpoints via ˆ𝐼 𝑝,𝑡 = Render (G 𝑡 , 𝑝 ). Instead of learning 𝐷 𝜙 from ground-truth dynamic labels, we periodically update the training dataset using the current model renderings and diffusion-based video-to-video refinement, and then optimize 𝐷 𝜙 using these up-dated videos. Starting from G0, we repeatedly alternate between 1) dataset update (Sec. 3.4) and 2) model update (Sec. 3.5). This loop bootstraps temporally coherent supervision for the entire scene and yields a final animated scene model.   
+
+> , Vol. 1, No. 1, Article . Publication date: July 2026. AniGS: Bridging Rendering and Diffusion Prior for 3D Scene Animation •5
+
+Dataset Update. In each iteration 𝑘 , we first perform an incremental viewpoint expansion by adding a viewpoint from a set of candidate camera views to the training dataset. Note that this incremental process gradually expand scene coverage. Then for each view 𝑝 ( 𝑗 )
+
+in the training dataset, we use the current renderable representation 
+
+G𝑡 = 𝐷 𝜙 (G 0, 𝑡 ) to render a camera-fixed video 𝑅 ( 𝑗 ) 
+
+> 0: 𝑇
+
+:
+
+𝑅 ( 𝑗 ) 
+
+> 0: 𝑇
+
+= {Render (G 𝑡 , 𝑝 ( 𝑗 ) )} 𝑇 𝑡 =0. (7) Finally, we refine the video using a pretrained video diffusion model via composed video-to-video refinement (Section 3.4). The refined videos at all views in the training dataset {( 𝑝 ( 𝑗 ) , 𝐴 ( 𝑗 ) 
+
+> 0: 𝑇
+
+)} form the new training dataset for the next iteration. 
+
+Model Update. With the updated dataset {( 𝑝 ( 𝑗 ) , 𝐴 ( 𝑗 ) 
+
+> 0: 𝑇
+
+)} , we opti-mize the renderable model for several iterations before the next dataset update. Concretely, we update the time-conditioned defor-mation field 𝐷 𝜙 (and the center parameters 𝜇 in the canonical 3DGS 
+
+G0), encouraging the rendered videos to match the videos in the newly updated dataset. To stabilize training and prevent drift, we additionally regularize the dynamics in the canonical space, en-couraging the animated Gaussians to remain consistent with the canonical reconstruction when appropriate. We provide the details of our formulation in Sec. 3.5. By repeating iterative dataset–model update for multiple rounds, AniGS progressively expands supervision coverage and learns a globally consistent animated 3DGS. 
+
+3.4 Dataset Update 
+
+Learning scene-wide animation in a single shot is impractical in our setting. First, optimizing deformations for all Gaussians and all viewpoints at once is computationally prohibitive and often leads to out-of-memory errors. Second, dense ground-truth dynamic supervision with full scene coverage is unavailable under casual capture, as it would require many synchronized cameras. To address both concerns, we progressively bootstrap supervision by iteratively updating the training dataset (See Fig. 2). 
+
+Incremental viewpoint expansion. We grow the dataset by adding one view at a time. We first select 𝑁 camera locations {𝑝 (𝑖 ) }𝑁 𝑖 =1 based on segmentation map of regions of interest (e.g., trees, flowers) and use farthest-point sampling to expand the views for the full scene coverage. These cameras are ordered counter-clockwise. For each lo-cation 𝑝 (𝑖 ) , we consider three viewing directions 𝜓 ∈ { 0◦, 90 ◦, −90 ◦ }
+
+and render each direction with a fixed field-of-view (FOV= 95 ◦) to ensure overlap among neighboring directions. We maintain a queue Q (views_update_list ) of views to be added. Starting from the first camera and the forward direction, we append (𝑝 (1) , 0◦) into Q. We then iterate until convergence: at each dataset update, we pop the next view (𝑝,𝜓 ) from Q, render a clip from the current model at this view, and use our ComposedV2V 
+
+module (Sec. 3.4) to generate a refined animated target for that view. After a view is processed, we enqueue the next direction at the same camera following a fixed order 0◦ → 90 ◦ → − 90 ◦; once all three directions of 𝑝 (𝑖 ) are processed, we proceed to the next camera 
+
+𝑝 (𝑖 +1) . In practice, we update the dataset periodically so that newly added views are generated using the latest state of the model. 
+
+Composed-Video-to-Video Refinement. A naive dataset update strategy directly runs a video diffusion model on each rendered view and uses the generated clips as supervision. In practice, this often fails for two reasons. First, independently generated clips across dif-ferent viewing directions are typically temporally inconsistent (e.g., producing different motion phases for the same content in overlap-ping regions), which provides conflicting supervision and prevents the dynamic Gaussians from converging. Second, the dataset is periodically updated throughout training; if the generated targets are not aligned with the current state of the renderable model, the supervision can drift and destabilize optimization. To mitigate these issues, we propose a Composed Video-to-Video Refinement (Fig. 3) that tightly couples the diffusion-based generation with the current model rendering while explicitly encouraging stable static regions. Given a selected view 𝑝 ( 𝑗 ) and timesteps T = (0, 1, . . . ,𝑇 ), we first render the current model to obtain a clip 𝑅 ( 𝑗 ) 
+
+> 0: 𝑇
+
+= {𝑅 ( 𝑗 ) 
+
+> 𝑡
+
+}𝑇 𝑡 =0,where 𝑅 ( 𝑗 ) 
+
+> 𝑡
+
+= Render (G 𝑡 , 𝑝 ( 𝑗 ) ). We then construct a render mask 
+
+𝑀 ( 𝑗 ) 
+
+> 0
+
+∈ { 0, 1}𝐻 ×𝑊 from the first frame 𝑅 ( 𝑗 ) 
+
+> 0
+
+using SAM2 [ 21 ]. Using this mask, we form a composed conditioning clip ¯𝑅 ( 𝑗 ) 
+
+> 0: 𝑇
+
+by pasting the canonical static region from 𝑡 =0 to all frames: 
+
+¯𝑅 ( 𝑗 ) 
+
+> 𝑡
+
+=
+
+
+
+1 − 𝑀 ( 𝑗 )
+
+> 0
+
+
+
+⊙ 𝑅 ( 𝑗 ) 
+
+> 0
+
++ 𝑀 ( 𝑗 ) 
+
+> 0
+
+⊙ 𝑅 ( 𝑗 ) 
+
+> 𝑡
+
+, ∀𝑡 ∈ T. (8) Intuitively, ¯𝑅 ( 𝑗 ) 
+
+> 0: 𝑇
+
+provides a stable camera shot and enforces static floor/background, while leaving the region of interest available for motion synthesis. Finally, we feed ¯𝑅 ( 𝑗 ) 
+
+> 0: 𝑇
+
+to a pretrained flow-based video diffusion model with prompt 𝑝 ( 𝑗 ) and noise 𝝐 ( 𝑗 ) to obtain the refined ani-mated target clip 
+
+𝐴 ( 𝑗 ) 
+
+> 0: 𝑇
+
+= ComposedV2V 
+
+
+
+𝑅 ( 𝑗 ) 
+
+> 0: 𝑇
+
+, 𝑀 0 ( 𝑗 ) , 𝑙, 𝝐 ( 𝑗 ) 
+
+. (9) Here, ComposedV2V encapsulates the above composition together with the diffusion-based video-to-video refinement. Specifically, we use a rectified-flow (flow-matching) formulation in the latent space. Let 𝑧 ( 𝑗 ) 
+
+> 0: 𝑇
+
+= E ( ¯𝑅 ( 𝑗 ) 
+
+> 0: 𝑇
+
+) denote the composed clip encoded by a video VAE encoder E (·) . We construct a noisy latent at diffusion timestep 
+
+𝜏 ∈ [ 0, 1] by linearly interpolating between the clean latent and Gaussian noise: 
+
+𝑧 ( 𝑗 ) 
+
+> 𝜏
+
+= (1 − 𝜏 ) 𝑧 ( 𝑗 ) 
+
+> 0: 𝑇
+
++ 𝜏 𝝐 ( 𝑗 ) , 𝝐 ( 𝑗 ) ∼ N ( 0, I), (10) and condition the flow network on the prompt 𝑙 via cross-attention. The model predicts the rectified-flow velocity 𝑣 𝜃 (𝑧 ( 𝑗 ) 
+
+> 𝜏
+
+, 𝜏, 𝑙 ), which defines a reverse-time ODE. Starting from pure noise 𝑧 ( 𝑗 ) 
+
+> 1
+
+= 𝝐 ( 𝑗 ) ,we integrate the reverse process with Euler steps: 
+
+𝑧 ( 𝑗 )  
+
+> 𝜏 −Δ𝜏
+
+= 𝑧 ( 𝑗 ) 
+
+> 𝜏
+
+− Δ𝜏 𝑣 𝜃 
+
+
+
+𝑧 ( 𝑗 ) 
+
+> 𝜏
+
+, 𝜏, 𝑙 
+
+
+
+, 𝜏 : 1 → 0, (11) to obtain the refined clean latent ˆ𝑧 ( 𝑗 ) 
+
+> 0: 𝑇
+
+at 𝜏 = 0. Finally, we decode it back to pixel space with the VAE decoder D (·) :
+
+𝐴 ( 𝑗 ) 
+
+> 0: 𝑇
+
+= D
+
+
+
+ˆ𝑧 ( 𝑗 )
+
+> 0: 𝑇
+
+
+
+. (12) In summary, ComposedV2V takes the composed conditioning clip 
+
+¯𝑅 ( 𝑗 ) 
+
+> 0: 𝑇
+
+(derived from 𝑅 ( 𝑗 ) 
+
+> 0: 𝑇
+
+and 𝑀 0 ( 𝑗 ) ), adds noise as detailed in Eq. (10) ,and runs the reverse rectified-flow process conditioned on prompt 𝑙 
+
+to produce a temporally coherent, refined video 𝐴 ( 𝑗 ) 
+
+> 0: 𝑇
+
+.  
+
+> , Vol. 1, No. 1, Article . Publication date: July 2026. 6•Cheng et al.
+
+3.5 Model Update 
+
+Given the updated dataset produced by the method described in Sec. 3.4, we optimize the renderable representation using objec-tives which compare the rendered clips and the pseudo-target an-imations. For a training view 𝑝 𝑖 and video timestep 𝑡 , we raster-ize the deformed Gaussians G𝑡 = 𝐷 𝜙 (G 0, 𝑡 ) to render the frame 
+
+𝑅 𝑝 𝑖  
+
+> 𝑡
+
+= Render (G 𝑡 , 𝑝 𝑖 ), and supervise it with the refined target 𝐴 𝑝 𝑖 
+
+> 𝑡
+
+using a standard photometric loss: 
+
+Lani = 𝑅 𝑝 𝑖  
+
+> 𝑡
+
+− 𝐴 𝑝 𝑖   
+
+> 𝑡 1
+
++  1 − SSIM (𝑅 𝑝 𝑖  
+
+> 𝑡
+
+, 𝐴 𝑝 𝑖  
+
+> 𝑡
+
+). (13) To stabilize optimization and reduce drift artifacts (e.g., floating splats and blur), we additionally regularize the model in the canoni-cal space. Concretely, we enforce the canonical rendering to remain close to the static appearance at 𝑡 = 0 by comparing the rendered canonical frame 𝑅 𝑝 𝑖  
+
+> 0
+
+with the static reference image 𝐼 𝑝 𝑖  
+
+> 0
+
+:
+
+Lcano = 𝑅 𝑝 𝑖  
+
+> 0
+
+− 𝐼 𝑝 𝑖   
+
+> 01
+
++  1 − SSIM (𝑅 𝑝 𝑖  
+
+> 0
+
+, 𝐼 𝑝 𝑖  
+
+> 0
+
+). (14) To further improve animation quality, we additionally apply a score distillation sampling (SDS) loss. For a training camera 𝑝 𝑖 , we sam-ple a starting timestep 𝑡 and render a short clip of 4𝑚 +1 frames, 
+
+𝑅 𝑝 𝑖  
+
+> 𝑡 :𝑡 +4𝑚
+
+= {𝑅 𝑝 𝑖  
+
+> 𝑡
+
+, 𝑅 𝑝 𝑖 
+
+> 𝑡 +1
+
+, . . . , 𝑅 𝑝 𝑖  
+
+> 𝑡 +4𝑚
+
+}, where 𝑚 is an integer. We encode this clip into the latent space of the video diffusion model using the VAE encoder E (·) :
+
+𝑧 𝑝 𝑖  
+
+> 0
+
+= E  𝑅 𝑝 𝑖 
+
+> 𝑡 :𝑡 +4𝑚
+
+ . (15) We then sample a diffusion timestep 𝜏 ∼ U ( 0, 1) and Gaussian noise 𝜖 ∼ N ( 0, I), and construct the noisy latent following the same rectified-flow formulation used in Sec. 3.4: 
+
+𝑧 𝑝 𝑖  
+
+> 𝜏
+
+= (1 − 𝜏 ) 𝑧 𝑝 𝑖  
+
+> 0
+
++ 𝜏 𝜖. (16) Given the text prompt 𝑙 , the pretrained DiT predicts the rectified-flow velocity 𝑣 𝜃 (𝑧 𝑝 𝑖  
+
+> 𝜏
+
+, 𝜏, 𝑙 ). Since the target velocity under this formu-lation is 𝜖 − 𝑧 𝑝 𝑖  
+
+> 0
+
+, we define the SDS loss as 
+
+LSDS = E𝑝 𝑖 ,𝑡,𝜏,𝜖 
+
+h
+
+𝑤 (𝜏 ) 𝑣 𝜃 (𝑧 𝑝 𝑖  
+
+> 𝜏
+
+, 𝜏, 𝑙 ) −  𝜖 − 𝑧 𝑝 𝑖 
+
+> 0
+
+ 22
+
+i
+
+, (17) where 𝑤 (𝜏 ) is a timestep-dependent weighting function. This loss encourages the rendered animation to follow the motion prior of the pretrained video diffusion model while remaining consistent with our renderable scene representation. In practice, due to memory constraints, we back-propagate gradients only through one sampled frame among the 4𝑚 +1 frames in the rendered clip. Hence, our training objective is L = Lani + 𝜆 cano Lcano + 𝜆 SDS LSDS .In terms of the learnable parameters, we find that optimizing only the deformation field 𝐷 𝜙 while freezing all canonical Gaussian attributes yields suboptimal results. Instead, we additionally fine-tune the canonical positions {𝜇 0 
+
+> 𝑖
+
+} to better align geometry with the diffusion-refined targets, while keeping other attributes (rotation, scale, opacity, and color) fixed. This parameterization improves training stability and facilitates scene-wide animation. 
+
+3.6 Implementation Details 
+
+Static reconstruction. We initialize AniGS with a canonical static 3DGS G0. We optimize G0 using AdamW with a learning rate of 1 ×
+
+10 −4. We train for 30k iterations with around 1.6 hours to converge. 
+
+Animation training. We start from G0 and learn scene dynamics by optimizing the time-conditioned deformation field 𝐷 𝜙 together with the canonical Gaussian positions {𝜇 0 
+
+> 𝑖
+
+}, while keeping other canonical attributes (e.g., rotation, opacity, and appearance) fixed. We use 𝑁 =4 camera locations for the iterative dataset update. For the generative prior, we use LTX-Video [ 4] as the pretrained video diffusion model. We run the diffusion model with 8 sampling steps to generate 𝑇 =121 frames at a resolution of 1024 ×1408 . During training, we update the dataset via ComposedV2V every 2500 optimization steps per viewing direction, and train AniGS for 70k iterations in total. The canonical mask for ComposedV2V is obtained with SAM2. Training time in this stage is about 7.3 hours with 1 GPU. 
+
+4 Experiment 
+
+In this section, we evaluate AniGS on a dataset of five challeng-ing outdoor scenes captured in casual settings, each containing large-scale, cluttered vegetation and a wide walkable regions. We compare against representative 3D scene animation baselines, Gaus-sians2Life [ 30 ] and PhysDreamer [ 39 ]. We first describe the dataset and baselines in Sec. 4.1- 4.2. We then report both qualitative results and comparisons (Fig. 4-6), and quantitatively measure animation realism and quality with metrics and a user study in Sec. 4.5-4.6. 
+
+4.1 Dataset 
+
+We collect a dataset consisting of five large-scale, cluttered outdoor scenes: Fireplace , Garden , Flowers , Forest , and Trail . These captures cover diverse vegetation and clutter (e.g., trees, flowers, plants, and bushes) over a walkable region, and are thus well-suited for eval-uating scene-wide animation. Each scene contains approximately 1.5k–2.0k monocular images, and we estimate the camera poses and the sparse point cloud using COLMAP [ 23 ]. We additionally eval-uate on the public benchmark DL3DV [ 17 ]. Specifically, we select outdoor scenes from the dataset using the coarse category anno-tation “Nature & Outdoors.” The selected scenes include Gazebo ,
+
+Courtyard , Bush , Playground , and Park .
+
+4.2 Baselines 
+
+We compare our AniGS with two representative diffusion-based 3D animation methods: Gaussians2Life [30 ] and PhysDreamer [39 ]. Gaussians2Life animates a static 3DGS by generating multi-view diffusion guidance and lifting the induced 2D motion into 3D via tracked points and depth alignment to drive Gaussian deformations. PhysDreamer instead distills diffusion-predicted motion into physi-cally grounded dynamics by optimizing material parameters of a differentiable simulator (MPM) so that simulated renderings match generated video clips. For a fair comparison, we provide both base-lines with the same pretrained static reconstruction for each scene, and use their official implementations with a shared training view due to their object-centric setup. 
+
+4.3 Evaluation Metrics 
+
+Metrics. We evaluate animation quality using Fréchet Video Dis-tance (FVD) [ 28 ] and Fréchet Inception Distance (FID) [ 7]. We com-pute FVD with an I3D backbone [ 3]; all videos are resized and center-cropped to 256 ×256 before feature extraction. Since ground-truth scene-level dynamic videos are unavailable in our setting, we measure FVD against a reference video distribution generated by pretrained video diffusion models. For a fair comparison and to reduce dependence on a specific generator, we use three diffusion models–LTX [ 4], Cosmos [ 1 ], and DynamiCrafter [ 35 ]–to generate   
+
+> , Vol. 1, No. 1, Article . Publication date: July 2026. AniGS: Bridging Rendering and Diffusion Prior for 3D Scene Animation •7
+
+reference videos, reporting the resulting scores as FVD-LTX , FVD-Cosmos , and FVD-DynamiCrafter , respectively. For each method, we generate 250 clips when computing FVD. We compute FID by treating diffusion-generated frames pooled across all scenes as the reference distribution, and evaluating FID on the frames rendered by each method for each scene. 
+
+User study. We further conduct a user study to assess visual qual-ity and motion realism. We follow a two-alternative forced choice (2AFC) protocol: for each question, we render two clips from the 
+
+same view, showing AniGS and a randomly selected baseline side-by-side. The left-right ordering is randomly permuted to mitigate side bias. Participants answer two questions per pair: (1) which clip has better visual quality, and (2) which clip has more realistic motion. We report the fraction of votes preferring each method. 
+
+4.4 Qualitative evaluation 
+
+We visualize qualitative results of AniGS in Fig. 4 and Fig. 5. For each scene, we render animations from multiple camera locations to demonstrate scene-level coverage, and for each rendering we show 1) the first frame and 2) an 𝑥 -𝑡 /𝑦 -𝑡 slice of a highlighted patch to illustrate temporal evolution. The results show that AniGS produces natural, temporally coherent motion on cluttered dynamic regions (e.g., leaves and flowers), while preserving appearance for structures such as buildings and other background elements. We further compare AniGS with Gaussians2Life and PhysDreamer in Fig. 6. AniGS consistently yields clearer renderings and more real-istic motion patterns (e.g., oscillatory leaf/flower motion resembling wind-driven dynamics) without introducing noticeable background drift. In contrast, Gaussians2Life often produces locally or spatially fragmented motion that is confined to small regions. PhysDreamer often produces less realistic dynamics because it induces near-global shifting of the entire scene rather than generating foliage-specific motion. These highlight the advantage of our method to produce motion on regions of interest while maintaining a stable canonical structure for the remainder of the scene. Please check the supple-mentary for the rendered videos. Finally, we show a diverse scene animation result in Fig. 8, where AniGS animates an indoor scene containing clothes, an umbrella, and plastic bags. This result demonstrates that AniGS can generalize beyond outdoor vegetation and work in different scenarios with diverse animatable objects. 
+
+4.5 Quantitative evaluation 
+
+We report quantitative results on our collected dataset using FVD [ 28 ]as shown in Tab. 1. We also report FVD on DL3DV in Tab. 2. Across all five scenes, AniGS achieves consistently lower FVD than both baselines under three different diffusion reference distributions (LTX/Cosmos/DynamiCrafter), indicating more realistic and tempo-rally coherent motion. AniGS also performs favorably compared to the baselines on DL3DV scenes as shown in Tab. 2 We also evaluate the multiview consistency of the animated videos in Tab. 3. We conduct a 3D reconstruction experiment to verify that the generated multiview motion is 3D consistent. Specif-ically, we select a novel timestep ( 𝑡 =21 ), render multiview images from 50% of the training cameras, train a 3DGS reconstruction using 
+
+Table 1. Quantitative evaluation (FVD) . We report the FVD ( ↓) score computed using various video diffusion models: LTX, Cosmos, and Dynami-Crafter. The best performance is in bold .                                                               
+
+> FVD-LTX ↓Fireplace Garden Flowers Forest Trail Avg. Ours 374.49 403.89 537.14 407.86 356.08 415.89
+> Gaussians2life 1127.78 876.60 1154.95 605.64 745.19 902.03 PhysDreamer 943.56 957.12 1078.05 550.37 668.20 839.46
+> FVD-Cosmos ↓
+> Ours 224.03 254.32 307.70 183.23 165.68 226.99
+> Gaussians2life 739.64 653.49 899.55 381.19 476.39 630.05 PhysDreamer 677.38 531.39 946.43 496.17 511.22 632.52
+> FVD-DynamiCrafter ↓
+> Ours 476.17 465.13 485.96 550.58 499.54 495.48
+> Gaussians2life 668.16 772.07 1044.03 782.01 854.38 824.13 PhysDreamer 691.74 855.37 947.86 1096.62 709.83 860.28
+
+Table 2. Quantitative evaluation on DL3DV. We report FVD-LTX ( ↓) on outdoor scenes from DL3DV [ 17 ]. The best performance is shown in bold .                         
+
+> FVD-LTX ↓Gazebo Park Bush Playground Courtyard Avg. Ours 413.59 387.04 310.19 452.92 343.66 381.48
+> Gaussians2life 945.42 839.34 735.03 815.52 630.99 793.26 PhysDreamer 881.19 762.17 651.94 790.86 986.31 814.49
+
+Table 3. Multiview consistency of generated videos. We evaluate mul-tiview consistency by training a 3DGS from generated multiview images at a novel timestep and reporting PSNR.              
+
+> PSNR ↑Fireplace Garden Gazebo Courtyard Original capture 27.40 28.77 26.29 28.35 Our Novel Time 25.94 27.13 24.41 26.87
+
+these rendered images, and evaluate PSNR on the remaining valida-tion cameras at Tab. 3. We include a 3DGS trained on the original captures as a reference. The results show that the learned animation is multiview-consistent. Finally, we conduct a user study in Tab. 4. Under the Two-Alternative Forced Choice (2AFC), participants prefer AniGS over Gaussians2Life and PhysDreamer for both motion realism and visual quality in all scenes. 
+
+4.6 Ablation study 
+
+We validate key components of AniGS in Tab. 5. Disabling the 
+
+dataset–model update (i.e., generating pseudo-training videos only once) degrades quality significantly because the supervision quickly becomes misaligned with the evolving renderer, making optimiza-tion harder to converge. Removing the incremental view expansion 
+
+(i.e., having all viewpoints in the training dataset at the beginning) further destabilizes training, as the model loses the curriculum effect that gradually expands scene coverage. Turning off ComposedV2V 
+
+also hurts results, since independently generated clips are less tem-porally consistent across views and introduce conflicting super-vision. Finally, we find that parameter updates must be carefully controlled: optimizing all canonical Gaussian attributes is prone to blur and drift, while optimizing only the deformation field is re-stricted by static geometric bias; allowing canonical positions to be fine-tuned provides a better canonical alignment so the deformation focuses on residual time-varying motion. 
+
+> , Vol. 1, No. 1, Article . Publication date: July 2026.
+
+8 • Cheng et al. 
+
+Table 4. User study. We report user preference rates for AniGS compared with other methods, assessed in terms of motion realism and visual quality. 
+
+Motion realism ↑ Fireplace Garden Flowers Forest Trail Ours vs GS2life 91.7 % 83.3 % 81.5 % 78.3 % 83.3 % Ours vs PhysDreamer 89.6 % 90.5 % 85.7 % 90.8 % 91.7 % 
+
+Visual quality ↑
+
+Ours vs GS2life 90.2 % 82.6 % 80.7 % 74.5 % 86.3 % Ours vs PhysDreamer 96.0 % 79.1 % 83.5 % 79.2 % 87.9 % 
+
+Table 5. Ablation study . We report FVD ( ↓) scores computed using the LTX video diffusion model. The best performance is in bold .
+
+FVD-LTX ↓ Fireplace Garden Flowers Forest Trail Avg. w/o dataset–model update 533.95 529.67 653.92 518.72 431.49 533.55 w/o viewpoint expansion 511.46 498.50 597.16 489.12 410.87 501.42 w/o ComposedV2V 420.77 425.20 556.29 433.17 373.02 441.69 w/ opt. all param. 473.14 445.93 607.83 458.36 396.55 476.36 w/ opt. deformation only 450.22 439.16 610.53 449.83 402.14 470.38 Ours (full model) 374.49 403.89 537.14 407.86 356.08 415.89 
+
+5 Conclusion and Limitation 
+
+Conclusion. We introduced AniGS, which introduces scene-wide dynamics to a static 3DGS reconstruction by coupling a render-able model with a pretrained video diffusion prior. AniGS learns a time-conditioned deformation field without ground-truth dynamic supervision via an iterative dataset–model update loop that expands view coverage, refines renderings into temporally coherent pseudo training data, and optimizes the model with canonical regularization for free-viewpoint animation. 
+
+Limitation. AniGS does not synthesize state changes or other large, non-reversible dynamics. In particular, if the diffusion-refined tar-gets contain events such as leaves falling, branches breaking, or strong time-lapse effects (e.g., day-to-night or seasonal transitions) that induce drastic global appearance/tone changes, the current deformation-based representation and training objective struggle to explain such large motion or global shifts. An example of strong time-lapse effects is presented in Figure 7. We leave modeling these to future work. 
+
+References 
+
+[1] Arslan Ali, Junjie Bai, Maciej Bala, Yogesh Balaji, Aaron Blakeman, Tiffany Cai, Jiaxin Cao, Tianshi Cao, Elizabeth Cha, Yu-Wei Chao, et al . 2025. World simulation with video foundation models for physical ai. arXiv preprint arXiv:2511.00062 
+
+(2025). [2] Sherwin Bahmani, Ivan Skorokhodov, Victor Rong, Gordon Wetzstein, Leonidas Guibas, Peter Wonka, Sergey Tulyakov, Jeong Joon Park, Andrea Tagliasacchi, and David B. Lindell. 2024. 4D-fy: Text-to-4D Generation Using Hybrid Score Distillation Sampling. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) .[3] Joao Carreira and Andrew Zisserman. 2017. Quo vadis, action recognition? a new model and the kinetics dataset. In proceedings of the IEEE Conference on Computer Vision and Pattern Recognition . 6299–6308. [4] Yoav HaCohen, Nisan Chiprut, Benny Brazowski, Daniel Shalem, Dudu Moshe, Eitan Richardson, Eran Levin, Guy Shiran, Nir Zabari, Ori Gordon, et al . 2024. Ltx-video: Realtime video latent diffusion. arXiv preprint arXiv:2501.00103 (2024). [5] Ayaan Haque, Matthew Tancik, Alexei A Efros, Aleksander Holynski, and Angjoo Kanazawa. 2023. Instruct-nerf2nerf: Editing 3d scenes with instructions. In Pro-ceedings of the IEEE/CVF international conference on computer vision . 19740–19750. [6] Jan Held, Renaud Vandeghen, Adrien Deliege, Abdullah Hamdi, Silvio Giancola, Anthony Cioppa, Andrea Vedaldi, Bernard Ghanem, Andrea Tagliasacchi, and Marc Van Droogenbroeck. 2025. Triangle Splatting for Real-Time Radiance Field Rendering. arXiv preprint arXiv:2505.19175 (2025). [7] Martin Heusel, Hubert Ramsauer, Thomas Unterthiner, Bernhard Nessler, and Sepp Hochreiter. 2017. Gans trained by a two time-scale update rule converge to a local nash equilibrium. Advances in neural information processing systems 30 (2017). [8] Binbin Huang, Zehao Yu, Anpei Chen, Andreas Geiger, and Shenghua Gao. 2024. 2d gaussian splatting for geometrically accurate radiance fields. In ACM SIG-GRAPH 2024 conference papers . 1–11. [9] Hanzhuo Huang, Yuan Liu, Ge Zheng, Jiepeng Wang, Zhiyang Dou, and Sibei Yang. 2025. MVTokenFlow: High-quality 4D Content Generation using Multiview Token Flow. In International Conference on Learning Representations (ICLR) .[10] Yifan Jiang et al . 2024. Animate3D: Animating Any 3D Model with Multi-view Video Diffusion. In Advances in Neural Information Processing Systems (NeurIPS) .[11] Zeren Jiang, Chuanxia Zheng, Iro Laina, Diane Larlus, and Andrea Vedaldi. 2025. Geo4D: Leveraging Video Generators for Geometric 4D Scene Reconstruction. 
+
+arXiv preprint arXiv:2504.07961 (2025). [12] In-Hwan Jin, Haesoo Choo, Seong-Hun Jeong, Heemoon Park, Junghwan Kim, Oh-joon Kwon, and Kyeongbo Kong. 2025. Optimizing 4D Gaussians for Dynamic Scene Video from Single Landscape Images. arXiv preprint arXiv:2504.05458 
+
+(2025). [13] Bernhard Kerbl, Georgios Kopanas, Thomas Leimkühler, and George Drettakis. 2023. 3D Gaussian splatting for real-time radiance field rendering. ACM Trans. Graph. 42, 4 (2023), 139–1. [14] Mert Kiray, Paul Uhlenbruck, and Benjamin Busam. 2025. PromptVFX: Text-Driven Fields for Open-World 3D Gaussian Animation. arXiv preprint arXiv:2506.01091 (2025). [15] Yao-Chih Lee, Yi-Ting Chen, Andrew Wang, Ting-Hsuan Liao, Brandon Y. Feng, and Jia-Bin Huang. 2024. VividDream: Generating 3D Scene with Ambient Dy-namics. arXiv preprint arXiv:2405.20334 (2024). [16] Xiang Li, Xinyu Ma, et al . 2025. Articulated Kinematics Distillation from Video Diffusion Models. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) .[17] Lu Ling, Yichen Sheng, Zhi Tu, Wentian Zhao, Cheng Xin, Kun Wan, Lantao Yu, Qianyu Guo, Zixun Yu, Yawen Lu, et al . 2024. Dl3dv-10k: A large-scale scene dataset for deep learning-based 3d vision. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition . 22160–22169. [18] Tao Lu, Mulin Yu, Linning Xu, Yuanbo Xiangli, Limin Wang, Dahua Lin, and Bo Dai. 2024. Scaffold-gs: Structured 3d gaussians for view-adaptive rendering. In 
+
+Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition .20654–20664. [19] Linzhan Mou, Jiahui Lei, Chen Wang, Lingjie Liu, and Kostas Daniilidis. 2025. DIMO: Diverse 3D Motion Generation for Arbitrary Objects. In Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) .[20] Oded Rahamim et al . 2024. Bringing Objects to Life: Training-Free 4D Generation from 3D Objects through View-Consistent Noise. arXiv preprint arXiv:2412.20422 
+
+(2024). [21] Nikhila Ravi, Valentin Gabeur, Yuan-Ting Hu, Ronghang Hu, Chaitanya Ryali, Tengyu Ma, Haitham Khedr, Roman Rädle, Chloe Rolland, Laura Gustafson, et al . 2024. Sam 2: Segment anything in images and videos. arXiv preprint arXiv:2408.00714 (2024). [22] Jiawei Ren, Liang Pan, Jiaxiang Tang, Chi Zhang, Ang Cao, Gang Zeng, and Ziwei Liu. 2023. DreamGaussian4D: Generative 4D Gaussian Splatting. arXiv preprint arXiv:2312.17142 (2023). [23] Johannes L Schonberger and Jan-Michael Frahm. 2016. Structure-from-motion revisited. In Proceedings of the IEEE conference on computer vision and pattern recognition . 4104–4113. [24] Kaifeng Sheng, Zheng Zhou, Yingliang Peng, and Qianwei Wang. 2025. 2D Triangle Splatting for Direct Differentiable Mesh Training. arXiv preprint arXiv:2506.18575 (2025). [25] Meng-Li Shih et al . 2024. Modeling Ambient Scene Dynamics for Free-view Synthesis. arXiv preprint arXiv:2406.09395 (2024). [26] Qi Sun, Zhiyang Guo, Ziyu Wan, Jing Nathan Yan, Shengming Yin, Wengang Zhou, Jing Liao, and Houqiang Li. 2025. EG4D: Explicit Generation of 4D Object without Score Distillation. In International Conference on Learning Representations (ICLR) .[27] Wenqiang Sun, Shuo Chen, Fangfu Liu, Zilong Chen, Yueqi Duan, Jun Zhang, and Yikai Wang. 2025. DimensionX: Create Any 3D and 4D Scenes from a Single Image with Controllable Video Diffusion. In Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) .[28] Thomas Unterthiner, Sjoerd Van Steenkiste, Karol Kurach, Raphael Marinier, Marcin Michalski, and Sylvain Gelly. 2018. Towards accurate generative models of video: A new metric & challenges. arXiv preprint arXiv:1812.01717 (2018). [29] Qianqian Wang, Vickie Ye, Hang Gao, Weijia Zeng, and Angjoo Kanazawa. 2024. Shape of Motion: 4D Reconstruction from a Single Video. arXiv preprint arXiv:2407.13764 (2024). [30] Thomas Wimmer, Michael Oechsle, Michael Niemeyer, and Federico Tombari. 2025. Gaussians-to-Life: Text-Driven Animation of 3D Gaussian Splatting Scenes. , Vol. 1, No. 1, Article . Publication date: July 2026. AniGS: Bridging Rendering and Diffusion Prior for 3D Scene Animation • 9
+
+In International Conference on 3D Vision (3DV) . 958–968. [31] Guanjun Wu et al . 2024. 4D Gaussian Splatting for Real-Time Dynamic Scene Rendering. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) .[32] Zizheng Wu et al . 2025. AnimateAnyMesh: A Feed-Forward 4D Foundation Model for Text-Driven Universal Mesh Animation. In Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) .[33] Tianyi Xie, Zeshun Zong, Yuxing Qiu, Xuan Li, Yutao Feng, Yin Yang, and Chen-fanfu Jiang. 2024. Physgaussian: Physics-integrated 3d gaussians for generative dynamics. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition . 4389–4398. [34] Yiming Xie, Chun-Han Yao, Vikram Voleti, Huaizu Jiang, and Varun Jampani. 2025. SV4D: Dynamic 3D Content Generation with Multi-Frame and Multi-View Consistency. In International Conference on Learning Representations (ICLR) .[35] Jinbo Xing, Menghan Xia, Yong Zhang, Haoxin Chen, Wangbo Yu, Hanyuan Liu, Gongye Liu, Xintao Wang, Ying Shan, and Tien-Tsin Wong. 2024. Dynami-crafter: Animating open-domain images with video diffusion priors. In European Conference on Computer Vision . Springer, 399–417. [36] Chun-Han Yao, Yiming Xie, Vikram Voleti, Huaizu Jiang, and Varun Jampani. 2025. SV4D 2.0: Enhancing Spatio-Temporal Consistency in Multi-View Video Diffusion for High-Quality 4D Generation. In Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) .[37] Zehao Yu, Anpei Chen, Binbin Huang, Torsten Sattler, and Andreas Geiger. 2024. Mip-splatting: Alias-free 3d gaussian splatting. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition . 19447–19456. [38] Bowen Zhang, Sicheng Xu, Chuxin Wang, Jiaolong Yang, Feng Zhao, Dong Chen, and Baining Guo. 2025. Gaussian Variation Field Diffusion for High-fidelity Video-to-4D Synthesis. arXiv preprint arXiv:2507.23785 (2025). Use this entry for both “video-to-4D feedforward” and “single video to 4D” bullets. [39] Tao Zhang et al . 2024. PhysDreamer: Physics-Based Interaction with 3D Objects via Video Generation. In European Conference on Computer Vision (ECCV) .[40] Yuan Zhao, Shih-Yang Lin, Xinhang Li, Siyu Huang, Anpei Chen, et al . 2025. GenXD: Generating Any 3D and 4D Scenes. In International Conference on Learning Representations (ICLR) . Introduces the CamVid-30K dataset. [41] Yuchen Zhi et al . 2025. MV-Performer: Taming Video Diffusion Model for Faithful and Synchronized Multi-view Performer Synthesis. arXiv preprint arXiv:2510.07190 
+
+(2025). [42] Hanxin Zhu, Tianyu He, Xiqian Yu, Junliang Guo, Zhibo Chen, and Jiang Bian. 2025. AR4D: Autoregressive 4D Generation from Monocular Videos. arXiv preprint arXiv:2501.01722 (2025). , Vol. 1, No. 1, Article . Publication date: July 2026. 10 • Cheng et al. Fireplace Flowers Trail  Garden 
+
+t
+
+y
+
+x
+
+t
+
+x
+
+t
+
+x
+
+t
+
+x
+
+t
+
+t
+
+y
+
+x
+
+t
+
+x
+
+t
+
+t
+
+y
+
+x
+
+t
+
+t
+
+y
+
+t
+
+y
+
+Fig. 4. Qualitative results . We present the novel view rendering results on various scenes, and highlight the synthesized dynamics using space-time slices. t  
+
+> y
+> x
+> t
+> x
+> t
+> x
+> t
+> Gazebo Park Courtyard
+> t
+> y
+> t
+> y
+
+Fig. 5. Qualitative results on DL3DV . We present the novel view rendering results on scenes from DL3DV and highlight the animation. 
+
+, Vol. 1, No. 1, Article . Publication date: July 2026. AniGS: Bridging Rendering and Diffusion Prior for 3D Scene Animation • 11 Fireplace Trail 
+
+Ours  Gaussians2life [29]  PhysDreamer [38] 
+
+> t
+> y
+> t
+> y
+> t
+> y
+> t
+> y
+> t
+> y
+> t
+> y
+> Forest
+> t
+> y
+> t
+> y
+> t
+> y
+> Garden
+> x
+> t
+> x
+> t
+> x
+> t
+
+Fig. 6. Qualitative comparisons . We present the novel view rendering results produced by different approaches: ours, Gaussians2life [ 30 ] and Phys-Dreamer [39]. The synthesized dynamics is shown using space-time slices. x
+
+t
+
+Fig. 7. Limitation example. AniGS cannot synthesize large, non-reversible dynamics. We show an example of the strong time-lapse effects of lighting changes. AniGS failed to model the global changes produced by the video diffusion model in this case and produce noticeable artifacts. x
+
+t t
+
+y
+
+x
+
+t
+
+Fig. 8. Diverse animation result. AniGS can generalize beyond vegetation to diverse about such as clothes, umbrella, and plastic bags. 
+
+> , Vol. 1, No. 1, Article . Publication date: July 2026.
+
+12 • Cheng et al. 
+
+Received 20 February 2007; revised 12 March 2009; accepted 5 June 2009 
+
+, Vol. 1, No. 1, Article . Publication date: July 2026.

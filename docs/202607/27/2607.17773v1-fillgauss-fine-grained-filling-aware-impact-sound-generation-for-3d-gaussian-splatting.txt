@@ -1,0 +1,540 @@
+Title: FillGauss: Fine-Grained Filling-Aware Impact Sound Generation for 3D Gaussian Splatting
+
+URL Source: https://arxiv.org/pdf/2607.17773v1
+
+Published Time: Tue, 21 Jul 2026 02:03:42 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+> 1
+
+# FillGauss: Fine-Grained Filling-Aware Impact Sound Generation for 3D Gaussian Splatting 
+
+Chen Yang, Ganye Wen, Bin Huang, Jiayi Lyu, Zehai Niu, Linlin Shen, Jinbao Wang 
+
+Abstract —Synthesizing physically plausible impact sounds from visual observations remains a great challenge in multi-modal AI. Existing 3D-aware audio generation methods primarily model the surface geometry of hollow rigid bodies. However, they fundamentally overlook internal filling states, a critical physical factor that drastically modulates acoustic resonance and damping. To address this issue, we have defined a new task called Fine-Grained Filling-Aware Impact Sound Generation. As a foundational step, we first introduce the fine-grained fill-aware dataset (FillImpact), a pioneering multi-modal collec-tion comprising over 5,000 rigorous acoustic recordings from 88 diverse real-world objects. It captures impact interactions with varying internal contents (i.e., water, rice), a continuous range of fill levels, and distinct striker materials. Furthermore, comprehensive acoustic analysis confirms that the collected data closely aligns with established physical laws governing acoustic resonance and damping, indicating its suitability for physically grounded modeling. Building on this dataset, we propose a novel generative framework (FillGauss) that integrates 3D Gaussian Splatting (3DGS) with internal state conditioning for sound generation. By fusing 3DGS geometric features, precise 3D spatial strike coordinates, and fine-grained textual physical conditions within a latent diffusion architecture, FillGauss enables position-aware, striker-aware, and filling-aware audio generation. Exten-sive experiments demonstrate that our approach could generate high-fidelity impact sounds that adhere to underlying physical principles, establishing a new state-of-the-art for physically grounded cross-modal audio generation. 
+
+Index Terms —Impact Sound Generation, 3D Gaussian Splat-ting, Cross-Modal Synthesis, Latent Diffusion Models. 
+
+I. I NTRODUCTION 
+
+The physical interaction between objects, such as striking or tapping, produces rich acoustic signals that provide vital clues about an object’s material, shape, and internal state. In immersive environments like Virtual Reality, interactive gam-ing, and robotic manipulation [1]–[3], synthesizing physically plausible impact sounds is crucial for multi-sensory realism and scene understanding. In recent years, multi-modal learning has made significant strides in audio-visual generation. How-ever, generating physically accurate impact sounds directly from 3D visual representations remains a formidable open challenge. Most current methodologies rely on 2D videos or 3D meshes, implicitly assuming that objects are strictly hollow or structurally uniform. They fundamentally fail to account for the internal filling state of an object, which drastically alters its acoustic resonance. To address this fundamental limitation, we formally define a novel task, which is Fine-Grained Filling-Aware Impact Sound Generation . To support our new task, we introduce FillImpact 
+
+dataset. This dataset meticulously captures the impact audio of containers under varying internal states, comprising over 5,000 rigorous acoustic recordings across 88 diverse real-world objects from six external material categories. It systematically records interactions involving different fill materials (e.g., water and rice), continuous fill levels, and distinct striker ma-terials (plastic, wood, and steel). Our in-depth dataset analysis verifies that the recorded acoustic behaviors align perfectly with established physical principles. For instance, the acoustic decay coefficient ( α) varies significantly between granular and liquid media, and the normalized dominant frequency exhibits a predictable, inverse relationship with the fill level, consistently obeying the classic harmonic oscillator model 
+
+f ∝ pk/m . Furthermore, the spectral centroid is naturally influenced by the hardness of the striker material. Building upon these robust physical priors, we propose FillGauss, a novel generative framework designed for fine-grained, filling-aware impact sound generation. As illustrated in Figure 2, FillGauss is the first model to seamlessly in-tegrate 3D Gaussian Splatting (3DGS) with internal state conditioning. The architecture employs a Gaussian Encoder to capture the rich 3D surface representation, alongside a Position Encoder to extract the exact 3D strike coordinates. To effec-tively guide the physical generation process, we utilize a Text Encoder that processes detailed condition descriptions (e.g., ”The object is hit with a wooden striker. It is heavily filled with water.”). These multi-modal features are deeply entangled using a self-attention module and a cross-attention mechanism, which subsequently condition a pre-trained latent diffusion Denoising Network. Extensive experiments demonstrate that FillGauss successfully tackles this novel task, achieving state-of-the-art acoustic fidelity in precise position-aware, striker-aware, and fill-aware sound generation. In summary, the main contributions of this paper are:  
+
+> •
+
+We formally define a novel task, called Fine-Grained Filling-Aware Impact Sound Generation. This task en-hances interactive experiences with 3DGS-reconstructed objects by enabling filling-aware auditory feedback.  
+
+> •
+
+We construct FillImpact, a fine-grained filling-aware dataset comprising over 5,000 impact recordings from 88 3D objects. Rigorous acoustic analysis demonstrates that the collected data closely aligns with established physical laws.  
+
+> •
+
+We propose FillGauss, a flexible framework that inte-grates 3D Gaussian Splatting (3DGS) with internal filling conditions to enable physically aware sound generation.  
+
+> •
+
+Comprehensive evaluations show that FillGauss achieves state-of-the-art performance, consistently generating re-alistic, physically plausible acoustic spectrograms. These results accurately capture variations across strike position, arXiv:2607.17773v1 [cs.MM] 20 Jul 2026 2FillGauss: Fine-Grained Filling-Aware Impact Sound Generation via 3D Gaussian Splatting       
+
+> Striker Material Position (x,y,z)
+> Water
+> Rice
+> Fill Material & Fill Level Spectrograms Spectrograms Spectrograms
+> Plastic
+> Wood
+> Steel
+> Position-
+> Aware
+> Generation
+> Striker-
+> Aware
+> Generation
+> Fill-Aware
+> Generation
+> Position Awareness Striker Awareness Fill Awareness
+> FillImpact
+> 3DGS
+> Fill Gauss Fill Gauss Fill Gauss
+
+Fig. 1. Overview of the FillGauss framework capabilities. Left: Some objects of FillImpact. Right: Given a 3D Gaussian Splatting representation, our model (FillGauss) enables fine-grained impact sound generation. FillGauss successfully models complex physical interactions to generate physically plausible acoustic spectrograms (audios) across three distinct dimensions: position-aware, striker-aware, and fill-aware. 
+
+striker material, and internal filling states. Gaussian   
+
+> Encoder
+> Strike Position(x,y,z)
+> Striking the object, which is
+> heavily filled with water , using
+> wooden striker .
+> Impact Audio
+> Generation
+> Text
+> Encoder
+> Position
+> Encoder
+> Denoising Network
+> Q
+> KV
+> Q
+> KV
+
+Fig. 2. Simplified architecture of the FillGauss framework. It illustrates how the Gaussian, Position, and Text Encoders extract multi-modal features to guide the Denoising Network for fine-grained, filling-aware impact sound generation. 
+
+II. R ELATED WORK 
+
+A. Impact Sound Generation 
+
+General Impact Sound Generation. The synthesis of impact sounds has been extensively explored, historically transitioning from physics-based simulations to modern data-driven approaches. Traditional physics-based methods rely on modal analysis or finite element methods (FEM) to simulate object vibrations by solving wave equations [4]–[7]. While these methods yield physically accurate acoustics, they de-mand precise material parameters (e.g., Young’s modulus, damping coefficients) and incur prohibitive computational costs, limiting their scalability in interactive scenarios. To overcome these computational bottlenecks, recent advances in deep learning have catalyzed a shift toward cross-modal data-driven generation. These approaches learn complex mappings from visual observations to auditory responses, utilizing a variety of input modalities ranging from 2D videos [3], [8], [9] to basic 3D representations [10], [11]. Furthermore, hybrid frameworks like DiffSound [12] attempt to integrate implicit shape representations with diffusion models to enhance acous-tic realism. However, a fundamental limitation persists across most existing data-driven and hybrid methodologies, they predominantly treat objects as homogeneous, rigid shells. By primarily focusing on external geometry or 2D visual cues, the complex acoustic modulation caused by internal fillings remains largely unexplored. 
+
+3D-aware Impact Sound Generation. To achieve spatially accurate audio synthesis, the paradigm has increasingly shifted towards leveraging explicit 3D reconstructions rather than 2D visual inputs [13]–[16]. By encoding the spatial structure of an object or environment, 3D-aware methods provide a robust foundation for simulating position-dependent acoustic responses. Among modern 3D representations, 3D Gaussian Splatting (3DGS) [17] has emerged as a highly effective medium due to its explicit geometric capture and high-fidelity texture rendering. Consequently, recent research has begun integrating 3DGS with generative audio models. Notably, SonicGauss [18] utilizes a diffusion-based architecture [19], replacing the traditional text encoder with a 3DGS encoder to achieve position-conditioned impact sound generation directly from the reconstructed 3D surface. Nevertheless, because 3DGS is inherently optimized for surface-level novel view synthesis, it explicitly captures the outer geometric hull but remains completely oblivious to the internal physical state of the object. This fundamental structural blind spot restricts the physical plausibility of current 3D-aware models when inter-acting with containers holding liquids or granular materials, directly motivating our filling-aware FillGauss architecture. 
+
+B. Acoustic Effects of Internal Fillings 
+
+Internal materials inside containers can substantially influ-ence impact sounds [20]. When a container is struck, the resulting acoustic response depends on the coupled dynamics between the container structure and the internal material. The internal state has two directions that affect sound generation. First, For liquid-filled containers, increasing the liquid level introduces an added mass effect , which effectively increases the vibrating mass of the container walls and lowers structural resonance frequencies [21], [22]. At the same time, the air cav-ity inside the container can exhibit Helmholtz resonance [23], where the resonance frequency depends on the remaining air 3Real Object 
+
+> Shape ：
+> Material ：Ceramic
+> Texture ：
+> Vision
+> Audio
+
+2. Mesh-based 2. 3DGS    
+
+> Plastic Wood Steel
+> Striker
+> Material ：
+> Fill Material ：
+> Fill Level ：
+> Water Rice
+> Fine-grained Fill-Impact Dataset
+
+...  
+
+> Condition Audio s
+> Fig. 3. Overview of FillImpact. Left: The construction of FillImpact. Right: Hierarchical distribution of FillImpact. The sunburst chart details the compositional breakdown from the inner to outer rings: outer container materials (e.g., glass, plastic, ceramic), internal fill states (water, rice, or hollow), and the interacting striker materials (steel, wood, plastic). The proportional area of each segment represents the relative number of instances in that specific configuration.
+
+volume [24]. These interacting effects lead to complex changes in acoustic characteristics as the filling level varies. Second, Granular materials exhibit even more complex behavior due to frictional contacts, particle collisions, and force-chain dy-namics [25], [26]. Impact excitation in granular media typi-cally produces strongly damped responses with dominant low-frequency components and short reverberation times. Because these heterogeneous physical behaviors are visually occluded from the outside, relying solely on external surface geometry is fundamentally insufficient. This necessitates a framework that explicitly entangles geometric representations with internal physical conditions. 
+
+C. Impact Sound Datasets 
+
+High-quality datasets are crucial for training and evaluating multimodal sound synthesis models. Existing impact sound datasets generally fall into two categories: simulation-based datasets and real-world recordings. Simulation-based datasets rely on physics engines or finite element analysis to gener-ate impact sounds under controlled conditions. For example, Sound-20K [27] contains thousands of synthetic recordings of object impacts generated in virtual environments. More advanced datasets such as ObjectFolder [28] and Object-Folder 2.0 [29] provide multimodal object representations and enable querying sound responses at arbitrary surface locations. However, these datasets primarily focus on rigid objects and fundamentally lack the modeling of internal material varia-tions. Real-world datasets attempt to reduce the simulation-to-real gap by capturing physical interactions. The Greatest Hits dataset [3] collects large-scale audio-video recordings of humans striking various materials in natural environments. More controlled datasets such as RealImpact [30] employ automated mechanical systems to produce repeatable impacts and record spatial acoustic responses using dense microphone arrays. While these datasets improve realism and spatial cover-age, they predominantly feature solid or empty objects, lacking the fine-grained annotations of internal filling states required to learn the aforementioned complex acoustic dynamics. III. F ILL IMPACT 
+
+We introduce FillImpact, a comprehensive multimodal col-lection comprising 88 real-world objects across various mate-rial categories. As illustrated in Figure 3 Left, each instance in our dataset is rigorously paired with visual representations and acoustic interaction responses. The statistical distribution of our dataset is presented in Figure 3 Right, which compre-hensively illustrates the hierarchical composition of container materials, internal fill states, and striker types. Additional dataset statistics are provided in Appendix. In the following subsections, we detail our pipeline across three distinct di-mensions: Visual Representation, Acoustic Acquisition, and Acoustic Analysis. 
+
+Visual Representation. To construct accurate geometric priors, we capture high-fidelity surface meshes using a Revo Scan 3D scanner. Seamless texture maps are then generated via Hunyuan 3D 2.1 [31] using single-view reference images extracted from 360-degree rotational videos captured under uniform lighting. These geometric and textural assets are then unified into the standard glTF format [32]. For 3D Gaussian Splatting (3DGS) [17] optimization, we render 30 uniformly distributed multi-view images from the glTF models. During rendering, virtual lighting is strictly aligned with the camera optical axis to maximize fidelity, and precise camera extrinsics are concurrently exported. To avoid local minima, 3DGS training is spatially initialized using point clouds extracted from the glTF models and optimized for 10,000 iterations. Finally, the trained 3D Gaussians are normalized to ensure compatibility with the Point Transformer architecture [33], [34]. 
+
+Acoustic Acquisition. To capture fine-grained acoustic variations, we control three physical parameters during data collection: striker material (steel, wood, plastic), fill material (rice, water), and fill level (discretized into five states, where level 0 indicates a completely hollow object). We record synchronized impact audio (sampled at 48 kHz) and video (at 
+
+1024 × 1024 resolution) using a DJI Mic and a DJI Pocket 3 camera. To facilitate position-aware generation, the precise 3D 4Fill Level    
+
+> Normalized Dominant Frequency( �/�푙푒�푒푙 =1)
+> Fill Material
+> Decay Coefficient  ɑ
+> Striker Material
+> Spectral Centroid(Hz) -> Higher means Brighter
+> Fig. 4. Acoustic analysis of FillImpact. Left: The normalized dominant frequency decreases as the fill level increases, strictly following the physical principle
+> f∝pk/m . Middle: The decay coefficient ( α) exhibits distinct distributions for different fill materials, demonstrating clear acoustic discriminability between granular (rice) and liquid (water) states. Right: The spectral centroid shows significant variation across striker materials, indicating that acoustic brightness effectively distinguishes the hardness and physical properties of the striker.
+
+spatial coordinates (x, y, z ) of each strike point are registered and serialized into structured JSON metadata, establishing a rigorous spatial-acoustic mapping for every sample. 
+
+Acoustic Analysis. To validate the physical consistency of our dataset, we analyze its fine-grained acoustic attributes (Figure 4). First, by rigorously isolating variables, specifically holding the container material, the striker, and the fill material constant to control for structural stiffness ( k) and excitation conditions. We observe that the normalized dominant fre-quency strictly decreases as the internal mass ( m) increases with higher fill levels. This aligns perfectly with the classical harmonic oscillator principle f ∝ pk/m [24], providing a reliable prior for fill-level perception. Second, granular fillings (e.g., rice) exhibit significantly higher acoustic decay rates (α) than liquids (e.g., water). This disparity is fundamentally driven by the high internal friction and collisional damping inherent in granular mechanics [35], ensuring strong acoustic discriminability for different internal states. Finally, harder impactors (e.g., steel) consistently excite higher-frequency resonance modes, yielding a significantly elevated spectral centroid compared to softer materials like wood or plastic. These distinctly preserved acoustic cues confirm that our dataset provides a rigorous foundation for accurate, physically grounded sound synthesis. IV. M ETHOD 
+
+A. Problem Definition 
+
+We represent the target object using 3DGS [17], an ex-plicit geometric formulation that is parameterized by a set of Gaussians G = {pk, sk, ck, qk, α k}Nk=1 , denoting the center position, scale, view-dependent color, rotation, and opacity, respectively. Motivated by our preceding dataset analysis, which proves that variations in internal states yield highly distinguishable acoustic signatures. We formalize the novel task of Fine-Grained Filling-Aware Impact Sound Generation .Formally, given the 3DGS geometry G, the exact 3D strike position p ∈ R3, the striker material, and the internal fill state (specifically, the fill material and continuous fill level), our objective is to synthesize a physically plausible impact audio 
+
+y.
+
+Overview of FillGauss. To tackle this task, FillGauss jointly reasons over the visual, spatial, and internal physical states of an object. The framework takes three heterogeneous inputs: (1) the 3DGS representation G, (2) the 3D strike coordinates p ∈ R3, and (3) a text prompt T explicitly detailing the striker and internal fill state. As shown in Fig-ure 5, a cross-modal attention fusion seamlessly entangles the geometric priors with the localized physical striking context. The resulting fused embedding then acts as the cross-attention condition for a Denoising Network (built upon TangoFlux), guiding the iterative latent diffusion process. Finally, a pre-trained Audio VAE decoder reconstructs the denoised latent back into the target audio waveform. 
+
+B. Multi-modal Encoder 
+
+To process the disparate input modalities, we employ ded-icated encoders to extract robust semantic and geometric representations. 
+
+3DGS Encoder. For the visual-geometric input, we adopt the 3DGS encoder architecture from SplatFormer [34] to extract local point-wise features. The Gaussian parameters are projected into a sequence of features FG ∈ RN ×D , where 
+
+N is the number of Gaussian blobs and D is the embedding dimension. 
+
+Position Encoder. The 3D impact coordinate p ∈ R3
+
+is crucial for determining the local resonance of the outer shell. We first apply a NeRF-style high-frequency positional encoding γ(p):
+
+γ(p) = sin(2 0πp), cos(2 0πp), . . . , sin(2 L−1πp), cos(2 L−1πp)
+
+(1) The encoded vector is then mapped through a Multi-Layer Perceptron (MLP) to obtain the spatial feature Fp ∈ R1×D .
+
+State Encoder. To represent the fine-grained internal fill state (e.g., striker type, fill material, and fill level), we eval-uated two distinctive encoding strategies (as compared in our ablation studies): (1) HardCode Encoder: We explicitly mapped the discrete categorical variables into learnable parameter spaces: 
+
+Fcond = Concat (Emb s(s), Emb m(m), Emb l(l)) ∈ R3×D
+
+(2) 5Gaussian 
+
+Encoder   
+
+> Strike Position: �(x,y,z)
+> ...  ...
+> Self-Attention
+> ...  ...
+> Cross-Attention
+
+C
+
+Concat 
+
+K
+
+V
+
+Q
+
+> Denoising Network
+> Q
+> K
+> V
+> Q
+> K
+> V
+> Pre-trained
+
+�ℎ푢푏   
+
+Position 
+
+Encoder ��
+
+��
+
+��
+
+Audio 
+
+> VAE
+> Encoder
+
+GT Audio 
+
+Text 
+
+Encoder   
+
+> Striking the object,
+> which is heavily filled
+> with water , using
+> wooden striker .
+
+�푡  푡 
+
+> VAE
+> Decoder
+> G
+> State Encoder
+
+��0
+
+�푓푢�   ��         
+
+> ��
+> ��
+> ��
+> ��
+> Fig. 5. Overview of FillGauss. The framework first extracts individual features from the 3DGS representation G, the strike position p, and the textual fill-state prompt. To accurately model physical interactions, a self-attention module combines the spatial and semantic inputs into a unified localized context. The global geometric features FGthen actively query ( Q) this context ( K,V) through a cross-attention mechanism. The geometry-aware output is concatenated to form the definitive multi-modal condition Ff used , which guides a Diffusion Transformer to denoise and recover the ground-truth audio latent z0. The entire latent diffusion process is optimized using a Huber loss Lhuber to ensure high-fidelity impact sound synthesis.
+
+where s ∈ S , m ∈ M , and l ∈ L denote the categorical indices for the striker type, fill material, and fill level, respec-tively. (2) Fine-grained Text Prompting (Ours): We translate the physical state into a language description T (e.g., ”The object is hit with a steel striker. It is completely full of water.”) and extract its sequence features Ftext ∈ RLtext ×D using a pre-trained language model. As shown in Table IV, fine-grained text prompting yields superior acoustic fidelity. This naturally stems from our base model (TangoFlux) being a native text-to-audio architecture. 
+
+C. Cross-modal Attention Fusion 
+
+The core challenge in impact sound synthesis is accurately modeling the physical coupling between the impact location and the global acoustic system (container geometry and in-ternal damping medium). To achieve this, we design a two-stage fusion module comprising Context Self-Attention and Geometry Cross-Attention. First, to deeply entangle the internal semantic state with the precise spatial striking location, we concatenate the position embedding and the text embedding to form the context tokens 
+
+C = [ Fp ∥ Ftext ]. We apply a Multi-Head Self-Attention (MHSA) layer to construct a unified physical context repre-sentation C′:
+
+C′ = MHSA (Q = C, K = C, V = C) + C (3) From a physical perspective, this self-attention mechanism acts as an implicit solver for the initial excitation state. It allows the model to globally reason about how the specific impact location interacts with the internal filling (e.g., striking the water line induces different initial energy compared to striking the hollow part above it). Subsequently, to inject this localized physical context into the global 3D structural priors, we introduce a Geometry Cross-Attention module. Here, the dense 3D Gaussian features 
+
+FG serve as the queries ( Q), while the unified physical context 
+
+C′ acts as the keys ( K) and values ( V): 
+
+Across = MHCA (Q = FG, K = C′, V = C′) (4) From a physical modeling perspective, this configuration al-lows the global 3D geometry to actively query the localized striking condition. Each Gaussian spatial region dynamically aggregates the impact properties (e.g., absorbing the semantic damping and positional excitation) based on its structural relevance to the strike. Finally, to ensure the denoising network preserves the raw, high-resolution 3D geometric topology while incorporating the conditionally activated acoustic context, we concatenate the original Gaussian features FG with the cross-attention output 
+
+Across :
+
+Ff used = Concat (FG, Across ) (5) The resulting comprehensive multi-modal embedding, Ff used ,encapsulates the precise striking dynamics, the internal filling semantics, and the globally modulated 3D geometry. This fused representation is then fed into the subsequent network as the definitive cross-attention condition for the latent audio diffusion process. 
+
+D. Latent Audio Diffusion and Optimization 
+
+Instead of predicting high-dimensional audio waveforms directly, our framework is trained in the latent space of a pre-trained Audio VAE [36] to balance computational efficiency and generation fidelity. Given a ground-truth audio waveform 
+
+y, the VAE encoder compresses it into a highly structured latent representation z0 = Eaudio (y). During the forward diffusion process, Gaussian noise ϵ ∼ N (0 , I) is progressively added to z0 based on a noise schedule σt at timestep t,producing the noisy latent zt.Our Denoising Network Dθ is built upon a Diffusion Trans-former (DiT) architecture. The fused multi-modal embedding 
+
+Ff used acts as the cross-attention condition inside the DiT blocks, effectively guiding the temporal denoising trajectory 6
+
+using the 3D geometric and physical priors. The network takes 
+
+zt, Ff used , and the timestep t to predict the target velocity (or noise residual) v = ϵ − z0.To improve the robustness of the generation against outliers and stabilize the latent diffusion training, we employ the Huber Loss ( Lhuber ) instead of the standard Mean Squared Error (MSE): 
+
+Ldif f usion = Ez0,ϵ,t 
+
+"
+
+1
+
+B
+
+> B
+
+X
+
+> i=1
+
+Lhuber (Dθ (zt, Ff used , t ), v; δ)
+
+#
+
+(6) where B is the batch size and δ is the threshold parameter (set to 1.0 in our experiments). The Huber loss elegantly acts as an 
+
+L2 loss for small errors (enhancing fine-grained spectrogram details) and behaves like an L1 loss for large errors (preventing gradient explosions during the early training stages). During inference, the predicted clean latent z0 is passed through the VAE decoder to reconstruct the final impact sound. V. E XPERIMENTS 
+
+A. Implementation 
+
+Compared Methods. To evaluate FillGauss, we compare it against two primary baselines: SonicGauss [18] and Tan-goFlux [19]. SonicGauss is a state-of-the-art 3D-aware base-line that conditions a diffusion model on 3DGS but relies on generic captions, thereby failing to accurately capture complex internal filling states. TangoFlux is a highly capable pure text-to-audio generative architecture; while it excels at semantic audio generation, it fundamentally lacks 3D spatial grounding and cannot perform position-aware synthesis from visual geometry. 
+
+Evaluation Details. To comprehensively evaluate the gen-erated impact sounds, we employ both objective metrics and subjective human perceptual evaluations. (1) Objective Metrics. Our primary metric is the Fr´ echet Audio Distance (FAD) [37], a reference-free evaluation metric that measures the distribution similarity between the generated audio features and the ground truth using a pre-trained VGGish model [38]. A lower FAD indicates that the generated sounds are statistically closer to the real-world acoustic distribution. In addition, we report the Kullback-Leibler (KL) divergence [39] to assess fine-grained semantic feature alignment between the generated spectrograms and the targets. Finally, we compute the Incep-tion Score (IS) [40] to evaluate the overall clarity and diversity of the generated acoustic samples. (2) Subjective Metrics. 
+
+We conducted a blind perceptual study with 8 participants, evaluating four metrics. The Mean Opinion Score (MOS) 
+
+measures overall audio naturalness on a 1–5 scale [41]. The 
+
+Win Rate (%) [42] indicates the preference percentage in an A/B test against the baseline. To assess physical grounding, participants blindly identified five specific attributes (striker, container material, strike position, fill material, and fill level) per audio sample. From this, we report the Matched Attr. Count as the average number of correctly identified attributes (out of 5), and the Fine-grained Attribute Matching Rate (%) as the individual identification accuracy for each specific property. 
+
+Implementation Details. To train and evaluate FillGauss, we partition FillImpact Dataset into an 80% training split and a 20% testing split. Exhaustive details regarding audio preprocessing (e.g., latent compression via Audio VAE [36]) and the strict global bounding-box normalization of the 3DGS spatial coordinates are deferred to the Appendix. All models in our framework are implemented using PyTorch. We conduct our experiments on a single NVIDIA RTX 4090 GPU (24GB). During the training phase, we set the per-device batch size to 15 and train the model for 80 epochs utilizing the AdamW optimizer [43] with a base learning rate of 1 × 10 −4 and a linear learning rate scheduler. Building upon the founda-tional architecture of SonicGauss [18], our core denoising network is initialized by fine-tuning the pre-trained TangoFlux model [19]. To preserve their robust pre-trained priors, we maintain frozen weights for both the Audio VAE and the base Text Encoder [44], [45] throughout the training process. 
+
+B. Results 
+
+To comprehensively validate our framework against the novel task of fine-grained filling-aware sound generation, we structure our evaluation across three dimensions. We visually verify physical interactions (Qualitative), statistically measure generation fidelity (Quantitative), and assess human percepti-bility (Subjective). Together, these experiments rigorously test our model’s capacity for position-aware, striker-aware, and fill-aware synthesis. 
+
+Qualitative Results. We analyze the generated spectro-grams to verify FillGauss’s ability to capture localized and internal physical variations. For position-awareness (Figure 6), shifting the strike location across the 3DGS container reflects precise shifts in resonance modes and energy decay, demonstrating accurate spatial geometry learning. Regarding striker-awareness (Figure 7), the model accurately synthesizes distinct spectral energy distributions, correctly reflecting how harder materials like steel excite higher frequency bands than wood or plastic. Crucially, we validate the internal state reasoning central to our task. For fill-level awareness (Figure 9), increasing the internal capacity visibly shifts the dominant frequency bands downwards. The blue dashed lines explicitly trace the physical rule established in our dataset analysis, firmly adhering to the added-mass harmonic oscillator princi-ples ( f ∝ pk/m ). Finally, evaluating fill-material awareness (Figure 8) reveals distinct acoustic signatures. FillGauss suc-cessfully synthesizes the rapid energy decay characteristic of granular damping for rice alongside the prolonged resonance typical of liquid water. 
+
+Quantitative Results. Table I compares FillGauss against the 3D-aware SonicGauss and the text-to-audio TangoFlux baselines. Among 3D-aware frameworks, FillGauss achieves the best primary metric performance (FAD 1.3500), signif-icantly outperforming the fine-tuned SonicGauss. The poor zero-shot performance of SonicGauss exposes a critical flaw in existing methods. Without explicit internal filling knowl-edge, models average the acoustic outputs of identical-looking containers with vastly different acoustic responses, causing severe distribution mismatch. While the fine-tuned TangoFlux 7GT Ours 
+
+> different position(empty object)
+
+Fig. 6. Results of position-aware sound generation. different striker(empty object)  
+
+> GT Ours
+> Plastic
+> Wood
+> Steel
+
+Fig. 7. Results of striker-aware sound generation across different tool materials (plastic, wood, and steel). 
+
+achieves a lower FAD due to its unconstrained text-to-audio architecture, it fundamentally lacks 3D geometric perception and cannot associate sounds with precise spatial coordinates. FillGauss achieves the optimal balance, establishing the state-of-the-art for physically grounded and spatially-aware audio generation. 
+
+Human Perceptual Evaluation. As shown in Table II, FillGauss securing a decisive majority in the overall preference win rate. More importantly, Table III details the Fine-grained Attribute Matching Rate. Even when fine-tuned, the baselines struggle significantly to convey internal states, notably poor perception accuracy for both fill material and fill level. In contrast, FillGauss successfully transmits complex physical Water Rice    
+
+> GT Ours GT Ours
+> different fill mat （100% 填充）
+
+Fig. 8. Results of fill-material-aware sound generation. TABLE I QUANTITATIVE COMPARISON OF IMPACT SOUND GENERATION . “ZS” AND 
+
+“FT” DENOTE ZERO -SHOT AND FINE -TUNED SETTINGS . ↓ INDICATES LOWER IS BETTER , ↑ INDICATES HIGHER IS BETTER . BOLD DENOTES BEST , UNDERLINE DENOTES SECOND BEST .
+
+Model FAD ↓ KL sig ↓ IS Avg ↑ IS Std ↓
+
+SonicGauss (ZS) 7.8909 1.2022 1.0136 1.85 ×10 −4
+
+TangoFlux (ZS) 15.5368 1.6947 1.0062 0.85 ×10 −4
+
+SonicGauss (FT) 1.5653 0.5750 1.0156 2.85 ×10 −4
+
+TangoFlux (FT) 1.0627 0.7700 1.0151 2.61 ×10 −4
+
+FillGauss (Ours) 1.3500 0.6977 1.0160 2.93 ×10 −4
+
+conditions and achieves the highest perception accuracy across all evaluated categories including striker material, container material, strike position, fill material, and fill level. Although a gap remains toward high-fidelity human perception, our approach significantly outperforms existing baseline methods. 
+
+TABLE II COMPREHENSIVE SUBJECTIVE EVALUATION RESULTS . “ZS” AND “FT”  
+
+> DENOTE
+
+ZERO -SHOT AND FINE -TUNED . ↑ INDICATES HIGHER IS BETTER .
+
+BOLD DENOTES THE BEST PERFORMANCE .
+
+Model MOS (↑) Win Rate (↑) Attr. Count (↑)TangoFlux (ZS) 1.50 ± 1.16 3.6% 0.36 ± 0.98 TangoFlux (FT) 3.64 ± 0.74 37.5% 2.64 ± 1.48 SonicGauss (ZS) 4.50 ± 0.65 16.1% 1.43 ± 1.42 SonicGauss (FT) 4.36 ± 0.63 33.9% 1.95 ± 1.77 
+
+FillGauss (Ours) 4.43 ± 0.76 69.6% 3.62 ± 1.51 
+
+TABLE III FINE -GRAINED ATTRIBUTE MATCHING RATE (%). “ZS” AND “FT”  
+
+> DENOTE
+
+ZERO -SHOT AND FINE -TUNED SETTINGS . BOLD DENOTES THE BEST PERFORMANCE .
+
+Model Striker Mat. Pos. Fill Mat. Level 
+
+TangoFlux (ZS) 11.9% 7.1% 9.5% 4.8% 2.4% TangoFlux (FT) 73.8% 71.4% 59.5% 31.0% 28.6% SonicGauss (ZS) 50.0% 21.4% 31.0% 14.3% 26.2% SonicGauss (FT) 54.8% 35.7% 42.9% 31.0% 31.0% 
+
+FillGauss (Ours) 88.1% 90.5% 71.4% 52.4% 59.5% 
+
+C. Ablation Study 
+
+To validate our network components, we conducted an abla-tion study (Table IV), prioritizing the Fr´ echet Audio Distance (FAD) as the primary metric for overall acoustic realism. Our full architecture ( Final ) achieves the best FAD, whereas removing the cross-attention module (w/o cross-attention )causes the most severe degradation. Without it, the model becomes blind to the 3DGS geometry and overfits to explicit text conditions; this pathological shortcut learning generates generic template sounds that artificially inflate secondary metrics (KL and IS) but catastrophically destroy physical realism. Similarly, omitting the self-attention module ( w/o self-attention ) prevents the smooth entanglement of spatial impact positions with internal filling semantics, failing to reason globally about physical interactions. Furthermore, replacing 8different fill level （filled with water ）
+
+GT Our 
+
+s
+
+GT Our 
+
+s
+
+Fig. 9. Qualitative results of fill-level-aware sound generation across continuous filling states. 
+
+the Huber loss with a standard MSE loss ( w/o Lhuber ) reduces training robustness against early-stage diffusion noise, wors-ening the FAD. Finally, substituting fine-grained text prompts with discrete categorical embeddings ( Hard-code ) noticeably drops performance, confirming that natural language optimally leverages the rich semantic priors of the pre-trained text encoder to achieve physically grounded sound generation. 
+
+TABLE IV ABLATION STUDY ON THE CORE COMPONENTS OF FILL GAUSS . ↓
+
+> INDICATES LOWER IS BETTER
+
+, ↑ INDICATES HIGHER IS BETTER . BOLD 
+
+> DENOTES THE BEST PERFORMANCE
+
+.
+
+Configuration FAD ↓ KL sig ↓ IS Avg ↑ IS Std ↓
+
+w/o self-attention 1.4111 0.6434 1.0161 2.89 ×10 −4
+
+w/o cross-attention 1.5623 0.5904 1.0162 2.84 ×10 −4
+
+w/o Lhuber 1.4854 0.6297 1.0162 3.01 ×10 −4
+
+Hard-code 1.4936 0.6506 1.0158 2.81 ×10 −4
+
+Final (Ours) 1.3500 0.6977 1.0160 2.93 ×10 −4
+
+D. Sensitivity Analysis 
+
+To verify that FillGauss genuinely relies on the fine-grained material priors of the 3DGS input rather than overfitting to the text prompt, we analyze its sensitivity to varying sparsity levels (Table V). To systematically construct these levels (L1 to L5), we apply a physical energy-based voxel downsampling strategy with increasing voxel sizes v ∈{0.0, 0.02 , 0.05 , 0.08 , 0.12 }. Within each populated voxel V ,we retain only the single Gaussian k∗ that maximizes an energy score Ek = P 
+
+> i∈{ x,y,z }
+
+log( sk,i ) + αk. This formu-lation explicitly prioritizes Gaussians with significant volu-metric influence and high opacity while strictly preserving their original geometric parameters. As shown in Figure 10, the reconstructions maintain solid surface integrity and clear textures from L1 to L3, corresponding to a graceful and stable decline in acoustic fidelity. This demonstrates our framework’s robustness to moderate compression. However, under extreme sparsification (L4 and L5), while the macro geometric shape remains broadly discernible, the surface integrity and texture degrade significantly. The object boundary transitions into a semi-transparent cloud of floaters, losing its explicit material color ( ck) and structural density ( αk). Crucially, this specific loss of high-frequency surface details explicitly triggers a sig-nificant drop in audio performance (FAD worsens to 2.5718). Consequently, L3 emerges as an optimal boundary balancing computational efficiency and acoustic realism, demonstrating that our framework can successfully utilize a significantly reduced number of Gaussians to synthesize relatively high-quality impact sounds. L1 L2 L3 L4 L5 
+
+Fig. 10. Visual comparison of 3DGS reconstructions under varying sparsity levels. Further sparsification (L3 to L5) introduces severe artifacts like semi-transparent floaters, degrading acoustic performance. TABLE V IMPACT OF 3DGS SPARSITY LEVELS (L1 TO L5) ON SOUND GENERATION .
+
+↓ INDICATES LOWER IS BETTER , ↑ INDICATES HIGHER IS BETTER . BOLD 
+
+> DENOTES THE BEST PERFORMANCE
+
+.
+
+Configuration FAD ↓ KL sig ↓ IS Avg ↑ IS Std ↓
+
+L1 (Ours) 1.3504 0.6977 1.0160 2.93 ×10 −4
+
+L2 1.3940 0.6872 1.0161 2.85 ×10 −4
+
+L3 1.6182 0.6712 1.0166 2.68 ×10 −4
+
+L4 2.2265 0.6642 1.0172 2.88 ×10 −4
+
+L5 2.5718 0.7439 1.0175 2.81 ×10 −4
+
+VI. C ONCLUSION 
+
+We introduce FillGauss and FillImpact dataset to generate fine-grained, filling-aware impact sounds for 3DGS representa-tions. By fusing 3DGS, strike position, and fill conditions, the framework generates acoustics that adhere to established phys-ical principles. Despite these contributions, certain limitations remain. Limitations: Extreme 3DGS sparsification degrades surface integrity and compromises acoustic fidelity, and human perceptual evaluations indicate a remaining gap toward high-fidelity auditory distinguishability. In the future, we will focus on extending the model to capture complex internal dynamics, such as sloshing fluids and soft-body deformations. REFERENCES [1] A. Thankaraj and L. Pinto, “That sounds right: Auditory self-supervision for dynamic robot manipulation,” in Conference on Robot Learning .PMLR, 2023, pp. 1036–1049. [2] M. T. Taylor, A. Chandak, L. Antani, and D. Manocha, “Resound: interactive sound rendering for dynamic virtual environments,” in Pro-ceedings of the 17th ACM international conference on Multimedia , 2009, pp. 271–280. 9
+
+[3] A. Owens, P. Isola, J. McDermott, A. Torralba, E. H. Adelson, and W. T. Freeman, “Visually indicated sounds,” in Proceedings of the IEEE conference on computer vision and pattern recognition , 2016, pp. 2405– 2413. [4] K. Van Den Doel, “Modal synthesis for vibrating objects,” 2003. [5] Z. Ren, H. Yeh, and M. C. Lin, “Example-guided physically based modal sound synthesis,” ACM Transactions on Graphics (TOG) , vol. 32, no. 1, pp. 1–16, 2013. [6] X. Fang, X. Bao, F. Yue, and Q. Zhao, “A dynamic analysis method of liquid-filled containers considering the fluid–structure interaction,” 
+
+Applied Sciences , vol. 14, no. 7, p. 2688, 2024. [7] X. bing Fang, X. Bao, F. Yue, and Q. Zhao, “Dynamic analysis method of liquid-filled containers considering the fluid-structure interaction effect,” 2024. [8] Y. Zhou, Z. Wang, C. Fang, T. Bui, and T. L. Berg, “Visual to sound: Generating natural sound for videos in the wild,” in Proceedings of the IEEE conference on computer vision and pattern recognition , 2018, pp. 3550–3558. [9] C. Chen, P. Peng, A. Baid, Z. Xue, W.-N. Hsu, D. Harwath, and K. Grau-man, “Action2sound: Ambient-aware generation of action sounds from egocentric videos,” in European Conference on Computer Vision .Springer, 2024, pp. 277–295. [10] J. Liu and B. Chen, “Sonicsense: Object perception from in-hand acoustic vibration,” arXiv preprint arXiv:2406.17932 , 2024. [11] K. Su, K. Qian, E. Shlizerman, A. Torralba, and C. Gan, “Physics-driven diffusion models for impact sound synthesis from videos,” in 
+
+Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2023, pp. 9749–9759. [12] D. Yang, J. Yu, H. Wang, W. Wang, C. Weng, Y. Zou, and D. Yu, “Diffsound: Discrete diffusion model for text-to-sound generation,” 
+
+IEEE/ACM Transactions on Audio, Speech, and Language Processing ,vol. 31, pp. 1720–1733, 2023. [13] A. Luo, Y. Du, M. Tarr, J. Tenenbaum, A. Torralba, and C. Gan, “Learning neural acoustic fields,” Advances in Neural Information Processing Systems , vol. 35, pp. 3165–3177, 2022. [14] A. Brunetto, S. Hornauer, and F. Moutarde, “Neraf: 3d scene infused neural radiance and acoustic fields,” arXiv preprint arXiv:2405.18213 ,2024. [15] C. Chen and U. Jain, “Soundspaces: Audio-visual navigation in 3d environments,” in ECCV , 2020. [16] X. Li, “Neural acoustic fields,” ACM Transactions on Graphics , 2022. [17] B. Kerbl, G. Kopanas, and T. Leimk¨ uhler, “3d gaussian splatting for real-time radiance field rendering,” in SIGGRAPH , 2023. [18] X. Wang, “Sonicgauss: 3d gaussian-based spatial sound generation,” 
+
+arXiv preprint , 2025. [19] Y. Hung, “Tangoflux: Diffusion-based text-to-audio generation,” arXiv preprint , 2024. [20] J. W. S. Rayleigh, “The theory of sound,” 1896. [21] ——, The Theory of Sound . Dover, 1945. [22] L. E. Kinsler, Fundamentals of Acoustics . Wiley, 2000. [23] E. S. Webster and C. E. Davies, “The use of helmholtz resonance for measuring the volume of liquids and solids,” Sensors , vol. 10, no. 12, pp. 10 663–10 672, 2010. [24] N. H. Fletcher and T. D. Rossing, The Physics of Musical Instruments .Springer, 1998. [25] H. M. Jaeger and S. R. Nagel, “Granular solids, liquids, and gases,” 
+
+Reviews of Modern Physics , 1996. [26] H. A. Makse, “Granular packings: nonlinear elasticity and sound prop-agation,” Physical Review Letters , 2004. [27] Y. Zhou, “Sound-20k dataset,” in CVPR , 2018. [28] R. Gao, “Objectfolder: A dataset of objects with implicit visual, auditory, and tactile representations,” in CoRL , 2021. [29] ——, “Objectfolder 2.0,” IJRR , 2022. [30] X. Li, “Realimpact: A dataset for spatial impact sound fields,” IEEE Transactions on Multimedia , 2023. [31] L. et al., “Hunyuan3d: A large-scale 3d generation model,” 2024. [32] Khronos 3D Formats Working Group, “glTF 2.0 Specification,” https: //github.com/KhronosGroup/glTF, 2021, accessed: 2026-03-14. [33] H. Zhao, L. Jiang, J. Jia, P. H. Torr, and V. Koltun, “Point transformer,” in Proceedings of the IEEE/CVF international conference on computer vision , 2021, pp. 16 259–16 268. [34] Y. Chen, M. Mihajlovic, X. Chen, Y. Wang, S. Prokudin, and S. Tang, “Splatformer: Point transformer for robust 3d gaussian splatting,” arXiv preprint arXiv:2411.06390 , 2024. [35] H. M. Jaeger and S. R. Nagel, “The physics of granular materials,” 
+
+Science , vol. 255, no. 5051, pp. 1523–1531, 1992. [36] Z. Evans, J. D. Parker, C. Carr, Z. Zukowski, J. Taylor, and J. Pons, “Stable audio open,” in ICASSP 2025-2025 IEEE International Confer-ence on Acoustics, Speech and Signal Processing (ICASSP) . IEEE, 2025, pp. 1–5. [37] K. Kilgour, M. Zuluaga, D. Roblek, and M. Sharifi, “Fr´ echet audio distance: A reference-free metric for evaluating music enhancement algorithms,” in Interspeech , 2019. [38] S. Hershey, S. Chaudhuri, D. P. W. Ellis, J. F. Gemmeke, A. Jansen, R. C. Moore, M. Plakal, D. Platt, R. A. Saurous, B. Seybold, and M. Slaney, “Cnn architectures for large-scale audio classification,” in ICASSP , 2017. [39] S. Kullback and R. A. Leibler, “On information and sufficiency,” Annals of Mathematical Statistics , vol. 22, no. 1, pp. 79–86, 1951. [40] T. Salimans, I. Goodfellow, W. Zaremba, V. Cheung, A. Radford, and X. Chen, “Improved techniques for training gans,” in NeurIPS , 2016. [41] ITU-T, “Recommendation p.800: Methods for subjective determination of transmission quality,” 1996. [42] F. Ribeiro, D. Florencio, C. Zhang, and M. Seltzer, “Crowdsourcing for speech quality evaluation,” in ICASSP , 2011. [43] I. Loshchilov and F. Hutter, “Decoupled weight decay regularization,” 
+
+International Conference on Learning Representations (ICLR) , 2019. [44] H. W. Chung, L. Hou, S. Longpre, B. Zoph, Y. Tay, W. Fedus, Y. Li, X. Wang, M. Dehghani, S. Brahma et al. , “Scaling instruction-finetuned language models,” arXiv preprint arXiv:2210.11416 , 2022. [45] C. Raffel, N. Shazeer, A. Roberts, K. Lee, S. Narang, M. Matena, Y. Zhou, W. Li, and P. J. Liu, “Exploring the limits of transfer learning with a unified text-to-text transformer,” Journal of Machine Learning Research , vol. 21, no. 140, pp. 1–67, 2020. 10 
+
+APPENDIX 
+
+A. Data Processing Details 
+
+All ground truth audio recordings are resampled to 48 kHz and dynamically padded or truncated to a fixed maximum duration to match the input sequence requirements of the latent diffusion model. The raw audio is then compressed into a lower-dimensional latent space using the pre-trained Audio VAE from Stable Audio Open [36]. For the visual modality, real-world 3DGS reconstructions contain arbitrary physical scales, whereas our 3DGS encoder requires strictly normalized inputs for stable feature extraction. To ensure spatial consistency and scale-invariance, we perform a global bounding-box normalization on the 3DGS represen-tations and their corresponding strike coordinates. Given the set of 3D Gaussian positions X = {xi}Ni=1 , we compute the bounding box extremes xmin and xmax . The geometric center 
+
+c and the maximum spatial extent Emax are defined as: 
+
+c = xmax + xmin 
+
+2 , Emax = max( xmax − xmin ) (7) To strictly confine the object within a coordinate range of 
+
+[−1.5, 1.5] 3, we calculate a global scale factor S = 3 /E max .Each Gaussian’s position xi and the precise 3D strike coordi-nate p are synchronously translated to the origin and scaled: 
+
+x′ 
+
+> i
+
+= S(xi − c), p′ = S(p − c) (8) Furthermore, because the 3D Gaussian scale parameters si ∈
+
+R3 are optimized and stored in logarithmic space, we apply a necessary additive shift to synchronize their sizes with the new coordinate space: 
+
+s′ 
+
+> i
+
+= si + ln( S) (9) This rigorous normalization guarantees that all geometric priors and interaction points share a unified, normalized spatial distribution, significantly stabilizing the cross-modal attention mechanisms during training. 
+
+B. Baseline Fine-Tuning Details 
+
+To ensure a fair and rigorous comparison, we fine-tune the selected baselines on our FillImpact dataset, meticulously adapting the data formats to match their distinct architectural requirements. 
+
+1) SonicGauss Fine-Tuning: The SonicGauss framework is natively designed to synthesize sound conditioned on 3D Gaussian Splatting representations and spatial impact coor-dinates. Consequently, we directly utilize the 3DGS models, precise strike positions, and the corresponding ground-truth audio recordings from our dataset to fine-tune this baseline, maintaining its original modality alignment without requiring additional data transformations. 
+
+2) TangoFlux Fine-Tuning: Unlike models utilizing explicit 3D visual conditions, TangoFlux operates strictly as a text-to-audio generation framework. To leverage our entire dataset for fine-tuning TangoFlux, we systematically transform all multimodal physical parameters into rich textual prompts. The prompt construction begins with a base visual caption describing the target object. We then semantically translate the exact strike coordinates into descriptive text, mapping specific points to relative spatial locations such as the lower part, the middle part, or the upper part. Furthermore, the complex internal physical states are ex-plicitly converted into natural language descriptions. Objects without fill are described as hollow empty containers or completely solid objects depending on their baseline state. For filled objects, we apply proportional text templates to articulate the exact fill level, generating phrases ranging from quarter full to completely full of a specific material. The final training prompt seamlessly concatenates the visual caption, the desig-nated strike location, the striker material, and the internal state description. This comprehensive text condition ensures that TangoFlux receives the equivalent physical context provided to our multimodal framework during the fine-tuning process. 
+
+C. Evaluation Details 
+
+Subjective Metrics. For subjective assessment, we con-ducted a blind human perceptual evaluation with 20 partic-ipants using high-quality headphones. We utilize four specific metrics to evaluate the generated audio across different per-ceptual dimensions:  
+
+> •
+
+Mean Opinion Score (MOS): To evaluate overall audio naturalness and physical plausibility, participants rated the generated audio on a standard scale from 1 (com-pletely unnatural) to 5 (highly realistic).  
+
+> •
+
+Win Rate (%): We conducted an A/B preference test, presenting paired audio samples (Our model vs. Baseline) side-by-side. The Win Rate represents the percentage of trials where our generated audio was strictly preferred by the listener.  
+
+> •
+
+Matched Attr. Count: We designed a blind Fine-grained Attribute Matching test where participants listened to the audio without any visual cues and attempted to identify five specific physical properties: the striker material, container material, strike position, fill material, and fill level. This metric reports the average number of correctly identified attributes per sample (out of a maximum of 5), presented as mean ± standard deviation.  
+
+> •
+
+Fine-grained Attribute Matching Rate (%): Derived from the same blind test, this metric breaks down the perceptual accuracy for each individual physical property. It calculates the exact percentage of instances where participants correctly perceived a specific attribute (e.g., distinguishing water from rice, or wood from steel) solely from the acoustic signals. To fundamentally address the limitations of existing datasets that strictly assume hollow or solid objects, we construct FillImpact. It is a pioneering multi-modal collection specif-ically designed to capture the complex acoustic dynamics of internal fillings coupled with 3D object geometry. As illustrated in Figure 15, the dataset comprises 88 diverse, real-world everyday containers, yielding a total of over 5,000 rigorous acoustic recordings. 
+
+Object and Material Diversity. Ensuring broad physical and geometric diversity is crucial for the generalization of our generative model. Figure 11 details the distribution of 11 
+
+the collected audio recordings across the external container materials, covering six distinct common categories (glass, plastic, ceramic, metal, wood, and paper). This sample di-versity guarantees that our model learns a wide spectrum of baseline structural resonances. Furthermore, to accurately capture acoustic variations related to the physical size of the resonant cavity, Figure 14 visualizes the statistical distribution of the physical scales across all 88 objects. The maximum dimension scales exhibit a normal-like distribution (mean ≈
+
+0.12m), reflecting realistic sizes from small cups to larger storage bins.   
+
+> Fig. 11. Distribution of audio recordings across the six external container material categories, ensuring a diverse range of structural resonance priors.
+> Fig. 12. Proportional distribution of audio recordings based on the internal fill states (i.e., granular rice, liquid water, and hollow baselines).
+
+Fine-grained Internal States. The core contribution of our dataset lies in its meticulous annotation of internal physical states. First, we introduce distinct fill conditions: liquids   
+
+> Fig. 13. Stacked bar chart illustrating the combinatorial distribution of acoustic samples. The x-axis represents the external container materials, and the y-axis indicates the number of audio recordings, broken down by internal fill materials.
+> Fig. 14. Distribution of physical scales across all collected objects, demon-strating the geometric diversity of the resonant cavities.
+
+(water), granular media (rice), and an empty baseline (hollow), which exhibit fundamentally different damping and added-mass acoustic behaviors. Figure 12 presents the proportional distribution of the audio recordings based on these internal states. To ensure our model learns robust cross-modal physical priors, we record a highly balanced combinatorial distribution of these fill materials across all six container types. Figure 13 illustrates this comprehensive cross-distribution, where the x-axis represents the external materials and the y-axis details the volume of audio samples. This demonstrates that different internal states are extensively sampled within each external shell category. Combined with recordings across continuous fill levels and distinct striker types, this rigorous protocol ensures that FillGauss learns a continuous physical mapping between 3D geometry, internal semantics, and impact acous-tics. 12 
+
+Fig. 15. An overview of the 88 real-world objects in FillImpact, meticulously curated to capture the coupled acoustic dynamics of 3D geometry and varying internal filling states.

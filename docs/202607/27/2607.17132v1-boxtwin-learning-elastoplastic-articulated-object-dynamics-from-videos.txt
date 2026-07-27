@@ -1,0 +1,152 @@
+Title: BoxTwin: Learning Elastoplastic Articulated Object Dynamics from Videos
+
+URL Source: https://arxiv.org/pdf/2607.17132v1
+
+Published Time: Tue, 21 Jul 2026 01:11:01 GMT
+
+Number of Pages: 4
+
+Markdown Content:
+# BoxTwin: Learning Elastoplastic Articulated Object Dynamics from Videos 
+
+Heng Zhang* 1, Gehan Zheng* 1, Kaifeng Zhang 1, Jay Song 1, Shivansh Patel 1,Sonny Hu 1, Yunzhu Li 1, Changxi Zheng 1 and Peter Yichen Chen 2
+
+Abstract — Digital twins enable robots to anticipate and adapt to physical interactions, but existing models struggle with elastoplastic articulated objects (EAOs) that exhibit nonlin-ear elasticity, plastic yielding, and damage accumulation. We present BoxTwin, an interactive digital-twin framework that learns the full dynamics of EAOs from videos. Our pipeline reconstructs the scene, identifies a physics-aware constitutive model for each EAO. Experiments on manual folding and dual-arm manipulation of EAOs show that BoxTwin accu-rately tracks joint trajectories and reproduces post-contact plastic behavior over long horizons. By integrating video-driven reconstruction with elastoplastic-damage modeling, BoxTwin advances digital twins toward predictive, adaptive control of deformable articulated objects in unstructured environments. 
+
+I. INTRODUCTION Integrating digital twins into robotic platforms heralds a new era of safer, more adaptable human-robot collabora-tion within complex physical settings[1], [2]. By furnishing physics-based real-time replicas of tangible objects, digital twins allow robots to foresee interactions, refine manipula-tion tactics, and improve decision making amid unstructured environments[3], abilities that are especially vital when han-dling deformable items. However, modeling deformable ob-jects persists as a major obstacle in robotic manipulation[4], [5], [6], [7], [8], [9], [10], [11]; current techniques often do not cover the full range of mechanical responses elicited during contact. This issue becomes pronounced for articu-lated elastoplastic objects, which combine reversible elastic deformations with irreversible plastic changes and feature joints that enable intricate motions (e.g. boxes, doors, hinges, sheet-metal assemblies). Unlike rigid or purely elastic bodies, these objects display highly non-linear dynamics that evolve throughout interaction, posing considerable challenges for precise simulation and control. The difficulty arises from three tightly coupled physi-cal effects. First, non-linear elasticity produces stress-strain relationships far from Hookean behavior, leading to en-ergy dissipation and interdegree-of-freedom coupling that a linear model cannot capture. Second, plastic deformation introduces permanent shape alterations once critical loads are exceeded, establishing new rest configurations that defy prediction by elastic models alone. Third, damage evolu-tion causes elastoplastic material parameters to drift over repeated loading cycles, demanding time-dependent material 
+
+> * Equal contribution
+> 1Heng Zhang, Gehan Zheng, Kaifeng Zhang, Jay Song, Shivansh Patel, Sonny Hu, Yunzhu Li and Changxi Zheng are with SceniX, Inc.
+> 2Peter Yichen Chen is with the University of British Columbia.
+
+Fig. 1: Our workflow first reconstructs the full scene from the input video, extracting the EAOs’ parameters; with this reconstructed model, we can subsequently predict future states. descriptions. Conventional digital twin frameworks, which are typically designed for rigid bodies or linearly elastic materials, do not accommodate this triad of phenomena. Prior research has largely focused on either rigid dynamics[12], [13], [14] or static elastic deformation[15], [16], [17], leav-ing the intertwined plasticity, nonlinear elasticity, and pro-gressive damage of elastoplastic articulated objects (EAOs) unaddressed. As a result, robots frequently fail in tasks involving grasping, folding, or forecasting post-interaction states, jeopardizing safety and reliability in both domestic and industrial contexts. To overcome these limitations, we introduce BoxTwin, an interactive digital-twin system specifically designed for EAOs. Instead of relying on hand-crafted physics models with static parameters, BoxTwin incorporates aphysics-aware architecture that captures the full dynamics of such objects, including nonlinear elasticity, plastic yield thresholds, and damage progression, through calibrated con-stitutive models. The system continuously updates material properties to reflect time-varying damage accumulation, en-abling robust simulation and control of EAOs in real-world robotic tasks. BoxTwin lays the groundwork for interactive digital twins that enable safe, adaptive robotic manipulation in real-world environments. arXiv:2607.17132v1 [cs.RO] 19 Jul 2026 II. M ETHOD 
+
+A. Articulated Body 
+
+An EAO is represented as a collection of rigid links that are connected by ideal hinge joints modeling the flexible creases of the structure. The topology is captured by a rooted kinematic tree 
+
+G = ( V, E); 
+
+a vertex i ∈ V denotes a link Li equipped with a body-fixed frame Fi, while an edge e = ( p, i ) ∈ E corresponds to a hinge joint that allows a single relative rotation about a known axis ae. The joint angle qe ∈ R is the only configuration variable associated with that edge. The homogeneous transform that maps the world frame to link i is obtained by composing the transforms along the unique path from the root to i:
+
+T0→i(q) = T0→p Tp→i(qe),
+
+Tp→i(qe) = 
+
+"R(ae, q e) tp→e + R(ae, q e) te→i
+
+0⊤ 1
+
+#
+
+,
+
+where R(ae, q e) is the rotation produced by the hinge angle 
+
+qe about axis ae, tp→e (expressed in Fp) is the constant vector from the parent-frame origin to the hinge point, and 
+
+te→i (expressed in the child frame after rotation) is the constant vector from the hinge point to the child-frame origin. Collecting all joint angles into the vector 
+
+q = [ qe1 , . . . , q e|E| ]⊤
+
+provides a compact description of the configuration. Joint-space dynamics follow the standard Lagrange formu-lation 
+
+M(q)¨ q + C(q, ˙q) ˙ q + g(q) = τ ,
+
+where M(q) is the inertia matrix, C(q, ˙q) combines Coriolis and centrifugal effects, g(q) denotes the generalized gravity forces, and τ collects the generalized forces generated by external contacts. 
+
+B. Elastic response of the creases 
+
+The torque produced by a crease is highly nonlinear with respect to its bending deformation and cannot be faithfully captured by a simple linear spring. Let qe be the instan-taneous hinge angle and ¯qe the associated rest angle; the deformation that drives the elastic response is the scalar gap 
+
+∆e = qe − ¯qe.
+
+The elastic torque is introduced as a smooth, differentiable mapping 
+
+τ el  
+
+> e
+
+= fθe (∆ e),
+
+where fθe : R → R is parameterised by a set of coefficients 
+
+θe that are specific to edge e. This formulation captures the strongly nonlinear hinge behaviour while remaining amenable to analytical differentiation, which is required for subsequent identification and optimization tasks. 
+
+C. Plastic deformation 
+
+Permanent set of a crease is modelled by allowing the rest angle ¯qe to evolve. An internal scalar variable αe records the accumulated plastic rotation, so that 
+
+¯qe = q0 
+
+> e
+
++ αe,
+
+with q0 
+
+> e
+
+denoting the nominal angle. Plastic flow is activated once the elastic gap exceeds a material-specific yield thresh-old ∆ye . The yield condition 
+
+Φe(∆ e) = |∆e| − ∆ye ≤ 0
+
+defines an elastic regime ( Φe ≤ 0). When Φe > 0 the internal variable evolves according to a smooth flow rule 
+
+˙αe = gψe (∆ e),
+
+where gψe : R → R is a function parameterised by coefficients 
+
+ψe.
+
+D. Damage evolution 
+
+Repeated folding induces micro-fracture, fibre delami-nation and other degradation mechanisms, which manifest as a gradual loss of stiffness and a reduced capacity to accommodate permanent set[18], [19]. To capture this effect a scalar damage variable de ∈ [0 , 1] is introduced for each hinge; de = 0 corresponds to an undamaged crease and 
+
+de = 1 to a mechanically inactive joint. Damage attenuates both the elastic torque and the plastic flow: 
+
+τ el  
+
+> e
+
+= (1 − de) fθe
+
+ qe − ¯qe
+
+, ˙αe = (1 − de) gψe
+
+ qe − ¯qe
+
+.
+
+The multiplicative form preserves the sign and monotonicity of the underlying maps while ensuring a physically mean-ingful reduction of the joint’s load-bearing capability. The evolution of de is driven by the cumulative amount of plastic slip that has occurred at the hinge. Define the plastic-slip accumulator 
+
+Pe(t) = 
+
+Z t
+
+> 0
+
+˙αe(τ ) dτ, 
+
+which records the total absolute plastic rotation experienced up to time t. The damage-rate law is taken as a smooth, monotone function of this scalar measure, 
+
+˙de = hξe
+
+ Pe
+
+,
+
+where hξe : R≥0 → [0 , 1] is parameterised by a modest set of coefficients ξe.III. EVALUATION To assess the effectiveness of the proposed model, we car-ried out two experiments. In the first, we manually deformed an EAO composed of two panels and a single joint, keeping one panel anchored to the table. In the second experiment, we employed Aloha robotic arms to manipulate the EAOs and reproduced the entire sequence within a simulation environment. Both experiments were implemented using the MuJoCo simulator[20]. Fig. 2: Figure (a) depicts the experimental setup. Figure (b) showcases the expressive power of our proposed model in capturing the long-horizon dynamics of the EAOs. 
+
+Fig. 3: Figure (a) shows the frames captured from the real-world video, and Figure (b) presents the corresponding simulated views. 
+
+A. Folding Test 
+
+To capture the joint angle of the EAO, color markers are affixed to the side of the panel; their positions are contin-uously monitored, allowing the joint angle to be derived as illustrated in Figure 2(a). Subsequently, the same actuation applied to the physical object is transferred in simulation, and the resulting joint angles are recorded throughout the motion. Figure 2(b) presents the simulated joint angle trajectory together with the corresponding measurements from the real-world EAO. Our proposed model captures the actual behavior of the object across the long sequence, faithfully reproducing both the instantaneous kinematic responses and the gradual evolu-tion of material properties; it accurately tracks the joint-angle trajectories despite the accumulation of hysteresis and wear, preserves the nuanced interplay between elastic, plastic, and damage mechanisms throughout repeated actuation cycles, and thereby provides a robust, high-fidelity digital twin that remains reliable even as the system experiences prolonged exposure to complex loading patterns. 
+
+B. Prediction Test 
+
+In this experiment we command the Trossen Aloha dual-arm platform to interact with a variety of EAOs. The system operates in a leader–follower configuration: the leader arms receive the high-level motion commands, while the fol-lower arms execute the physical actions on the objects. Both simple EAOs that possess a single revolute joint and more complex assemblies that contain several coupled joints are handled by the same control framework. The follower arms are responsible for the complete manipulation sequence. They approach the object, apply the necessary forces to translate, rotate, or fold its individual links, and release it once the desired configuration is achieved. After each trial we logged the full follower-arm trajectory, including joint positions, velocities, torques and end-effector pose at every step. Using these data we reconstructed an identical virtual scene in a physics-based simulator: the Trossen Aloha dual-arms were instantiated with the same kinematic and dynamic parameters (link lengths, masses, joint limits, friction), and the EAOs were modeled with the experimentally identified parameters. The recorded control signals were then replayed on the simulated follower arms, preserving the exact timing and magnitude of every com-mand. By comparing the simulated joint angles and overall object configurations with the measurements obtained on the physical hardware, we observed a close correspondence across all test cases, from single-joint modules to multi-joint assemblies. Figure 3 shows the replay results for a box with multiple joints. This validation demonstrates that the simulated environment can be reliably used for further algo-rithm development, predictive analysis, and transfer-learning studies without the need for repetitive physical trials. IV. CONCLUSIONS We introduce the first interactive digital-twin framework that captures the full dynamics of elastoplastic articulated objects (EAOs) during real-world robotic manipulation. By integrating a video-driven reconstruction pipeline that si-multaneously handles nonlinear elasticity, plastic deforma-tion, and damage evolution, our physics-aware twins predict post-contact plastic behavior—something prior EAO models could not achieve. BoxTwin thus moves beyond static sim-ulations, enabling adaptive, predictive control of deformable objects in unstructured environments where rigid-body as-sumptions fail. REFERENCES [1] H. Jiang, H.-Y. Hsu, K. Zhang, H.-N. Yu, S. Wang, and Y. Li, “Phys-twin: Physics-informed reconstruction and simulation of deformable objects from videos,” arXiv preprint arXiv:2503.17973 , 2025. [2] A. A. Malik and A. Brem, “Digital twins for collaborative robots: A case study in human-robot interaction,” Robotics and Computer-Integrated Manufacturing , vol. 68, p. 102092, 2021. [3] Y. Mu, T. Chen, Z. Chen, S. Peng, Z. Lan, Z. Gao, Z. Liang, Q. Yu, Y. Zou, M. Xu et al. , “Robotwin: Dual-arm robot benchmark with generative digital twins,” in Proceedings of the Computer Vision and Pattern Recognition Conference , 2025, pp. 27 649–27 660. [4] Y. Feng, Y. Shang, X. Li, T. Shao, C. Jiang, and Y. Yang, “Pie-nerf: Physics-based interactive elastodynamics with nerf,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recog-nition , 2024, pp. 4450–4461. [5] Y. Jiang, C. Yu, T. Xie, X. Li, Y. Feng, H. Wang, M. Li, H. Lau, F. Gao, Y. Yang et al. , “Vr-gs: A physical dynamics-aware interactive gaussian splatting system in virtual reality,” in ACM SIGGRAPH 2024 Conference Papers , 2024, pp. 1–1. [6] T. Xie, Z. Zong, Y. Qiu, X. Li, Y. Feng, Y. Yang, and C. Jiang, “Phys-gaussian: Physics-integrated 3d gaussians for generative dynamics,” in 
+
+Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2024, pp. 4389–4398. [7] H.-y. Chen, E. Tretschk, T. Stuyck, P. Kadlecek, L. Kavan, E. Vouga, and C. Lassner, “Virtual elastic objects,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,2022, pp. 15 827–15 837. [8] X. Li, Y.-L. Qiao, P. Y. Chen, K. M. Jatavallabhula, M. Lin, C. Jiang, and C. Gan, “Pac-nerf: Physics augmented continuum neural radiance fields for geometry-agnostic system identification,” arXiv preprint arXiv:2303.05512 , 2023. [9] Y.-L. Qiao, A. Gao, and M. Lin, “Neuphysics: Editable neural ge-ometry and physics from monocular videos,” Advances in Neural Information Processing Systems , vol. 35, pp. 12 841–12 854, 2022. [10] T. Zhang, H.-X. Yu, R. Wu, B. Y. Feng, C. Zheng, N. Snavely, J. Wu, and W. T. Freeman, “Physdreamer: Physics-based interaction with 3d objects via video generation,” in European Conference on Computer Vision . Springer, 2024, pp. 388–406. [11] L. Zhong, H.-X. Yu, J. Wu, and Y. Li, “Reconstruction and simula-tion of elastic objects with spring-mass 3d gaussians,” in European Conference on Computer Vision . Springer, 2024, pp. 407–423. [12] M. Anitescu, F. A. Potra, and D. E. Stewart, “Time-stepping for three-dimensional rigid body dynamics,” Computer methods in applied mechanics and engineering , vol. 177, no. 3-4, pp. 183–197, 1999. [13] L. Lan, D. M. Kaufman, M. Li, C. Jiang, and Y. Yang, “Affine body dynamics: Fast, stable & intersection-free simulation of stiff materials,” arXiv preprint arXiv:2201.10022 , 2022. [14] S. Stramigioli, Modeling and IPC control of interactive mechanical systems—A coordinate-free approach . Springer, 2001. [15] V. Modi, N. Sharp, O. Perel, S. Sueda, and D. I. Levin, “Simplicits: Mesh-free, geometry-agnostic elastic simulation,” ACM Transactions on Graphics (TOG) , vol. 43, no. 4, pp. 1–11, 2024. [16] Z. Xie, Z. Liu, Z. Peng, W. Wu, and B. Zhou, “Vid2sim: Realistic and interactive simulation from video for urban navigation,” in Proceedings of the Computer Vision and Pattern Recognition Conference , 2025, pp. 1581–1591. [17] M. Li, Z. Ferguson, T. Schneider, T. R. Langlois, D. Zorin, D. Panozzo, C. Jiang, and D. M. Kaufman, “Incremental potential contact: intersection-and inversion-free, large-deformation dynamics.” ACM Trans. Graph. , vol. 39, no. 4, p. 49, 2020. [18] E. Linvill, M. Wallmeier, and S. ¨Ostlund, “A constitutive model for paperboard including wrinkle prediction and post-wrinkle behavior ap-plied to deep drawing,” International Journal of Solids and Structures ,vol. 117, pp. 143–158, 2017. [19] D. W. Coffin and M. Nyg˚ ards, “Creasing and folding,” in Transactions of the 16th fundamental research symposium , 2017, pp. 69–136. [20] E. Todorov, T. Erez, and Y. Tassa, “Mujoco: A physics engine for model-based control,” in 2012 IEEE/RSJ International Conference on Intelligent Robots and Systems . IEEE, 2012, pp. 5026–5033.
