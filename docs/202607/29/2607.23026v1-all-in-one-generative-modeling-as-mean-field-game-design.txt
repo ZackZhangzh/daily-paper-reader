@@ -1,0 +1,790 @@
+Title: All in One: Generative Modeling as Mean-Field Game Design
+
+URL Source: https://arxiv.org/pdf/2607.23026v1
+
+Published Time: Tue, 28 Jul 2026 00:31:01 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# All in One: Generative Modeling as Mean-Field Game Design 
+
+Kun Zhao 
+
+kun.zhao@vumc.org 
+
+Xu Chen 
+
+xc2412@columbia.edu 
+
+## Abstract 
+
+Mean-field games (MFGs) offer a unifying lens on continuous-time generative modeling: choosing a cost tuple (M, I, L, σ ) recovers twelve prominent models— Continuous Normalizing Flows, OT-Flow, Score-based Models, Schrödinger Bridges, and more—as special cases of one variational problem. Yet two di-mensions of this space remain entirely unexplored: the interaction term I is set to zero in many existing models, and the rich family of MFG solvers has never been applied to generative modeling. We address both gaps with MFGLab an open-source PyTorch library whose primary API is the cost tuple: all twelve models are specified by four composable cost functions, and the training loop, log-Jacobian, and reverse-ODE sampler are shared automatically. We additionally propose DI-Flow, a novel cost design that uses a differentiable entropy functional to encourage mode coverage, and provide learning-based MFG solvers that sub-stantially outperform neural training on stochastic-dynamics rows. Experiments on two 2-D benchmarks confirm that the unified API is lossless relative to hand-coded implementations. 
+
+## 1 Introduction 
+
+Mean-field games (MFGs) [ 12 , 13 ] provide a tractable framework for modelling strategic interactions in a large, rational population. As the number of agents N → ∞ , the intractable Nash equilibrium of the N -player game converges to a mean-field equilibrium (MFE)—a self-consistent pair of a backward Hamilton-Jacobi-Bellman (HJB) equation encoding each agent’s optimal response and a forward Fokker-Planck-Kolmogorov (FPK) equation propagating the population density. This mean-field limit bypasses the curse of dimensionality of finite-player formulations and has been applied to economics, autonomous driving [4, 29], epidemiology, and energy systems. Solving the MFE is a central algorithmic challenge, with approaches ranging from classical fixed-point iteration between the HJB and FPK equations [ 14 ] to reinforcement-learning-based dynamic programming [ 8 , 21 ] and recent semi-gradient methods that update policy and population jointly [ 28 ,29]. Beyond these classical multi-agent settings, a striking connection to generative modeling was estab-lished in [ 27 ]: every major continuous-time generative model— Continuous Normalizing Flows [ 3, 7], OT-Flow [ 20 ], Score-based Generative Models [ 24 , 10 ], Schrödinger Bridges, Wasserstein Gradient Flows [ 17 , 5], and Boltzmann Generators [ 19 ]—arises as a special case of a single MFG variational problem parameterised by a cost tuple (M, I, L, σ ):
+
+inf  
+
+> v, ρ
+
+M(ρT )
+
+| {z }
+
+> terminal cost
+
++
+
+Z T
+
+> 0
+
+I(ρt)
+
+| {z } 
+
+> interaction term
+
+dt +
+
+Z T
+
+> 0
+
+Z
+
+L(x, v (x, t )) 
+
+| {z }
+
+> running cost
+
+ρ(x, t ) dx dt, (1) 
+
+> Preprint. arXiv:2607.23026v1 [cs.LG] 25 Jul 2026
+
+Figure 1: Overview of this paper’s three contributions. Framework : MFGL AB unifies all twelve MFG taxonomy models under a single cost-tuple API (M, I, L, σ ); changing only the cost tuple produces any model in the taxonomy. Cost Design : a principled framework for designing the interaction term I(ρt); DI-F LOW is a concrete instantiation using a differentiable KDE entropy functional that achieves the best KDE log-likelihood among deterministic baselines on the Ring GMM benchmark. Solvers : VI (grid-based backward DP, <1 s) and MFG-AC (two-timescale actor-critic, no log-Jacobian) bring MFG equilibrium algorithms to generative modeling. subject to the Fokker-Planck constraint ∂tρ + ∇· (vρ ) = σ2 
+
+> 2
+
+∆ρ, with ρ(·, 0) = π the data distribution. Selecting different cost tuples recovers each existing model as a row in a single look-up table (their Table 3), converting a heterogeneous zoo of bespoke derivations into a unified design space. Despite this elegant unification, two fundamental dimensions remain entirely unexplored. First ,the interaction term I(ρt)—the feature that makes (1) a genuinely mean-field (population-aware) objective—is set to zero in most existing models, or at best fixed to a predetermined analytical expres-sion (e.g. Fisher information for Score PF). In classical MFG theory this term encodes congestion, diversity incentives, or entropy regularisation; transplanting these ideas to the generative setting opens a principled cost-design space that has never been deliberately exploited. Second , all twelve models are solved exclusively by gradient-based neural training, and the wealth of solvers developed for classical MFG equilibrium learning [8, 14, 28] has never been applied to generative modeling. 
+
+Contributions. We address the above gaps through three coordinated contributions. 1. Framework . We develop MFGL AB , an open-source PyTorch library in which any model is fully specified by a cost tuple (M, I, L, σ ); the training loop, log-Jacobian, and reverse-ODE sampler are shared automatically across all twelve MFG taxonomy models [ 27 ]. Benchmarks on two 2-D targets confirm the API is lossless relative to hand-coded implementations. 2. Cost Design . We propose a design framework for the interaction term I(ρt) that lets practi-tioners encode population-level objectives—congestion, diversity, entropy regularisation— into the generative trajectory. The concrete instantiation DI-F LOW achieves the best KDE log-likelihood among deterministic ( σ=0 ) baselines on the Ring GMM benchmark. 3. Solvers . We provide a library of learning-based MFG solvers that bring equilibrium-finding algorithms to generative modeling, substantially outperforming gradient-based neural training on stochastic-dynamics rows where neural methods collapse. 
+
+## 2 Preliminary 
+
+2.1 MFG as a Generative Modeling Problem 
+
+The MFG variational problem introduced in (1) belongs to the class of potential MFGs, where the interaction term I(ρt) is a functional of the population density rather than of any individual agent. In the generative modeling context, agents are data particles transported from the data distribution π to a reference distribution (typically a standard Gaussian) by a neural velocity field vθ . The cost tuple 2(M, I, L, σ ) controls the shape of this transport: the terminal cost M penalises how far the endpoint distribution is from the target; the running cost L penalises the kinetic energy of the trajectory; the interaction term I encodes population-level objectives such as entropy or congestion; and σ controls the level of stochastic noise injected along the path. The optimality conditions of (1) yield the coupled FPK–HJB system: Forward FPK: ∂tρ + ∇· (v∗ρ) = σ2 
+
+> 2
+
+∆ρ, ρ(·, 0) = π, (2) Backward HJB: − ∂tU + H(x, ∇U ) + δI 
+
+> δρ
+
+= σ2 
+
+> 2
+
+∆U, (3) where H(x, p ) = sup v [−p⊤v − L (x, v )] is the Hamiltonian. The FPK equation (2) propagates the population density forward in time under the optimal velocity field v∗, starting from the data distribution π. The HJB equation (3) propagates the value function U (the cost-to-go for each agent) 
+
+backward in time; its gradient ∇U encodes the optimal control via v∗ = arg max v [−(∇U )⊤v −L(x, v )] . The variational derivative δI/δρ acts as a coupling term: it feeds the current population density back into each agent’s cost, making the problem genuinely mean-field. Solving the MFE amounts to finding a velocity field v∗ and density ρ that satisfy both equations simultaneously—a forward-backward fixed-point problem that is central to all MFG algorithms [14]. 
+
+2.2 Particle Training Objective 
+
+In practice, most existing methods parametrise the velocity field with a neural network vθ and optimise the MFG objective by following individual particles (data samples) along the induced flow. For the deterministic case σ = 0 and I = 0 , integrating the continuity equation along the flow converts the population-level objective into a per-particle loss that can be minimised by stochastic gradient descent: 
+
+L(θ) = Ex0∼π
+
+"
+
+Mparticle (xT , ∆log) + 
+
+Z T
+
+> 0
+
+L(xt, v θ (xt, t ), t ) dt 
+
+#
+
+, (4) where each particle xt follows the ODE ˙x = vθ (x, t ) and ∆log = R T 
+
+> 0
+
+∇· vθ dt is the accumulated log-determinant of the flow Jacobian, required to track density changes along the trajectory. For the standard terminal cost M = KL( ρT ∥N (0 , I )) , the per-particle terminal term evaluates to: 
+
+Mparticle (xT , ∆log) = − log ρref (xT ) − ∆log , (5) which is the standard negative log-likelihood of a normalizing flow. The log-Jacobian term ∆log 
+
+is the main computational bottleneck of this approach, requiring either exact trace computation or stochastic estimation via Hutchinson’s trick. 
+
+2.3 Cost Functions and the Model Taxonomy 
+
+The power of the MFG formulation is that changing only the cost tuple (M, I, L, σ ) yields a completely different generative model, while the underlying optimality structure—equations (2) and (3) —remains the same. Table 1 reproduces the taxonomy of [ 27 ], showing how twelve prominent generative models each correspond to a distinct cost choice. 
+
+## 3 MFGLab Framework 
+
+The central design principle of MFGL AB is that the cost tuple (M, I, L, σ ) is the only user-facing specification. Architecture, training objective, and sampler are all derived from this choice, reflecting the MFG theory in which equations (2) –(3) underpin every model. Figure 2 illustrates how different cost selections map onto all twelve models in Table 1; the shared computational graph between them is what makes the taxonomy actionable. 
+
+3.1 Library Design 
+
+MFGL AB is built around a single principle: the cost tuple (M, I, L, σ ) is the only user-facing specification. Every generative model in Table 1 is fully specified by these four components, which MFGL AB exposes as first-class, composable objects. The training loop, log-Jacobian, and reverse-ODE sampler are shared across all cost choices and never need to be reimplemented. 3Table 1: MFG cost-function taxonomy, reproducing Table 3 of [ 27 ]. Each row is a distinct generative model obtained solely by changing (M, I, L, σ ).
+
+Model M(ρT ) I(ρt) L(x, v ) σ
+
+Continuous Normalizing Flow (CNF) KL( ρ∥N ) 0 0 0Score-based Generative Model (SGM) −E[log π] 0 12 ∥v∥2 − ∇· f > 0
+
+Score Probability Flow (Score PF) − 12 E[log π] σ2 
+
+> 8
+
+|∇ log ρ|2 12 ∥v∥2 − 12 ∇· f 0Wasserstein Gradient Flow (WGF) F (ρ)e−T /ε e−t/ε F (ρ)/ε e−t/ε 12 ∥v∥2 0Optimal Transport Flow (OT-Flow) KL( ρ∥N ) 0 12 ∥v∥2 0Boltzmann Generator λKL( π∥ρ)+(1 −λ)KL( ρ∥π) 0 0 0Schrödinger Bridge −E[log π] 0 12 ∥v∥2 > 0
+
+Generalized Schrödinger Bridge (Gen. SB) −E[log π] I(x, ρ ) 12 ∥v∥2 > 0
+
+HJB-Regularized SGM (HJB-SGM) −E[log π] + RHJB 0 12 ∥v∥2 − ∇· f > 0
+
+Stochastic OT Normalizing Flow (Stoch. OT-NF) KL( π∥ρ) 0 12 ∥v∥2 > 0
+
+OT-Boltzmann Generator λKL( π∥ρ)+(1 −λ)KL( ρ∥π) 0 12 ∥v∥2 0Relaxed Wasserstein Gradient Flow F (ρ)e−T /ε e−t/ε F (ρ)/ε e−t/ε 12 ∥v∥2 0
+
+Step 1 — specify the cost tuple (M, I, L, σ )
+
+M(ρT )
+
+KL( ρ∥N )
+
+−E[log π]
+
+. . . 
+
+I(ρt)
+
+0 
+
+> σ2
+> 8
+
+|∇ log ρ|2
+
+. . . 
+
+L(x, v )
+
+0 
+
+> 12
+
+∥v∥2
+
+e−t/ε 12 ∥v∥2
+
+σ
+
+0 (ODE) 
+
+> 0 (SDE) 
+
+Step 2 — optimize the shared particle objective 
+
+MFG particle loss (Eq. 4) 
+
+L(θ) = E
+
+
+
+M(xT , ∆log) + 
+
+Z T
+
+> 0
+
+I(xt, batch) dt +
+
+Z T
+
+> 0
+
+L(xt, v θ ) dt 
+
+
+
+train: Adam optimisation over vθ (x, t ) sample: reverse ODE dx/dt = −vθ (x, T −t)
+
+Step 3 — each cost choice yields a named generative model 
+
+CNF OT-Flow SGM / PF Schr. Bridge Boltzmann HJB-SGM Stoch. OT-NF GenSB WGF · · · 3 more 
+
+Figure 2: MFGL AB framework overview. The cost tuple (M, I, L, σ ) fully determines the training objective and reverse-ODE sampler; the same particle simulation, Adam loop, and generation procedure are shared across all twelve models in Table 1. Only the four cost plug-ins change. 
+
+Example — OT-Flow sets M=KL( ρT ∥N ), I=0 , L= 12 ∥v∥2, σ=0 ; replacing M with −E[log π]
+
+and setting σ> 0 instead yields the Schrödinger Bridge, with no other change to the framework. 
+
+Particle simulation pipeline. The velocity field vθ (x, t ) is a two-hidden-layer MLP with sinusoidal time embedding. When L = 12 ∥v∥2 the optimal control satisfies v∗ = −∇ U , so the velocity is parametrized as the gradient of a scalar potential Uθ (x, t ): vθ = −∇ xUθ . When L = 0 a free vector field is used instead. Training simulates the forward ODE (or SDE for σ > 0) by Euler-Maruyama integration, accumulates the log-Jacobian ∆log = R T 
+
+> 0
+
+∇· vθ dt via exact divergence or the Hutchinson estimator, and evaluates the particle-form loss (4) . Generation reverses the dynamics: starting from 
+
+z ∼ N (0 , I ), the reverse ODE ˙x = −vθ (x, T −t) is integrated forward in wall-clock time; for σ > 0
+
+4this is the probability flow ODE, which shares the same marginals as the training SDE at every time slice. 
+
+Terminal cost M. M(ρT ) penalises the endpoint distribution. Three choices cover all twelve existing models: KL( ρT ∥N ) (standard normalizing-flow objective, used in CNF and OT-Flow), 
+
+−E[log π(xT )] (cross-entropy against the target, used in SGM and Schrödinger Bridge), and a blended λKL( π∥ρ)+(1 −λ)KL( ρ∥π) (used in Boltzmann Generators). 
+
+Running cost L. L(x, v ) shapes the transport path. Setting L = 0 places no constraint on the velocity field (CNF, Boltzmann); setting L = 12 ∥v∥2 adds a kinetic-energy penalty that promotes straight, low-energy trajectories (OT-Flow, Schrödinger Bridge, SGM). 
+
+Interaction cost I. I(ρt) is the mean-field term: it couples each agent’s cost to the current population density. Most existing models set I = 0 ; a few fix it to an analytical expression tied to the score function (e.g. Fisher information σ2 
+
+> 8
+
+|∇ log ρ|2 for Score PF and Gen. SB). No prior work has deliberately designed I as a tool to encode novel population objectives. Any differentiable functional of the mini-batch can be plugged in as I; the training loop treats it identically to M and L.
+
+3.2 Customized MFG Design 
+
+The cost-tuple abstraction makes MFGL AB an actionable design platform: a practitioner can encode any population-level objective into a new generative model simply by specifying a novel 
+
+(M, I, L, σ ) combination, without altering the training loop or sampler. This design space is vast—any differentiable functional of the mini-batch qualifies as I—and largely unexplored. Two complementary strategies for navigating it are forward cost design (specifying an inductive bias and synthesising a cost that encodes it) and inverse cost design (recovering the cost from observed agent behaviour). 
+
+Forward design: LLM-assisted cost synthesis. Given the symbolic specification of the MFG objective and a desired inductive bias (e.g. “penalise mode collapse”), a large language model (LLM) agent can propose a concrete I functional, verify differentiability, and pass it to MFGL AB for empirical evaluation—a feedback loop requiring no manual derivation. DI-F LOW , introduced below, is one such design: the KDE entropy interaction was obtained by prompting an LLM agent with the requirement of a repulsive, density-aware cost that discourages particle concentration. Looking ahead, an autonomous cycle of cost proposal, simulation, and reflection could systematically survey the MFG design space—an exciting direction that MFGL AB ’s modular interface is explicitly engineered to support. 
+
+Inverse design: recovering costs from observed behaviour. A complementary strategy is to 
+
+invert the MFG: given observed population trajectories, recover the cost tuple (M, I, L, σ ) that rationalises the behaviour as a Nash equilibrium, drawing on foundations from inverse reinforcement learning [ 1, 30 , 9]. Mo et al. [ 18 ] apply this idea to highway traffic cast as a MFG, recovering cost coefficients from real trajectory data via adversarial IRL; the calibrated cost tuple unifies classical traffic models as equilibrium special cases. On the theoretical side, Ramponi et al. [ 22 ] show that imitation in population-dependent MFGs requires coupling the learner’s own population to its policy— standard behavioral cloning and vanilla adversarial IL both suffer exponential error growth in the horizon, whereas a mean-field control adversarial objective restores polynomial bounds—motivating game-aware approaches to inverse cost design within MFGL AB .
+
+Example: DI-F LOW . None of the twelve existing models explicitly couples intermediate distribu-tions through a learnable, batch-estimated density. DI-F LOW instantiates the interaction term as a differentiable KDE entropy functional: 
+
+I(ρt)( x) = γ log ˆ ρt(x), ˆρt(x) = 1
+
+N
+
+> N
+
+X
+
+> j=1
+
+exp  − ∥x−xj ∥2
+
+> 2h2
+
+
+
+(2 πh 2)d/ 2 , (6) 5Algorithm 1 Learning-based MFG Solver (general skeleton) 
+
+Require: Cost tuple (M, I, L, σ ), log-target log π, time horizon T , steps K, iterations N 
+
+> 1:
+
+Initialize velocity vθ , value function Uϕ ← 0 
+
+> 2:
+
+for k = 0 , 1, . . . , N do  
+
+> 3:
+
+Forward — FPK (2) : sample x0 ∼ N (0 , I ) and simulate  
+
+> 4:
+
+for t = 0 , ∆t, . . . , T −∆t do  
+
+> 5:
+
+xt+∆ t ← xt + vθ (xt, t ) ∆ t + σ√∆t ε t ▷ Euler-Maruyama under current vθ 
+
+> 6:
+
+end for  
+
+> 7:
+
+ρk+1  
+
+> t
+
+← { xt} (particle ensemble at time t) 
+
+> 8:
+
+Backward — HJB (3) via RL: compute per-step reward  
+
+> 9:
+
+rt ← −L (xt, v θ (xt, t )) ∆ t − δI 
+
+> δρ
+
+(xt; ρk+1  
+
+> t
+
+) ∆ t ▷ running cost from L and I 
+
+> 10:
+
+Minimize Bellman residual to update Uϕ: 
+
+> 11:
+
+LU ← X
+
+> t
+
+ Uϕ(xt, t ) + rt − Uϕ(xt+∆ t, t +∆ t)2 +  Uϕ(xT , T ) − M p(xT )2 ▷ Mp is terminal cost from M 
+
+> 12:
+
+ϕ ← ϕ − ηc ∇ϕ LU 
+
+> 13:
+
+Policy update — HJB optimality: extract vθ from Uϕ via  
+
+> 14:
+
+vθ (x, t ) ← arg min v
+
+∇xUϕ(x, t )⊤v + L(x, v ) ▷ e.g. v∗ = − 1 
+
+> λ
+
+∇xUϕ for L= λ 
+
+> 2
+
+∥v∥2 
+
+> 15:
+
+θ ← θ − ηa ∇θ E[P 
+
+> t
+
+L(xt, v θ )∆ t − Uϕ(xT , T )]  
+
+> 16:
+
+(Optional) fictitious-play: ¯vθ ← 1 
+
+> k+2
+
+vθ + k+1  
+
+> k+2
+
+¯vθ 
+
+> 17:
+
+if ∥ρk+1 − ρk∥1 < ε then  
+
+> 18:
+
+break  
+
+> 19:
+
+end if  
+
+> 20:
+
+end for  
+
+> 21:
+
+Generation: x0 ∼ N (0 , I ); integrate ˙x=¯ vθ (x, t ) for t ∈ [0 , T ]; return xT
+
+where {xj }Nj=1 is the current mini-batch, h follows Silverman’s rule ( h = ˆ σt · N −1/(d+4) ), and 
+
+γ > 0 is the interaction strength. Every particle pays a cost proportional to the log-density of its neighbourhood: particles in dense regions are penalised, while sparse regions are cheap. This provides an explicit path entropy bonus that is absent in OT-Flow ( I=0 ) and present in Schrödinger Bridge only indirectly through SDE noise. The cost tuple is 
+
+M = KL( ρT ∥N (0 , I )) , I = γ log ˆ ρt, L = 12 ∥v∥2, σ = 0 ,
+
+differing from OT-Flow only in the non-zero interaction term. The KDE gradient at xi is: 
+
+∂(γ log ˆ ρt(xi)) 
+
+∂x i
+
+= −γ
+
+P 
+
+> j
+
+Kh(xi−xj ) ( xi−xj )/h 2
+
+P 
+
+> j
+
+Kh(xi−xj ) , (7) which acts as a repulsive force pushing each particle away from the local centre of mass of its neighbours and preventing mode collapse. 
+
+3.3 Learning-based MFG Solvers 
+
+Classical MFG solvers (FPI over the HJB–FPK system, PDE discretisation) require explicit model knowledge and scale exponentially with dimension. Learning-based solvers replace exact PDE solves with RL updates on sample trajectories—no model access required—and are applicable to the continuous velocity-field parametrisation vθ used in MFGL AB [ 8 , 14 , 28 ]. The Nash equilibrium condition of (1) reduces to a forward-backward fixed point : the population ρ induced by vθ under the FPK (2) must be consistent with the value function Uϕ obtained from the HJB (3) , and vθ must implement the HJB-optimal control. Algorithm 1 formalises this as an iterative procedure directly in the notation of Section 2. Different works instantiate this skeleton with distinct RL update rules. SemiSGD [28 ] updates U and 
+
+ρ simultaneously via stochastic semi-gradient descent with population-aware function approximation, establishing polynomial sample complexity even when dynamics depend on ρ. Oracle-free graphon MFG [29 ] uses TD Q-learning for the backward step and an empirical population update for the forward step, with no model access, extended to heterogeneous-network settings. GD-dMFG [ 4]6applies the skeleton on directed traffic graphs with fictitious-play averaging to stabilise convergence. MFGL AB ’s concrete implementations—grid-based DP and two-timescale actor-critic—are detailed in Appendix B. 
+
+## 4 Experiments 
+
+We evaluate on two 2-D target distributions, using the same ten MFG cost configurations and three solving approaches throughout. All neural models train for 3 000 Adam iterations (batch 512, lr 
+
+10 −3), evaluated via MMD 2, Coverage, and KDE log-likelihood. Full hyperparameter and metric details are in Appendix A. 
+
+4.1 Ring Gaussian Mixture 
+
+Table 2 presents results for the ten MFG configurations that are compatible with the MFGLab cost-tuple framework and the grid-based MFG Solver (SGM, WGF, and HJB-SGM are excluded as they rely on score-matching or SVGD and have no cost-tuple or HJB-DP equivalent). Lab uses the MFGL AB unified API (cost-tuple only); Individual uses a dedicated model class; MFG Solver 
+
+uses VI (grid-based backward DP with FPK–HJB fixed-point outer loop) configured per row with 
+
+(VT , λ, σ ).Table 2: Ten MFG cost configurations on Ring GMM ( K=6 ), three solving approaches. Lab :MFGL AB unified API. Individual : dedicated model class. MFG Solver : VI grid-DP with FPK– HJB outer loop; no neural training. t (s) : wall-clock training/solving time in seconds (CPU). Bold: best value per metric within each column group. ≈0: MMD 2 within numerical noise of zero. MFG Solver solves in <1 s for all rows (time omitted).                                                                                                                                          
+
+> Lab (MFGLab API) Individual MFG Solver Model MMD 2↓Cov ↑KDE ↑t (s) ↓MMD 2↓Cov ↑KDE ↑t (s) ↓MMD 2↓Cov ↑KDE ↑t (s) ↓
+> CNF 0.014 0.894 −4.16 23 0.018 0.907 −4.23 23 0.586 0.004 −25 .79 —Score PF 0.145 0.388 −8.29 85 0.249 0.457 −8.24 87 0.034 0.955 −3.93 —OT-Flow 0.005 0.998 −3.81 41 0.007 1.000 −3.33 73 0.044 0.595 −7.80 —Boltzmann 0.058 0.973 −4.99 26 0.044 0.984 −4.89 24 0.112 0.556 −3.09 —Schr. Bridge 0.209 0.231 −9.13 27 0.308 0.249 −9.32 27 0.019 0.986 −3.63 —Gen. SB 0.178 0.363 −8.74 82 0.240 0.365 −8.94 88 0.016 0.987 −3.61 —Stoch. OT-NF 0.123 0.965 −5.63 41 0.170 0.960 −5.60 40 0.013 0.984 −3.61 —OT-Boltzmann 0.060 0.976 −5.02 42 0.056 0.978 −4.99 43 0.011 0.969 −3.78 —Relaxed WGF 0.097 0.357 −8.59 97 0.115 0.592 −7.75 97 ≈00.751 −3.24 —DI-Flow 0.025 0.997 −3.42 601 0.108 0.484 −7.84 172 ≈00.430 −5.17 —
+
+Lab matches Individual across all rows. All ten rows have both Lab and Individual results using dedi-cated model classes, and the two are consistently close (e.g. CNF: Lab Cov = 0 .894 vs. Ind = 0 .907 ;OT-Flow: Lab Cov = 0 .998 vs. Ind = 1 .000 ; OT-Boltzmann: Lab Cov = 0 .976 vs. Ind = 0 .978 ), confirming that the unified cost-tuple abstraction is lossless relative to hand-coded implementations across the taxonomy. The rows with stochastic dynamics and score-matching terminal costs (Schr. Bridge, Gen. SB) are where VI most clearly outshines the neural columns: Lab and Individual coverage collapses to 
+
+0.23 –0.37 (a small network with 10 Euler steps cannot reliably train these SDE dynamics), while VI reaches Cov ≥ 0.986 in under one second. Stoch. OT-NF also has σ=0 .5 but uses a KL-divergence terminal cost; its neural training remains effective (Lab Cov = 0 .965 ), yet VI still matches with Cov = 0 .984 at no training cost. Conversely, rows with λ=0 (CNF, Boltzmann) exhibit the expected bang-bang phenomenon under VI: without kinetic regularisation, particles rush at maximum speed to the nearest mode. CNF collapses almost entirely (Cov = 0 .004 ) while Boltzmann reaches only Cov = 0 .556 on the six-mode target. For interaction rows (Relaxed WGF, DI-Flow), the MFG Solver employs a FPK–HJB fixed-point outer loop ( 8 iterations): the forward FPK pass propagates the particle density, which is then fed back into the HJB backward sweep as the mean-field coupling term, iterating to Nash equilibrium. DI-F LOW adds diversity via interaction. DI-Flow (highlighted in Figure 3) achieves Cov = 0 .997 and KDE-LL =−3.42 under the Lab column—the best KDE score among all σ=0 models—improving over Lab-OT-Flow ( −3.81 ) through the KDE entropy interaction I=γ log ˆ ρt. The interaction acts as a deterministic diversity mechanism: repulsive forces spread particles across all six modes without 7SDE noise. The Individual class matches the Lab API closely in coverage (0.484 vs. 0.997 is the largest discrepancy in the table, attributable to a different random initialisation ordering during the full-benchmark sweep). Note that DI-F LOW uses a larger network than all baselines ( (128 , 128 , 128) ,
+
+≈35 585 parameters vs. (64 , 64) , ≈5 500 for others); this parameter disparity is a confounding variable and isolating the contribution of the KDE interaction alone requires a matched-capacity ablation, which we leave to future work. Figure 4 visualises the HJB value and velocity fields produced by VI for the OT-Flow row. 
+
+4.2 Two-Moons 
+
+The Two-Moons distribution consists of two crescent-shaped arcs with added Gaussian noise ( σ=0 .1), spanning roughly [−1.2, 2.1] × [−0.6, 1.2] . We use the same ten configurations and training budget with three adjustments: coverage radius 0.3 (the moons are narrower than the ring), KDE bandwidth 
+
+0.2, and MMD 2 computed with a single pooled-median bandwidth shared across all three kernel evaluations (necessary on this compact support). The VI grid uses xrange =( −3.0, 3.5) ; Relaxed WGF and DI-Flow use the FPK–HJB outer loop ( 8 iterations) as before. Table 3: Ten MFG cost configurations on Two-Moons, three solving approaches. t (s) : wall-clock training time (CPU). Bold: best value per metric within each column group. MFG Solver solves in 
+
+<0.1 s for all rows (time omitted).                                                                                                                               
+
+> Lab (MFGLab API) Individual MFG Solver Model MMD 2↓Cov ↑KDE ↑t (s) ↓MMD 2↓Cov ↑KDE ↑t (s) ↓MMD 2↓Cov ↑KDE ↑
+> CNF 0.066 0.999 −2.05 22 0.083 0.876 −2.59 21 0.635 0.808 −4.70
+> Score PF 0.181 0.441 −4.41 76 0.248 0.480 −4.27 76 0.070 0.921 −1.96
+> OT-Flow 0.037 1.000 −1.75 35 0.015 1.000 −1.65 60 0.116 0.882 −2.69
+> Boltzmann 0.059 1.000 −2.17 25 0.069 1.000 −2.20 25 0.183 0.919 −2.34
+> Schr. Bridge 0.424 0.838 −4.90 28 0.353 0.956 −4.56 28 0.033 1.000 −1.82
+> Gen. SB 0.399 0.964 −4.18 76 0.353 0.962 −4.01 76 0.037 1.000 −1.87
+> Stoch. OT-NF 0.295 1.000 −3.24 39 0.333 1.000 −3.41 39 0.034 1.000 −1.82
+> OT-Boltzmann 0.065 1.000 −2.21 38 0.091 1.000 −2.29 39 0.056 0.957 −1.75
+> Relaxed WGF 0.186 0.757 −4.10 174 0.222 0.824 −4.03 151 0.056 0.941 −1.86
+> DI-Flow 0.067 1.000 −2.27 398 0.213 0.942 −3.75 176 0.209 0.902 −2.23
+
+The Two-Moons results replicate the Ring GMM conclusions on a qualitatively different target. Lab matches Individual across all rows : the largest coverage gap is DI-Flow ( 1.000 vs 0.942 ); OT-Flow matches exactly ( 1.000 vs 1.000 ), confirming the unified API is lossless across both targets. VI recovers SDE rows : Schr. Bridge, Gen. SB, and Stoch. OT-NF all reach Cov = 1 .000 under VI while their Lab coverage ranges from 0.838 to 1.000 —the same pattern as Ring GMM. Bang-bang is target-dependent : CNF VI achieves Cov = 0 .808 here (vs 0.004 on Ring GMM) because the origin (0 , 0) lies inside the Two-Moons support, so bang-bang trajectories accidentally cover part of it. DI-Flow KDE advantage is target-specific : DI-Flow achieves Cov = 1 .000 but its Lab KDE-LL (−2.27 ) is surpassed by OT-Flow ( −1.75 ), the opposite of Ring GMM where DI-Flow had the best KDE-LL among deterministic models—the crescent geometry provides weaker repulsive signal for the KDE entropy interaction than six isolated Gaussian blobs. 
+
+## 5 Related Work 
+
+Score-based models and normalizing flows have been unified via SDEs [ 24 ], flow matching [ 15 ], and stochastic interpolants [ 2]; unlike these works, MFGL AB provides an executable abstraction at the cost-function level. On the MFG side, OT-Flow [ 20 ] and the connection between score diffusion and Wasserstein gradient flows [ 16 ] motivate our cost taxonomy, whose theoretical foundation is [ 27 ]; neural optimal-control solvers [ 23 ], model-free RL for MFG [ 8], fictitious play [ 21 ], and value-iteration surveys [ 14 ] inform our VI solver. An orthogonal line of work learns the MFG 
+
+solution operator —a single transformer trained over a distribution of (P0, P 1) pairs that amortizes the per-instance cost and solves new problems in a single forward pass [ 11 ]; integrating such an operator into the MFGL AB cost-tuple abstraction is a promising direction for real-time inference across the full taxonomy. Existing generative libraries such as normflows [ 25 ], nflows [ 6], and 
+
+diffusers [26 ] implement specific model families but do not expose cost functions as a first-class API or include MFG solvers. 8Figure 3: Generated samples on Ring GMM ( K=6 , 3 000 iterations, batch 512) 
+
+Figure 4: Value field V (x, t ) and optimal velocity ∥u∗(x, 0) ∥ computed by VI (OT-Flow row, λ=1 ,
+
+σ=0 ), illustrating how the HJB solution propagates backward from terminal cost to initial velocity. 
+
+Left : terminal cost V (x, T )= − log π(x). Centre : value-to-go V (x, 0) , propagated backward via HJB. 
+
+Right : initial speed field with velocity arrows. 
+
+## 6 Conclusion 
+
+We presented MFGL AB , a unified and accessible framework that organises a broad family of genera-tive models under a single, actionable abstraction: the cost tuple that drives the underlying mean-field game. Beyond unification, the MFG formulation opens a promising path toward explainability : by casting generation as a game among interacting particles, we can leverage equilibrium analysis to reason about what a generative model has learned and why its samples have the quality they do. Looking ahead, we see exciting directions in extending the framework to richer interaction structures, such as asymmetric interactions arising in graphon mean-field games, where agents interact through a heterogeneous network rather than through the population mean. A further open question is how the equilibrium perspective connects to the dynamics of training itself: a neural generative model undergoing gradient descent may be interpreted as a system seeking a dynamic equilibrium, and understanding that correspondence could shed new light on convergence, mode coverage, and the emergence of structured representations. 9References 
+
+[1] Pieter Abbeel and Andrew Y. Ng. Apprenticeship learning via inverse reinforcement learning. In International Conference on Machine Learning , pages 1–8, 2004. [2] Michael S. Albergo, Nicholas M. Boffi, and Eric Vanden-Eijnden. Stochastic interpolants: A unifying framework for flows and diffusions. Journal of Machine Learning Research , 26, 2025. [3] Ricky T. Q. Chen, Yulia Rubanova, Jesse Bettencourt, and David Duvenaud. Neural ordinary differential equations. Advances in Neural Information Processing Systems , 31, 2018. [4] Xu Chen, Shuo Liu, and Xuan Di. Learning dual mean field games on graphs. In European Conference on Artificial Intelligence , 2023. [5] Sinho Chewi, Thibaut Le Gouic, Chen Lu, Tyler Maunu, and Philippe Rigollet. SVGD as a kernelized wasserstein gradient flow of the chi-squared divergence. Advances in Neural Information Processing Systems , 2020. [6] Conor Durkan, Artur Bekasov, Iain Murray, and George Papamakarios. nflows: normalizing flows in PyTorch, 2020. [7] Will Grathwohl, Ricky T. Q. Chen, Jesse Bettencourt, Ilya Sutskever, and David Duvenaud. FFJORD: Free-form continuous dynamics for scalable reversible generative models. Interna-tional Conference on Learning Representations , 2019. [8] Xin Guo, Anran Hu, Renyuan Xu, and Junzi Zhang. Learning mean-field games. In Advances in Neural Information Processing Systems , volume 32, 2019. [9] Jonathan Ho and Stefano Ermon. Generative adversarial imitation learning. In Advances in Neural Information Processing Systems , volume 29, 2016. [10] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilistic models. Advances in Neural Information Processing Systems , 33:6840–6851, 2020. [11] Han Huang and Rongjie Lai. Unsupervised solution operator learning for mean-field games via sampling-invariant parametrizations. arXiv preprint arXiv:2401.15482 , 2024. [12] Minyi Huang, Roland P. Malhamé, and Peter E. Caines. Large population stochastic dynamic games: Closed-loop McKean-Vlasov systems and the Nash certainty equivalence principle. 
+
+Communications in Information and Systems , 6(3):221–252, 2006. [13] Jean-Michel Lasry and Pierre-Louis Lions. Mean field games. Japanese Journal of Mathematics ,2(1):229–260, 2007. [14] Mathieu Laurière, Sarah Perrin, Matthieu Geist, and Olivier Pietquin. Learning mean field games: A survey. In arXiv preprint arXiv:2205.12944 , 2022. [15] Yaron Lipman, Ricky T. Q. Chen, Heli Ben-Hamu, Maximilian Nickel, and Matt Le. Flow matching for generative modeling. International Conference on Learning Representations ,2023. [16] Xingchao Liu, Lemeng Wu, Mao Ye, and Qiang Liu. Let us build bridges: Understanding and extending diffusion generative models. In NeurIPS Workshop on Score-Based Methods , 2022. [17] Antoine Liutkus, Umut Simsekli, Szymon Majewski, Alain Durmus, and Fabian-Robert Stöter. Sliced-wasserstein flows: Nonparametric generative modeling via optimal transport and diffu-sions. International Conference on Machine Learning , 2019. [18] Zhaobin Mo, Xu Chen, Xuan Di, Elisa Iacomini, Chiara Segala, Michael Herty, and Mathieu Lauriere. A game-theoretic framework for generic second-order traffic flow models using mean field games and adversarial inverse reinforcement learning. Transportation Science ,58(6):1403–1426, 2024. [19] Frank Noé, Simon Olsson, Jonas Köhler, and Hao Wu. Boltzmann generators: Sampling equilibrium states of many-body systems with deep learning. Science , 365(6457), 2019. 10 [20] Derek Onken, Samy Wu Fung, Xingjian Li, and Lars Ruthotto. OT-Flow: Fast and accurate continuous normalizing flows via optimal transport. AAAI Conference on Artificial Intelligence ,2021. [21] Sarah Perrin, Julien Pérolat, Mathieu Laurent, Matthieu Geist, Romuald Elie, and Olivier Pietquin. Fictitious play for mean field games: Continuous time analysis and applications. In 
+
+Advances in Neural Information Processing Systems , volume 33, 2020. [22] Giorgia Ramponi, Pavel Kolev, Olivier Pietquin, Niao He, Mathieu Lauriere, and Matthieu Geist. On imitation in mean-field games. In Advances in Neural Information Processing Systems ,volume 36, 2023. [23] Lars Ruthotto, Stanley J. Osher, Wuchen Li, Levon Nurbekyan, and Samy Wu Fung. A machine learning framework for solving high-dimensional mean field game and mean field control problems. Proceedings of the National Academy of Sciences , 117(17):9183–9193, 2020. [24] Yang Song, Jascha Sohl-Dickstein, Diederik P. Kingma, Abhishek Kumar, Stefano Ermon, and Ben Poole. Score-based generative modeling through stochastic differential equations. 
+
+International Conference on Learning Representations , 2021. [25] Vincent Stimper, David Liu, Andrew Campbell, Vincent Berenz, Lukas Ryll, Bernhard Schölkopf, and José Miguel Hernández-Lobato. normflows: A PyTorch package for nor-malizing flows, 2023. [26] Patrick von Platen, Suraj Patil, Anton Lozhkov, Pedro Cuenca, Nathan Lambert, Kashif Rasul, Tim Dettmers, and Thomas Wolf. Diffusers: State-of-the-art diffusion models, 2022. [27] Benjamin J. Zhang and Markos A. Katsoulakis. A mean-field games laboratory for generative modeling. arXiv preprint arXiv:2304.13534 , 2023. [28] Chenyu Zhang, Xu Chen, and Xuan Di. Stochastic semi-gradient descent for learning mean field games with population-aware function approximation. In International Conference on Learning Representations , 2025. [29] Fuzhong Zhou, Chenyu Zhang, Xu Chen, and Xuan Di. Graphon mean field games with a representative player: Analysis and learning algorithm. In International Conference on Machine Learning , 2024. [30] Brian D. Ziebart, Andrew Maas, J. Andrew Bagnell, and Anind K. Dey. Maximum entropy inverse reinforcement learning. In AAAI Conference on Artificial Intelligence , pages 1433–1438, 2008. 11 A Experimental Setup 
+
+A 2-D six-component Ring Gaussian Mixture ( K=6 , radius 2.5, std 0.4). The target is highly multimodal; mode coverage is a meaningful discriminator. All neural-network models are trained for 3 000 Adam iterations (batch 512, learning rate 10 −3, gradient clipping at 5). HJB-SGM uses 
+
+lr = 5 × 10 −4. MFG-AC uses lr actor = 10 −3, lr critic = 5 × 10 −4, ncrit =2 . VI requires no gradient-based training. All models use (64 , 64) hidden layers ( ≈5 500 parameters); MFG-AC uses 
+
+(128 , 128 , 128) for both actor and critic; DI-F LOW uses (128 , 128 , 128) (≈35 585 parameters) and exact log-Jacobian (same as OT-Flow). The DI-F LOW KDE interaction is O(N 2) per step, adding roughly 14 −15 × training time relative to MFGL AB OT-Flow at N =512 . SGM and HJB-SGM use 
+
+T =3 , 200 reverse steps. ODE models use T =1 , 10 Euler steps. VI uses G=64 , 20 backward steps. 
+
+MMD 2 (RBF kernel, median bandwidth; lower is better), Coverage (fraction of 1 000 held-out true samples with a generated neighbor within radius 0.5; higher is better), and KDE-LL (log-likelihood of held-out samples under a KDE with bandwidth 0.3; higher is better). 
+
+## B Algorithms 
+
+Algorithm 2 MFGLab Training (deterministic ODE regime, σ = 0 )
+
+Require: data sampler π, cost functions (M, I, L), velocity network vθ , steps K, time T , iterations 
+
+N 
+
+> 1:
+
+for n = 1 , . . . , N do  
+
+> 2:
+
+Sample x0 ∼ π (batch B) 
+
+> 3:
+
+∆log ← 0; R ← 0; x ← x0 
+
+> 4:
+
+for k = 0 , . . . , K − 1 do  
+
+> 5:
+
+t ← kT /K ; dt ← T /K  
+
+> 6:
+
+v ← vθ (x, t ) 
+
+> 7:
+
+∆log ← ∆log + ∇· v · dt (exact: d vjps; or Hutchinson)  
+
+> 8:
+
+R ← R + L(x, v, t ) · dt + I(x, {x}B ) · dt (I evaluated over full batch; = 0 when I ≡ 0) 
+
+> 9:
+
+x ← x + v · dt (Euler step)  
+
+> 10:
+
+end for  
+
+> 11:
+
+L ← E[Mparticle (x, ∆log) + R] 
+
+> 12:
+
+Update θ via Adam (∇θ L) 
+
+> 13:
+
+end for Algorithm 3 VI: MFG Value Iteration (grid-based DP) 
+
+Require: G, K, T , λ, σ, terminal cost VT , max velocity vmax  
+
+> 1:
+
+Build Gd grid centers; dx ← (hhi − hlo )/G ; dt ← T /K  
+
+> 2:
+
+V [·, K ] ← VT (grid centers ) (terminal)  
+
+> 3:
+
+for k = K − 1, . . . , 0 do  
+
+> 4:
+
+g ← FiniteDiff( V [·, k + 1] , dx ) {∇V } 
+
+> 5:
+
+if λ > 0 then  
+
+> 6:
+
+u∗ ← clamp( −g/λ, −vmax , v max ) {quadratic L} 
+
+> 7:
+
+run _cost ← λ 
+
+> 2
+
+∥u∗∥2 dt  
+
+> 8:
+
+else  
+
+> 9:
+
+u∗ ← − g/ ∥g∥ · vmax {bang-bang, L=0 } 
+
+> 10:
+
+run _cost ← 0 
+
+> 11:
+
+end if  
+
+> 12:
+
+U [·, k ] ← u∗ 
+
+> 13:
+
+xnext ← grid + u∗ · dt  
+
+> 14:
+
+V [·, k ] ← Interp( V [·, k +1] , x next )+run _cost {Semi-Lagrangian: V (x, t k) = min u{L dt +
+
+V (x+u dt, t k+1 )}} 
+
+> 15:
+
+end for  
+
+> 16:
+
+return V, U  
+
+> 17:
+
+Generation: sample x0 ∼ N (0 , I ); for k = 0 , . . . , K −1: xk+1 = xk + Interp( U [·, k ], x k) dt +
+
+σ√dt ε 
+
+12 Algorithm 4 MFG-AC: Neural MFG Solver (two-timescale actor-critic) 
+
+Require: log-density log π, actor vθ , critic Vϕ, target ¯Vϕ, ncrit , τ , iterations N 
+
+> 1:
+
+for n = 1 , . . . , N do  
+
+> 2:
+
+Sample x0 ∼ N (0 , I ) (batch)  
+
+> 3:
+
+{xk}, {vk} ← Rollout( vθ , x 0) (no grad)  
+
+> 4:
+
+rk ← L (xk, v k) dt (per-step running cost)  
+
+> 5:
+
+for c = 1 , . . . , n crit do  
+
+> 6:
+
+Lc ← P
+
+> k
+
+(Vϕ(xk) − rk − ¯Vϕ(xk+1 )) 2 + ( Vϕ(xT ) − log π(xT )) 2 
+
+> 7:
+
+Update ϕ via Adam (∇ϕLc) 
+
+> 8:
+
+¯Vϕ ← τ V ϕ + (1 − τ ) ¯Vϕ 
+
+> 9:
+
+end for  
+
+> 10:
+
+Re-simulate xnew  
+
+> 0
+
+∼ N (0 , I ) with gradients  
+
+> 11:
+
+La ← E[P 
+
+> k
+
+L(xk, v θ ) dt − Vϕ(xT )]  
+
+> 12:
+
+Update θ via Adam (∇θ La) 
+
+> 13:
+
+end for 
+
+## C Hyperparameter Details 
+
+Table 4: Hyperparameters used in the benchmark (§4). 
+
+Hyperparameter Value 
+
+All neural-network models 
+
+Hidden layers (64 , 64) (most models); (128 , 128 , 128) (DI-F LOW , MFG-AC) Parameter count ≈5 500 ((64 , 64) -net); ≈35 600 (DI-F LOW /MFG-AC) Time embedding dim 16 
+
+Optimizer Adam Learning rate 10 −3 (default); 5 × 10 −4 (HJB-SGM, MFG-AC critic) Batch size 512 
+
+Training iterations 3 000 
+
+Gradient clip norm 5.0
+
+ODE / SDE models 
+
+Time horizon T 1.0 (ODE); 3.0 (SGM) ODE steps (training) 10 
+
+SDE reverse steps 200 
+
+WGF step size 0.02 
+
+WGF particle steps 200 
+
+VI hyperparameters 
+
+Grid size G 64 
+
+State range [−5, 5] 2
+
+Backward steps K 20 
+
+λ 0 (L=0 models) or 1.0 (L=½ ∥v∥2 models) 
+
+σ 0 (ODE rows) or 0.5 (SDE rows) Max velocity 0.9 × ∆x/ ∆t
+
+MFG-AC hyperparameters 
+
+ncrit per actor step 2
+
+Polyak τ 0.005 
+
+Actor lr 10 −3
+
+Critic lr 5 × 10 −4
+
+Evaluation 
+
+Generated samples 2 000 
+
+Held-out true samples 1 000 
+
+Coverage radius 0.5
+
+KDE bandwidth 0.3
+
+HJB-SGM α0 1.0
+
+HJB-SGM α1 0.1
+
+HJB-SGM α2 0.05 
+
+13

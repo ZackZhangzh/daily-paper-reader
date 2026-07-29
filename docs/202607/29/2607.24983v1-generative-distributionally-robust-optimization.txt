@@ -1,0 +1,1779 @@
+Title: Generative Distributionally Robust Optimization
+
+URL Source: https://arxiv.org/pdf/2607.24983v1
+
+Published Time: Wed, 29 Jul 2026 00:09:55 GMT
+
+Number of Pages: 33
+
+Markdown Content:
+# Generative Distributionally Robust Optimization 
+
+Ziwei Zhang 1 Jonathan Yu-Meng Li 1 Zhihao Jin 2  
+
+> zzhan073@uottawa.ca jonathan.li@telfer.uottawa.ca zjin287@uwo.ca
+> 1
+
+Telfer School of Management, University of Ottawa 
+
+> 2
+
+Department of Electrical and Computer Engineering, Western University 
+
+July 27, 2026 
+
+Abstract 
+
+Generative models are increasingly adopted in distributionally robust optimization (DRO), but existing approaches trade off model compatibility and adversarial structure: methods that accept arbitrary samplers do not restrict worst-case laws to a generator family, while generator-parameterized adversaries rely on model-specific access such as likelihoods, scores, or training data. We propose Generative Distributionally Robust Optimization (GDRO), a principled framework that accepts any sampleable conditional generator as the nominal model and restricts worst-case laws to a chosen conditional generator family. The key is the sampler–Sinkhorn pairing: samplers represent the conditional laws exactly, while Sinkhorn divergence compares their induced distributions without likelihood access and can be estimated from samples alone. The resulting population problem admits a direct finite-sample approximation and differentiable primal–dual implementation at the active decision context. For Lipschitz losses, the population Sinkhorn radius bounds downstream degradation. Across explicit and implicit generators, our method reduces rare-context inventory regret by 60% and SocialGAN navigation collisions by 50% relative to nominal decisions. 
+
+# 1 Introduction 
+
+Conditional generative models increasingly provide the predictive distributions used in downstream opti-mization. Given a current context 𝑥 , a pretrained model generates demand scenarios, trajectories, or other uncertain outcomes, and an optimizer chooses a decision from those samples. This interface is attractive because it accommodates rich, high-dimensional uncertainty, but it also passes any misspecification of the generator directly into the decision. The practical question is therefore not only how to generate realistic conditional outcomes, but how to robustify a downstream decision when the available generative model may be wrong. Distributionally robust optimization (DRO) addresses model misspecification by optimizing against nearby alternative distributions [Mohajerin Esfahani and Kuhn, 2018, Rahimian and Mehrotra, 2022, Kuhn et al., 2024]. Existing approaches, however, face a tradeoff between model compatibility and 
+
+adversarial structure . A predict-then-robustify approach samples any conditional generator at the active decision context 𝑥 and places a Wasserstein or Sinkhorn ambiguity set around the resulting nominal law [Mohajerin Esfahani and Kuhn, 2018, Wang et al., 2025b]. It is likelihood-free and applies directly at the context where the decision is made; however, its adversary ranges over an ambient-space transport 1arXiv:2607.24983v1 [cs.LG] 27 Jul 2026 ball and is not required to follow the generator’s learned structure. High-dimensional outcomes often concentrate near lower-dimensional structure—a central premise of modern generative modeling [Song and Ermon, 2019]—so worst-case mass may leave the dependence, dynamics, or manifold structure encoded by the generator. The transport cost supplies geometry, but it does not impose membership in the chosen generator family. Parametric DRO methods [Michel et al., 2021, 2022] and generative ambiguity-set methods, such as DRO with Generative Ambiguity Set (GAS-DRO) [Wen and Yang, 2026] and diffusion ambiguity-set DRO [Wen and Yang, 2025], take a complementary approach by representing the adversarial distribution with a parameterized model. This preserves a chosen form of parametric or generative structure, but representative formulations certify the adversary through model-specific quantities such as likelihood ratios, scores, reconstruction objectives, or losses evaluated on training data. Consequently, their stated formulations do not directly provide a common robustification layer for arbitrary implicit, proprietary, or otherwise frozen conditional generators available only through samples. Moreover, a certificate averaged over the training distribution of contexts—reconstruction loss, for example—need not control the conditional law at the particular 𝑥 where a decision is being made. To address these limitations, we develop a DRO framework that (i) accepts any sampleable pretrained conditional generator as the nominal model, (ii) restricts the worst-case law to a chosen conditional generator family, and (iii) certifies proximity between the two conditional output laws at the active context. We call the resulting ambiguity set generator-faithful : every admissible worst-case law is induced by the selected adversarial generator family, rather than being an arbitrary distribution in the ambient outcome space. When the nominal architecture is available, a natural choice is to use the same generator family for both nominal and adversarial models, thereby preserving its inductive structure. More generally, the framework accommodates any black-box nominal sampler and permits the adversarial generator family to be chosen independently. Our key observation is that the right interface is the sampler–Sinkhorn pairing . Every sampleable conditional generative model exposes its law operationally through a sampler, regardless of whether it has a tractable likelihood, score, or density. Sinkhorn divergence is naturally compatible with this interface: it is a transport discrepancy between probability laws, can be estimated from samples alone, and is differentiable with respect to generated outputs [Cuturi, 2013, Genevay et al., 2018, Feydy et al., 2019]. It also carries decision-level meaning: under bounded output support, Sinkhorn proximity controls Wasserstein proximity, and Kantorovich–Rubinstein duality then bounds the change in expected loss uniformly over Lipschitz objectives (Theorem 3.2). Sinkhorn divergences have previously been used to learn generative models from samples; here we use them for a different purpose—to certify and optimize a worst-case conditional generator for a downstream decision. The sampler supplies broad model compatibility, while Sinkhorn supplies a likelihood-free, output-law transport certificate and a smooth route to adversarial optimization. 
+
+Generative distributionally robust optimization (GDRO). Let 𝑃 ˆ𝜙 (· | 𝑥 ) denote the conditional law supplied by a pretrained nominal generator and {𝑄 𝜓 (· | 𝑥 ) : 𝜓 ∈ Ψ} the conditional laws induced by a chosen adversarial generator family. Given a downstream loss 𝑓 : W × Y → R, let 𝑆 𝜀 denote the debiased Sinkhorn divergence with regularization 𝜀 , and let 𝜌 be the ambiguity radius. Our central 2population problem is 
+
+𝑤 ★𝜌, 𝜀 (𝑥 ) ∈ arg min   
+
+> 𝑤 ∈ W
+
+sup        
+
+> 𝜓 ∈Ψ:𝑆 𝜀 (𝑄 𝜓 (· | 𝑥 ),𝑃 ˆ𝜙 (· | 𝑥 ) ) ⩽𝜌
+
+E𝑌 ∼𝑄 𝜓 (· | 𝑥 ) [ 𝑓 (𝑤, 𝑌 )] . (1.1) The generator family determines which perturbations are structurally admissible, Sinkhorn divergence controls their displacement from the nominal conditional output law, and conditioning throughout on 
+
+𝑥 aligns the stress test with the decision being made. Because both laws are induced by conditional samplers and Sinkhorn divergence can be estimated from their output samples, problem (1.1) admits a likelihood-free finite-sample approximation. Section 2 gives the exact sampler reformulation, its empirical counterpart, and the resulting optimization algorithm. 
+
+Relation to prior work. The distinction above positions GDRO between classical distribution-space DRO, including 𝜙 -divergence, Wasserstein, and Sinkhorn formulations [Mohajerin Esfahani and Kuhn, 2018, Blanchet and Murthy, 2019, Gao and Kleywegt, 2023, Gao et al., 2024, Rahimian and Mehrotra, 2022, Wang et al., 2025b, Yang et al., 2025], and structured adversaries based on parametric likeli-hood ratios, diffusion ambiguity sets, or GAS-DRO [Michel et al., 2021, 2022, Wen and Yang, 2025, 2026]. FlowDRO [Xu et al., 2024, Kobyzev et al., 2021] uses a normalizing flow to parameterize a distribution-space Wasserstein adversary, but the Wasserstein ball—rather than membership in a chosen generator family—still defines which perturbations are admissible. Adversarial-environment reinforce-ment learning [Ren and Majumdar, 2022] likewise stress-tests decisions against generated environments, but perturbs inputs to a fixed simulator. Decision-focused learning [Donti et al., 2017, Elmachtoub and Grigas, 2022, Costa and Iyengar, 2023, Wang et al., 2025a, Ma et al., 2024] trains predictive models for downstream performance, whereas our object is a post-training ambiguity set around a frozen conditional sampler. Table 1 isolates the combination that distinguishes our formulation. Table 1: Capabilities native to representative stated formulations. ✓: present; △: variant-dependent or requiring model-specific adaptation; ×: absent.                  
+
+> Method Arbitrary frozen nominal sampler Generator-family adversary Output-law transport Active-context certificate Conditional Wasserstein / Sinkhorn DRO ✓×✓✓
+> Parametric adversary DRO [Michel et al., 2021, 2022] ×△×△
+> Diffusion ambiguity-set DRO / GAS-DRO [Wen and Yang, 2025, 2026] ×✓×△
+> GDRO (ours) ✓✓✓✓
+
+Contributions. 
+
+• We introduce Generative Distributionally Robust Optimization (GDRO), a context-local ambiguity framework that combines an arbitrary sampleable nominal conditional generator with a generator-faithful adversarial family. To our knowledge, this is the first context-local DRO framework to restrict worst-case laws to a chosen conditional generator family and certify them by sample-based Sinkhorn proximity to an arbitrary frozen conditional sampler (Section 2). 3• We establish the exact sampler representation of the population problem, derive its finite-sample approximation, and develop a differentiable primal–dual implementation. For Lipschitz losses, the population Sinkhorn radius controls downstream degradation, and we analyze convergence of the resulting optimization procedure (Section 3). 
+
+• Across explicit and implicit generators, the resulting robust decisions reduce rare-context inven-tory regret by 60% and SocialGAN navigation collisions by 50% relative to nominal decisions (Section 4). 
+
+# 2 Generative Distributionally Robust Optimization (GDRO) 
+
+2.1 Conditional Population Formulation 
+
+Let X be the context space, Y the outcome space, W ⊆ R𝑑 the decision set, and 𝑓 : W × Y → R the downstream loss. We fix the active decision context 𝑥 ∈ X throughout. Write 
+
+𝑃 𝑥  
+
+> 0
+
+:= 𝑃 ˆ𝜙 (· | 𝑥 ) and 𝑄 𝑥 𝜓 := 𝑄 𝜓 (· | 𝑥 ), 𝜓 ∈ Ψ,
+
+for the nominal conditional law and a conditional law in the chosen adversarial generator family, respec-tively. For 𝜀 > 0, probability measures 𝑃, 𝑄 on Y, and a ground cost 𝑐 : Y × Y → R+, entropically regularized optimal transport is OT 𝜀 (𝑃, 𝑄 ) := inf    
+
+> 𝜋 ∈Π(𝑃,𝑄 )
+
+∫ 
+
+𝑐 (𝑦, 𝑦 ′) d𝜋 (𝑦, 𝑦 ′) + 𝜀 KL (𝜋 ∥ 𝑃 ⊗ 𝑄 )
+
+
+
+, (2.1) where Π(𝑃, 𝑄 ) contains all couplings with marginals 𝑃 and 𝑄 . The debiased Sinkhorn divergence [Feydy et al., 2019] is 
+
+𝑆 𝜀 (𝑃, 𝑄 ) := OT 𝜀 (𝑃, 𝑄 ) − 12 OT 𝜀 (𝑃, 𝑃 ) − 12 OT 𝜀 (𝑄, 𝑄 ). (2.2) By construction, 𝑆 𝜀 (𝑃, 𝑃 ) = 0. For boundedly supported laws on a Euclidean outcome space and the squared-Euclidean cost 𝑐 (𝑦, 𝑦 ′) = ∥𝑦 − 𝑦 ′ ∥22, 𝑆 𝜀 (𝑃, 𝑄 ) ⩾ 0 and 𝑆 𝜀 (𝑃, 𝑄 ) → 𝑊 22 (𝑃, 𝑄 ) as 𝜀 ↓ 0 [Feydy et al., 2019, Peyr´ e and Cuturi, 2019]. For an ambiguity radius 𝜌 ⩾ 0, the conditional population problem is 
+
+𝑉 𝜌, 𝜀 (𝑥 ) := inf   
+
+> 𝑤 ∈ W
+
+sup    
+
+> 𝜓 ∈Ψ:
+> 𝑆 𝜀 (𝑄 𝑥 𝜓 ,𝑃 𝑥
+> 0)⩽𝜌
+
+E𝑌 ∼𝑄 𝑥 𝜓 [ 𝑓 (𝑤, 𝑌 )] . (2.3) The feasible laws in (2.3) are generator-faithful : every one is induced by the selected conditional generator family. The natural choice, when the nominal architecture is available, is to use the same conditional architecture for the adversary and include the nominal parameter in Ψ; then the ambiguity set is nonempty for every 𝜌 ⩾ 0. A different adversarial family is also permitted, provided it contains at least one conditional law within radius 𝜌 of 𝑃 𝑥  
+
+> 0
+
+.42.2 Sampler Representation and Empirical Approximation 
+
+Let the nominal and adversarial conditional samplers be 
+
+𝐺 ˆ𝜙 : Z0 × X → Y , 𝑍 0 ∼ 𝜁 0, 𝐺 𝜓 : ZA × X → Y , 𝑍 A ∼ 𝜁 A.
+
+Their conditional output laws are the pushforwards 
+
+𝑃 𝑥  
+
+> 0
+
+=  𝐺 ˆ𝜙 (· , 𝑥 )
+
+> #
+
+𝜁 0, 𝑄 𝑥 𝜓 =  𝐺 𝜓 (· , 𝑥 )
+
+> #
+
+𝜁 A. (2.4) In the natural same-architecture case, the samplers may share the same latent space and base law. The notation in (2.4) also covers a black-box nominal sampler and a separately chosen adversarial family. Substituting (2.4) into (2.3) gives the exact sampler representation 
+
+𝑉 𝜌, 𝜀 (𝑥 ) = inf   
+
+> 𝑤 ∈ W
+
+sup          
+
+> 𝜓 ∈Ψ:
+> 𝑆 𝜀 ( ( 𝐺 𝜓 (· ,𝑥 ) ) #𝜁 A,(𝐺 ˆ𝜙 (· ,𝑥 ) ) #𝜁 0)⩽𝜌
+
+E𝑍 A∼𝜁 A
+
+ 𝑓  𝑤, 𝐺 𝜓 (𝑍 A, 𝑥 ) . (2.5) Because the Sinkhorn constraint compares the induced output laws, this representation requires no likelihoods, scores, or pointwise pairing of generated outputs. To obtain the finite-sample problem, draw 
+
+𝑌 0,𝑖 iid 
+
+∼ 𝑃 𝑥  
+
+> 0
+
+, 𝑍 A,𝑖 iid 
+
+∼ 𝜁 A, 𝑖 = 1, . . . , 𝑀. 
+
+They define the empirical conditional output laws 
+
+b𝑃 𝐺 ˆ𝜙 ,𝑥 := 1
+
+𝑀 
+
+> 𝑀
+
+∑︁ 
+
+> 𝑖 =1
+
+𝛿 𝑌 0,𝑖 , b𝑃 𝐺 𝜓 ,𝑥 := 1
+
+𝑀 
+
+> 𝑀
+
+∑︁ 
+
+> 𝑖 =1
+
+𝛿 𝐺 𝜓 (𝑍 A,𝑖 ,𝑥 ) . (2.6) The nominal and adversarial batches may be drawn independently. The adversarial latent draws are held fixed across 𝜓 during the sample-average optimization. For empirical measures 𝛼 = 𝑀 −1 Í𝑖 𝛿 𝑎 𝑖 and 𝛽 = 𝑀 −1 Í 𝑗 𝛿 𝑏 𝑗 , let 
+
+Π𝑀 := 𝜋 ∈ R𝑀 ×𝑀  
+
+> +
+
+: 𝜋 1𝑀 = 𝑀 −11𝑀 , 𝜋 ⊤1𝑀 = 𝑀 −11𝑀 .
+
+The empirical regularized transport term is OT 𝜀 (𝛼, 𝛽 ) = min  
+
+> 𝜋 ∈Π𝑀
+
+
+
+> 𝑀
+
+∑︁ 
+
+> 𝑖, 𝑗 =1
+
+𝜋 𝑖 𝑗 𝑐 (𝑎 𝑖 , 𝑏 𝑗 ) + 𝜀 
+
+> 𝑀
+
+∑︁ 
+
+> 𝑖, 𝑗 =1
+
+𝜋 𝑖 𝑗 log (𝑀 2𝜋 𝑖 𝑗 )
+
+
+
+, (2.7) with the convention 0 log 0 = 0. The two empirical self-transport terms in (2.2) are computed analogously. Since Í𝑖, 𝑗 𝜋 𝑖 𝑗 = 1, the regularizer in (2.7) equals 𝜀 Í𝑖, 𝑗 𝜋 𝑖 𝑗 log 𝜋 𝑖 𝑗 + 2𝜀 log 𝑀 . The additive constant appears in each of the three transport terms in (2.2) and therefore cancels from 𝑆 𝜀 . Hence the empirical Sinkhorn divergence is unchanged under the common entropy convention 𝜀 Í𝑖, 𝑗 𝜋 𝑖 𝑗 log 𝜋 𝑖 𝑗 .5The empirical objective is 
+
+b𝐹 𝑀 (𝑤, 𝜓 ) := 1
+
+𝑀 
+
+> 𝑀
+
+∑︁ 
+
+> 𝑖 =1
+
+𝑓  𝑤, 𝐺 𝜓 (𝑍 A,𝑖 , 𝑥 ) , (2.8) and the finite-sample GDRO problem is 
+
+b𝑉 𝑀 (𝑥 ) := inf   
+
+> 𝑤 ∈ W
+
+sup       
+
+> 𝜓 ∈Ψ:
+> 𝑆 𝜀 (b𝑃 𝐺 𝜓 ,𝑥 ,b𝑃 𝐺 ˆ𝜙 ,𝑥 )⩽𝜌
+
+b𝐹 𝑀 (𝑤, 𝜓 ). (2.9) 
+
+2.3 Primal–Dual Optimization 
+
+For fixed 𝑤 , set 
+
+b𝑠 (𝜓 ) := 𝑆 𝜀 ( b𝑃 𝐺 𝜓 ,𝑥 , b𝑃 𝐺 ˆ𝜙 ,𝑥 ).
+
+The empirical inner problem is sup 
+
+> 𝜓 ∈Ψ
+
+b𝐹 𝑀 (𝑤, 𝜓 ) subject to b𝑠 (𝜓 ) ⩽ 𝜌. (2.10) For a nonlinear generator this problem is generally nonconcave and its feasible set has no closed-form projection. Its Lagrangian is 
+
+bL( 𝑤, 𝜓, 𝜇 ) := b𝐹 𝑀 (𝑤, 𝜓 ) − 𝜇  b𝑠 (𝜓 ) − 𝜌 , 𝜇 ⩾ 0. (2.11) The associated dual problem minimizes over 𝜇 ⩾ 0 after maximizing over 𝜓 . Accordingly, we ascend in 
+
+𝜓 and use projected dual descent, 
+
+𝜓 ← 𝜓 + 𝜂 𝜓 ∇𝜓 bL, 𝜇 ← 𝜇 + 𝜂 𝜇 
+
+ b𝑠 (𝜓 ) − 𝜌   
+
+> +
+
+.
+
+The multiplier increases when b𝑠 (𝜓 ) > 𝜌 and decreases otherwise. In computing ∇𝜓 b𝑠 (𝜓 ), the nominal samples are fixed; only the adversarial samples 𝐺 𝜓 (𝑍 A,𝑖 , 𝑥 ) depend on 𝜓 . For 𝜀 > 0 and a smooth ground cost, the empirical Sinkhorn divergence is differentiable in these generated samples, so the chain rule propagates the gradient through 𝐺 𝜓 .6Algorithm 1: Primal–Dual GDRO 
+
+Require: Context 𝑥 ; nominal sampling oracle 𝑌 ∼ 𝑃 0 (· | 𝑥 ); adversarial sampler 𝐺 𝜓 ; radius 𝜌 ; batch size 𝑀 ; step sizes 𝜂 𝜓 , 𝜂 𝜇 , 𝜂 𝑤 ; iteration counts 𝐽, 𝐾, 𝑇 . 
+
+> 1:
+
+Draw the nominal and adversarial batches in (2.6); form b𝑃 𝐺 ˆ𝜙 ,𝑥 . 
+
+> 2:
+
+Initialize 𝑤 ∈ W , 𝜓 ∈ Ψ, and choose 𝜇 (1) > 0.  
+
+> 3:
+
+for 𝑡 = 1, . . . , 𝑇 do  
+
+> 4:
+
+𝑤 (𝑡 ) ← 𝑤 ; 𝜇 ← 𝜇 (1) . 
+
+> 5:
+
+for 𝑘 = 1, . . . , 𝐾 do  
+
+> 6:
+
+for 𝑗 = 1, . . . , 𝐽 do  
+
+> 7:
+
+Form b𝑃 𝐺 𝜓 ,𝑥 from the fixed adversarial latent draws.  
+
+> 8:
+
+𝜓 ← 𝜓 + 𝜂 𝜓 ∇𝜓 bL( 𝑤, 𝜓, 𝜇 ). 
+
+> 9:
+
+end for  
+
+> 10:
+
+Set 𝜓 𝑘 ← 𝜓 and evaluate b𝑠 (𝜓 𝑘 ). 
+
+> 11:
+
+𝜇 ← [ 𝜇 + 𝜂 𝜇 (b𝑠 (𝜓 𝑘 ) − 𝜌 )] +. 
+
+> 12:
+
+b𝑔 𝑘 ← ∇ 𝑤 b𝐹 𝑀 (𝑤, 𝜓 𝑘 ). 
+
+> 13:
+
+end for  
+
+> 14:
+
+𝑤 ← ΠW
+
+
+
+𝑤 − 𝜂 𝑤 𝐾 −1 Í𝐾 𝑘 =1 b𝑔 𝑘 
+
+
+
+. 
+
+> 15:
+
+end for  
+
+> 16:
+
+return 𝑤 = 𝑇 −1 Í𝑇 𝑡 =1 𝑤 (𝑡 ) .
+
+Model access and scope. Algorithm 1 queries the nominal conditional model only for output samples, which may be cached; it requires no likelihood, score, or gradient access to that model and therefore accommodates implicit or non-differentiable nominal generators. The gradient implementation does require an optimizable adversarial family, typically one whose outputs are differentiable with respect to 
+
+𝜓 . Because the empirical inner problem is nonconcave, the algorithm generally targets an approximate stationary solution rather than a certified global maximizer. 
+
+# 3 Theoretical Analysis 
+
+We establish four guarantees for Algorithm 1, all at a fixed context 𝑥 : a bound on the Sinkhorn ambiguity (Lemma 3.1); a decision-alignment result linking the radius 𝜌 to downstream loss (Theorem 3.2); convergence of the inner adversarial maximization (Theorem 3.5); and joint convergence of the alternating procedure under outer convexity (Theorem 3.7). Proofs are deferred to Appendix A. 
+
+3.1 Setup 
+
+Standing assumptions. Throughout, the context 𝑥 is fixed and: (A1) 𝑓 (𝑤, 𝑦 ) is 𝐿 𝑓 -Lipschitz in 𝑦 , uniformly in 𝑤 ;(A2) W ⊂ R𝑑 is convex and compact with diameter 𝐷 W ;(A3) nominal and adversarial generator outputs are uniformly bounded: ∥𝐺 ˆ𝜙 (𝑧 0, 𝑥 )∥ 2 ⩽ 𝑅 for 𝜁 0-almost every 𝑧 0, and ∥𝐺 𝜓 (𝑧 A, 𝑥 )∥ 2 ⩽ 𝑅 for every 𝜓 ∈ Ψ and 𝜁 A-almost every 𝑧 A.7All Sinkhorn and Wasserstein quantities in this section use the squared-Euclidean ground cost 𝑐 (𝑦, 𝑦 ′) =
+
+∥𝑦 − 𝑦 ′ ∥22. Convexity of 𝑓 in 𝑤 is assumed only for joint convergence (Assumption 3.1). We take 𝜀 > 0and 𝜌 > 0 throughout. 
+
+Notation. At the population level, retain the notation 𝑃 𝑥  
+
+> 0
+
+and 𝑄 𝑥 𝜓 from Section 2.1. For the optimization analysis, condition on the batches in (2.6) and abbreviate 
+
+𝐹 (𝑤, 𝜓 ) := b𝐹 𝑀 (𝑤, 𝜓 ), 𝐹 0 (𝑤 ) := 1
+
+𝑀 
+
+> 𝑀
+
+∑︁ 
+
+> 𝑖 =1
+
+𝑓 (𝑤, 𝑌 0,𝑖 ),𝑠 (𝜓 ) := 𝑆 𝜀 ( b𝑃 𝐺 𝜓 ,𝑥 , b𝑃 𝐺 ˆ𝜙 ,𝑥 ), A := {𝜓 ∈ Ψ : 𝑠 (𝜓 ) ⩽ 𝜌 }.
+
+Let 𝜙 (𝑤 ) := max 𝜓 ∈ A 𝐹 (𝑤, 𝜓 ), 𝜙 ∗ := min 𝑤 ∈ W 𝜙 (𝑤 ), and 𝜓 ∗ (𝑤 ) ∈ arg max 𝜓 ∈ A 𝐹 (𝑤, 𝜓 ). We assume these optima are attained and A is nonempty. Finally, write 𝑠 𝑘 := 𝑠 (𝜓 𝑘 ), 𝛾 𝑀 := 𝜀 log 𝑀 , 𝐵 :=
+
+max {𝜌, 4𝑅 2}, and let 𝜇 (1) > 0 be the multiplier at the start of each inner block. 
+
+Sinkhorn–Wasserstein closeness. For the two equally weighted 𝑀 -point empirical laws used by the algorithm, the comparison is explicit: 
+
+𝑆 𝜀 (𝛼, 𝛽 ) − 𝑊 22 (𝛼, 𝛽 ) ⩽ 𝛾 𝑀 = 𝜀 log 𝑀. (3.1) Indeed, an optimal unregularized permutation coupling has relative entropy log 𝑀 , and the same bound applies to both self-transport terms. A proof is given in Appendix A.2. Unlike a generic asymptotic interpolation-gap statement, (3.1) gives a uniform finite-sample comparison over generated empirical clouds, with an explicit error term 𝛾 𝑀 = 𝜀 log 𝑀 .
+
+3.2 Sinkhorn Bound and Decision Alignment 
+
+We first bound the Sinkhorn divergence between any adversarial conditional law and the nominal conditional law. This bound is the one problem-specific ingredient of the convergence analysis; everything downstream of it is standard. 
+
+Lemma 3.1 (Uniform Sinkhorn upper bound) . Under (A3) , any two nominal or adversarial output laws 
+
+𝑃, 𝑄 satisfy 
+
+0 ⩽ 𝑆 𝜀 (𝑃, 𝑄 ) ⩽ 4𝑅 2.
+
+In particular, 0 ⩽ 𝑠 (𝜓 ) ⩽ 4𝑅 2 for every 𝜓 ∈ Ψ.Proof sketch. The product coupling 𝑃 ⊗ 𝑄 has zero relative-entropy penalty and transport cost at most 4𝑅 2. Thus OT 𝜀 (𝑃, 𝑄 ) ⩽ 4𝑅 2; subtracting the two nonnegative self-transport terms cannot increase the result. Nonnegativity is the standard positivity property of the debiased Sinkhorn divergence. This argument does not require a common latent space or paired draws. Full proof in Appendix A.1. □
+
+The next result formalizes the central claim of the introduction: the radius 𝜌 is a budget on downstream performance. 8Let P𝑅 be the probability laws supported on the closed Euclidean ball of radius 𝑅 , and define 
+
+𝜔 𝜀,𝑅 (𝑟 ) := sup {𝑊 1 (𝑃, 𝑄 ) : 𝑃, 𝑄 ∈ P 𝑅 , 𝑆 𝜀 (𝑃, 𝑄 ) ⩽ 𝑟 }. (3.2) 
+
+Theorem 3.2 (Population decision alignment) . The function 𝜔 𝜀,𝑅 is finite and nondecreasing, and 
+
+𝜔 𝜀,𝑅 (𝑟 ) ↓ 0 as 𝑟 ↓ 0. Under (A1)–(A3) , every 𝜓 ∈ Ψ satisfying 𝑆 𝜀 (𝑄 𝑥 𝜓 , 𝑃 𝑥  
+
+> 0
+
+) ⩽ 𝜌 obeys 
+
+E𝑄 𝑥 𝜓 [ 𝑓 (𝑤, 𝑌 )] − E𝑃 𝑥  
+
+> 0
+
+[ 𝑓 (𝑤, 𝑌 )] ⩽ 𝐿 𝑓 𝜔 𝜀,𝑅 (𝜌 ) for every 𝑤 ∈ W .
+
+Proof sketch. On the compact space P𝑅 , Sinkhorn divergence is continuous, positive definite, and metrizes weak convergence; 𝑊 1 is also continuous. Compactness therefore implies 𝜔 𝜀,𝑅 (𝑟 ) ↓ 0. The loss bound then follows from Kantorovich–Rubinstein duality. Full proof in Appendix A.3. □
+
+Corollary 3.3 (Empirical decision alignment) . Under (A1)–(A3) , every 𝜓 ∈ A satisfies 
+
+|𝐹 (𝑤, 𝜓 ) − 𝐹 0 (𝑤 )| ⩽ 𝐿 𝑓 
+
+√𝜌 + 𝛾 𝑀 for every 𝑤 ∈ W .
+
+Remark 3.4 (Significance) . The radius 𝜌 is not an abstract divergence budget but a direct, loss-uniform bound on the downstream loss any adversary in A can extract, holding simultaneously for every Lipschitz objective. This makes 𝜌 an interpretable design parameter. 
+
+3.3 Inner Convergence 
+
+For fixed 𝑤 , the inner problem is a nonconcave maximization over a nonconvex feasible set, solved by the primal–dual scheme of Algorithm 1: at each of 𝐾 dual steps, 𝐽 ascent steps approximately solve max 𝜓 L( 𝑤, 𝜓, 𝜇 𝑘 ), followed by a projected update of 𝜇 𝑘 . The next result bounds the suboptimality in objective value, averaged over the dual iterates. Because gradient ascent need not find a global maximizer of a nonconcave Lagrangian, the guarantee is stated under an explicit inner oracle condition: 
+
+𝜓 𝑘 ∈ arg max 
+
+> 𝜓 ∈Ψ
+
+bL( 𝑤, 𝜓, 𝜇 𝑘 ). (3.3) An approximate oracle adds its average Lagrangian error to the bound below; in particular, an average error of order 𝐾 −1/2 preserves the stated rate. 
+
+Theorem 3.5 (Inner convergence) . Under (A1)–(A3) and (3.3) , use projected dual descent with 𝜂 𝜇 =
+
+𝜇 (1) /( 𝐵 √𝐾 ). Then 
+
+𝐹  𝑤, 𝜓 ∗ (𝑤 ) − 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝐹 (𝑤, 𝜓 𝑘 ) ⩽ 𝐵 𝜇 (1)
+
+√𝐾 ,
+
+where 𝜓 ∗ (𝑤 ) ∈ arg max 𝜓 ∈ A 𝐹 (𝑤, 𝜓 ).
+
+The proof is the standard dual-subgradient analysis of constrained saddle-point problems [Zinkevich, 2003, Nedi´ c and Ozdaglar, 2009]: a projected-descent regret bound on the dual variable, into which the Sinkhorn bound (Lemma 3.1) enters only through the constant 4 𝑅 2. See Appendix A.4. 93.4 Joint Convergence 
+
+The full algorithm alternates the inner primal–dual updates with an outer projected step along the averaged subgradient ˆ 𝑔 (𝑡 ) = 1
+
+> 𝐾
+
+Í𝐾 𝑘 =1 ˆ𝑔 𝑘 , ˆ 𝑔 𝑘 ∈ 𝜕 𝑤 𝐹 (𝑤 (𝑡 ) , 𝜓 𝑘 ). Coupling the two layers requires convexity of the downstream loss in 𝑤 .
+
+Assumption 3.1 (Outer convexity) . 𝑓 (𝑤, 𝑦 ) is convex in 𝑤 for every 𝑦 , and the outer subgradients used by the algorithm are assumed uniformly bounded, ∥ ˆ𝑔 𝑘 ∥ ⩽ 𝐺 𝑤 .For fixed 𝑤 , let 
+
+𝑄 𝑤 (𝜇 ) := sup 
+
+> 𝜓 ∈Ψ
+
+{𝐹 (𝑤, 𝜓 ) + 𝜇 (𝜌 − 𝑠 (𝜓 ))} .
+
+Assumption 3.2 (Dual regularity) . For every 𝑤 ∈ W , 𝑄 𝑤 has a selected minimizer 𝜇 ∗ (𝑤 ) ⩾ 0 satisfying 
+
+𝜇 ∗ := sup 𝑤 ∈ W 𝜇 ∗ (𝑤 ) < ∞.The inner iterates need not be feasible; the next lemma controls their mean constraint violation using the standard long-term-constraint argument [Mahdavi et al., 2012], with an explicit comparison constant 𝐶 𝐾 derived as in GAS-DRO [Wen and Yang, 2026]. 
+
+Lemma 3.6 (Average constraint slack) . Under the conditions of Theorem 3.5 and Assumption 3.2, 
+
+1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝑠 𝑘 ⩽ 𝜌 + 𝐶 𝐾 
+
+√𝐾 , 𝐶 𝐾 = max {𝜌, 4𝑅 2}
+
+𝜇 𝐶 − 𝜇 ∗
+
+ 𝜇 (1) 
+
+> 2
+
++ | 𝜇 𝐶 −𝜇 (1) |2
+
+> 2𝜇 (1)
+
+
+
+,
+
+where 𝜇 𝐶 > 𝜇 ∗ is fixed. 
+
+Theorem 3.7 (Joint convergence) . Under (A1)–(A3) , Assumptions 3.1 and 3.2, and the inner-oracle condition (3.3) , run Algorithm 1 for 𝑇 outer iterations with 𝐾 inner steps and outer step size 𝜂 𝑤 =
+
+𝐷 W /( 𝐺 𝑤 
+
+√𝑇 ). Then the averaged iterate ¯𝑤 = 𝑇 −1 Í𝑇 𝑡 =1 𝑤 (𝑡 ) satisfies 
+
+𝜙 ( ¯𝑤 ) − 𝜙 ∗ ⩽ 𝐷 W 𝐺 𝑤 
+
+√𝑇 
+
+| {z }
+
+> outer
+
++ 𝐵𝜇 (1)
+
+√𝐾 
+
+| {z }
+
+> inner
+
++ 𝐿 𝑓 𝐶 𝐾 
+
+2√︁ (𝜌 + 𝛾 𝑀 )𝐾 
+
+| {z }
+
+> slack
+
++ 2𝐿 𝑓 
+
+√𝜌 + 𝛾 𝑀 
+
+| {z }
+
+> comparison residual
+
+.
+
+Remark 3.8 (Interpretation) . The first three terms are optimization errors : outer projected subgradi-ent descent, inner Lagrangian approximation, and accumulated average slack. These terms vanish as 
+
+𝑇, 𝐾 → ∞ ; for instance, taking 𝐾 = 𝑇 2 makes the inner and slack terms 𝑂 (1/𝑇 ), leaving the dominant optimization rate 𝑂 (1/√𝑇 ). The last term, 2 𝐿 𝑓 
+
+√𝜌 + 𝛾 𝑀 , is a comparison residual in the present proof. It has the same scale as the empirical decision-alignment bound in Corollary 3.3 and arises from bound-ing the loss gap through Kantorovich–Rubinstein duality and the nominal empirical law. This term is independent of 𝑇 and 𝐾 in our analysis; we do not claim that it is intrinsic to the algorithm. 
+
+# 4 Experiments 
+
+Overview. We evaluate GDRO on two downstream decision problems. The first is contextual newsven-dor, where the decision is convex and the optimal order for a fixed scenario distribution has a weighted-10 quantile form. We study this task on a synthetic benchmark with controlled rare conditional tails and on the real M5 retail demand dataset [Makridakis et al., 2022]. The second downstream problem is robot navigation among pedestrians, where the decision problem is nonconvex and the nominal model is the official implicit SocialGAN trajectory generator [Gupta et al., 2018]. These two settings test GDRO under both explicit conditional generators and implicit black-box samplers. 
+
+Baselines. For all tasks, Nominal optimizes the downstream decision using samples from the fitted nominal generator. KL performs finite-support KL reweighting over nominal samples, and therefore cannot create new outcomes outside the sampled support. W2 uses a finite-sample Wasserstein-2 perturbation of the sampled outcomes. For the newsvendor experiments, where the nominal model has an explicit conditional decoder, we also compare with GAS-DRO . For the synthetic benchmark only, we report an Oracle that optimizes using samples from the true data-generating process. Our method, 
+
+GDRO , optimizes against adversarial generators constrained by a context-local Sinkhorn certificate around the nominal generator. Full implementation details and hyperparameters are given in Appendix B. 
+
+Metrics. For newsvendor, the primary decision-quality metrics are average realized cost and, when an oracle is available, regret relative to the oracle. Since the asymmetric newsvendor loss already encodes the underage–overage trade-off, lower tail losses or stockout rates alone do not necessarily indicate a better policy: they can also be obtained by systematically over-ordering. We therefore report Q95 loss, CVaR 95 , stockout rate, and average order quantity as diagnostic metrics that reveal the risk–conservatism trade-off. For robot navigation, we report collision count, near-miss count, arrival count, evaluation loss, minimum realized pedestrian distance, and terminal goal error. 
+
+4.1 Contextual Newsvendor 
+
+Synthetic rare-tail benchmark. The synthetic benchmark is designed so that most contexts follow a regular demand pattern, while rare contexts may activate a shifted tail component. This stresses a common failure mode of nominal generative models: the fitted generator can match the bulk of the conditional distribution while underrepresenting rare high-cost outcomes. The downstream decision is a multi-product order vector, and the realized loss is the asymmetric newsvendor cost. Table 2 reports results separately on frequent and rare contexts. On frequent contexts, GDRO obtains the lowest average cost and regret among non-oracle methods while keeping the average order close to the oracle. On rare contexts, GDRO again achieves the lowest non-oracle regret, improving substantially over the nominal policy, KL reweighting, W2, and GAS-DRO. KL achieves lower tail losses and stockout rates in some slices, but it does so with larger average orders and substantially higher average cost. This illustrates the risk–conservatism trade-off in newsvendor: tail-risk reductions are meaningful only when considered together with realized cost and order inflation. This supports the central mechanism of GDRO: rather than only reweighting nominal samples or freely perturbing support points, it searches over nearby generator-induced conditional laws that expose consequential tail scenarios. 
+
+M5 retail demand. We next apply the same newsvendor pipeline to the M5 retail demand dataset. We select 20 products with the fewest zero-demand observations to make conditional scenario generation stable. For each day 𝑡 , the context is a rolling window of the previous 10 days of demand, and the nominal 11 Table 2: Synthetic contextual newsvendor results. Avg. cost and regret are the primary decision-quality metrics. Q95 loss, CVaR 95 , stockout, and average order are diagnostic metrics for the risk–conservatism trade-off. 
+
+Slice Method Avg. cost Regret Q95 loss CVaR 95 Stockout Avg. order 
+
+Frequent Oracle 422.99 0.00 801.89 1260.96 0.084 25.09 Nominal 436.55 13.55 947.01 1429.04 0.104 24.35 KL 451.43 28.44 754.84 1136.56 0.073 26.34 W2 436.73 13.74 846.07 1292.49 0.088 25.08 GAS-DRO 431.21 8.22 889.10 1358.03 0.094 24.68 
+
+GDRO 429.62 6.63 809.49 1257.77 0.084 25.16 Rare Oracle 514.46 0.00 967.81 1799.44 0.084 28.35 Nominal 537.09 22.63 1291.28 2259.68 0.124 26.50 KL 541.09 26.63 1074.20 1903.99 0.101 28.25 W2 532.88 18.41 1205.79 2128.83 0.117 27.03 GAS-DRO 530.36 15.89 1236.14 2190.00 0.118 26.75 
+
+GDRO 523.47 9.01 1148.88 2064.01 0.107 27.26 Table 3: Performance comparison on the held-out M5 contextual newsvendor test set. Average realized cost is the primary decision-quality metric; tail losses, stockout, and average order diagnose the risk– conservatism trade-off. Method Avg. cost Q90 Q95 CVaR 90 CVaR 95 Stockout Avg. order Nominal 1230.30 1729.04 2634.58 2772.97 3440.73 0.1088 64.64 KL 1459.00 1951.36 2326.20 2607.80 3101.56 0.1070 71.33 W2 1212.91 1654.29 2400.24 2541.50 3093.66 0.0940 66.39 GAS-DRO 1712.35 2510.35 2592.51 2705.35 2859.42 0.0193 86.44 
+
+GDRO 1203.02 1575.37 2354.47 2454.90 3035.12 0.0840 67.07 CVAE–LSTM generator produces conditional scenarios for the next-day demand 𝑌 𝑡 . The downstream decision is the order vector for that day, and all methods are evaluated out of sample on held-out rolling test windows. Unlike the synthetic benchmark, the true data-generating distribution is unknown, so performance is measured only against realized held-out demand. The robustness radius and inner-loop budget are adapted using a historical average-cost risk score, as described in Appendix B.3. GDRO achieves the lowest average realized cost on the M5 test set. It also improves the moderate-tail metrics Q 90 and CVaR 90 relative to the nominal policy while keeping the average order close to W2. KL and GAS-DRO reduce some extreme-tail or stockout metrics, but mainly by placing larger orders; in particular, GAS-DRO attains the lowest stockout rate with a much larger average order and the highest average cost. These results indicate that GDRO improves the primary decision objective without relying on excessive over-ordering. 
+
+4.2 Pedestrian-Conditioned Robot Navigation with SocialGAN 
+
+Setup. To test GDRO with an implicit high-dimensional generator, we use the official pretrained SocialGAN model [Gupta et al., 2018]. Given 8 observed frames of pedestrian motion, SocialGAN generates samples of the next 12 frames. We add a downstream robot navigation decision on top of 12 Figure 1: Mechanism example on a real SocialGAN test scene. Nominal and KL plans collide with the realized pedestrian future. GDRO avoids the pedestrian while still reaching the goal, whereas W2 produces a distorted route after unconstrained output-space perturbation. this prediction task: the robot chooses a 12-step velocity plan to move from a sampled start point to a goal while avoiding pedestrians. During optimization, the robot only observes the past trajectory and SocialGAN-generated futures; the true future is used only for evaluation. In evaluation, a collision is counted when the robot comes within 0 .5 meters of any realized pedestrian trajectory, a near miss is counted using a larger 0 .8-meter buffer, and arrival means that the robot reaches within 0 .25 meters of the goal within the planning horizon. We construct 200 fixed decision tasks from 50 SocialGAN test contexts, with four start–goal queries per context. Queries are selected using only nominal-sample information so that the straight-line robot path has nontrivial predicted collision risk, while the start and goal are not initially occupied. This creates difficult but feasible navigation instances rather than trivially safe cases. Details of query construction, loss weights, adaptive radii, and optimization budgets are given in Appendix B.4. 
+
+Results. Figure 1 shows the qualitative mechanism on a real SocialGAN test scene. Nominal and KL both collide with the realized pedestrian future: Nominal trusts the baseline forecast, while KL can only reweight the same nominal support. GDRO avoids the pedestrian while still reaching the goal. In contrast, W2 perturbs support points directly in trajectory space, which can move adversarial futures off the SocialGAN manifold and break the learned trajectory-interaction structure. The resulting robot plan is more distorted and not necessarily safer under realized evaluation. Table 4 confirms this pattern across 200 fixed test tasks. A collision is counted at 0 .5m, a near miss at 0 .8m, and arrival means reaching within 0 .25m of the goal. GDRO reduces collisions from 13 Table 4: SocialGAN robot navigation on 200 fixed test tasks. Collisions are counted at 0 .5m, near misses at 0 .8m, and arrivals at a 0 .25m goal threshold. Method Collisions Near misses Arrivals Eval. loss Min dist. Terminal gap Nominal 22/200 106/200 200/200 35.48 0.800 0.010 KL 14/200 90/200 200/200 29.84 0.851 0.016 
+
+GDRO 11/200 55/200 195/200 26.24 0.925 0.035 W2 34/200 72/200 142/200 56.60 1.017 0.277 22 /200 to 11 /200 and near misses from 106 /200 to 55 /200, while still arriving in 195 /200 tasks. W2 achieves a larger average minimum distance, but has more collisions, a much lower arrival rate, and a larger terminal gap, showing that conservatism in the wrong geometry can be harmful. 
+
+Takeaway. Across newsvendor and SocialGAN navigation, GDRO improves downstream robustness by stress-testing decisions through structured generator-level perturbations. The results show that ro-bustness is not only about being more conservative, but about being conservative in the right geometry: GDRO preserves the simulator’s learned structure, whereas free output-space perturbations can produce misleading stress tests. 
+
+# 5 Conclusion 
+
+We proposed GDRO, a simulation-based distributionally robust optimization framework for decision-making with learned conditional generators. The core idea is to define robustness directly on generated samples at the active decision context. Instead of relying on likelihood ratios, reconstruction certificates, or global model-level discrepancies, GDRO compares nominal and adversarial output clouds through a sample-based Sinkhorn certificate. This makes the ambiguity set context-local, transport-based, and applicable even when the nominal model is only available as a sampler. Theoretically, we showed that the Sinkhorn radius admits a downstream loss interpretation for Lipschitz objectives and proved a finite-time guarantee for the fixed empirical objective when the outer decision layer is convex, as in the newsvendor setting. Empirically, GDRO improves the primary decision objective in contextual newsvendor tasks and reduces realized collision risk in SocialGAN navigation, showing that the same sample-based framework can also be applied beyond convex decision problems to implicit pretrained generators. Together, these results highlight the central mechanism of GDRO: robustness is not merely about being more conservative, but about stress-testing the simulator in the right geometry. By constraining adversarial scenarios through generator-induced output laws, GDRO preserves sample-level structure that unrestricted support perturbations may destroy. 
+
+# References 
+
+Jose Blanchet and Karthyek Murthy. Quantifying distributional model risk via optimal transport. Math-ematics of Operations Research , 44(2):565–600, 2019. doi: 10.1287/moor.2018.0936. Giorgio Costa and Garud N. Iyengar. Distributionally robust end-to-end portfolio construction. Quanti-tative Finance , 23(10):1465–1482, 2023. doi: 10.1080/14697688.2023.2236148. 14 Marco Cuturi. Sinkhorn distances: Lightspeed computation of optimal transport. In Advances in Neural Information Processing Systems , volume 26, 2013. URL https://papers.nips.cc/paper_ files/paper/2013/hash/af21d0c97db2e27e13572cbf59eb343d-Abstract.html .Priya L. Donti, Brandon Amos, and J. Zico Kolter. Task-based end-to-end model learning in stochastic optimization. In Advances in Neural Information Process-ing Systems , volume 30, 2017. URL https://papers.nips.cc/paper/2017/hash/ 3fc2c60b5782f641f76bcefc39fb2392-Abstract.html .Adam N. Elmachtoub and Paul Grigas. Smart “predict, then optimize”. Management Science , 68(1): 9–26, 2022. doi: 10.1287/mnsc.2020.3922. Jean Feydy, Thibault S´ ejourn´ e, Franc ¸ois-Xavier Vialard, Shun-ichi Amari, Alain Trouv´ e, and Gabriel Peyr´ e. Interpolating between optimal transport and MMD using sinkhorn divergences. In Proceedings of the Twenty-Second International Conference on Artificial Intelligence and Statistics , volume 89 of Proceedings of Machine Learning Research , pages 2681–2690. PMLR, 2019. URL https: //proceedings.mlr.press/v89/feydy19a.html .Rui Gao and Anton J. Kleywegt. Distributionally robust stochastic optimization with wasserstein distance. 
+
+Mathematics of Operations Research , 48(2):603–655, 2023. doi: 10.1287/moor.2022.1275. Rui Gao, Xi Chen, and Anton J. Kleywegt. Wasserstein distributionally robust optimization and variation regularization. Operations Research , 72(3):1177–1191, 2024. doi: 10.1287/opre.2022.2356. Aude Genevay, Gabriel Peyr´ e, and Marco Cuturi. Learning generative models with sinkhorn divergences. In Proceedings of the Twenty-First International Conference on Artificial Intelligence and Statistics ,volume 84 of Proceedings of Machine Learning Research , pages 1608–1617. PMLR, 2018. URL 
+
+https://proceedings.mlr.press/v84/genevay18a.html .Agrim Gupta, Justin Johnson, Li Fei-Fei, Silvio Savarese, and Alexandre Alahi. Social GAN: Socially acceptable trajectories with generative adversarial networks. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR) , pages 2255–2264, 2018. doi: 10.1109/CVPR. 2018.00240. Zhaolin Hu and L. Jeff Hong. Kullback–leibler divergence constrained distributionally robust optimiza-tion. Optimization Online , 2013. URL https://optimization-online.org/2012/11/3677/ .Ivan Kobyzev, Simon J. D. Prince, and Marcus A. Brubaker. Normalizing flows: An introduction and review of current methods. IEEE Transactions on Pattern Analysis and Machine Intelligence , 43(11): 3964–3979, 2021. doi: 10.1109/TPAMI.2020.2992934. Daniel Kuhn, Soroosh Shafiee, and Wolfram Wiesemann. Distributionally robust optimization, 2024. URL https://arxiv.org/abs/2411.02549 .Xutao Ma, Chao Ning, and Wenli Du. Differentiable distributionally robust optimization layers. In 
+
+Proceedings of the 41st International Conference on Machine Learning , volume 235 of Proceedings of Machine Learning Research , pages 33880–33901. PMLR, 2024. URL https://proceedings. mlr.press/v235/ma24j.html .15 Mehrdad Mahdavi, Rong Jin, and Tianbao Yang. Trading regret for efficiency: Online convex optimiza-tion with long term constraints. Journal of Machine Learning Research , 13(81):2503–2528, 2012. URL http://jmlr.org/papers/v13/mahdavi12a.html .Spyros Makridakis, Evangelos Spiliotis, and Vassilios Assimakopoulos. The m5 accuracy competition: Results, findings, and conclusions. International Journal of Forecasting , 38(4):1346–1364, 2022. Paul Michel, Tatsunori Hashimoto, and Graham Neubig. Modeling the second player in distributionally robust optimization. In International Conference on Learning Representations , 2021. URL https: //openreview.net/forum?id=6fSHYLFhmv .Paul Michel, Tatsunori Hashimoto, and Graham Neubig. Distributionally robust models with parametric likelihood ratios. In International Conference on Learning Representations , 2022. URL https: //openreview.net/forum?id=2M6GAkU7VqX .Peyman Mohajerin Esfahani and Daniel Kuhn. Data-driven distributionally robust optimization using the wasserstein metric: Performance guarantees and tractable reformulations. Mathematical Program-ming , 171(1–2):115–166, 2018. doi: 10.1007/s10107-017-1172-1. Hongseok Namkoong and John C. Duchi. Stochastic gradient methods for distributionally robust op-timization with f-divergences. In Advances in Neural Information Processing Systems , volume 29, 2016. Angelia Nedi´ c and Asuman Ozdaglar. Subgradient methods for saddle-point problems. Journal of Optimization Theory and Applications , 142(1):205–228, 2009. Gabriel Peyr´ e and Marco Cuturi. Computational optimal transport. Foundations and Trends in Machine Learning , 11(5–6):355–607, 2019. doi: 10.1561/2200000073. Hamed Rahimian and Sanjay Mehrotra. Frameworks and results in distributionally robust optimization. 
+
+Open Journal of Mathematical Optimization , 3:1–85, 2022. doi: 10.5802/ojmo.15. Allen Z. Ren and Anirudha Majumdar. Distributionally robust policy learning via adversarial environment generation. In Proceedings of the 2022 International Conference on Robotics and Automation , 2022. URL https://arxiv.org/abs/2107.06353 .Aman Sinha, Hongseok Namkoong, Riccardo Volpi, and John Duchi. Certifying some distributional robustness with principled adversarial training. In International Conference on Learning Representa-tions , 2018. URL https://openreview.net/forum?id=Hk6kPgZA-.Yang Song and Stefano Ermon. Generative modeling by estimating gradients of the data distribution. In 
+
+Advances in Neural Information Processing Systems , volume 32, pages 11895–11907, 2019. Irina Wang, Bart Van Parys, and Bartolomeo Stellato. Learning decision-focused uncertainty sets in robust optimization, 2025a. URL https://arxiv.org/abs/2305.19225 .Jie Wang, Rui Gao, and Yao Xie. Sinkhorn distributionally robust optimization. Operations Research ,74(3):1581–1603, 2025b. doi: 10.1287/opre.2023.0294. 16 Jiaqi Wen and Jianyi Yang. Distributionally robust optimization via diffusion ambiguity modeling, 2025. URL https://arxiv.org/abs/2510.22757 .Jiaqi Wen and Jianyi Yang. Distributionally robust optimization via generative ambiguity modeling. In International Conference on Learning Representations , 2026. URL https://openreview.net/ forum?id=q67t0gFrdY .Chen Xu, Jonghyeok Lee, Xiuyuan Cheng, and Yao Xie. Flow-based distributionally robust optimization. 
+
+IEEE Journal on Selected Areas in Information Theory , 2024. URL https://openreview.net/ forum?id=M5SPJzYsWF .Yufeng Yang, Yi Zhou, and Zhaosong Lu. Nested stochastic gradient descent for (generalized) sinkhorn distance-regularized distributionally robust optimization, 2025. URL https://arxiv.org/abs/ 2503.22923 .Martin Zinkevich. Online convex programming and generalized infinitesimal gradient ascent. In Pro-ceedings of the 20th International Conference on Machine Learning (ICML) , 2003. 
+
+# A Proofs 
+
+This appendix contains full proofs for the results stated in Section 3. For convenience, each theorem or lemma is restated before its proof. The population proof below concerns 𝑃 𝑥  
+
+> 0
+
+and 𝑄 𝑥 𝜓 at the fixed context 𝑥 . All optimization proofs condition on the fixed Monte Carlo batches and use the empirical shorthand introduced in Section 3.1. 
+
+Basic assumptions. We use the following basic assumptions throughout the theoretical analysis: (A1) 𝑓 (𝑤, 𝑦 ) is 𝐿 𝑓 -Lipschitz in 𝑦 uniformly in 𝑤 ∈ W .(A2) W ⊂ R𝑑 is convex and compact with diameter 𝐷 W .(A3) Nominal and adversarial generator outputs are uniformly bounded as stated in Section 3.1. 
+
+Notation. For a fixed context 𝑥 , we use the following notation: 
+
+• 𝐹 (𝑤, 𝜓 ) := b𝐹 𝑀 (𝑤, 𝜓 ) denotes the empirical downstream loss under adversary 𝜓 ; this shorthand is used only in the fixed-batch optimization proofs. 
+
+• A ( ˆ𝜙, 𝜌, 𝑥 ) :=
+
+n
+
+𝜓 : 𝑆 𝜀 
+
+ b𝑃 𝐺 𝜓 ,𝑥 , b𝑃 𝐺 ˆ𝜙 ,𝑥 
+
+
+
+⩽ 𝜌 
+
+o
+
+denotes the Sinkhorn ambiguity set. When ˆ 𝜙 , 𝜌 , and 
+
+𝑥 are clear from context, we write simply A.
+
+• 𝜙 (𝑤 ) := max 𝜓 ∈ A 𝐹 (𝑤, 𝜓 ) denotes the robust outer objective, and 𝜙 ∗ := min 𝑤 ∈ W 𝜙 (𝑤 ) denotes its optimal value. 
+
+• 𝜓 ∗ (𝑤 ) ∈ arg max 𝜓 ∈ A 𝐹 (𝑤, 𝜓 ) denotes a worst-case adversary for decision 𝑤 , and 𝑤 ∗ ∈ arg min 𝑤 ∈ W 𝜙 (𝑤 )
+
+denotes an optimal robust decision. 
+
+• 𝑠 𝑘 := 𝑆 𝜀 
+
+ b𝑃 𝐺 𝜓 𝑘 ,𝑥 , b𝑃 𝐺 ˆ𝜙 ,𝑥 
+
+
+
+denotes the Sinkhorn divergence at the 𝑘 -th inner iterate. 17 • 𝛾 𝑀 := 𝜀 log 𝑀 and 𝐵 := max {𝜌, 4𝑅 2}.
+
+• When analyzing the outer update, ˆ 𝑔 𝑘 ∈ 𝜕 𝑤 𝐹 (𝑤 (𝑡 ) , 𝜓 𝑘 ) denotes the outer subgradient associated with the 𝑘 -th inner iterate, and ˆ𝑔 (𝑡 ) := 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+ˆ𝑔 𝑘 
+
+denotes the averaged outer subgradient used in Algorithm 1. Additional assumptions required only for the joint convergence theorem are stated explicitly in the proof of Theorem 3.7. 
+
+A.1 Proof of Lemma 3.1 
+
+Lemma A.1 (Uniform Sinkhorn upper bound; restatement of Lemma 3.1) . Under Assumption (A3) , any two nominal or adversarial output laws 𝑃, 𝑄 satisfy 0 ⩽ 𝑆 𝜀 (𝑃, 𝑄 ) ⩽ 4𝑅 2.Proof. The independent coupling 𝑃 ⊗ 𝑄 is feasible in (2.1) and has zero KL penalty. Since both laws are supported in the radius-𝑅 ball, 
+
+∥𝑦 − 𝑦 ′ ∥22 ⩽ (∥ 𝑦 ∥2 + ∥ 𝑦 ′ ∥2)2 ⩽ 4𝑅 2.
+
+Consequently, OT 𝜀 (𝑃, 𝑄 ) ⩽ 4𝑅 2. The two self-transport terms are nonnegative, so 𝑆 𝜀 (𝑃, 𝑄 ) ⩽
+
+OT 𝜀 (𝑃, 𝑄 ) ⩽ 4𝑅 2. Nonnegativity follows from the positivity of the debiased Sinkhorn divergence for squared-Euclidean cost [Feydy et al., 2019]. □
+
+A.2 Proof of the Empirical Sinkhorn–Wasserstein Comparison 
+
+Proof. Let 𝛼 = 𝑀 −1 Í𝑖 𝛿 𝑎 𝑖 and 𝛽 = 𝑀 −1 Í 𝑗 𝛿 𝑏 𝑗 . The KL term in (2.7) is nonnegative, hence OT 𝜀 (𝛼, 𝛽 ) ⩾ 𝑊 22 (𝛼, 𝛽 ). The unregularized problem has an optimal permutation coupling. Its 𝑀 
+
+nonzero entries equal 1 /𝑀 , so its KL divergence from the product weights 1 /𝑀 2 is log 𝑀 . Therefore 0 ⩽ OT 𝜀 (𝛼, 𝛽 ) − 𝑊 22 (𝛼, 𝛽 ) ⩽ 𝜀 log 𝑀. 
+
+Applying the same argument to the two self-transport terms shows that 𝑆 𝜀 (𝛼, 𝛽 ) − 𝑊 22 (𝛼, 𝛽 ) is one number in [0, 𝛾 𝑀 ] minus half of each of two numbers in [0, 𝛾 𝑀 ]. It therefore lies in [− 𝛾 𝑀 , 𝛾 𝑀 ],proving (3.1). □
+
+A.3 Proof of Theorem 3.2 
+
+Proof. The radius-𝑅 ball is compact, so P𝑅 is compact under weak convergence. On this space, 𝑆 𝜀 is continuous, positive definite, and metrizes weak convergence [Feydy et al., 2019, Theorem 1]; 𝑊 1 is also continuous. If 𝜔 𝜀,𝑅 (𝑟 ) did not tend to zero, there would be 𝑟 𝑛 ↓ 0 and 𝑃 𝑛 , 𝑄 𝑛 ∈ P 𝑅 with 𝑆 𝜀 (𝑃 𝑛 , 𝑄 𝑛 ) ⩽ 𝑟 𝑛 
+
+but 𝑊 1 (𝑃 𝑛 , 𝑄 𝑛 ) bounded away from zero. Compactness gives a subsequence converging to some 𝑃, 𝑄 .Continuity gives 𝑆 𝜀 (𝑃, 𝑄 ) = 0, hence 𝑃 = 𝑄 , while continuity of 𝑊 1 gives 𝑊 1 (𝑃 𝑛 , 𝑄 𝑛 ) → 0, a contradiction. Thus 𝜔 𝜀,𝑅 (𝑟 ) ↓ 0. 18 For a population-feasible 𝜓 , definition (3.2) gives 𝑊 1 (𝑄 𝑥 𝜓 , 𝑃 𝑥  
+
+> 0
+
+) ⩽ 𝜔 𝜀,𝑅 (𝜌 ).Assumption (A1) and Kantorovich–Rubinstein duality now yield 
+
+E𝑄 𝑥 𝜓 [ 𝑓 (𝑤, 𝑌 )] − E𝑃 𝑥  
+
+> 0
+
+[ 𝑓 (𝑤, 𝑌 )] ⩽ 𝐿 𝑓 𝑊 1 (𝑄 𝑥 𝜓 , 𝑃 𝑥  
+
+> 0
+
+) ⩽ 𝐿 𝑓 𝜔 𝜀,𝑅 (𝜌 ).
+
+□
+
+Proof of Corollary 3.3. For 𝜓 ∈ A , Assumption (A1), Kantorovich–Rubinstein duality, 𝑊 1 ⩽ 𝑊 2, and (3.1) give 
+
+|𝐹 (𝑤, 𝜓 ) − 𝐹 0 (𝑤 )| ⩽ 𝐿 𝑓 𝑊 1 ( b𝑃 𝐺 𝜓 ,𝑥 , b𝑃 𝐺 ˆ𝜙 ,𝑥 ) ⩽ 𝐿 𝑓 √︁ 𝑠 (𝜓 ) + 𝛾 𝑀 ⩽ 𝐿 𝑓 
+
+√𝜌 + 𝛾 𝑀 .
+
+□
+
+A.4 Proof of Theorem 3.5 
+
+Theorem A.2 (Inner convergence; restated) . Under (A1)–(A3) and (3.3) , run the inner loop for 𝐾 dual steps with 𝜂 𝜇 = 𝜇 (1) /( 𝐵 √𝐾 ). Then 
+
+𝐹  𝑤, 𝜓 ∗ (𝑤 ) − 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝐹 (𝑤, 𝜓 𝑘 ) ⩽ 𝐵 𝜇 (1)
+
+√𝐾 ,
+
+where 𝜓 ∗ (𝑤 ) ∈ arg max 𝜓 ∈ A 𝐹 (𝑤, 𝜓 ) is the inner optimum and 𝜇 (1) > 0 is the initial dual variable. Proof. The inner loop is projected primal–dual ascent on the Lagrangian L( 𝑤, 𝜓, 𝜇 ) = 𝐹 (𝑤, 𝜓 ) − 
+
+𝜇 (𝑠 (𝜓 ) − 𝜌 ): at each step 𝑘 , 𝜓 𝑘 maximizes L( 𝑤, ·, 𝜇 𝑘 ) and the dual variable is updated by projected descent, 𝜇 𝑘 +1 = [𝜇 𝑘 − 𝜂 𝜇 𝑏 𝑘 ]+, with 𝑏 𝑘 := 𝜌 − 𝑠 𝑘 .We use the standard duality-gap analysis for saddle-point subgradient problems [Zinkevich, 2003, Nedi´ c and Ozdaglar, 2009]. 
+
+Dual trajectory. Nonexpansiveness of projection gives, for any reference 𝜇 ⩾ 0, 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+(𝜇 𝑘 − 𝜇 ) 𝑏 𝑘 ⩽ (𝜇 (1) − 𝜇 )2
+
+2𝐾𝜂 𝜇 
+
++ 𝜂 𝜇 
+
+2𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+|𝑏 𝑘 |2. (A.1) By Lemma 3.1, 0 ⩽ 𝑠 𝑘 ⩽ 4𝑅 2, so |𝑏 𝑘 | ⩽ 𝐵 . Taking 𝜇 = 0 and 𝜂 𝜇 = 𝜇 (1) /( 𝐵 √𝐾 ) yields 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝜇 𝑘 𝑏 𝑘 ⩽ 𝐵 𝜇 (1)
+
+√𝐾 . (A.2) 
+
+Duality gap. For every 𝜇 𝑘 ⩾ 0, weak duality gives 
+
+𝑄 (𝜇 𝑘 ) := max 
+
+> 𝜓
+
+𝐹 (𝑤, 𝜓 ) + 𝜇 𝑘 (𝜌 − 𝑠 (𝜓 ))  ⩾ max  
+
+> 𝜓 ∈ A
+
+𝐹 (𝑤, 𝜓 ) = 𝐹  𝑤, 𝜓 ∗ (𝑤 ),
+
+since any feasible 𝜓 ∈ A satisfies 𝑠 (𝜓 ) ⩽ 𝜌 and hence 𝜇 𝑘 (𝜌 − 𝑠 (𝜓 )) ⩾ 0. As 𝜓 𝑘 maximizes the Lagrangian at 𝜇 𝑘 ,
+
+𝐹 (𝑤, 𝜓 𝑘 ) + 𝜇 𝑘 𝑏 𝑘 = 𝑄 (𝜇 𝑘 ) ⩾ 𝐹  𝑤, 𝜓 ∗ (𝑤 ).
+
+19 Averaging over 𝑘 = 1, . . . , 𝐾 and rearranging, 
+
+𝐹  𝑤, 𝜓 ∗ (𝑤 ) − 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝐹 (𝑤, 𝜓 𝑘 ) ⩽ 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝜇 𝑘 𝑏 𝑘 ⩽ 𝐵 𝜇 (1)
+
+√𝐾 ,
+
+where the last step is (A.2). An approximate oracle contributes its average Lagrangian error additively, as noted after (3.3). □
+
+A.5 Proof of Lemma 3.6 
+
+The argument below follows the standard long-term-constraint analysis of Mahdavi et al. [2012]. The comparison-multiplier construction is likewise standard and is used, for example, in the GAS-DRO analysis of Wen and Yang [2026]. We include the relevant details here to keep the Sinkhorn specialization self-contained. 
+
+Proof. Fix the outer decision 𝑤 and omit it from the notation. Define 
+
+𝑏 𝑘 := 𝜌 − 𝑠 𝑘 , 𝑣 𝑘 := 𝑠 𝑘 − 𝜌 = −𝑏 𝑘 .
+
+By Lemma 3.1, 0 ⩽ 𝑠 𝑘 ⩽ 4𝑅 2, and hence 
+
+|𝑏 𝑘 | ⩽ 𝐵 := max {𝜌, 4𝑅 2}.
+
+We first upper-bound the projected-dual regret term. Applying (A.1) with reference multiplier 
+
+𝜇 = 𝜇 𝐶 gives 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+(𝜇 𝑘 − 𝜇 𝐶 )𝑏 𝑘 ⩽ |𝜇 𝐶 − 𝜇 (1) |2
+
+2𝐾𝜂 𝜇 
+
++ 𝜂 𝜇 
+
+2𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+|𝑏 𝑘 |2.
+
+Using |𝑏 𝑘 | ⩽ 𝐵 and 𝜂 𝜇 = 𝜇 (1) /( 𝐵 √𝐾 ) yields 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+(𝜇 𝑘 − 𝜇 𝐶 )𝑏 𝑘 ⩽ 𝐵 
+
+√𝐾 
+
+ 𝜇 (1)
+
+2 + |𝜇 𝐶 − 𝜇 (1) |2
+
+2𝜇 (1)
+
+
+
+. (A.3) We now lower-bound the same term by the average constraint violation. Recall the dual function 
+
+𝑄 𝑤 (𝜇 ) := sup 
+
+> 𝜓 ∈Ψ
+
+{𝐹 (𝑤, 𝜓 ) + 𝜇 (𝜌 − 𝑠 (𝜓 ))} .
+
+By the exact inner oracle condition (3.3), 
+
+𝑄 𝑤 (𝜇 𝑘 ) = 𝐹 (𝑤, 𝜓 𝑘 ) + 𝜇 𝑘 𝑏 𝑘 . (A.4) Let 𝜇 ∗ (𝑤 ) be the selected minimizer of 𝑄 𝑤 from Assumption 3.2. Since 𝑄 𝑤 (𝜇 𝑘 ) ⩾ 𝑄 𝑤 (𝜇 ∗ (𝑤 )) , (A.4) implies 
+
+𝜇 𝑘 𝑏 𝑘 = 𝑄 𝑤 (𝜇 𝑘 ) − 𝐹 (𝑤, 𝜓 𝑘 ) ⩾ 𝑄 𝑤 (𝜇 ∗ (𝑤 )) − 𝐹 (𝑤, 𝜓 𝑘 ). (A.5) 20 Moreover, evaluating the supremum defining 𝑄 𝑤 (𝜇 ∗ (𝑤 )) at the candidate 𝜓 𝑘 gives 
+
+𝐹 (𝑤, 𝜓 𝑘 ) + 𝜇 ∗ (𝑤 )𝑏 𝑘 ⩽ 𝑄 𝑤 (𝜇 ∗ (𝑤 )) . (A.6) Since 𝑏 𝑘 = −𝑣 𝑘 , (A.6) is equivalent to 
+
+𝐹 (𝑤, 𝜓 𝑘 ) ⩽ 𝑄 𝑤 (𝜇 ∗ (𝑤 )) + 𝜇 ∗ (𝑤 )𝑣 𝑘 . (A.7) Substituting (A.7) into (A.5) gives 
+
+𝜇 𝑘 𝑏 𝑘 ⩾ 𝑄 𝑤 (𝜇 ∗ (𝑤 )) − 𝑄 𝑤 (𝜇 ∗ (𝑤 )) + 𝜇 ∗ (𝑤 )𝑣 𝑘 
+
+ = −𝜇 ∗ (𝑤 )𝑣 𝑘 .
+
+Therefore, using 𝑏 𝑘 = −𝑣 𝑘 ,
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+(𝜇 𝑘 − 𝜇 𝐶 )𝑏 𝑘 =
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝜇 𝑘 𝑏 𝑘 − 𝜇 𝐶 𝐾 ∑︁ 
+
+> 𝑘 =1
+
+𝑏 𝑘 
+
+=
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝜇 𝑘 𝑏 𝑘 + 𝜇 𝐶 𝐾 ∑︁ 
+
+> 𝑘 =1
+
+𝑣 𝑘 
+
+⩾ −𝜇 ∗ (𝑤 )
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝑣 𝑘 + 𝜇 𝐶 𝐾 ∑︁ 
+
+> 𝑘 =1
+
+𝑣 𝑘 
+
+=  𝜇 𝐶 − 𝜇 ∗ (𝑤 ) 𝐾 ∑︁ 
+
+> 𝑘 =1
+
+𝑣 𝑘 . (A.8) Combining (A.8) with (A.3), and dividing by 𝜇 𝐶 − 𝜇 ∗ (𝑤 ) > 0, gives 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝑣 𝑘 ⩽ 𝐵 
+
+(𝜇 𝐶 − 𝜇 ∗ (𝑤 )) √𝐾 
+
+ 𝜇 (1)
+
+2 + |𝜇 𝐶 − 𝜇 (1) |2
+
+2𝜇 (1)
+
+
+
+.
+
+By Assumption 3.2, 𝜇 ∗ (𝑤 ) ⩽ 𝜇 ∗, and 𝜇 𝐶 > 𝜇 ∗. Hence 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝑣 𝑘 ⩽ 𝐵 
+
+(𝜇 𝐶 − 𝜇 ∗)√𝐾 
+
+ 𝜇 (1)
+
+2 + |𝜇 𝐶 − 𝜇 (1) |2
+
+2𝜇 (1)
+
+
+
+= 𝐶 𝐾 
+
+√𝐾 .
+
+Finally, since 𝑣 𝑘 = 𝑠 𝑘 − 𝜌 ,1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝑠 𝑘 = 𝜌 + 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝑣 𝑘 ⩽ 𝜌 + 𝐶 𝐾 
+
+√𝐾 .
+
+This proves the claim. □
+
+A.6 Proof of Theorem 3.7 
+
+Proof. Let 𝑤 ∗ ∈ arg min 𝑤 ∈ W 𝜙 (𝑤 ). Under Assumption 3.1, 𝐹 (· , 𝜓 ) is convex on W for every 𝜓 . Hence 
+
+𝜙 (𝑤 ) = max  
+
+> 𝜓 ∈ A
+
+𝐹 (𝑤, 𝜓 )
+
+is convex as a pointwise maximum of convex functions. 21 Define 
+
+Δ𝐾 := max {𝜌, 4𝑅 2}𝜇 (1)
+
+√𝐾 
+
+and 
+
+R𝐾 := 2𝐿 𝑓 
+
+√𝜌 + 𝛾 𝑀 + 𝐿 𝑓 𝐶 𝐾 
+
+2√︁ (𝜌 + 𝛾 𝑀 )𝐾 .
+
+We first show that the averaged inner gradient ˆ 𝑔 (𝑡 ) = 𝐾 −1 Í𝐾 𝑘 =1 ˆ𝑔 𝑘 satisfies the approximate subgradient inequality 
+
+𝜙 (𝑤 (𝑡 ) ) − 𝜙 ∗ ⩽ ⟨ ˆ𝑔 (𝑡 ) , 𝑤 (𝑡 ) − 𝑤 ∗⟩ + Δ𝐾 + R 𝐾 . (A.9) For each 𝑘 , convexity of 𝐹 (· , 𝜓 𝑘 ) gives 
+
+𝐹 (𝑤 (𝑡 ) , 𝜓 𝑘 ) − 𝐹 (𝑤 ∗, 𝜓 𝑘 ) ⩽ ⟨ ˆ𝑔 𝑘 , 𝑤 (𝑡 ) − 𝑤 ∗⟩.
+
+Averaging over 𝑘 yields 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝐹 (𝑤 (𝑡 ) , 𝜓 𝑘 ) − 𝐹 (𝑤 ∗, 𝜓 𝑘 ) ⩽ ⟨ ˆ𝑔 (𝑡 ) , 𝑤 (𝑡 ) − 𝑤 ∗⟩. (A.10) Next, we compare 𝐹 (𝑤 ∗, 𝜓 𝑘 ) to 𝜙 ∗. Since 𝜙 ∗ = 𝐹 (𝑤 ∗, 𝜓 ∗ (𝑤 ∗)) , Assumption (A1) and Kantorovich– Rubinstein duality give 
+
+𝐹 (𝑤 ∗, 𝜓 𝑘 ) − 𝜙 ∗ ⩽ 𝐿 𝑓 𝑊 1 ( b𝑃 𝐺 𝜓 𝑘 ,𝑥 , b𝑃 𝐺 𝜓 ∗ (𝑤 ∗ ) ,𝑥 ).
+
+By the triangle inequality for 𝑊 1,
+
+𝑊 1 ( b𝑃 𝐺 𝜓 𝑘 ,𝑥 , b𝑃 𝐺 𝜓 ∗ (𝑤 ∗ ) ,𝑥 ) ⩽ 𝑊 1 ( b𝑃 𝐺 𝜓 𝑘 ,𝑥 , b𝑃 𝐺 ˆ𝜙 ,𝑥 )+ 𝑊 1 ( b𝑃 𝐺 ˆ𝜙 ,𝑥 , b𝑃 𝐺 𝜓 ∗ (𝑤 ∗ ) ,𝑥 ).
+
+Using 𝑊 1 ⩽ 𝑊 2 and the empirical Sinkhorn–Wasserstein comparison (3.1), we have 
+
+𝑊 1 ( b𝑃 𝐺 𝜓 𝑘 ,𝑥 , b𝑃 𝐺 ˆ𝜙 ,𝑥 ) ⩽ √𝑠 𝑘 + 𝛾 𝑀 ,
+
+while 𝜓 ∗ (𝑤 ∗) ∈ A implies 
+
+𝑊 1 ( b𝑃 𝐺 ˆ𝜙 ,𝑥 , b𝑃 𝐺 𝜓 ∗ (𝑤 ∗ ) ,𝑥 ) ⩽ √𝜌 + 𝛾 𝑀 .
+
+Therefore, 
+
+𝐹 (𝑤 ∗, 𝜓 𝑘 ) − 𝜙 ∗ ⩽ 𝐿 𝑓 
+
+ √𝑠 𝑘 + 𝛾 𝑀 + √𝜌 + 𝛾 𝑀 
+
+ .
+
+Averaging the preceding pointwise bound over 𝑘 = 1, . . . , 𝐾 gives 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝐹 (𝑤 ∗, 𝜓 𝑘 ) − 𝜙 ∗ = 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝐹 (𝑤 ∗, 𝜓 𝑘 ) − 𝜙 ∗
+
+⩽ 𝐿 𝑓 
+
+1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+√𝑠 𝑘 + 𝛾 𝑀 + 𝐿 𝑓 
+
+√𝜌 + 𝛾 𝑀 . (A.11) 22 Since 𝑢 ↦ → √𝑢 is concave, Jensen’s inequality gives 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+√𝑠 𝑘 + 𝛾 𝑀 ⩽
+
+vut 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+(𝑠 𝑘 + 𝛾 𝑀 ) =
+
+vut 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝑠 𝑘 + 𝛾 𝑀 .
+
+Substituting this into (A.11) yields 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝐹 (𝑤 ∗, 𝜓 𝑘 ) − 𝜙 ∗ ⩽ 𝐿 𝑓 
+
+vut 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝑠 𝑘 + 𝛾 𝑀 + 𝐿 𝑓 
+
+√𝜌 + 𝛾 𝑀 . (A.12) By Lemma 3.6, 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝑠 𝑘 ⩽ 𝜌 + 𝐶 𝐾 
+
+√𝐾 .
+
+Substituting this bound into (A.12) gives 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝐹 (𝑤 ∗, 𝜓 𝑘 ) − 𝜙 ∗ ⩽ 𝐿 𝑓 √︄ 𝜌 + 𝛾 𝑀 + 𝐶 𝐾 
+
+√𝐾 + 𝐿 𝑓 
+
+√𝜌 + 𝛾 𝑀 . (A.13) Finally, using √𝑎 + 𝑏 ⩽ √𝑎 + 𝑏 
+
+2√𝑎 (𝑎 > 0, 𝑏 ⩾ 0),
+
+with 𝑎 = 𝜌 + 𝛾 𝑀 and 𝑏 = 𝐶 𝐾 /√𝐾 , we have √︄ 
+
+𝜌 + 𝛾 𝑀 + 𝐶 𝐾 
+
+√𝐾 ⩽ √𝜌 + 𝛾 𝑀 + 𝐶 𝐾 
+
+2√︁ (𝜌 + 𝛾 𝑀 )𝐾 .
+
+Substituting this into (A.13) gives 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝐹 (𝑤 ∗, 𝜓 𝑘 ) − 𝜙 ∗ ⩽ 2𝐿 𝑓 
+
+√𝜌 + 𝛾 𝑀 + 𝐿 𝑓 𝐶 𝐾 
+
+2√︁ (𝜌 + 𝛾 𝑀 )𝐾 = R𝐾 . (A.14) By Theorem 3.5, 
+
+𝜙 (𝑤 (𝑡 ) ) = 𝐹 (𝑤 (𝑡 ) , 𝜓 ∗ (𝑤 (𝑡 ) )) ⩽ 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝐹 (𝑤 (𝑡 ) , 𝜓 𝑘 ) + Δ𝐾 . (A.15) Combining (A.15), (A.14), and (A.10) gives 
+
+𝜙 (𝑤 (𝑡 ) ) − 𝜙 ∗ ⩽ 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝐹 (𝑤 (𝑡 ) , 𝜓 𝑘 ) − 𝜙 ∗ + Δ𝐾 
+
+= 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝐹 (𝑤 (𝑡 ) , 𝜓 𝑘 ) − 𝐹 (𝑤 ∗, 𝜓 𝑘 ) + 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝐹 (𝑤 ∗, 𝜓 𝑘 ) − 𝜙 ∗
+
+!
+
++ Δ𝐾 
+
+⩽ 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+𝐹 (𝑤 (𝑡 ) , 𝜓 𝑘 ) − 𝐹 (𝑤 ∗, 𝜓 𝑘 ) + Δ𝐾 + R 𝐾 
+
+⩽ ⟨ ˆ𝑔 (𝑡 ) , 𝑤 (𝑡 ) − 𝑤 ∗⟩ + Δ𝐾 + R 𝐾 .
+
+23 which proves (A.9). Now use the projected outer update 
+
+𝑤 (𝑡 +1) = Π W
+
+ 𝑤 (𝑡 ) − 𝜂 𝑤 ˆ𝑔 (𝑡 ) .
+
+By nonexpansiveness of projection and, using Assumption 3.1, ∥ ˆ𝑔 (𝑡 ) ∥ ⩽ 𝐾 −1 Í𝑘 ∥ ˆ𝑔 𝑘 ∥ ⩽ 𝐺 𝑤 ,
+
+∥𝑤 (𝑡 +1) − 𝑤 ∗ ∥2 ⩽ ∥𝑤 (𝑡 ) − 𝜂 𝑤 ˆ𝑔 (𝑡 ) − 𝑤 ∗ ∥2
+
+= ∥𝑤 (𝑡 ) − 𝑤 ∗ ∥2 − 2𝜂 𝑤 ⟨ ˆ𝑔 (𝑡 ) , 𝑤 (𝑡 ) − 𝑤 ∗⟩ + 𝜂 2 
+
+> 𝑤
+
+∥ ˆ𝑔 (𝑡 ) ∥2
+
+⩽ ∥𝑤 (𝑡 ) − 𝑤 ∗ ∥2 − 2𝜂 𝑤 ⟨ ˆ𝑔 (𝑡 ) , 𝑤 (𝑡 ) − 𝑤 ∗⟩ + 𝜂 2 
+
+> 𝑤
+
+𝐺 2 
+
+> 𝑤
+
+.
+
+Rearranging and using (A.9), 
+
+𝜙 (𝑤 (𝑡 ) ) − 𝜙 ∗ ⩽ ∥𝑤 (𝑡 ) − 𝑤 ∗ ∥2 − ∥ 𝑤 (𝑡 +1) − 𝑤 ∗ ∥2
+
+2𝜂 𝑤 
+
++ 𝜂 𝑤 𝐺 2
+
+> 𝑤
+
+2 + Δ𝐾 + R 𝐾 . (A.16) Summing (A.16) over 𝑡 = 1, . . . , 𝑇 and using ∥𝑤 (1) − 𝑤 ∗ ∥ ⩽ 𝐷 W gives 1
+
+𝑇 
+
+> 𝑇
+
+∑︁ 
+
+> 𝑡 =1
+
+[𝜙 (𝑤 (𝑡 ) ) − 𝜙 ∗] ⩽ 𝐷 2
+
+> W
+
+2𝜂 𝑤 𝑇 + 𝜂 𝑤 𝐺 2
+
+> 𝑤
+
+2 + Δ𝐾 + R 𝐾 .
+
+By convexity of 𝜙 ,
+
+𝜙 ( ¯𝑤 (𝑇 ) ) ⩽ 1
+
+𝑇 
+
+> 𝑇
+
+∑︁ 
+
+> 𝑡 =1
+
+𝜙 (𝑤 (𝑡 ) ).
+
+Therefore, 
+
+𝜙 ( ¯𝑤 (𝑇 ) ) − 𝜙 ∗ ⩽ 𝐷 2
+
+> W
+
+2𝜂 𝑤 𝑇 + 𝜂 𝑤 𝐺 2
+
+> 𝑤
+
+2 + Δ𝐾 + R 𝐾 .
+
+Finally, substituting 
+
+𝜂 𝑤 = 𝐷 W
+
+𝐺 𝑤 
+
+√𝑇 
+
+gives 
+
+𝐷 2
+
+> W
+
+2𝜂 𝑤 𝑇 + 𝜂 𝑤 𝐺 2
+
+> 𝑤
+
+2 = 𝐷 W 𝐺 𝑤 
+
+√𝑇 .
+
+Substituting the definitions of Δ𝐾 and R𝐾 yields 
+
+𝜙 ( ¯𝑤 (𝑇 ) ) − 𝜙 ∗ ⩽ 𝐷 W 𝐺 𝑤 
+
+√𝑇 + max {𝜌, 4𝑅 2}𝜇 (1)
+
+√𝐾 
+
++ 𝐿 𝑓 𝐶 𝐾 
+
+2√︁ (𝜌 + 𝛾 𝑀 )𝐾 + 2𝐿 𝑓 
+
+√𝜌 + 𝛾 𝑀 ,
+
+which is the desired bound. □
+
+# B Experimental Details 
+
+We evaluate GDRO on two downstream decision problems. The first is contextual newsvendor, where the decision is convex and the optimal order for a fixed scenario distribution has a weighted-quantile 24 form. We study this task on both a synthetic benchmark, used to validate the rare-tail mechanism under a known data-generating process, and the real M5 retail demand dataset. The second downstream problem is robot navigation among pedestrians, where the decision is nonconvex and the nominal model is the official implicit SocialGAN trajectory generator. Across all experiments, the nominal generator defines 
+
+𝑃 𝑥  
+
+> 0
+
+, the adversarial generator defines 𝑄 𝑥 𝜓 , and each method chooses a decision 𝑤 ∈ W before the realized outcome 𝑌 is revealed. 
+
+B.1 Baselines and Solvers 
+
+All methods use the same fitted nominal generator within each benchmark. They differ only in how they form the scenario distribution used by the downstream decision solver. 
+
+Nominal. The nominal baseline optimizes the decision using Monte Carlo samples from 𝑃 𝑥  
+
+> 0
+
+. This is the standard sample-average decision induced by the fitted generator. 
+
+KL. The KL baseline follows the empirical 𝑓 -divergence DRO formulation of Namkoong and Duchi [2016]. At each context, it keeps the nominal sample cloud fixed and adversarially reweights the samples within a KL ball. For a fixed decision, the KL-constrained worst-case weights have the exponential-tilt form [Hu and Hong, 2013]; we choose the tilt temperature to match the prescribed radius. The downstream decision is then updated under the weighted samples: by weighted critical quantiles for newsvendor and by weighted first-order optimization for SocialGAN. Thus this baseline can emphasize high-loss nominal samples but cannot create outcomes outside the nominal sample cloud. 
+
+W2. The W2 baseline adapts the adversarial sample-perturbation idea of Sinha et al. [2018] to the downstream decision stage as a finite-sample Wasserstein-2 robustness baseline. Given nominal scenarios from 𝑃 𝑥  
+
+> 0
+
+, we introduce adversarial support points and move them directly in Y to increase the downstream loss, while controlling their average squared displacement from the nominal cloud, i.e., the sample-wise empirical 𝑊 22 transport cost. Unlike the penalized robust-training objective in Sinha et al. [2018], we use a primal–dual update for an explicit transport-radius constraint, so that the baseline is comparable to the radius-constrained GDRO formulation. The downstream decision is then updated against the perturbed scenario cloud. This gives a uniform finite-sample W2 baseline for both the multi-product newsvendor task and the nonconvex SocialGAN planning task. Unlike GDRO, however, the adversarial scenarios are free support points in Y rather than samples produced by the chosen generator family. 
+
+GAS-DRO. For the newsvendor experiments, we include a conditional version of GAS-DRO [Wen and Yang, 2026]. The adversarial model uses the same conditional decoder architecture as the nominal generator and is optimized at the active context. Its ambiguity set is controlled by the GAS-DRO reconstruction certificate, computed over conditional training pairs. We denote by 𝐽 0 the value of this reconstruction certificate for the fitted nominal generator on the training set, and set GAS-DRO radii as multiples of 𝐽 0 in the experiments below. We include this baseline only when an explicit decoder is available; we do not apply it to SocialGAN, whose released nominal model is an implicit trajectory sampler. 25 GDRO. We use the empirical context-local Sinkhorn formulation from Section 2. The nominal gener-ator is frozen, the adversarial generator is initialized from the nominal architecture, and the inner player updates adversarial generator parameters subject to the Sinkhorn certificate at the active context. The decision update uses the average outer subgradient over the active inner adversaries. All Sinkhorn diver-gences are computed with GeomLoss[Feydy et al., 2019] using 𝑝 = 2 and blur 0 .05 across experiments. Task-specific radii, sample sizes, and optimization budgets are listed in the configuration tables below. 
+
+Radius and optimization budget. For the synthetic newsvendor experiment, we use fixed radii for KL, W2, and GDRO because the simulator is used as a controlled mechanism study. For the real-data experiments, the robustness level is adapted to the active context. In M5, we compute a historical average-cost risk score from the observed demand history and use its training-set 10% and 90% quantiles as low- and high-risk anchors. In SocialGAN, we use the nominal collision probability of the nominal robot plan as the risk score. The KL, W2, and GDRO radii are increased for high-risk contexts and decreased for low-risk contexts by a monotone validation-calibrated rule. The inner optimization budget is adapted in the same direction: high-risk contexts receive more adversarial updates, while low-risk contexts use a smaller budget. These adaptations use only the observed context and nominal generated scenarios, never realized test outcomes. 
+
+B.2 Synthetic Contextual Newsvendor 
+
+Motivation. The synthetic benchmark is designed to test a specific failure mode of nominal generative decision-making: a conditional generator may fit the bulk of the demand distribution while underrep-resenting rare, high-cost demand tails. The data-generating process therefore contains frequent base contexts and rare contexts in which a tail component may activate. This lets us evaluate decisions against the true conditional law while still requiring every method to make decisions from the same learned nominal generator. 
+
+Data-generating process. We generate 𝑝 = 20 product demands from contexts 𝑥 ∈ R5, with 
+
+𝑥 ∼ N ( 0, 𝐼 ).
+
+A context is rare if rare (𝑥 ) = 1{𝑎 ⊤𝑥 > 𝜏 },
+
+where 𝑎 is a fixed unit vector and 𝜏 is the 0 .9 training quantile of 𝑎 ⊤𝑥 .Demand is generated through a latent factor ℎ ∈ R2. In the base component, 
+
+ℎ | 𝑥 ∼ N ( 𝐴𝑥, Σℎ).
+
+In rare contexts, a tail component is activated with probability 𝜋 tail = 0.10: 
+
+ℎ | 𝑥, tail ∼ N ( 𝐴𝑥 + Δℎ, Σtail ), Δℎ = (2.0, 0).
+
+26 Frequent contexts always use the base component. For product 𝑗 , the latent score is 
+
+𝑠 𝑗 (𝑥, ℎ ) = 𝑏 𝑗 + 𝑟 ⊤ 
+
+> 𝑗
+
+𝑥 + 𝛽 𝑗 ℎ1 + 𝛾 𝑗 ℎ2 + 𝑎 sin  
+
+> 𝑗
+
+sin (𝑣 ⊤ 
+
+> 𝑗
+
+ℎ) + 𝜀 𝑗 , 𝜀 𝑗 ∼ N ( 0, 𝜎 2 
+
+> 𝜀
+
+),
+
+and demand is 
+
+𝑌 𝑗 = 𝜇 0 + 𝜇 1 softplus (𝑠 𝑗 (𝑥, ℎ )) .
+
+We use 𝜎 𝜀 = 0.15, 𝜇 0 = 10, and 𝜇 1 = 5. Product parameters share group-level structure plus product-specific perturbations, inducing correlated nonlinear demands across products. 
+
+Nominal generator. The nominal model is a conditional VAE trained on samples from the data-generating process. The context is provided to the encoder and decoder. Demand is standardized for VAE training, but generated samples are transformed back to demand units before the downstream decision and evaluation. The full synthetic newsvendor configuration is summarized in Table 5. 
+
+Downstream decision. The decision is the order vector 𝑤 ∈ R20  
+
+> +
+
+. The loss is the multi-product newsvendor cost 
+
+𝑓 (𝑤, 𝑌 ) =
+
+> 20
+
+∑︁ 
+
+> 𝑗 =1
+
+𝑐 𝑢, 𝑗 (𝑌 𝑗 − 𝑤 𝑗 )+ + 𝑐 𝑜, 𝑗 (𝑤 𝑗 − 𝑌 𝑗 )+.
+
+For any weighted empirical scenario cloud, the optimal decision is the per-product weighted critical quantile with critical ratio 𝑐 𝑢, 𝑗 /( 𝑐 𝑢, 𝑗 + 𝑐 𝑜, 𝑗 ). The oracle is computed using simulator samples from the true conditional law at the same context and is used only for evaluation. 
+
+B.3 M5 Retail Newsvendor 
+
+Dataset and product selection. The M5 experiment uses real retail demand from the M5 forecasting benchmark [Makridakis et al., 2022]. Our goal in this experiment is not to compete on the full M5 forecasting task, but to obtain a stable real-data nominal generator for testing the downstream newsvendor decision mechanism. We therefore construct a contextual multi-product newsvendor task from historical sales, and select 𝑝 = 20 products from the chosen M5 subset whose nonzero demand ratio is at least 0.95. This keeps the task multivariate while avoiding products dominated by zeros, which would make conditional scenario generation unstable and obscure the effect of the robust decision layer. 
+
+Downstream decision. The downstream decision is the same multi-product newsvendor decision as in Appendix B.2. Let 𝑌 𝑡 = (𝑌 𝑡 , 1, . . . , 𝑌 𝑡 , 𝑝 )⊤ denote the realized demand vector for 𝑝 = 20 products on day 
+
+𝑡 , and let 𝑤 𝑡 = (𝑤 𝑡 , 1, . . . , 𝑤 𝑡 , 𝑝 )⊤ ∈ R𝑝  
+
+> +
+
+denote the order decision. The held-out realized loss is 
+
+𝑓 (𝑤 𝑡 , 𝑌 𝑡 ) =
+
+> 20
+
+∑︁ 
+
+> 𝑗 =1
+
+𝑐 𝑢, 𝑗 (𝑌 𝑡 , 𝑗 − 𝑤 𝑡 , 𝑗 )+ + 𝑐 𝑜, 𝑗 (𝑤 𝑡 , 𝑗 − 𝑌 𝑡 , 𝑗 )+.
+
+For any weighted empirical scenario cloud, the decision is computed by the per-product weighted critical quantile. 27 Table 5: Synthetic contextual newsvendor configuration. Item Value Products 20 Context dimension 5DGP latent dimension 2Rare-context threshold 0.9 quantile of 𝑎 ⊤𝑥 
+
+Tail probability in rare contexts 0.10 Tail shift (2.0, 0)
+
+Observation noise 0.15 Demand scale (𝜇 0, 𝜇 1) (10 , 5)
+
+Train / validation / test contexts 2000 /500 /200 Underage costs 𝑐 𝑢, 𝑗 Uniform on [15 , 25 ]
+
+Overage costs 𝑐 𝑜, 𝑗 Uniform on [1, 3]
+
+Nominal generator Conditional VAE VAE latent dimension 4VAE hidden width 128 VAE epochs 300 VAE learning rate 10 −3
+
+VAE KL weight 0.02 Nominal/KL samples per context 256 GDRO/W2/GAS-DRO samples per context 128 KL radius 0.1GDRO radius 2.5W2 radius 2.5GAS-DRO radius 0.2𝐽 0
+
+Nominal generator. The nominal model is a conditional VAE–LSTM demand generator. For each day 
+
+𝑡 , the input context 𝑋 𝑡 is a historical demand window. A single-layer LSTM encodes this history into a temporal representation b𝐻 𝑡 . During training, the VAE encoder conditions on ( b𝐻 𝑡 , 𝑌 𝑡 ) and learns an approximate posterior over the latent variable. At generation time, the future demand 𝑌 𝑡 is not observed; latent variables are sampled from the learned conditional prior given b𝐻 𝑡 , and the decoder produces next-day demand scenarios. The nominal CVAE–LSTM architecture is illustrated in Figure 2. 
+
+Adaptive robustness. Unlike the synthetic benchmark, M5 does not provide a known simulator mecha-nism for identifying rare-tail contexts. We therefore adapt the robustness level using a risk score computed from the same newsvendor objective as the downstream task. For each context 𝑥 , corresponding to a historical demand window, we compute 𝑟 (𝑥 ) as the average realized newsvendor cost over that window under the same underage and overage costs used for evaluation. Let 𝑟 0.10 and 𝑟 0.90 be the training-set 10% and 90% quantiles of this score, and define 
+
+𝛼 (𝑥 ) =
+
+ 𝑟 (𝑥 ) − 𝑟 0.10 
+
+𝑟 0.90 − 𝑟 0.10 
+
+
+
+> [0,1]
+
+.
+
+The KL, W2, and GDRO radii are interpolated between their low- and high-risk values using 𝛼 (𝑥 ). For methods with adversarial inner optimization, the inner-loop budget is increased using the same risk score. All thresholds, radius endpoints, and optimization budgets are chosen on validation contexts. The full 28 x t-1,p …x t-1,1 x t-2,p …x t-2,1 
+
+………
+
+x t-L,p …x t-L,1                  
+
+> LSTM layer with hidden state size D h
+> ht,1 ht,2 ht,3 …ht,96 Yt
+> VAE Encoder Input Layer Latent Space
+> z
+> VAE Decoder
+> ⊕
+> Output Ŷ
+> Conditional Distribution
+> Dh= 96 - Dimension of hidden-state
+> L= 10 - Length of historical window
+> p= 20 - Number of products
+> 𝑞 𝑧 ∣𝐻 𝑡 ,𝑌 𝑡 𝑝 𝑌 𝑡 ∣𝐻 𝑡 ,𝑧 𝑌 𝑡 ∼𝑝 𝑌 𝑡 ∣𝐻 𝑡 ,𝑧 𝑡
+
+Figure 2: Nominal CVAE–LSTM generator for M5 demand scenarios. The LSTM encodes the historical demand window into b𝐻 𝑡 . During training, the encoder uses ( b𝐻 𝑡 , 𝑌 𝑡 ); during generation, latent variables are sampled from the conditional prior given b𝐻 𝑡 and decoded into next-day demand scenarios. M5 configuration is summarized in Table 6. 
+
+B.4 SocialGAN Robot Navigation 
+
+Nominal model and data. We use the official pretrained SocialGAN pedestrian trajectory model and the ETH/UCY benchmark protocol from Gupta et al. [2018]. The model observes 8 frames of pedestrian history and generates 12 future frames. We use the released SocialGAN predictor and its test split, without retraining the trajectory generator. 
+
+Downstream decision. The robot navigation task is added by us on top of the SocialGAN prediction setting. At a test context 𝑥 , the robot observes the same past pedestrian trajectories as SocialGAN. It then chooses a 12-step velocity plan 
+
+𝑤 = (𝑢 1, . . . , 𝑢 12 ), 𝑢 𝑡 ∈ R2,
+
+before the true pedestrian futures are revealed. The robot follows single-integrator dynamics from a sampled start point to a sampled goal, with each velocity projected onto a maximum-speed ball. Optimization uses generated pedestrian futures from the nominal or robust model; evaluation uses the true held-out pedestrian futures. 
+
+Planning objective and evaluation. For a pedestrian-future scenario 𝑌 = {𝑦 𝑗,𝑡 }𝑁 ,𝑇 𝑗 =1,𝑡 =1, the robot decision is a 𝑇 -step velocity plan 
+
+𝑤 = (𝑢 1, . . . , 𝑢 𝑇 ), 𝑢 𝑡 ∈ R2, 𝑇 = 12 .
+
+29 Table 6: M5 retail newsvendor configuration. Item Value Products 20 Historical window length 10 days Input-context shape 10 × 20 Forecast horizon 1 day Train / validation / test contexts 1500 /100 /300 Nominal generator Conditional VAE–LSTM LSTM layers 1LSTM hidden-state dimension 96 VAE latent dimension 12 VAE hidden dimension 192 Maximum VAE epochs 600 Early-stopping patience 120 VAE batch size 64 VAE learning rate 5 × 10 −4
+
+VAE weight decay 10 −5
+
+VAE KL weight 10 −3
+
+Prior-mean loss weight 1Nominal/KL samples per context 256 GDRO/W2/GAS–DRO samples per context 128 Underage costs 𝑐 𝑢, 𝑗 20 Overage costs 𝑐 𝑜, 𝑗 2KL radius [0.14 , 1.99 ]
+
+W2 radius [1.0, 58 .0]
+
+GDRO radius [38 .0, 75 .0]
+
+GAS–DRO radius 0.80 𝐽 0
+
+Starting from 𝑠 , the induced robot path is 
+
+𝑟 𝑡 (𝑤 ) = 𝑠 +
+
+> 𝑡
+
+∑︁ 
+
+> ℓ=1
+
+𝑢 ℓ , ∥𝑢 𝑡 ∥2 ⩽ 𝑣 max .
+
+The speed constraint is enforced by projecting each velocity vector onto the Euclidean ball of radius 
+
+𝑣 max . Let 𝑔 be the sampled goal and let ¯ 𝑟 𝑡 be the straight-line reference path from 𝑠 to 𝑔 . The smooth 30 loss optimized by all methods has the form 
+
+𝑓 (𝑤, 𝑌 ) = 𝜆 𝑝 
+
+1
+
+𝑇 
+
+> 𝑇
+
+∑︁ 
+
+> 𝑡 =1
+
+∥𝑟 𝑡 (𝑤 ) − 𝑔 ∥22 + 𝜆 𝑇 ∥𝑟 𝑇 (𝑤 ) − 𝑔 ∥22
+
+| {z }
+
+> progress and terminal arrival
+
++ 𝜆 tr 
+
+1
+
+𝑇 
+
+> 𝑇
+
+∑︁ 
+
+> 𝑡 =1
+
+∥𝑟 𝑡 (𝑤 ) − ¯𝑟 𝑡 ∥22
+
+| {z }
+
+> weak reference-path tracking
+
++ 𝜆 𝑢 
+
+1
+
+𝑇 
+
+> 𝑇
+
+∑︁ 
+
+> 𝑡 =1
+
+∥𝑢 𝑡 ∥22 + 𝜆 𝑠 
+
+1
+
+𝑇 − 1
+
+> 𝑇
+
+∑︁ 
+
+> 𝑡 =2
+
+∥𝑢 𝑡 − 𝑢 𝑡 −1 ∥22
+
+| {z }
+
+> control effort and smoothness
+
++ 𝜆 𝑐 
+
+1
+
+𝑇 
+
+> 𝑇
+
+∑︁ 
+
+> 𝑡 =1
+
+softplus 𝑟 safe − e𝑑 𝑡 (𝑤, 𝑌 )
+
+𝜏 𝑏 
+
+!2
+
+| {z }
+
+> differentiable collision barrier
+
+.
+
+Here 
+
+e𝑑 𝑡 (𝑤, 𝑌 ) = −𝜏 𝑑 log 
+
+> 𝑁
+
+∑︁ 
+
+> 𝑗 =1
+
+exp 
+
+
+
+− ∥𝑟 𝑡 (𝑤 ) − 𝑦 𝑗,𝑡 ∥2
+
+𝜏 𝑑 
+
+
+
+is a soft-min approximation of the nearest-pedestrian distance at time 𝑡 . The first line encourages the robot to make progress and arrive at the goal by the end of the horizon. The second line weakly discourages unnecessary detours. The third line penalizes large and rapidly changing velocities. The last line is a smooth safety barrier: it becomes large when the robot comes within the safety radius 𝑟 safe of a sampled pedestrian future. Nominal, W2, and GDRO optimize the average of 𝑓 (𝑤, 𝑌 ) over their corresponding scenario clouds, while KL optimizes a weighted average under adversarial sample weights. For final evaluation, we use the true held-out pedestrian future and a hard, non-differentiable score that prioritizes safety and arrival: Eval (𝑤, 𝑌 true ) = 𝐶 col 1{𝑑 min < 𝑟 col } + 𝐶 near 1{𝑑 min < 𝑟 near }+ 𝐶 fail 1{𝑡 arr = −1} + 𝑐 time e𝑡 arr + 𝑐 len 𝐿 path + 𝑐 dev 𝐷 ref .
+
+Here 𝑑 min is the minimum robot–pedestrian distance before arrival, 𝑡 arr is the first frame at which 
+
+∥𝑟 𝑡 (𝑤 ) − 𝑔 ∥2 ⩽ 𝑟 arr , e𝑡 arr = 𝑡 arr if the robot arrives and 𝑇 + 1 otherwise, 𝐿 path is path length until arrival, and 𝐷 ref is average deviation from the straight-line reference. Once the robot reaches the goal, later pedestrian motion is not counted as a collision. This hard score is used only for reporting; optimization uses the smooth loss above. 
+
+Fixed task set. We uniformly select 50 contexts from the SocialGAN test split. For each selected context, we generate 4 start–goal queries, giving 200 fixed robot tasks. Queries are selected using only nominal SocialGAN samples: the straight-line robot path must have nominal collision probability in 
+
+[0.60 , 0.90 ] under a screening radius 0 .30, and the start and goal locations must be initially clear of pedestrians. The evaluation collision radius is 0 .50. Thus the benchmark focuses on nontrivial planning 31 instances without using true future trajectories during task construction. 
+
+Adaptive radius and budget. For each query, we first solve the nominal robot plan and estimate its nominal collision probability b𝑝 using generated futures and the evaluation collision radius. The GDRO and W2 radii are chosen by the clipped linear rule 
+
+𝜌 ( b𝑝 ) = 𝜌 min + ( 𝜌 max − 𝜌 min )
+
+ b𝑝 − 𝑝 min 
+
+𝑝 max − 𝑝 min 
+
+
+
+> [0,1]
+
+,
+
+with 𝜌 min = 0.5, 𝜌 max = 3.0, 𝑝 min = 0.05, and 𝑝 max = 0.50. The KL radius is adapted by the same rule from 0 .1 to 0 .7. The GDRO optimization budget is also adapted using b𝑝 : low-risk queries use the smaller budget in Table 7, while high-risk queries use the larger budget. All adaptive quantities use only the observed context and nominal generated futures, never the realized test future. 32 Table 7: SocialGAN robot navigation configuration. Item Value Nominal model Official SocialGAN [Gupta et al., 2018] Dataset protocol ETH/UCY SocialGAN test split Observed / predicted frames 8/12 Selected test contexts 50 uniformly selected contexts Queries per context 4Total robot tasks 200 Robot decision horizon 𝑇 12 Robot decision 𝑤 12 two-dimensional velocity controls Robot dynamics 𝑟 𝑡 = 𝑠 + Í𝑡 ℓ=1 𝑢 ℓ
+
+Robot speed limit 𝑣 max 2× reference pedestrian speed Velocity constraint Projection to ∥𝑢 𝑡 ∥2 ⩽ 𝑣 max 
+
+Straight-line screening probability [0.60 , 0.90 ]
+
+Screening collision radius 0.30 Evaluation collision radius 𝑟 col 0.50 Near-miss radius 𝑟 near 0.80 Arrival radius 𝑟 arr 0.25 Nominal SocialGAN samples per context 64 Nominal plan steps 600 GDRO/W2 robust samples per context 8 fixed noise samples GDRO/W2 radius range 𝜌 [0.5, 3.0]
+
+KL radius range [0.1, 0.7]
+
+Risk anchors ( 𝑝 min , 𝑝 max ) (0.05 , 0.50 )
+
+Low-risk GDRO budget 150 outer, 3 dual cycles, 5 adversary steps High-risk GDRO budget 500 outer, 5 dual cycles, 8 adversary steps Controls updates per outer step 5Sinkhorn blur 𝜀 0.05 Loss scale in adversarial update 25 .0Progress weight 𝜆 𝑝 1.2Terminal arrival weight 𝜆 𝑇 35 .0Reference tracking weight 𝜆 tr 0.05 Control effort weight 𝜆 𝑢 0.15 Control smoothness weight 𝜆 𝑠 0.75 Collision barrier weight 𝜆 𝑐 80 .0Safety radius in smooth loss 𝑟 safe 0.55 Barrier temperature 𝜏 𝑏 0.10 Soft-min temperature 𝜏 𝑑 0.10 Decision learning rate 0.035 Adversarial generator learning rate 10 −6
+
+Initial dual value / GDRO dual learning rate 5.0/10 .0Gradient clipping 1.0W2 support-point learning rate 0.015 W2 dual learning rate 2.0W2 outer / support / control steps 180 /15 /5Evaluation collision penalty 𝐶 col 100 .0Evaluation near-miss penalty 𝐶 near 20 .0Evaluation failure penalty 𝐶 fail 50 .0Evaluation time / path / deviation weights (𝑐 time , 𝑐 len , 𝑐 dev ) 1.0/1.0/0.233

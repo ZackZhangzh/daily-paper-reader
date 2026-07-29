@@ -1,0 +1,1081 @@
+Title: Generative Video Compression with Adaptive Score Distillation
+
+URL Source: https://arxiv.org/pdf/2607.22772v1
+
+Published Time: Tue, 28 Jul 2026 00:08:22 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+1
+
+# Generative Video Compression with Adaptive Score Distillation 
+
+Naifu Xue, Zhaoyang Jia, Haosen Li, Zihan Zheng, Jiahao Li, Bin Li, Xiaoyi Zhang, Qi Meng, Yuan Zhang, and Yan Lu 
+
+Abstract —Diffusion models provide strong generative capa-bilities for video compression at ultra-low bitrates. Existing diffusion-based video codecs adapt base models originally devel-oped for text-conditioned generation, whereas diffusion models designed and trained specifically for compression remain un-explored. To fill this gap, we introduce our Generative Video Codec (GenVC), built on a video diffusion model trained from scratch for compression. To our knowledge, this is the first compression-oriented video diffusion model. We realize this model directly in pixel space with a global-to-local hierarchy that recovers fine spatio-temporal details, enabling high-quality generative reconstruction from compressed representations. To accelerate inference, we distill the multi-step model into one step using distribution matching distillation (DMD). Applying DMD directly, however, drives the student toward motion-stalled reconstructions. We trace this to a teacher-side guidance failure :once student-induced perturbations leave the frozen teacher’s training region, its guidance can become misleading, causing DMD updates to reinforce rather than correct the student drift. To break the resulting feedback loop, we propose Adaptive Score Distillation , which gates DMD updates according to their alignment with the ground-truth direction, enabling high-quality reconstruction with coherent motion. Experimental results show that GenVC achieves state-of-the-art perceptual quality at ultra-low bitrates, with average bitrate savings of 62.5% at matched LPIPS and 71.3% at matched FID over GLVC. Unlike prior codecs that inherit billion-scale pretrained backbones, our diffu-sion model has only 478.0M parameters and decodes 1080p video in a single step at 15.1 fps on an A100 GPU. 
+
+Index Terms —Neural video compression, diffusion model, distribution matching distillation, one-step diffusion. 
+
+I. I NTRODUCTION 
+
+# GENERATIVE video compression has emerged to im-prove perceptual quality at ultra-low bitrates [1]–[3]. By integrating generative models into the codec, these methods synthesize plausible details that are not explicitly transmit-ted in the bitstream. Among these generative models, na-tive video diffusion [4]–[7] has recently attracted growing attention for its strong spatio-temporal modeling capacity, making it an appealing choice for generative video codecs. Existing diffusion-based video codecs [8]–[10] commonly adapt pretrained latent diffusion backbones developed for text-conditioned generation. While effective, this leaves open whether a video diffusion model can instead be learned jointly 
+
+N. Xue and Y. Zhang are with the Communication University of China, Beijing, China (e-mail: {aaronxuenf, yzhang }@cuc.edu.cn). Z. Jia and Z. Zheng are with the University of Science and Technology of China, Hefei, China (e-mail: {jzy ustc, zzh2003 }@mail.ustc.edu.cn). J. Li, B. Li, X. Zhang, and Y. Lu are with Microsoft Research Asia (e-mail: 
+
+{li.jiahao, libin, xiaoyizhang, yanlu }@microsoft.com). H. Li and Q. Meng are with Academy of Mathematics and Sys-tems Science, Chinese Academy of Sciences, Beijing, China (e-mail: li-haosen25@mails.ucas.ac.cn, meq@amss.ac.cn). N. Xue, Z. Jia, H. Li, and Z. Zheng are interns at Microsoft Research Asia. Video   
+
+> Enc
+> Video
+> Dec
+> ×NMulti -step teacher pipeline
+> Final
+
+GenVC pipeline                             
+
+> Condition
+> Condition
+> Bit Stream
+> Bit Stream
+> Input
+> Recon
+> Recon
+> Input Recon
+> Video
+> Enc
+> Video
+> Dec
+> One -step
+> Diffusion
+> Samples of GT frames ,Distillation gradient vector and Gradient visualization .
+> Multi -step
+> Diffusion
+> Adaptive
+> Score
+> Distillation
+> GT 2𝒅 𝟐
+> 𝑮𝑻 𝒈 𝟐
+> 𝑫
+> Misaligned
+> Distill Grad
+> 𝑔 2
+> 𝐷
+> GT 2𝑑 2
+> 𝐺𝑇
+> Student recon 2
+> cos 𝑔 2
+> 𝐷 ,𝑑 2
+> 𝐺𝑇 <0
+> Gradient example 2
+> GT 1𝒅 𝟏
+> 𝑮𝑻 𝒈 𝟏
+> 𝑫
+> Correc t
+> Student recon 1
+> GT1
+> Distill Grad
+> 𝑔 1
+> 𝐷
+> 𝑑 1
+> 𝐺𝑇
+> cos 𝑔 1
+> 𝐷 ,𝑑 1
+> 𝐺𝑇 >0
+> Gradient example 1 Direct Score Distillation
+> Adaptive Score Distillation
+> GT -aware Gate
+> 𝒈 𝟏
+> 𝑫 𝒈 𝟐
+> 𝑫
+> Student params
+> Update with misaligned gradient !
+> 𝒘 𝟏 ⋅𝒈 𝟏
+> 𝑫
+> 𝒘 𝟐 ⋅𝒈 𝟐
+> 𝑫
+> Student params
+> Update with meaningful gradient !
+
+Fig. 1. Overview of GenVC. The multi-step model (top) serves as the teacher for one-step GenVC (bottom). The proposed Adaptive Score Distillation gates DMD updates according to their alignment with the ground-truth direction, downweighting poorly aligned updates while preserving informative ones. 
+
+with the codec, allowing the compression objective to shape both the transmitted representation and the diffusion model. On the image side, compression-oriented diffusion [11], [12] provides an encouraging precedent: under strong codec con-ditioning, a pixel-domain diffusion model can be trained from scratch jointly with the codec using only a fraction of the data and computation used for large-scale text-to-image pre-training, while achieving state-of-the-art (SOTA) compression performance. Inspired by this precedent, we introduce our 
+
+Generative Video Codec (GenVC) , built on a video diffusion model jointly optimized with the codec. To our knowledge, this is the first compression-oriented video diffusion model trained from scratch. The resulting multi-step model achieves strong reconstruction performance on its own, demonstrating effective generative modeling tailored to video compression. Achieving this performance directly in pixel space, however, requires addressing a key architectural challenge: a plain DiT reconstructs full-resolution video from a coarse spatio-temporal token grid. While this coarse grid keeps global mod-eling tractable, direct unpatchification tends to miss fine spatial texture and local temporal variation. We therefore develop a global-to-local refinement hierarchy: a coarse spatio-temporal DiT captures long-range structure, followed by patch-level and frame-level refiners that progressively recover fine spatial and temporal detail for high-quality reconstruction. Despite its strong performance, the multi-step model relies on iterative sampling, making decoding slow. We therefore use it as the teacher for one-step GenVC, as shown in Fig. 1. One-step distillation is a natural acceleration strategy and an active research direction [13]–[15]. For this purpose, distribution matching distillation (DMD) [16], [17] provides a mature score-distillation approach whose effectiveness has arXiv:2607.22772v1 [eess.IV] 24 Jul 2026 2GenVC, 0.0020 (1.00 ×)                
+
+> S2VC, 0.0033 (1.65 ×)Ground Truth, Bpp
+> GLC -Video, 0.0064 (3.20 ×)
+> GLVC, 0.0026 (1.30 ×)
+> PLVC, 0.0074 (3.70 ×)
+> Ground Truth, Bpp GLVC, 0.0026 (1.30 ×)S2VC, 0.0033 (1.65 ×)
+> PLVC, 0.0074 (3.70 ×)GLC -Video, 0.0064 (3.20 ×)GenVC , 0.0020 (1.00 ×)
+> Ground Truth GenVC (Ours)
+
+Fig. 2. Frame examples. GenVC delivers the best perceptual quality at the lowest bitrate among the compared methods. Zoom in for better visualization. GT  w/ Adaptive (ours)     
+
+> Bar regions stacked over time.
+> Frame  𝑖
+> w/ oAd ap tive
+> Smooth, GT -aligned motion Discontinuous motion
+> Frame 𝑖
+
+Fig. 3. Adaptive gating prevents motion stalling. Horizontal strips extracted from consecutive frames are stacked from top to bottom, illustrating the motion trajectory over time. Close agreement with the GT strip indicates faithful motion reconstruction, whereas pronounced staircase patterns reveal motion stalling and abrupt jumps between adjacent frames. 
+
+been demonstrated in image generation and compression [12], [18]. We therefore adopt DMD to distill our multi-step teacher into the one-step GenVC. However, directly applying DMD in this setting drives the student toward motion-stalled recon-structions. We trace this behavior to a teacher-side guidance failure . In our design, the frozen multi-step teacher serves as DMD’s real score network. Once motion stalling emerges in the student reconstructions, their perturbations move beyond the region covered during teacher training. On such inputs, the teacher prediction can fail to restore the missing motion and instead suppress it further. The resulting DMD update can then push the student farther from the source, producing increasingly off-distribution inputs to the teacher and forming a self-reinforcing degradation loop. Concretely, we find that the alignment between the DMD update and the ground-truth direction indicates whether the update becomes misleading (Fig. 1, middle). Building on this observation, we introduce Adaptive Score Distillation ,which downweights misleading DMD updates while preserv-ing informative ones. Together with the ground-truth-anchored distortion losses already used in codec training (e.g., ℓ1 and LPIPS [19]), this selective gating stabilizes distillation while retaining the realism supplied by DMD. Fig. 3 visualizes this stabilization: gated distillation preserves ground-truth-aligned motion, whereas removing the gate produces staircase patterns that reveal motion stalling. Experimental results show that GenVC achieves leading perceptual quality at ultra-low bitrates, with average bitrate savings of 62.5% at matched LPIPS and 71.3% at matched FID over GLVC [20]. Fig. 2 corroborates this qualitatively: at the lowest bitrate among the compared codecs, GenVC reconstructs higher-fidelity detail while excelling in realism. The resulting diffusion model has 478.0M parameters, demon-strating that compression-oriented video diffusion can be real-ized at such scale without inheriting a billion-scale pretrained backbone like in existing solutions. Distilling it to one step raises 1080p decoding throughput from 0.40 fps for the multi-step teacher to 15.1 fps for GenVC on an A100 GPU. In summary, our contributions are as follows:  
+
+> •
+
+We introduce the first video diffusion codec whose diffu-sion model is trained from scratch, and develop a global-to-local hierarchy that enables strong standalone multi-step reconstruction in pixel space.  
+
+> •
+
+We identify a teacher-side guidance failure in distilla-tion: off-distribution student-induced inputs can make the frozen teacher produce misleading DMD updates that reinforce motion stalling.  
+
+> •
+
+We propose Adaptive Score Distillation , which filters poorly aligned DMD updates to stabilize one-step dis-tillation in ground-truth-anchored reconstruction.  
+
+> •
+
+GenVC achieves SOTA perceptual quality with average bitrate savings exceeding 60% on both LPIPS and FID relative to GLVC, using a 478.0M diffusion model and reaching 15.1 fps for 1080p decoding on an A100 GPU. II. R ELATED WORK 
+
+A. Generative Video Compression 
+
+Neural video codecs [21]–[25] have surpassed traditional standards [26] on objective metrics, yet at low bitrates their reconstructions become over-smoothed because the limited rate budget is insufficient to represent fine texture. To improve perceptual quality at such bitrates, generative video codecs synthesize plausible details that are not explicitly transmitted in the bitstream. Early methods train decoders with perceptual and adversarial objectives to restore realistic texture [1], [27]. More recent approaches instead perform coding in the latent space of a generative tokenizer, improving compression ef-ficiency and reconstruction quality [3], [20]. However, their limited generative capacity constrains perceptual quality at ultra-low bitrates. Diffusion models have recently become prominent in gen-erative video compression because of their impressive vi-sual synthesis capacity. Most diffusion-based video codecs adapt billion-scale pretrained backbones, such as Stable Dif-fusion [28] and Wan [7], to reconstruct frames [2], [8], [10] with multi-step inference. To accelerate decoding, recent meth-ods adopt one-step diffusion [13]–[15], [29], yet their large pretrained backbones continue to limit decoding throughput. GenVC instead jointly learns a compression-oriented diffu-sion model with its codec, focusing its modeling capacity 3Aux     
+
+> Decoder 𝐿 aux
+> Contextual
+> Encoder QAE AD
+> Entropy Model
+> Contextual
+> Decoder
+> Context Model
+> Context
+> buffer
+
+𝑐  𝑖                                     
+
+> 𝐿 R
+> 𝐿 fm
+> 𝑦 𝑖 ො𝑦 𝑖
+> 𝑓 𝑖
+> 𝑐 𝑖 −1
+> Pixel
+> Video
+> Diffusion
+> Noise
+> Condition
+> 𝒄
+> 𝑿 𝟏
+> 𝑋 =𝑥 (1),𝑥 (2),…
+> 𝑐 1,𝑐 2,…
+> ෠𝑋 0=ො𝑥 0
+> 1,ො𝑥 0
+> 2,…
+> 𝑥 (𝑖 )
+> 𝑓 𝑖 𝑥 1
+> 1,𝑥 1
+> 2,…
+> Superscript 𝑖 denotes the chunk index; subscript 𝑡 indicates diffusion time; capital symbols denote GOP -level chunk sequences. (Multi -step training)
+> (Multi -step training)
+> 𝐿 dist +𝐿 𝐷𝑀𝐷
+> (One -step training)
+> or
+
+Fig. 4. Overview of the GenVC pipeline. The clean source GOP and its decoded condition sequence are denoted by X0 ≡ X = ( x(1) , . . . , x (K)) and 
+
+c = ( c(1) , . . . , c (K)), respectively. Q denotes quantization; AE and AD denote the arithmetic encoder and decoder. 
+
+on compression-specific detail synthesis. This specialization allows GenVC to achieve SOTA perceptual quality at ultra-low bitrates with a sub-billion-parameter diffusion model. Its distilled one-step model also delivers substantially faster inference than existing diffusion-based video codecs. 
+
+B. Pixel-Domain Diffusion 
+
+On the image side, recent studies show that pixel-domain diffusion can achieve competitive generation quality [30]–[34]. This formulation provides a simplified single-stage training pipeline [30], [31] and avoids the fidelity loss introduced by lossy VAE reconstruction [31]–[34], highlighting its po-tential for high-fidelity generation. To make full-resolution pixel modeling tractable, recent methods adopt coarse-to-fine architectures that pair a transformer for global structure with lightweight refiners for local detail [31]–[34]. The CoD series further applies this paradigm to image compression, achieving SOTA performance [11], [12] without pretrained backbones. Yet, pixel-domain diffusion remains largely unexplored for video due to the higher spatio-temporal complexity of video data. One-DVA [35] explores pixel diffusion within a video autoencoder but focuses on low-resolution recon-struction. Meanwhile, although existing diffusion-based video codecs [8], [13]–[15], [29] perform diffusion in latent space, they still impose reconstruction objectives on decoded pixels to preserve source fidelity. Together, these observations motivate GenVC to learn diffusion directly in pixel space. We make this approach practical for high-resolution video compression through an efficient global-to-local hierarchy. 
+
+C. Diffusion Acceleration and Score Distillation 
+
+Reducing a multi-step diffusion teacher to a few- or one-step student is a widely studied topic. Score-distillation meth-ods [36], [37] optimize differentiable representations or gen-erators through a frozen diffusion prior. Building on this idea, distribution matching distillation (DMD) [16], [17] matches the student’s and teacher’s output distributions to enable pow-erful few- and one-step distillation. DMD and its variants have since been widely adopted in one-step diffusion codecs [11], [12], [18] and extended to few-step video generation [38]. Building on this line, our Adaptive Score Distillation equips DMD with an adaptive gate that stabilizes video codec distil-lation and enables high-quality one-step reconstruction. III. C OMPRESSION -O RIENTED VIDEO DIFFUSION 
+
+We first develop the compression-oriented video diffusion model underlying GenVC. Rather than adapting a generative Time    
+
+> Emb
+> DiT
+> Blocks
+> Cond
+> Emb
+> Pixel
+> Emb
+> MLP
+> Patch
+> Modulation
+> Spatial Temporal
+> Conv
+> ×𝑵
+> 𝑠
+> ℎ
+> ℎMLP Conv
+> 2D
+> 𝑿 𝒕
+
+𝒄 
+
+𝑡                
+
+> ෡𝑿 0=
+> 𝜃 𝑿 𝒕 ,𝒄 ,𝑡
+> MLP
+> Scale
+> Shift MLP Gate
+> Layer
+> Norm +
+> 𝑠
+> ℎ
+> 𝛾 ,𝛽 𝛼
+> Patch
+> Modulation
+> ×𝑀
+> Spatial
+> Conv 2D
+> Temporal
+> Conv 1D ℎ+
+> Spatial -Temporal Conv
+> Diffusion Transformer Patch Refine
+> Frame Refine
+> Pixel Emb
+> ℎ
+> Un -
+> Emb
+
+Fig. 5. Global-to-local pixel-space architecture. A coarse spatio-temporal DiT captures long-range structure, Patch Refine blocks recover local spatial and temporal variation on a finer feature grid, and the Frame Refine head maps the refined features to RGB pixels. 
+
+backbone pretrained for another task, we train a pixel-domain diffusion model from scratch jointly with a contextual video codec (Fig. 4). This coupling allows the transmitted represen-tation and conditional diffusion model to co-adapt for rate-constrained reconstruction, thereby improving reconstruction quality at a given bitrate. Following [25], we partition each video into consecutive 8-frame chunks, each coded as one unit. For chunk x(i), the contextual encoder produces a compact representation y(i). Af-ter quantization, a learned entropy model provides probability estimates for arithmetic coding, and the contextual decoder maps the decoded representation ˆy(i) to the condition c(i).Previously decoded conditions provide causal temporal context throughout this coding process, thereby exploiting inter-chunk redundancy to reduce rate. At the diffusion stage, we group 
+
+K consecutive chunks into a group of pictures (GOP). The remainder of this section reviews the flow-matching formu-lation (Sec. III-A), presents the pixel diffusion architecture (Sec. III-B), and details the training objective (Sec. III-C). 
+
+A. Flow Matching Preliminaries 
+
+Flow matching [39], [40] learns a time-dependent velocity field associated with a prescribed probability path between the data and noise distributions. Using the data-to-noise time convention, let the source GOP X ∼ pdata define the clean diffusion state X0 ≡ X at t = 0 , and let X1 ∼ N (0, I)
+
+denote the independent Gaussian noise state at t = 1 . Here, 
+
+t ∈ [0 , 1] denotes the diffusion time rather than a video-frame index. We define the linear rectified-flow path [40] as 
+
+Xt = (1 − t) X0 + t X 1, t ∈ [0 , 1] , (1) whose conditional velocity is dXt/dt = X1 −X0. As depicted in Fig. 5, our network predicts the clean GOP rather than the 4DiT Only  
+
+> Pixel -level
+> Modulation
+> Frame Refine
+> (Final)
+> BD -LPIPS on HEVC -BBD -FID on HEVC -B
+> Lower is
+> Better
+
++
+
+> Patch -level
+> Modulation
+> Spatial -Temporal
+> Convs
+
++
+
++
+
++ 
+
+> OOM OOM
+> Lower is
+> Better
+> Larger
+> Model
+
++           
+
+> Params
+> 416M
+> 900M
+> 442M
+> 474M
+> 478M
+> Model Variant
+> 0.000
+> −0.024
+> −0.043
+> −0.068
+> −0.087
+> 0.00
+> −4.75
+> −6.38
+> −15.41
+> −25.51
+> Fig. 6. Progressive architecture ablation on HEVC-B, reported as BD-LPIPS and BD-FID relative to the DiT-only baseline. Under our 32-frame 1080p configuration, Pixel-level Modulation , the standard per-pixel adaLN, exceeds the memory capacity of an 80 GB GPU.
+
+velocity directly. From its output ˆX0 = θ(Xt, c, t ), we convert the clean prediction to the corresponding velocity as 
+
+ˆvθ (Xt, c, t ) = Xt − ˆX0
+
+t , t > 0, (2) which is the exact conversion induced by Eq. (1); the training-time sampler excludes the clean endpoint t = 0 . We then optimize the conditional flow-matching objective, 
+
+Lfm (θ) = E(X0,c ), t, X 1
+
+h
+
+ˆvθ (Xt, c, t ) − (X1 − X0) 22
+
+i
+
+. (3) At inference, we solve the learned ODE backward from X1
+
+with a multi-step solver to obtain the reconstructed GOP. In our codec setting, X0 is the ground-truth GOP and c is the corresponding collection of decoded codec conditions. This sampler defines the standalone multi-step codec; the same diffusion model subsequently provides the frozen real-score estimates used by DMD. 
+
+B. Global-to-Local Pixel-Space Architecture 
+
+A natural starting point is to apply a plain pixel-space 
+
+Diffusion Transformer (DiT) directly to the stacked frames, following the image-side baseline [30]. To keep the pixel-space token sequence tractable, the DiT operates with alarge patch size; in our setting, this baseline recovers coarse structure but fails to recover fine detail. Simply increasing the DiT capacity yields only marginal perceptual gains (Fig. 6), indicating that model scaling alone is insufficient. Reducing the spatial downsampling factor would provide a finer token grid but substantially lengthen the sequence. Because self-attention scales quadratically with sequence length, diffusion transformers commonly operate at a spatial downsampling of 
+
+16 × or more [7], [30]. Following image-side pixel diffusion architectures [30]–[34], we adapt their global-to-local hierar-chy to video. The global branch models long-range spatio-temporal structure, while the local branch refines spatial and temporal detail on a finer feature grid. In our design, the global branch embeds the noisy GOP Xt, the condition sequence 
+
+c, and the diffusion time t, and processes them with DiT blocks on a token grid downsampled 16 × spatially (following common DiT practice) and 8× temporally (following the codec design [25]), yielding a patch-level global feature 
+
+s = MLP g(DiT( Xt, c, t )) , (4) which then guides the local branch through the Patch Refine 
+
+blocks and a final Frame Refine head, as described next. In the image-side designs we build on, the local branch runs at full pixel resolution : the global feature s is upsampled to the pixel grid, and a pixel-wise adaptive layer normalization (adaLN) [33], [34] predicts modulation parameters for every pixel. Transplanting this per-pixel modulation to video is infeasible at our scale: the activation memory scales with the full-resolution T ×H ×W volume, and our target setting of 32 frames at 1080p already exhausts an 80 GB GPU. We therefore run the local branch on a grid downsampled 8× spatially and 
+
+2× temporally, still finer than the DiT token grid but coarse enough to stay within memory. The DiT output is upsampled to this grid as ˜s = Up( s), and the Patch Modulation block predicts one set of adaLN parameters per grid cell rather than a distinct set for every output pixel, 
+
+(γ, β, α ) = MLP mod (˜ s), (5) 
+
+h ← h + α ⊙ MLP feat 
+
+ (1 + γ) ⊙ LN( h) + β, (6) where h is the local feature stream on this grid, initialized by patch-embedding the noisy Xt and matched in resolution to 
+
+˜s, and LN denotes layer normalization. This keeps memory tractable while injecting the upsampled DiT context ˜s into h,and improves markedly over the pure-DiT baseline (Fig. 6). Patch Modulation injects the global feature ˜s independently at each local-grid cell, but provides limited explicit interaction among neighboring spatial and temporal locations. At this finer grid, convolution provides linear-complexity local mixing and an appropriate inductive bias for recovering spatial texture and short-range temporal variation. We therefore interleave Patch Modulation with a lightweight Spatial–Temporal Conv branch that factorizes a 3D convolution into a 2D spatial convolution 
+
+SConv followed by a 1D temporal convolution TConv :
+
+h ← h + TConv  SConv( h), (7) Each Patch Refine block combines Patch Modulation with a Spatial–Temporal Conv module containing three factorized convolutional layers. Finally, following the DCVC line [24], [25], the Frame Refine head restores the temporal and spatial resolution of h and maps it to the RGB reconstruction ˆX0
+
+(Fig. 5). The detailed ablation of each component is provided in Sec. V-C, which demonstrates the effectiveness of the individual design choices. 
+
+C. Training Objective 
+
+We initialize the diffusion model from scratch and train it jointly with the contextual codec. Consequently, the com-pression objective shapes both the decoded condition c and the conditional reconstruction model. The overall objective combines the flow-matching term in Eq. (3) with an auxiliary-decoder distortion term and a rate term from the codec part: 
+
+L = Lfm + λaux Laux + λR LR. (8) 5Student 
+
+> 𝐺 𝜃
+> Real
+> Score
+> Fake
+> Score
+> ෡𝑿 𝐫𝐞𝐚𝐥
+> ෡𝑿 𝐟𝐚𝐤𝐞
+> ෡𝑿 𝐬𝐭𝐮
+> 𝑿
+
+𝑔 DMD    
+
+> Vanilla DMD
+> + noise
+> Adaptive Gating (Ours)
+> 𝑿 ෡𝑿 𝐬𝐭𝐮
+> 𝒈 𝐃𝐌𝐃
+> Inside the teacher -training region
+> 𝑿
+> ෡𝑿 𝐬𝐭𝐮 𝒈 𝐃𝐌𝐃
+> Outside the teacher -training region
+> Suppress
+> Misleading
+> update
+> Similarity Gate
+
+𝒘 ⋅ 𝒈 𝑫𝑴𝑫  
+
+> 𝑿
+> ෡𝑿 𝐬𝐭𝐮
+> 𝒘
+> Teacher -training region
+> May produce
+> misleading update
+> Stable & correct
+> update
+
+Fig. 7. Teacher-side guidance failure and Adaptive Score Distillation. Left: vanilla DMD produces the update gDMD . Middle: the green area denotes the region covered during teacher training. When student reconstructions remain close to this region, teacher guidance yields stable, corrective DMD updates; substantial deviations may instead yield misleading updates. Right: our alignment-based gate attenuates such misleading updates. 
+
+Here Lfm supervises the diffusion transport in pixel space, 
+
+Laux is an auxiliary-decoder distortion term, and LR is the estimated coding rate under the learned entropy model. Following the compression-oriented design in [11], where this auxiliary objective is shown to be effective, Laux directly supervises the reconstruction that the Aux Decoder produces from the condition c (Fig. 4) with MSE and LPIPS against the ground-truth GOP. This gives the codec a direct, perceptually grounded signal for retaining meaningful structure in c, rather than relying solely on gradients back-propagated through the diffusion branch. The resulting multi-step model is a strong generative video codec in its own right; its diffusion model is subsequently frozen as the teacher for one-step distillation. IV. O NE -S TEP DIFFUSION WITH ADAPTIVE SCORE 
+
+DISTILLATION 
+
+The compression-oriented model developed in Sec. III is a complete generative video codec, but its multi-step ODE sampler limits decoding throughput. We therefore use its diffusion model as the frozen teacher for the one-step GenVC, following the growing use of one-step diffusion in image and video codecs [11]–[15], [18]. Although some existing one-step diffusion codecs [11], [12], [18] directly adopt DMD, applying it in our setting drives the student toward motion-stalled reconstructions. We trace this behavior to a teacher-side guidance failure and introduce Adaptive Score Distillation to address it. The remainder of this section reviews DMD (Sec. IV-A), analyzes this failure (Sec. IV-B), and presents our distillation method (Sec. IV-C). 
+
+A. DMD Preliminaries 
+
+We review the distribution-matching component of DMD that our method builds upon. For each source input X, let cS
+
+and cT denote the input conditions of the student and teacher diffusion models, respectively. The one-step student maps a Gaussian noise sample ϵ and cS to a reconstruction ˆXstu =
+
+Gθ (ϵ, c S). DMD matches the perturbed student distribution 
+
+pstu ,t (· | cS) to the perturbed target distribution preal ,t (· | cT)
+
+by minimizing their reverse Kullback–Leibler divergence over noise levels t. For a student reconstruction, we sample inde-pendent perturbation noise ϵ′ and form Xt = (1 − t) ˆXstu + tϵ ′,following the data-to-noise convention of Sec. III-A. Condi-tioned on cT, the perturbed sample is evaluated by two score networks: the frozen multi-step teacher serves as the real score network, while an online fake score network tracks the current Ground 
+
+> Truth
+> Flow
+> Video Frames
+> Stable
+> Stu dent
+> Real
+> Net
+> Stalled
+> Stu dent
+> Real
+> Net
+> Flow Color
+> Up Up
+> Down
+> Left
+> Right
+> Frame axis
+
+Fig. 8. Visual evidence of the teacher-side guidance failure. Optical flow of the ground truth and the stable/stalled student reconstructions. Perturbed versions of both student outputs are passed through the same frozen teacher: motion from the stable student is largely preserved, whereas the already degraded motion of the stalled student is suppressed further. 
+
+student distribution (Fig. 7, left). Writing their score estimates as sreal (Xt, t | cT) and sfake (Xt, t | cT), the DMD gradient takes the form, up to a positive noise-level weight, 
+
+∇θ LDMD ∝ E
+
+h sfake − sreal 
+
+ ∂θ ˆXstu 
+
+i
+
+. (9) Both networks are parameterized to predict clean samples, denoted ˆXreal and ˆXfake . Because sfake − sreal is proportional to ˆXfake − ˆXreal , gradient descent moves the student along the update direction 
+
+gDMD = ˆXreal − ˆXfake . (10) We train the fake score network by flow matching on student outputs, alternating its updates with those of the student. 
+
+B. Teacher-Side Guidance Failure 
+
+Applying the DMD recipe of Sec. IV-A directly to our multi-step teacher does not transfer cleanly to the one-step video setting. As distillation proceeds, the reconstruction qual-ity degrades, most visibly in motion: the student produces motion-stalled reconstructions. Fig. 8 visualizes the optical flow between consecutive frames, color-coded by direction with brighter regions marking larger motion. The ground-truth flow forms a bright, coherent region that follows the 6
+
+moving player, whereas the stalled student’s flow is dim and fragmented, leaving the player nearly frozen. To track this failure quantitatively, we measure a motion error (ME), the endpoint error between the optical flow of the reconstruction and that of the ground truth over consecutive frame pairs, normalized by the ground-truth flow magnitude, 1
+
+ME = 
+
+PT −1 
+
+> i=1
+
+F( ˆXi, ˆXi+1 ) − F (Xi, X i+1 )
+
+PT −1 
+
+> i=1
+
+F(Xi, X i+1 ) , (11) where F is the pre-trained RAFT optical-flow model [41], T
+
+is the number of frames; Xi and ˆXi are the i-th ground-truth and reconstructed frames. Tracked across distillation (Fig. 9, stalled student), the motion error confirms that the collapse is a training-dynamics effect rather than a poor initialization: it stays low through an extended early phase, then surges sharply to a high plateau. We trace this failure to the frozen teacher’s response to student-induced inputs. The resulting perturbations can move beyond the regions covered by the ground-truth perturbations used to train the teacher. On such inputs, the teacher can produce a plausible but even lower-motion ˆXreal instead of restoring the missing motion. Because the fake score network tracks the current student, the resulting update gDMD can then point away from the ground-truth direction and reinforce the drift that produced it (Fig. 7). We refer to this input-dependent loss of corrective guidance as a teacher-side guidance failure .We isolate this input dependence by passing perturbed reconstructions from a stable student and a stalled student through the same teacher (Fig. 8). With identical weights, the teacher largely preserves motion for stable-student inputs but further suppresses motion for stalled-student inputs, showing that the failure arises from shifted student inputs rather than an inherent tendency of the teacher to suppress motion. Since paired source videos are available during codec train-ing, we can assess online whether each DMD update remains source-corrective. For each sample b, we measure the cosine alignment between the DMD update and the direction from the current reconstruction toward the ground truth, 
+
+cos (b) 
+
+> gt
+
+= cos  g(b)
+
+> DMD
+
+, X (b) − ˆX(b)
+
+> stu
+
+, (12) where b indexes samples in the batch and X is the ground-truth video. A positive value indicates that the update has a component toward the source, while a negative value indicates that it actively pushes the reconstruction away. For the stalled student, the batch-averaged cosine falls from a small positive value and crosses zero before ME rises sharply; for the stable student, it remains positive and ME stays low (Fig. 9). The cosine therefore provides an online early indicator of impend-ing stalling without requiring optical-flow evaluation. This per-sample, ground-truth-referenced signal is exactly what our method gates on, which we develop next. 
+
+C. Adaptive Score Distillation 
+
+Section IV-B established cos (b) 
+
+> gt
+
+as a per-sample, online indicator of whether a DMD update still points toward the          
+
+> 1The same absolute flow error is large on a near-static clip yet negligible on a fast-moving one; dividing by the ground-truth flow magnitude makes ME a dimensionless relative error that is comparable across clips. 02500 5000 7500 10000 12500 15000 17500
+> Training step (global)
+> 0.02
+> 0.01
+> 0.00
+> 0.01
+> 0.02
+> 0.03
+> 0.04
+> 0.05
+> Cosine Similarity in Train
+> stable student
+> stalled student
+> Left : Cosine Similarity in Train
+> Right : Motion Error in Eval
+> 0.125
+> 0.25
+> 0.5
+> 1
+> Motion Error in Eval
+> Fig. 9. Training dynamics of the teacher-side guidance failure. Training-time cosine (solid, left axis) and evaluation-time Motion Error (dashed, right axis) for the stalled student (red) and the stable student (green).
+
+ground truth. To break the feedback loop, we turn this signal into a per-sample gate: each sample b in a batch has its update weighted by a smooth function of its alignment, 
+
+wb = σ cos (b) 
+
+> gt
+
+−τκ
+
+!
+
+, (13) with σ(·) the logistic sigmoid, τ a threshold, and κ a temper-ature. Better-aligned updates receive larger weight and drive distribution matching, whereas opposing ones are suppressed toward zero. The sigmoid attenuates borderline updates gradu-ally instead of switching them off at a hard threshold. Treating 
+
+wb as a stop-gradient coefficient, this reweighting enters the DMD gradient per sample, 
+
+∇θ LDMD ∝ − E
+
+h
+
+w2 
+
+> b
+
+g(b) 
+
+> DMD
+
+∂θ ˆX(b)
+
+> stu
+
+i
+
+, (14) so gradient descent moves each student sample along w2 
+
+> b
+
+g(b)
+
+> DMD
+
+.Poorly aligned samples contribute little, while well-aligned samples continue to drive distribution matching. Since w2
+
+> b
+
+remains monotonic in the alignment, the square preserves the gating behavior while sharpening its attenuation. This per-sample reweighting is the only change to the standard DMD student gradient and constitutes our Adaptive Score Distillation 
+
+(Fig. 7, right). We inject this gated direction through the stop-gradient surrogate 
+
+LDMD = 12BP 
+
+> B
+
+X
+
+> b=1
+
+w2 
+
+> b
+
+ˆX(b) 
+
+> stu
+
+− sg 
+
+ ˆX(b) 
+
+> stu
+
++ g(b)
+
+> DMD
+
+ 22
+
+, (15) where B is the batch size and P is the number of elements in each sample. This yields ∇ ˆX(b)
+
+> stu
+
+LDMD ∝ − w2 
+
+> b
+
+g(b)
+
+> DMD
+
+.Following prior one-step codecs [11], [18], we first initialize the student from the multi-step teacher and jointly optimize it with the codec under Linit = Ldist + λR LR, where LR
+
+is the rate term and Ldist is defined below. We then freeze the codec and fine-tune the diffusion student while updating the fake score network online; the objective below therefore contains no rate term. The gated DMD term enters the one-step distillation objective together with distortion losses, 
+
+L = λD LDMD + Ldist , (16) where LDMD is defined in Eq. (15). The source-referenced distortion term is 
+
+Ldist = Lpix + λL LLPIPS + λF Lflow , (17) 7
+
+Algorithm 1 Adaptive Score Distillation: one training step 
+
+Require: student Gθ ; frozen teacher DT; fake score network Dϕ;training tuples (cS, c T, X ); gate τ, κ ; weight λD; fake-score update count nfake  
+
+> 1:
+
+for i = 1 to nfake do ▷ update the fake score network  
+
+> 2:
+
+draw a fresh batch (cS, c T, X ); ϵ ∼ N (0, I) 
+
+> 3:
+
+ˆXstu ← Gθ (ϵ, c S) ▷ one-step reconstruction  
+
+> 4:
+
+sample tϕ and ξϕ ∼ N (0, I) 
+
+> 5:
+
+Xtϕ ← (1 − tϕ)sg( ˆXstu ) + tϕξϕ 
+
+> 6:
+
+ˆXfake ← Dϕ(Xtϕ , t ϕ, c T) 
+
+> 7:
+
+vtgt ← ξϕ − sg( ˆXstu ) 
+
+> 8:
+
+vϕ ← (Xtϕ − ˆXfake )/t ϕ 
+
+> 9:
+
+update ϕ using ∥vϕ − vtgt ∥22 
+
+> 10:
+
+end for  
+
+> 11:
+
+draw a fresh batch (cS, c T, X ); ϵ ∼ N (0, I) ▷ student update  
+
+> 12:
+
+ˆXstu ← Gθ (ϵ, c S) 
+
+> 13:
+
+sample t and ξ ∼ N (0, I) 
+
+> 14:
+
+Xt ← (1 − t) ˆXstu + tξ  
+
+> 15:
+
+ˆXreal ← DCFG T (Xt, t, c T); ˆXfake ← Dϕ(Xt, t, c T) 
+
+> 16:
+
+for each sample b do ▷ ours  
+
+> 17:
+
+db ← mean | ˆX(b) 
+
+> stu
+
+− ˆX(b) 
+
+> real
+
+| ▷ per-sample norm  
+
+> 18:
+
+g(b) 
+
+> DMD
+
+← ( ˆX(b) 
+
+> real
+
+− ˆX(b)
+
+> fake
+
+)/(db + 10 −4) 
+
+> 19:
+
+cos (b) 
+
+> gt
+
+← cos  g(b)
+
+> DMD
+
+, X (b) − ˆX(b)
+
+> stu
+
+ 
+
+> 20:
+
+wb ← sg 
+
+h
+
+σ (cos (b) 
+
+> gt
+
+−τ )/κ i 
+
+> 21:
+
+end for  
+
+> 22:
+
+LDMD ← 12BP 
+
+P 
+
+> b
+
+w2 
+
+> b
+
+ˆX(b) 
+
+> stu
+
+− sg   ˆX(b) 
+
+> stu
+
++ g(b)
+
+> DMD
+
+ 22 
+
+> 23:
+
+compute Ldist ( ˆXstu , X ) ▷ Eq. (17)  
+
+> 24:
+
+L ← λD LDMD + Ldist ▷ Eq. (16)  
+
+> 25:
+
+update θ by ∇θ L
+
+where Lpix is the mean ℓ1 reconstruction error, LLPIPS mea-sures perceptual fidelity, and Lflow is the mean ℓ1 discrepancy between frozen-RAFT flow fields of corresponding source and reconstructed frame pairs. The two components are comple-mentary: adaptive gating suppresses poorly aligned DMD up-dates while preserving reliable distribution-matching guidance that improves one-step reconstruction realism, whereas Ldist 
+
+anchors the reconstruction to the source video. Algorithm 1 further illustrates the distillation training step. Adaptive gating breaks the observed feedback loop and restores stable distillation in our setting. With the gate in place, the training-time cos gt stays positive and the evaluation-time motion error stays low throughout, rather than the zero-crossing and motion-error surge seen without it (Fig. 9, green vs red). The one-step student thereby avoids the motion-stalling regime observed with direct DMD. V. E XPERIMENTS 
+
+A. Experimental Setup 
+
+Implementation Details. We adopt the contextual codec backbone of DCVC-UF [25] and initialize only this codec component from its pretrained checkpoint; the multi-step diffusion model is initialized from scratch and jointly op-timized with the codec. We set K = 4, such that each GOP comprises four 8-frame chunks (32 frames). We train GenVC in three stages. In the first stage, we train the multi-step teachers for total 12 epochs under the objective of Eq. (8), using λR ∈ { 0.56 , 0.80 , 1.12 , 1.76 , 2.40 } to obtain five models at different bitrates. In the second stage, we jointly train each one-step student and its codec under the initialization objective Linit introduced in Sec. IV. We sweep 
+
+λR ∈ { 10 .24 , 5.12 , 2.56 , 1.28 , 0.64 , 0.32 } to set six bitrates and train each model for 3 epochs; five models reuse the corresponding first-stage teachers, while the sixth uses the highest-bitrate teacher. In the third stage, we freeze the student codec and fine-tune the one-step student for 1 epoch with Adaptive Score Distillation (Eq. (16)), while updating the auxiliary fake score network online; the corresponding teacher codec remains frozen and supplies cT. We set λaux = 0 .01 ,
+
+λL = 1 .0, λF = 2 .0, and λD = 8 .0 in training objectives. We use gate threshold τ = 0 .015 and temperature κ = 0 .02 ,and perform nfake = 4 fake-score updates on fresh batches per student update. Writing ρ = 1 − t for the data coefficient under the convention of Sec. III-A, we draw ρ by applying a sigmoid to a standard Gaussian and rescale it to [0 .05 , 0.95] for the student-side DMD update; multi-step teacher training and fake-score training use the unrescaled logit-normal distribution over ρ ∈ (0 , 1) . The frozen teacher prediction uses classifier-free guidance (CFG) at scale 1.5, whereas the fake prediction is unguided. At inference, the multi-step codec uses a 20-step Euler sampler with the same CFG scale, whereas GenVC uses one-step inference. Our models are trained on four A100 80GB GPUs with the AdamW optimizer [42]. 
+
+Datasets. We train our models on the OpenVid dataset [43], with clips randomly cropped to a spatial resolution of 512 ×
+
+512 and spanning three consecutive GOPs (96 frames in total). For evaluation, we use the UVG [44], MCL-JCV [45], and HEVC Class B [46] datasets, testing on the first 96 frames of each sequence at 1920 × 1080 . All YUV frames are converted to RGB following the ITU-R BT.709 standard. 
+
+Compared Methods. We compare GenVC against three groups of baselines: (i) the traditional codec VTM under the random-access configuration with a 32-frame GOP [26]; (ii) the distortion-oriented neural video codec DCVC-RT [24]; and (iii) generative video codecs: PLVC [1], S 2VC [15], GLC-video [3], GLVC [20], YODA [29], GNVC-VD [8], Free-GVC [47], DiffVC-OSD [13], and DiffVC-RT [14]. 
+
+Metrics. We evaluate quality primarily with perceptual metrics: LPIPS [19] and DISTS [48] for fidelity, FID [49] for distributional realism, and FloLPIPS [50] for motion-aware quality. We additionally report PSNR and MS-SSIM [51] as objective distortion references. Rate is measured in bits per pixel (bpp), and BD-Rate [52] summarizes bitrate savings at matched perceptual quality. For ablations, the analogous BD-Distortion reports the average metric difference at matched rate over the shared rate range. For complexity, we report throughput in frames per second (fps) at 1920 × 1080 . The motion error (ME) defined in Sec. IV-B is reused as adiagnostic in the ablation study. 
+
+B. Main Results 
+
+Standalone Multi-Step Codec. Fig. 10 reports the rate– quality curves of both the multi-step model and GenVC across all six metrics. Before distillation, the multi-step model already provides competitive perceptual reconstruction at ultra-low rates on all three datasets. This result establishes that a video 80.0005 0.002 0.01 0.05 0.1                                                                           
+
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> 0.35
+> HEVC-B
+> LPIPS
+> 0.0005 0.002 0.01 0.05 0.1
+> 0.04
+> 0.06
+> 0.08
+> 0.10
+> 0.12
+> 0.14
+> 0.16
+> 0.18 DISTS
+> 0.0005 0.002 0.01 0.05 0.1
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> 0.35
+> 0.40 FloLPIPS
+> 0.0005 0.002 0.01 0.05 0.1
+> 24
+> 25
+> 26
+> 27
+> 28FID
+> 0.0005 0.002 0.01 0.05 0.1
+> 0.70
+> 0.75
+> 0.80
+> 0.85
+> 0.90
+> 0.95
+> MS-SSIM
+> 0.0005 0.002 0.01 0.05 0.1
+> 22
+> 24
+> 26
+> 28
+> 30
+> 32
+> 34 PSNR
+> 0.0005 0.002 0.01 0.05 0.1
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> 0.35
+> UVG
+> 0.0005 0.002 0.01 0.05 0.1
+> 0.04
+> 0.06
+> 0.08
+> 0.10
+> 0.12
+> 0.14
+> 0.16
+> 0.18
+> 0.20
+> 0.0005 0.002 0.01 0.05 0.1
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> 0.35
+> 0.0005 0.002 0.01 0.05 0.1
+> 24
+> 25
+> 26
+> 27
+> 0.0005 0.002 0.01 0.05 0.1
+> 0.80
+> 0.82
+> 0.84
+> 0.86
+> 0.88
+> 0.90
+> 0.92
+> 0.94
+> 0.96
+> 0.98
+> 0.0005 0.002 0.01 0.05 0.1
+> 26
+> 28
+> 30
+> 32
+> 34
+> 36
+> 0.0005 0.002 0.01 0.05 0.1
+> bpp
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> 0.35
+> MCL-JCV
+> 0.0005 0.002 0.01 0.05 0.1
+> bpp
+> 0.050
+> 0.075
+> 0.100
+> 0.125
+> 0.150
+> 0.175
+> 0.200
+> 0.225
+> 0.250
+> 0.0005 0.002 0.01 0.05 0.1
+> bpp
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> 0.35
+> 0.40
+> 0.0005 0.002 0.01 0.05 0.1
+> bpp
+> 23
+> 24
+> 25
+> 26
+> 27
+> 0.0005 0.002 0.01 0.05 0.1
+> bpp
+> 0.75
+> 0.80
+> 0.85
+> 0.90
+> 0.95
+> 0.0005 0.002 0.01 0.05 0.1
+> bpp
+> 24
+> 26
+> 28
+> 30
+> 32
+> 34
+> 36
+> VTM (Random Access)
+> DCVC-RT (CVPR 2025)
+> Free-GVC (arXiv 2026)
+> GNVC-VD (CVPR 2026)
+> YODA (arXiv 2026)
+> GLVC (arXiv 2025)
+> GLC-Video (TCSVT 2025)
+> S2VC (CVPR 2026)
+> PLVC (IJCAI 2022)
+> DiffVC-RT (arXiv 2026)
+> DiffVC-OSD (arXiv 2025) Multi-step teacher (ours) GenVC (1-step, ours)
+
+Fig. 10. Rate–quality performance on HEVC Class B, UVG, and MCL-JCV. The multi-step model is evaluated as a standalone codec, while GenVC denotes the distilled one-step system. Zoom in for a better view. 
+
+diffusion model trained from scratch jointly with the codec can serve as a strong generative codec in its own right, rather than only as an intermediate teacher. Its remaining limitation is iterative sampling, whose cost is quantified below. 
+
+Distilled One-Step Codec. After one-step distillation, GenVC consistently lies on or near the leading perceptual rate–quality frontier, with its clearest gains on LPIPS and FID. Relative to GLVC, GenVC saves 59.6%, 69.0%, and 59.0% bitrate at matched LPIPS on HEVC Class B, UVG, and MCL-JCV, respectively, averaging 62.5%. At matched FID, the cor-responding savings are 69.6%, 69.5%, and 74.9%, averaging 71.3%. The decoded frames in Fig. 2 qualitatively corroborate these gains: GenVC reconstructs fine texture and detail at the lowest bitrate among the compared examples. GenVC also achieves competitive rate–quality performance on FloLPIPS and DISTS across the three datasets. As expected from the rate–perception trade-off, it trails the distortion-oriented VTM and DCVC-RT on PSNR and MS-SSIM. Nevertheless, GenVC remains competitive with other generative codecs on both metrics, demonstrating strong objective fidelity alongside its perceptual gains. Overall, GenVC’s perceptual rate–quality gains over codecs adapted from large pretrained generative backbones support the effectiveness of learning the diffusion model specifically for compression. 
+
+Relation to the Multi-Step Teacher. Across most of their shared rate range, GenVC further improves upon the multi-step model. The student is not trained to directly reproduce the teacher’s sampled reconstructions. Instead, DMD uses score estimates from the frozen teacher to guide the student toward distributionally realistic outputs, while the source-referenced losses optimize fidelity to the paired video. Adap-tive Score Distillation additionally attenuates non-corrective teacher guidance. The teacher’s sampled rate–quality curve is therefore a reference rather than a strict upper bound on the separately optimized one-step codec. 
+
+Throughput and Complexity. Our multi-step teacher uses 
+
+TABLE I PARAMETER COUNT , THROUGHPUT , AND LPIPS BD-R ATE ON MCL-JCV. 
+
+Device Method Params (M) Enc. (fps) Dec. (fps) BD-Rate ↓
+
+A800 (80GB) DiffVC-OSD [13] 1488.7 0.7 0.9 –DiffVC-RT [14] 474.3 105.9 7.7 142.6% GNVC-VD [8] 2334.5 6.5 0.6 -1.5% RTX 5090 YODA [29] 1063.2 – 1.0 -37.1% A100 (80GB) GLVC [20] 227.3 5.2 3.3 0.0% S2VC [15] 1346.0 6.6 1.3 134.6% Teacher (ours) 578.4 309.1 0.4 –
+
+GenVC (ours) 578.4 309.1 15.1 -59.0% 
+
+GenVC and its teacher: 100.4M (codec) + 478.0M (diffusion) = 578.4M Resolution for fps calculation: 1920 ×1080; BD-Rate anchor: GLVC. For coding speed, “–” denotes no data; for BD-Rate, “–” denotes no overlap. DiffVC-OSD, DiffVC-RT, and YODA fps are from [14]; GNVC-VD fps are from [8]; A100 fps are measured by us. 
+
+20-step CFG sampling and reaches 0.40 fps at 1080p on an A100, as reported in Table I. On the same device, one-step dis-tillation raises decoding to 15.1 fps with the same 578.4M total parameter count and unchanged encoding throughput, a 37 .8×
+
+speedup over the teacher. Like prior DMD-distilled one-step codecs [12], [18], GenVC requires no CFG at inference; the measured speedup therefore reflects both the reduction to one-step inference and the removal of CFG. Despite differences in evaluation hardware, GenVC achieves the highest decod-ing throughput among the compared diffusion-based codecs, surpassing YODA, S 2VC, GNVC-VD, and the DiffVC series. Together with the BD-Rate results, these findings show that compression-oriented diffusion can deliver SOTA perceptual quality and efficient decoding at a sub-billion scale, using substantially fewer parameters than codecs built on billion-scale pretrained backbones. 
+
+C. Ablation Study 
+
+Global-to-Local Architecture. We first evaluate the pro-gressive architecture decisions in Sec. III-B. As shown by the full rate–quality curves in Fig. 11, adding patch-level 90.5 1.0 1.5                     
+
+> 0.225
+> 0.250
+> 0.275
+> 0.300
+> 0.325
+> 0.350
+> 0.375
+> HEVC-B
+> LPIPS
+> 0.5 1.0 1.5
+> 0.10
+> 0.12
+> 0.14
+> 0.16
+> 0.18
+> 0.20
+> DISTS
+> 0.5 1.0 1.5
+> 48
+> 64
+> 96
+> FID
+> 0.5 1.0
+> bpp (×10 3)
+> 0.20
+> 0.22
+> 0.24
+> 0.26
+> 0.28
+> 0.30
+> 0.32
+> 0.34
+> UVG
+> 0.5 1.0
+> bpp (×10 3)
+> 0.135
+> 0.150
+> 0.165
+> 0.180
+> 0.195
+> 0.210
+> 0.5 1.0
+> bpp (×10 3)
+> 48
+> 64
+> (a) DiT only (416M)
+> (d) c + Spatial-Temporal Convs (474M)
+> (b) DiT only - Large (900M)
+> (e) d + Frame Refine Head (478M)
+> (c) a + patch modulation (442M)
+
+Fig. 11. Architecture ablation of the multi-step teacher, with the parameter count of each diffusion variant annotated in the legend. The standard per-pixel modulation is omitted because it exceeds an 80 GB GPU memory budget under the 32-frame 1080p configuration. 
+
+modulation, Spatial–Temporal Convs, and the Frame Refine head successively improves LPIPS, DISTS, and FID on both datasets. Fig. 6 compares architectural refinement with model scaling: on HEVC Class B, enlarging the DiT-only baseline from 416M to 900M parameters reduces BD-LPIPS and BD-FID by only 0.024 and 4.75, whereas the complete 478M hierarchy reduces them by 0.087 and 25.51. These results indicate that the gains arise primarily from the global-to-local refinement hierarchy rather than parameter count alone, validating the effectiveness of our video-specific design. 
+
+Distribution Matching Distillation. Our central ablation dissects the roles of the DMD term, the adaptive gate, and the distortion loss in the one-step distillation stage, with Ldist 
+
+defined in Eq. (17). Table II reports BD-Distortion in DISTS, FID, and ME relative to the full model (v), with positive values denoting degradation. Without DMD, the distortion-only student (i) is worse than the full model (v) on all three metrics, showing that source-referenced supervision alone is insufficient for the same overall reconstruction quality. The qualitative comparison in Fig. 12 further confirms the percep-tual benefit of gated DMD. Together, these results establish the importance of the DMD term within our adaptive objective for recovering realistic fine detail in the one-step codec. 
+
+Adaptive Score Distillation. Variant (iii) directly isolates the gate: retaining both DMD and Ldist but removing the gate raises BD-ME by 0.174 on HEVC Class B and 0.140 on UVG. The resulting motion stalling is corroborated by the optical flow in Fig. 8, the training dynamics in Fig. 9, and the jagged temporal trajectory in Fig. 3. When the source-referenced loss is also removed, variant (ii) performs worst on every metric because no ground-truth-anchored term remains to correct misleading DMD updates. Conversely, gated DMD without the distortion loss (iv) keeps ME close to the full model but degrades DISTS on both datasets. This confirms the complementary roles established in Sec. IV-C: the gate attenuates poorly aligned DMD feedback, whereas the ground-truth-anchored loss supplies the corrective pull. Only their combination (v) achieves the best joint DISTS, FID, and ME, validating the effectiveness of Adaptive Score Distillation in stabilizing motion while retaining the perceptual benefit. VI. C ONCLUSION 
+
+We presented GenVC, built on a video diffusion model trained from scratch and jointly optimized with a video 
+
+TABLE II BD-D ISTORTION RELATIVE TO THE FULL MODEL (V), EVALUATED OVER THE COMMON RATE INTERVAL . P OSITIVE VALUES DENOTE DEGRADATION ; LOWER IS BETTER .HEVC Class B UVG                                                        
+
+> Ldist LDMD Gate BD-DISTS ↓BD-FID ↓BD-ME ↓BD-DISTS ↓BD-FID ↓BD-ME ↓
+> (i) ✓××0.007 2.49 0.134 0.003 1.62 0.033 (ii) ×✓×0.031 12.4 0.691 0.033 5.58 0.552 (iii) ✓✓×0.003 1.53 0.174 0.002 3.70 0.140 (iv) ×✓✓0.010 2.25 0.017 0.006 0.06 0.018 (v) ✓✓✓0.000 0.00 0.000 0.000 0.00 0.000
+> Anchor: full model (v). GT (i) w/o DMD (v) w/ DMD
+
+Fig. 12. Qualitative contribution of DMD. Compared with the distortion-only variant (i), the full model (v) with gated DMD suppresses structured artifacts and reconstructs finer texture closer to the ground truth. 
+
+codec. Its global-to-local pixel-space hierarchy yields a strong standalone multi-step generative codec, whose diffusion model subsequently serves as the teacher for one-step distillation. During distillation, we identified a teacher-side guidance fail-ure in which student-induced inputs can make the frozen teacher provide misleading DMD updates that reinforce mo-tion stalling, and introduced Adaptive Score Distillation to attenuate such updates while retaining the corrective pull of ground-truth-anchored losses. Experiments show that GenVC achieves SOTA ultra-low-bitrate perceptual quality, with av-erage bitrate savings of 62.5% at matched LPIPS and 71.3% at matched FID over GLVC. Its 478.0M-parameter diffusion model reaches a decoding throughput of 15.1 fps for 1080p on an A100 GPU, significantly surpassing existing diffusion-based generative codecs. REFERENCES [1] R. Yang, R. Timofte, and L. Van Gool, “Perceptual learned video compression with recurrent conditional gan.” in IJCAI , 2022, pp. 1537– 1544. [2] W. Ma and Z. Chen, “Diffusion-based perceptual neural video com-pression with temporal diffusion information reuse,” arXiv preprint arXiv:2501.13528 , 2025. [3] L. Qi, Z. Jia, J. Li, B. Li, H. Li, and Y. Lu, “Generative latent coding for ultra-low bitrate image and video compression,” IEEE Transactions on Circuits and Systems for Video Technology , 2025. [4] Z. Zheng, X. Peng, T. Yang, C. Shen, S. Li, H. Liu, Y. Zhou, T. Li, and Y. You, “Open-sora: Democratizing efficient video production for all,” 
+
+arXiv preprint arXiv:2412.20404 , 2024. [5] Z. Yang, J. Teng, W. Zheng, M. Ding, S. Huang, J. Xu, Y. Yang, W. Hong, X. Zhang, G. Feng, D. Yin, Y. Zhang, W. Wang, Y. Cheng, B. Xu, X. Gu, Y. Dong, and J. Tang, “Cogvideox: Text-to-video diffusion models with an expert transformer,” in International Conference on Learning Representations , 2025. [6] W. Kong, Q. Tian, Z. Zhang, R. Min, Z. Dai, J. Zhou, J. Xiong, X. Li, B. Wu, J. Zhang et al. , “Hunyuanvideo: A systematic framework for large video generative models,” arXiv preprint arXiv:2412.03603 , 2024. [7] T. Wan, A. Wang, B. Ai, B. Wen, C. Mao, C.-W. Xie, D. Chen, F. Yu, H. Zhao, J. Yang et al. , “Wan: Open and advanced large-scale video generative models,” arXiv preprint arXiv:2503.20314 , 2025. [8] Q. Mao, H. Cheng, T. Yang, L. Jin, and S. Ma, “Generative neural video compression via video diffusion prior,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,2026, pp. 43 239–43 248. [9] Z. Zeng, X. Su, H. Liu, B. Lu, Y. Tatsumi, and H. Watanabe, “Gvcc: Zero-shot video compression via codebook-driven stochastic rectified flow,” arXiv preprint arXiv:2603.26571 , 2026. 10 
+
+[10] M. Zhou, Z. Chen, and Y. Zhang, “Efficient video diffusion with sparse information transmission for video compression,” arXiv preprint arXiv:2603.18501 , 2026. [11] Z. Jia, Z. Zheng, N. Xue, J. Li, B. Li, Z. Guo, X. Zhang, H. Li, and Y. Lu, “Cod: A diffusion foundation model for image compression,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , June 2026, pp. 38 420–38 429. [12] Z. Jia, N. Xue, Z. Zheng, J. Li, B. Li, X. Zhang, Z. Guo, Y. Zhang, H. Li, and Y. Lu, “Cod-lite: Real-time diffusion-based generative image compression,” 2026. [Online]. Available: https://arxiv.org/abs/2604.12525 [13] W. Ma and Z. Chen, “Diffvc-osd: One-step diffusion-based perceptual neural video compression framework,” arXiv preprint arXiv:2508.07682 ,2025. [14] ——, “Diffvc-rt: Towards practical real-time diffusion-based perceptual neural video compression,” arXiv preprint arXiv:2601.20564 , 2026. [15] N. Xue, Z. Jia, J. Li, B. Li, Z. Zheng, Y. Zhang, and Y. Lu, “Single-step diffusion-based video coding with semantic-temporal guidance,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2026, pp. 9752–9761. [16] T. Yin, M. Gharbi, R. Zhang, E. Shechtman, F. Durand, W. T. Freeman, and T. Park, “One-step diffusion with distribution matching distillation,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , June 2024, pp. 6613–6623. [17] T. Yin, M. Gharbi, T. Park, R. Zhang, E. Shechtman, F. Durand, and W. T. Freeman, “Improved distribution matching distillation for fast image synthesis,” in NeurIPS , 2024. [18] N. Xue, Z. Jia, J. Li, B. Li, Y. Zhang, and Y. Lu, “One-step diffusion-based image compression with semantic distillation,” in 
+
+Advances in Neural Information Processing Systems , D. Belgrave, C. Zhang, H. Lin, R. Pascanu, P. Koniusz, M. Ghassemi, and N. Chen, Eds., vol. 38. Curran Associates, Inc., 2025, pp. 37 108–37 144. [Online]. Available: https://proceedings.neurips.cc/paper files/paper/ 2025/file/352a67c085e607acdcfc0076899750f4-Paper-Conference.pdf [19] R. Zhang, P. Isola, A. A. Efros, E. Shechtman, and O. Wang, “The unreasonable effectiveness of deep features as a perceptual metric,” in 
+
+Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition , 2018, pp. 586–595. [20] Z. Guo, Z. Jia, J. Li, X. Zhang, B. Li, and Y. Lu, “Generative latent video compression,” arXiv preprint arXiv:2510.09987 , 2025. [21] J. Li, B. Li, and Y. Lu, “Deep contextual video compression,” in 
+
+Advances in Neural Information Processing Systems , vol. 34, 2021, pp. 18 114–18 125. [22] ——, “Neural video compression with diverse contexts,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recogni-tion (CVPR) , June 2023, pp. 22 616–22 626. [23] ——, “Neural video compression with feature modulation,” in Proceed-ings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , June 2024, pp. 26 099–26 108. [24] Z. Jia, B. Li, J. Li, W. Xie, L. Qi, H. Li, and Y. Lu, “Towards practical real-time neural video compression,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , June 2025, pp. 12 543–12 552. [25] J. Li, W. Xie, Z. Jia, B. Li, Z. Guo, X. Zhang, and Y. Lu, “Ultra-fast neural video compression,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , June 2026, pp. 41 311–41 321. [26] B. Bross, Y.-K. Wang, Y. Ye, S. Liu, J. Chen, G. J. Sullivan, and J.-R. Ohm, “Overview of the versatile video coding (vvc) standard and its applications,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 31, no. 10, pp. 3736–3764, 2021. [27] F. Mentzer, E. Agustsson, J. Ball´ e, D. Minnen, N. Johnston, and G. Toderici, “Neural video compression using gans for detail synthe-sis and propagation,” in European Conference on Computer Vision .Springer, 2022, pp. 562–578. [28] R. Rombach, A. Blattmann, D. Lorenz, P. Esser, and B. Ommer, “High-resolution image synthesis with latent diffusion models,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recogni-tion (CVPR) , June 2022, pp. 10 684–10 695. [29] X. Li, J. Zhang, J. Shi, M. Lu, and Z. Ma, “Yoda: Yet another one-step diffusion-based video compressor,” arXiv preprint arXiv:2601.01141 ,2026. [30] T. Li and K. He, “Back to basics: Let denoising generative models denoise,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , June 2026, pp. 36 115–36 125. [31] S. Wang, Z. Gao, C. Zhu, W. Huang, and L. Wang, “Pixnerd: Pixel neural field diffusion,” in The Fourteenth International Conference on Learning Representations , 2026. [Online]. Available: https: //openreview.net/forum?id=BDnOrExHmt [32] Z. Chen, J. Zhu, X. Chen, J. Zhang, X. Hu, H. Zhao, C. Wang, J. Yang, and Y. Tai, “Dip: Taming diffusion models in pixel space,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , June 2026, pp. 36 136–36 146. [33] Z. Ma, L. Wei, S. Wang, S. Zhang, and Q. Tian, “Deco: Frequency-decoupled pixel diffusion for end-to-end image generation,” in Pro-ceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , June 2026, pp. 43 600–43 610. [34] Y. Yu, W. Xiong, W. Nie, Y. Sheng, S. Liu, and J. Luo, “Pixeldit: Pixel diffusion transformers for image generation,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , June 2026, pp. 14 273–14 282. [35] Y. Teng, M. Lin, X. Liu, S. Wang, X. Yang, and X. Liu, “Adaptive 1d video diffusion autoencoder,” 2026. [Online]. Available: https://arxiv.org/abs/2602.04220 [36] T. Alldieck, N. Kolotouros, and C. Sminchisescu, “Score distillation sampling with learned manifold corrective,” in European Conference on Computer Vision . Springer, 2024, pp. 1–18. [37] Z. Wang, C. Lu, Y. Wang, F. Bao, C. Li, H. Su, and J. Zhu, “Prolific-dreamer: High-fidelity and diverse text-to-3d generation with variational score distillation,” Advances in neural information processing systems ,vol. 36, pp. 8406–8441, 2023. [38] T. Yin, Q. Zhang, R. Zhang, W. T. Freeman, F. Durand, E. Shechtman, and X. Huang, “From slow bidirectional to fast autoregressive video diffusion models,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2025, pp. 22 963–22 974. [39] Y. Lipman, R. T. Q. Chen, H. Ben-Hamu, M. Nickel, and M. Le, “Flow matching for generative modeling,” in The Eleventh International Conference on Learning Representations , 2023. [Online]. Available: https://openreview.net/forum?id=PqvMRDCJT9t [40] X. Liu, C. Gong, and Q. Liu, “Flow straight and fast: Learning to generate and transfer data with rectified flow,” in The Eleventh International Conference on Learning Representations , 2023. [Online]. Available: https://openreview.net/forum?id=XVjTT1nw5z [41] Z. Teed and J. Deng, “Raft: Recurrent all-pairs field transforms for optical flow,” in ECCV , 2020, pp. 402–419. [42] I. Loshchilov and F. Hutter, “Decoupled weight decay regularization,” 
+
+arXiv preprint arXiv:1711.05101 , 2017. [43] K. Nan, R. Xie, P. Zhou, T. Fan, Z. Yang, Z. Chen, X. Li, J. Yang, and Y. Tai, “Openvid-1m: A large-scale high-quality dataset for text-to-video generation,” arXiv preprint arXiv:2407.02371 , 2024. [44] A. Mercat, M. Viitanen, and J. Vanne, “Uvg dataset: 50/120fps 4k sequences for video codec analysis and development,” in Proceedings of the 11th ACM multimedia systems conference , 2020, pp. 297–302. [45] H. Wang, W. Gan, S. Hu, J. Y. Lin, L. Jin, L. Song, P. Wang, I. Katsavounidis, A. Aaron, and C.-C. J. Kuo, “Mcl-jcv: a jnd-based h. 264/avc video quality assessment dataset,” in 2016 IEEE international conference on image processing (ICIP) . IEEE, 2016, pp. 1509–1513. [46] G. J. Sullivan, J.-R. Ohm, W.-J. Han, and T. Wiegand, “Overview of the high efficiency video coding (hevc) standard,” IEEE Transactions on circuits and systems for video technology , vol. 22, no. 12, pp. 1649– 1668, 2012. [47] X. Ling, C. Zhou, C. Li, Y. Chen, Y. Tian, G. Lu, and W. Zhang, “Free-gvc: Towards training-free extreme generative video compression with temporal coherence,” arXiv preprint arXiv:2602.09868 , 2026. [48] K. Ding, K. Ma, S. Wang, and E. P. Simoncelli, “Image quality assessment: Unifying structure and texture similarity,” IEEE transactions on pattern analysis and machine intelligence , vol. 44, no. 5, pp. 2567– 2581, 2020. [49] M. Heusel, H. Ramsauer, T. Unterthiner, B. Nessler, and S. Hochreiter, “Gans trained by a two time-scale update rule converge to a local nash equilibrium,” Advances in neural information processing systems ,vol. 30, 2017. [50] D. Danier, F. Zhang, and D. Bull, “Flolpips: A bespoke video quality metric for frame interpolation,” in 2022 Picture Coding Symposium (PCS) . IEEE, 2022, pp. 283–287. [51] Z. Wang, E. Simoncelli, and A. Bovik, “Multiscale structural similarity for image quality assessment,” in The Thirty-Seventh Asilomar Confer-ence on Signals, Systems & Computers, 2003 , vol. 2, 2003, pp. 1398– 1402. [52] G. Bjontegaard, “Calculation of average psnr differences between rd-curves,” ITU SG16 Doc. VCEG-M33 , 2001.

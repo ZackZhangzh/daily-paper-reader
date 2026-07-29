@@ -1,0 +1,1822 @@
+Title: Rethinking the Generation Order of Block Diffusion Language Models
+
+URL Source: https://arxiv.org/pdf/2607.24306v1
+
+Published Time: Tue, 28 Jul 2026 01:52:49 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+## Rethinking the Generation Order of Block Diffusion Language Models 
+
+Kai Syun Hou James Kwok 
+
+Department of Computer Science and Engineering The Hong Kong University of Science and Technology 
+
+Abstract 
+
+Diffusion language models enable flexible arbitrary-order generation, but existing sam-pling methods are mostly designed for early masked diffusion models (MDMs). In this work, we study sampling for recent block dif-fusion language models (BDLMs). We show empirically and analytically that these mod-els are naturally more aligned with left-to-right decoding than MDMs. Based on this ob-servation, we propose P arallel A uto r egressive D ecoding (PARD), a simple training-free sam-pling method that preserves left-to-right un-masking structure while allowing parallel to-ken commitment. Extensive experiments show that PARD consistently outperforms existing parallel samplers in generation quality, while achieving substantial speedups over pure AR decoding with only a small quality gap. 
+
+1 Introduction 
+
+Recently, diffusion language models (DLMs) have emerged as a promising alternative to autoregres-sive language models (ARMs) for text generation (Li et al., 2025). In particular, masked diffusion models (MDMs) have attracted growing attention for their simple denoising formulation and strong empirical performance (Sahoo et al., 2024; Shi et al., 2024). MDMs iteratively reconstruct a se-quence from a partially masked state, enabling to-kens to be generated in arbitrary orders and in par-allel. The arbitrary-order generation flexibility of MDMs has motivated a growing line of sampling methods that seek to improve decoding quality and efficiency. These methods typically decide which masked positions should be unmasked at each de-noising step (Ye et al., 2025; Kim et al., 2025a). More recent methods further accelerate decoding through parallel sampling, committing multiple po-sitions per step based on criteria designed to bal-ance generation speed and reliability (Wu et al., 2025; Kim et al., 2025b). Early MDMs, such as LLaDA (Nie et al., 2025) and Dream (Ye et al., 2025), apply masked diffu-sion over the entire sequence. In contrast, Block diffusion language models (BDLMs) are trained to factorize generation autoregressively across blocks, while applying masked diffusion within each block conditioned on the clean preceding blocks (Arriola et al., 2025). This setting is increasingly important, as many recent high-performing DLMs adopt block diffusion, often by continuing training from pre-trained autoregressive LLMs with a block-diffusion objective (Wu et al., 2026b; Cheng et al., 2025; Bie et al., 2025, 2026). However, existing DLM sam-pling methods have mostly been developed and evaluated on early MDMs, leaving their behavior on these recent BDLMs underexplored. To investigate this gap, we conduct a compari-son between two 8B models: SDAR (Cheng et al., 2025), a recent BDLM, and LLaDA (Nie et al., 2025), a representative MDM. We observe that both models exhibit an autoregressive-like decod-ing order. Motivated by this, we compare a sim-ple AR sampler, which always unmasks the left-most masked token, against common arbitrary-order samplers. Surprisingly, this simple strategy achieves higher accuracy on SDAR, while it per-forms worse than the arbitrary-order samplers on LLaDA. Besides the AR-pretrained initialization, we further explain this behavior by comparing the training-time input contexts of MDM and block diffusion. We show that MDM training almost never exposes the model to the left-to-right context used by AR decoding. In contrast, block diffusion training observes such contexts with larger and non-negligible probability, and it biases the overall input context toward the left-to-right context. This training-time bias makes BDLMs naturally more aligned with AR decoding. Finally, we propose Parallel Autoregressive De-
+
+1arXiv:2607.24306v1 [cs.CL] 27 Jul 2026 coding (PARD) , a simple training-free sampling strategy that adapts existing arbitrary-order parallel samplers to left-to-right decoding. PARD unmasks the longest leftmost prefix of positions accepted by a given criterion, preserving AR structure while retaining parallelism. Experiments on three recent BDLMs show that PARD consistently outperforms existing parallel samplers, achieving stronger gen-eration quality while preserving substantial decod-ing speedups. 
+
+2 Related Work 
+
+2.1 Diffusion Language Models 
+
+Diffusion models have emerged as successful generative models in continuous domains (Sohl-Dickstein et al., 2015; Ho et al., 2020; Yang et al., 2023). This success has motivated the develop-ment of discrete diffusion language models (DLMs) for text generation (Campbell et al., 2022; Austin et al., 2021a; Lou et al., 2023; Ou et al., 2025). Masked Diffusion Models (MDMs) are a particu-larly representative class among them (Sahoo et al., 2024; Shi et al., 2024). In the forward process of MDMs, clean tokens are gradually replaced with an absorbing state token [MASK] . In the reverse process, the model learn to iteratively reconstruct the sequence by unmasking tokens until the orig-inal clean sequence is recovered. Recent work has scaled MDMs to billions of parameters (Nie et al., 2025; Zhu et al., 2025), showing that DLMs can achieve generation quality competitive with ARMs while offering the potential for faster infer-ence (Song et al., 2025; Khanna et al., 2025). MDM treats the whole sequence as a single dif-fusion state, so each denoising step processes all to-ken positions. Block diffusion (Arriola et al., 2025) instead factorizes generation autoregressively over consecutive blocks, while performing diffusion within each block. Importantly, block diffusion language models (BDLMs) are not merely MDMs equipped with a semi-autoregressive (semi-AR) de-coding strategy. Rather, the model is trained with a masked diffusion objective within each block, conditioned on the clean prefix before the block. This design enables exact KV cache reuse of fi-nalized blocks, providing a substantial inference-speed advantage over MDMs, which forward the full sequence at each step. Moreover, BDLMs sup-port arbitrary-length generation. These practical advantages have motivated a wave of recent founda-tion BDLMs (Wu et al., 2026b; Cheng et al., 2025; Bie et al., 2025, 2026; Tian et al., 2025; Wu et al., 2026a). Instead of training from scratch, these mod-els are often adapted from strong ARMs through continued pretraining or fine-tuning with the block diffusion objective. Compared with MDMs of sim-ilar parameter scale, these BDLMs achieve sub-stantially stronger generation quality and inference efficiency. 
+
+2.2 Sampling Methods for MDMs 
+
+Early MDMs use uniform sampling, which selects the next unmasked position uniformly from the re-maining masked positions (Austin et al., 2021a). While aligned with the MDM training distribution, this strategy is often suboptimal for generation qual-ity, motivating heuristic samplers based on model-dependent scoring rules. Confidence selects the po-sition with the highest predicted probability (Chang et al., 2022). Margin selects the position with the largest gap between the top-1 and top-2 predicted probabilities (Kim et al., 2025a). Entropy selects the position with the lowest predictive entropy (Ye et al., 2025). Uncode (Huang et al., 2026) aug-ments confidence with a position-aware prior and an informativeness term that down-weights generic high-frequency tokens. Recent works have also developed more ad-vanced parallel sampling methods that trade off generation quality and inference speed. Represen-tative approaches include confidence-thresholded unmasking (Wu et al., 2025; Yu et al., 2025), KL-guided stability-based selection (Kim et al., 2025b), entropy-bounded subset selection (Ben-Hamu et al., 2025), and tree-structured hierarchical decoding (Qi et al., 2026). 
+
+3 Understanding the AR Bias of BDLMs 
+
+3.1 Empirical Observations 
+
+We first examine the decoding orders induced by the existing arbitrary-order sampler based on Con-fidence . We compare one recent BDLM, SDAR 8B (Cheng et al., 2025), with the representative MDM, LLaDA 8B (Nie et al., 2025). Both models are evaluated on HumanEval using Confidence . For LLaDA, we employ the semi-AR decoding strat-egy. We use 32 denoising steps with block size 32 
+
+for both models, so exactly one token is unmasked at each step. For each generated block, we record the within-block position of the token unmasked at each step. Figure 1 shows the distribution of unmasking 20 10 20 30    
+
+> Decoding step within block
+> 0
+> 5
+> 10
+> 15
+> 20
+> 25
+> 30
+> Token position within block
+> 010 20 30
+> Decoding step within block
+> 0
+> 5
+> 10
+> 15
+> 20
+> 25
+> 30
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> P(unmask position | step)
+
+Figure 1: Distributions of unmasking positions at various denoising steps for SDAR (left) and LLaDA (right) on 
+
+HumanEval .1 2 3 4 5 6 7 8  
+
+> k
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> AR-ness@k
+> SDAR
+> LLaDA
+> 123
+> k
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> 0.8
+> 0.9
+> 1.0
+> AR-ness@k
+> SDAR
+> LLaDA
+
+Figure 2: Local (left) and global (right) AR-ness@ k of decoding on HumanEval under Confidence sampling. Confidence Entropy Margin AR      
+
+> 68
+> 70
+> 72
+> 74
+> 76
+> 78
+> 80
+> pass@1 (%)
+> 75.0
+> 77.4
+> 71.3
+> 79.3
+> Confidence Entropy Margin AR
+> 38
+> 40
+> 42
+> 44
+> 46 45.7 45.7
+> 43.3
+> 41.5
+
+Figure 3: HumanEval Base pass@1 for various samplers on SDAR (left) and LLaDA (right). 
+
+positions at each denoising step on HumanEval . A strictly autoregressive order would place all proba-bility mass on the diagonal. As can be seen, both models exhibit a clear concentration around the di-agonal, indicating that Confidence already induces a near-left-to-right decoding order. Within ±2 posi-tions of the diagonal, the average probability mass is 0.75 for SDAR and 0.70 for LLaDA. SDAR shows a stronger diagonal concentration, with an average on-diagonal mass of 0.39 compared to 0.27 
+
+for LLaDA (whose diagonal pattern is fainter). To further quantify the decoding order’s close-ness to AR, we compute the two AR-ness@ k met-rics 1 proposed in (Gong et al., 2026): (i) local AR-ness@ k, which measures the fraction of steps that extend a k-long consecutive run; and (ii) global AR-ness@ k, which measures the fraction of steps where the selected position is among the k earli-est remaining masked positions. Since blocks are generated autoregressively, we compute the aver-age AR-ness metrics over all blocks. As shown in Figure 2, SDAR exhibits consistently higher local and global AR-ness across different k’s, again con-firming that BDLM is more AR-like than LLaDA on decoding. Recent works (Gong et al., 2026; Li et al., 2026) have also observed that decoding in MDMs often exhibits strong left-to-right structure despite their arbitrary-order flexibility. Ni et al. (2026) further show that enforcing AR order during RL rollouts 
+
+> 1
+
+Detailed definitions of the metrics are in Appendix A. 
+
+can improve the reasoning performance of MDMs. However, it remains unclear whether explicit AR sampling at inference time is preferable, especially for BDLMs. We therefore compare three represen-tative arbitrary-order samplers ( Confidence , Margin ,and Entropy ) with a pure AR sampler (which always selects the leftmost masked position at each step). Figure 3 shows the pass@1 values on HumanEval 
+
+for SDAR and LLaDA with different samplers. As can be seen, there is substantial difference between SDAR and LLaDA. On SDAR, pure AR performs best, improving the strongest arbitrary-order sam-pler ( Entropy ) by 1.9 points. In contrast, on LLaDA, pure AR performs worst, underperforming Con-fidence and Entropy by 4.2 points. These results suggest that an explicit AR order is especially fa-vorable for BDLMs, but not necessary for MDMs trained from scratch. In the following, we explore why BDLMs are better aligned with AR sampling. We additionally analyze the AR bias of Dream 7B (Ye et al., 2025) in Appendix D.1. 
+
+3.2 Preliminaries Notation. Let V be the vocabulary, [MASK] be the absorbing mask token, and ¯V = V ∪ { [MASK] }.A clean sequence x0 ∈ V L is drawn from the data distribution pdata . The sequence is partitioned into 
+
+B contiguous blocks, each of size L′. We denote each block as xb 
+
+> 0
+
+∈ V L′
+
+(b ∈ { 1, ..., B }), and write 
+
+x<b  
+
+> 0
+
+= ( x10, . . . , x b−10 ) for the prefix before block 
+
+b. We denote pθ(xℓ 
+
+> 0
+
+| xt) as the denoising model’s predictive distribution at position ℓ, conditioned on the noised input sequence xt.
+
+MDM. During training, the forward process first samples a noise level t ∼ U [0 , 1] , then masks each position ℓ independently to obtain the noised se-3quence xt ∈ ¯V L according to 
+
+qt(xℓt | xℓ
+
+> 0
+
+) = Cat 
+
+
+
+xℓt ; αtexℓ 
+
+> 0
+
++ (1 − αt)e[MASK] 
+
+
+
+,
+
+(1) where αt is a non-increasing noise schedule, and 
+
+ev is the one-hot vector for token v ∈ ¯V . Let 
+
+M(xt) = {j : xjt = [MASK] } be the masked posi-tions in xt. With the linear schedule αt = 1 − t,MDM is trained to predict the original tokens at masked positions (Sahoo et al., 2024): 
+
+LMDM = − E 
+
+> t∼U[0 ,1]
+> xt∼qt(·| x0)
+
+1
+
+t
+
+X
+
+> j∈M (xt)
+
+log pθ(xj 
+
+> 0
+
+| xt).
+
+This is a NELBO upper bound on the negative log-likelihood − log pθ(x0).
+
+Block Diffusion. Block diffusion factorizes the sequence likelihood autoregressively over blocks: 
+
+pθ(x0) = QBb=1 pθ(xb 
+
+> 0
+
+| x<b  
+
+> 0
+
+) (Arriola et al., 2025). Each conditional distribution pθ(xb 
+
+> 0
+
+| x<b  
+
+> 0
+
+) is mod-eled by a masked diffusion process within block 
+
+b, conditioned on the clean prefix x<b  
+
+> 0
+
+. For each block b, the forward noising process first samples a noise level t ∼ U [0 , 1] , then obtain xbt by position-independent masking as (1) . With the linear sched-ule αt = 1 − t, the block diffusion training objec-tive can be written as 
+
+LBlock = −
+
+> B
+
+X
+
+> b=1
+
+Et∼U [0 ,1] ,x bt ∼qt(·| xb
+
+> 0)
+
+"
+
+1
+
+t
+
+X 
+
+> j∈M (xbt)
+
+log pθ(xb,j  
+
+> 0
+
+| x<b  
+
+> 0
+
+, x bt )
+
+#
+
+,
+
+where xb,j  
+
+> 0
+
+is the j-th token in block b.
+
+3.3 Why Are BDLMs More Aligned With AR? 
+
+Recent BDLMs are obtained by fine-tuning or con-tinual pretraining from AR-pretrained LLMs (Wu et al., 2026b; Cheng et al., 2025). Compared with the AR-pretraining stage, which optimizes next-token prediction over trillions of tokens, block dif-fusion adaptation typically uses a much smaller token budget. For example, Qwen2.5 7B is pre-trained on 18T tokens (Yang et al., 2024), while Fast-dLLM v2 adapts it to a BDLM with only 1B tokens of fine-tuning. This large training-budget gap suggests that block diffusion adaptation does not fully overwrite the left-to-right conditional be-havior learned during AR pretraining. Beyond initialization, the block diffusion objec-tive also gives rise to input contexts better matched to AR decoding. During block diffusion training, when the model predicts tokens in block b, it con-ditions on the clean prefix from all previous blocks and only the current block is partially masked. Fu-ture blocks are not included in the input. In contrast, MDM training masks positions across the whole sequence, which can leave the model with a discon-tinuous left context while also exposing tokens to the right. To quantify this difference, consider a position 
+
+ℓ. The mask pattern mAR  
+
+> ℓ
+
+∈ { 0, 1}N seen by an MDM (with N = L) or block diffusion model (with N = bL ′ and position ℓ contained in block b)is purely AR when 
+
+(mAR  
+
+> ℓ
+
+)j =
+
+(
+
+0, j < ℓ, 
+
+1, ℓ ≤ j ≤ N, 
+
+i.e., the left prefix has already been generated, while the future positions are not visible. The fol-lowing Proposition compares how often MDM and block diffusion model see this AR mask pattern during training. The proof is in Appendix B.1. 
+
+Proposition 1 (Probability of seeing AR mask pat-tern) . Assume the linear noise schedule αt = 1 − t
+
+with t ∼ U [0 , 1] . Consider any position ℓ. We have 
+
+Pr  mAR  
+
+> ℓ
+
+observed  = 1(L + 1)   Lℓ−1
+
+
+
+for MDM, and 
+
+Pr  mAR  
+
+> ℓ
+
+observed  = 1(L′ + 1)  L′
+
+> k
+
+ ,
+
+for block diffusion, where k = ℓ − 1 − (b − 1) L′ is the left-context length in this block. 
+
+For example, for MDM, when L = 1024 , the probability is approximately 10 −310 at ℓ = 512 ,and approximately 10 −6 even at the edge ( ℓ =1024 ). Hence, AR contexts are almost absent dur-ing MDM training. In contrast, for block diffusion, with the same ℓ, this probability is always larger. For example, with L′ = 32 , it is about 10 −11 at 
+
+k = 15 ; about 0.03 at k = 0 , and about 0.001 at the second ( k = 1 ) and last positions ( k = 31 ). Hence, during training, BDLMs receive more fre-quent supervision under contexts that match those queried by AR decoding. Besides studying the probability that the AR mask pattern is exactly observed, we can also mea-sure how the mask M (with Mj = 1 if position j is 4masked, and 0 otherwise) used at position ℓ aligns with the AR pattern. For MDM, MMDM ∈ { 0, 1}L,and the AR pattern alignment can be defined as 
+
+ρℓ(MMDM ) = 1
+
+L − 1
+
+" ℓ−1X
+
+> j=1
+
+(1 − MMDM  
+
+> j
+
+)+
+
+> L
+
+X
+
+> j=ℓ+1
+
+MMDM 
+
+> j
+
+#
+
+;
+
+whereas for block diffusion (with position ℓ con-tained in block b), MBDLM ∈ { 0, 1}bL ′
+
+and the AR pattern alignment is 
+
+ρℓ(MBDLM ) = 1
+
+bL ′ − 1
+
+" ℓ−1X
+
+> j=1
+
+(1 − MBDLM  
+
+> j
+
+)+
+
+> bL ′
+
+X
+
+> j=ℓ+1
+
+MBDLM 
+
+> j
+
+#
+
+.ρℓ = 1 when the exact AR mask pattern is observed. The following Proposition shows that block diffu-sion has a higher expected AR pattern alignment than MDM. The proof is in Appendix B.2. 
+
+Proposition 2 (Expected AR pattern alignment) .
+
+Assume the linear noise schedule αt = 1 − t with 
+
+t ∼ U [0 , 1] . For MDM, the expected AR pattern alignment is E[ρℓ(MMDM )] = 1 /2. For block diffusion, 
+
+E[ρℓ(MBDLM )] = 12 + (b − 1) L′
+
+2( bL ′ − 1) 
+
+≥ E[ρℓ(MMDM )] ,
+
+where expectations are over the mask patterns. 
+
+The alignment increases with the block position 
+
+b. For the typical block size L′=32 , the expected alignment is 0.5 in the first block, 0.75 in the sec-ond block, and 0.95 in the tenth block. 
+
+4 Parallel Autoregressive Decoding 
+
+The above analysis suggests that recent BDLMs are better matched to left-to-right decoding contexts. This motivates a sampler that preserves the AR prefix structure during generation. While a pure AR sampler obviously is the perfect match, it is inherently sequential and therefore sacrifices the parallelism advantage of DLMs. To alleviate this problem, we introduce Parallel Autoregressive Decoding (PARD). PARD retains the AR bias while still allowing multiple tokens to be unmasked per step, and can be applied to existing arbitrary-order samplers. Consider generation within block b, conditioned on the clean prefix x<b  
+
+> 0
+
+. At sampling step s, let xbs
+
+be the current partially masked block, and denote by Mbs the set of masked positions in this block. For each masked position j ∈ M bs, let 
+
+πj (v) = pθ(xb,j  
+
+> 0
+
+= v | x<b  
+
+> 0
+
+, x bs). (2) Let p(1)  
+
+> j
+
+and p(2)  
+
+> j
+
+be the largest and second-largest probabilities under πj , respectively. Recall that the parallel samplers ( Confidence , Margin , and Entropy )select the sets of unmasking positions as:  
+
+> Confidence:
+
+U C 
+
+> s
+
+= {j ∈ M bs : cj > τ c}, 
+
+> Margin:
+
+U M 
+
+> s
+
+= {j ∈ M bs : mj > τ m}, 
+
+> Entropy:
+
+U H 
+
+> s
+
+= {j ∈ M bs : hj < τ h},
+
+where cj = p(1)  
+
+> j
+
+, mj = p(1)  
+
+> j
+
+− p(2)  
+
+> j
+
+, hj =
+
+− P 
+
+> v∈V
+
+πj (v) log πj (v), and τc, τ m, τ h are given thresholds. If the selected set is empty, the sampler falls back to unmasking the top candidate position under the same criterion, i.e., arg max j cj for Con-fidence , arg max j mj for Margin , and arg min j hj
+
+for Entropy .PARD applies the same criteria, but restricts un-masking to the leftmost accepted prefix. It scans the masked positions from left to right and unmasks consecutive positions until the first one that fails the criterion. Specifically, it selects the sets of un-masking positions as: 
+
+U AR -C 
+
+> s
+
+= {j ∈ M bs : ci > τ c ∀i ∈ M bs, i ≤ j},U AR -M 
+
+> s
+
+= {j ∈ M bs : mi > τ m ∀i ∈ M bs, i ≤ j},U AR -H 
+
+> s
+
+= {j ∈ M bs : hi < τ h ∀i ∈ M bs, i ≤ j}.
+
+If this prefix is empty, it falls back to unmasking the leftmost masked position, i.e., Us = {min Mbs}.Let ˆxb,j s = arg max v∈V pθ(xb,j  
+
+> 0
+
+= v | x<b  
+
+> 0
+
+, x bs).The block is then updated as 
+
+xb,j s+1 =
+
+(
+
+ˆxb,j s j ∈ Us,xb,j s otherwise. where Us is chosen from the corresponding arbitrary-order or PARD’s unmasking sets defined above. The update is repeated until all positions in the current block are unmasked. Generation then proceeds block by block until an [EOS] token is generated or the maximum generation length is reached. 5135 140 145 150 155 160 165                              
+
+> Throughput (token/s)
+> 52.5
+> 55
+> 57.5
+> 60
+> 62.5
+> 65
+> 67.5
+> 70
+> pass@1 (%)
+> Confidence (PARD)
+> Confidence
+> 115 120 125 130 135 140 145 150
+> Throughput (token/s)
+> 55
+> 57.5
+> 60
+> 62.5
+> 65
+> 67.5
+> 70
+> 72.5
+> Margin (PARD)
+> Margin
+> 110 115 120 125 130 135 140 145
+> Throughput (token/s)
+> 62
+> 64
+> 66
+> 68
+> 70
+> 72
+> Entropy (PARD)
+> Entropy
+> 75 80 85 90 95 100
+> Throughput (token/s)
+> 65
+> 67.5
+> 70
+> 72.5
+> 75
+> 77.5
+> 80
+> pass@1 (%)
+> Confidence (PARD)
+> Confidence
+> 65 70 75 80 85 90 95
+> Throughput (token/s)
+> 68
+> 70
+> 72
+> 74
+> 76
+> 78
+> 80
+> Margin (PARD)
+> Margin
+> 65 70 75 80 85
+> Throughput (token/s)
+> 73
+> 74
+> 75
+> 76
+> 77
+> 78
+> 79
+> 80
+> Entropy (PARD)
+> Entropy
+
+Figure 4: HumanEval Base pass@1 vs. decoding throughput (token/s) for Confidence (left), Margin (middle), and 
+
+Entropy (right) parallel sampling and their PARD variants on Fast-dLLM v2 7B (top row) and SDAR 8B (bottom row). 100 120 140 160 180        
+
+> Throughput (token/s)
+> 52.5
+> 55
+> 57.5
+> 60
+> 62.5
+> 65
+> 67.5
+> 70
+> pass@1 (%)
+> Confidence (PARD)
+> Confidence
+> KLASS
+> EB-Sampler
+> APD
+> Hierarchy
+> 50 60 70 80 90 100 110 120
+> Throughput (token/s)
+> 65
+> 67.5
+> 70
+> 72.5
+> 75
+> 77.5
+> 80
+> Confidence (PARD)
+> Confidence
+> KLASS
+> EB-Sampler
+> APD
+> Hierarchy
+
+Figure 5: HumanEval Base pass@1 vs. decoding throughput (token/s) for confidence-based PARD, EB-Sampler, KLASS, APD, and Hierarchy on Fast-dLLM v2 7B (left) and SDAR 8B (right). 
+
+5 Experiments 
+
+In this section, we first evaluate the speed-quality trade-off by varying the parallel decoding thresh-olds. Next, we focus on the generation qualities and evaluate across various tasks and models. We evaluate three recent BDLMs: Fast-dLLM v2 7B (Wu et al., 2026b), SDAR 8B (Cheng et al., 2025), and LLaDA2.1-Mini 16B (Bie et al., 2026). All models use a block size of 32 , matching their default configurations. For Fast-dLLM v2, we fol-low its default sub-block inference strategy with sub-block size 8. LLaDA2.1-Mini additionally sup-ports token editing, where previously unmasked tokens can be revised when a new prediction ex-ceeds an editing threshold. More details about the models are in Appendix C.1. 
+
+5.1 Speed-Quality Trade-Off 
+
+We first evaluate PARD on how it improves the trade-off between generation quality and decoding efficiency. We compare Confidence , Margin , and 
+
+Entropy parallel sampling with their PARD vari-ants, sweeping the corresponding thresholds τc,
+
+τm, and τh. Details on the threshold values are in Appendix C.2. Evaluation is based on Fast-dLLM v2 and SDAR, conducted on the HumanEval Base with a batch size of 4. Figure 4 shows the pass@1-throughput curves. Results on the pass@1-Number of Function Eval-uations (NFE) curves are shown in Figure 7 of Appendix D.2. As can be seen, applying the AR prefix constraint consistently improves the trade-off, shifting the curves toward higher pass@1 at comparable throughput. Margin shows the largest gap between the original sampler and its PARD variant. This suggests that a token-level margin criterion alone is insufficient for parallel sampling, but becomes much more effective when paired with a left-to-right prefix constraint. The gains are also clear for Confidence and Entropy , indicating that PARD is advantageous for various criteria. We further compare confidence-based PARD with advanced parallel samplers, KLASS (Kim et al., 2025b), EB-Sampler (Ben-Hamu et al., 2025), APD (Israel et al., 2025), and Hierarchy de-coding (Qi et al., 2026). APD is particularly related to PARD because it also unmasks a longest agreed 6Type Method HumanEval MBPP GSM8K MATH IFEval BBH Avg 
+
+Base Plus Base Plus 
+
+Fast-dLLM v2 7B 
+
+Sequential Confidence 65.9 61.0 63.5 53.4 83.6 60.7 60.1 51.9 62.5 Margin 62.8 57.9 60.3 50.8 82.9 60.0 57.9 50.7 60.4 Entropy 65.9 61.0 65.3 56.1 82.6 62.4 60.8 53.0 63.4 Uncode 68.9 64.6 67.2 56.4 84.1 63.4 62.3 54.0 65.1 AR 72.0 67.7 69.3 58.7 84.3 65.0 62.5 54.6 66.8 Parallel KLASS 65.9 61.0 63.5 53.4 83.8 61.0 60.3 52.1 62.6 EB-Sampler 62.8 59.1 63.8 54.5 82.3 58.7 61.0 51.7 61.7 Confidence Parallel 64.6 59.8 63.5 52.9 82.5 58.0 62.1 51.4 61.9 APD 64.0 59.8 64.0 54.8 81.3 58.8 58.4 49.8 61.3 Hierarchy 59.1 54.9 61.1 51.3 81.5 58.1 59.7 50.2 59.5 PARD 71.3 67.1 69.6 58.7 83.8 63.5 62.1 54.3 66.3 
+
+SDAR 8B 
+
+Sequential Confidence 75.0 70.1 75.1 64.0 89.8 71.4 58.8 62.2 70.8 Margin 71.3 65.2 73.3 61.4 89.5 70.3 56.9 61.8 68.7 Entropy 77.4 71.3 77.0 65.6 91.0 72.1 59.7 65.5 72.5 Uncode 78.0 72.6 76.2 65.1 91.2 73.3 60.1 66.2 72.8 AR 79.3 73.2 78.0 66.4 91.1 73.3 61.0 66.5 73.6 Parallel KLASS 75.0 70.1 75.1 64.3 89.9 70.2 57.9 61.5 70.5 EB-Sampler 75.0 69.5 78.0 66.9 90.0 69.6 59.5 64.7 71.7 Confidence Parallel 75.0 70.1 74.9 63.8 89.1 67.7 58.8 61.9 70.2 APD 70.7 66.5 72.5 61.4 89.0 67.8 59.3 61.1 68.5 Hierarchy 73.8 68.3 73.5 62.7 87.7 65.8 58.2 61.6 69.0 PARD 81.1 76.2 77.0 65.3 91.4 71.6 60.4 65.8 73.6 
+
+LLaDA2.1-Mini 16B 
+
+Sequential Confidence 75.0 72.6 82.3 69.8 91.7 81.8 83.9 86.3 80.4 Margin 78.1 74.4 81.5 68.8 91.4 82.1 83.7 86.8 80.8 Entropy 79.3 75.6 82.8 69.3 91.4 81.9 84.3 87.1 81.5 Uncode 76.2 72.0 83.6 71.2 92.0 82.3 84.7 86.7 81.1 AR 87.8 84.8 85.7 72.2 92.3 82.2 84.3 86.9 84.5 Parallel KLASS 78.7 76.2 80.7 68.2 91.3 82.3 84.1 85.8 80.9 EB-Sampler 80.5 77.4 81.5 69.6 91.4 82.3 83.0 86.0 81.5 Confidence Parallel 84.8 82.3 78.8 66.7 90.5 81.6 81.9 85.2 81.5 Hierarchy 81.1 76.8 79.4 67.2 91.6 81.8 80.4 85.6 80.5 PARD 86.6 82.9 84.9 71.4 92.0 82.3 84.1 86.4 83.9 
+
+Table 1: Performance across six benchmarks on three recent BDLMs. Methods are grouped into sequential and parallel samplers. For each benchmark, the best result among parallel samplers is bolded , and the best result among sequential samplers is underlined. 
+
+prefix, where the prefix is verified by an external small AR model. We vary their hyperparameters, details are provided in Appendix C.2. Figure 5 shows the pass@1-throughput curves. Results on the pass@1-NFE curves are in Figure 8 of Appendix D.2. Across both models, PARD bet-ter preserves pass@1 while improving through-put. KLASS has the lowest throughput, and its throughput changes only slightly across KL thresh-olds. This is because its KL-stability criterion re-quires high-precision full-vocabulary softmax oper-ations for numerical stability. APD achieves higher throughput than PARD on Fast-dLLM v2, but its best pass@1 remains lower than that of PARD on both models. Overall, these results suggest that preserving the AR prefix structure is more efficient and effective for BDLM decoding than using more complex arbitrary-order subset-selection rules. We observe similar trends on MBPP Base, with results reported in Appendix D.2. 
+
+5.2 Generation Quality and Efficiency 
+
+Instead of sweeping the thresholds τc, τ m, τ h as in Section 5.1, in this section we focus on the commonly-used threshold settings and evaluate generation quality across a broader set of tasks and models. We use six benchmarks spanning code genera-tion, mathematical reasoning, instruction follow-ing, and general reasoning. For code generation, we evaluate HumanEval (Chen et al., 2021) and 
+
+MBPP (Austin et al., 2021b), reporting pass@1 on 7Model Method HumanEval MBPP GSM8K MATH IFEval BBH                                        
+
+> Fast-dLLM v2 7B AR 85.8 82.7 96.1 69.6 64.8 77.6 PARD 134.9 (1.57 ×)112.5 (1.36 ×)179.9 (1.87 ×)152.0 (2.18 ×)111.2 (1.72 ×)113.5 (1.46 ×)SDAR 8B AR 46.5 42.4 46.2 40.7 32.0 40.1 PARD 77.6 (1.67 ×)72.6 (1.71 ×)108.2 (2.34 ×)124.9 (3.07 ×)59.4 (1.86 ×)60.5 (1.51 ×)LLaDA2.1-Mini AR 12.1 10.6 10.0 10.9 9.1 11.6 PARD 44.1 (3.64 ×)36.8 (3.47 ×)29.4 (2.94 ×)28.9 (2.65 ×)11.7 (1.29 ×)25.2 (2.17 ×)
+
+Table 2: Decoding throughput (tokens/sec) of AR and confidence-based PARD on six benchmarks. Speedup over AR is shown in parentheses. 
+
+both the Base and Plus variants. For mathematical reasoning, we use GSM8K (Cobbe et al., 2021) and 
+
+MATH (Hendrycks et al., 2021); for instruction fol-lowing, IFEval (Zhou et al., 2023); and for general reasoning, BigBenchHard (BBH) (Suzgun et al., 2022). For LLaDA2.1-Mini, we evaluate BBH on an 8-task subset due to computational constraints. Details are in Appendix C.4. For models, in addition to Fast-dLLM v2 7B and SDAR 8B, we include LLaDA2.1-Mini 16B (Bie et al., 2026), a recent BDLM which supports to-ken editing. Since these BDLMs use Confidence Parallel (Wu et al., 2025) as their default decoding strategy, we compare against it and use confidence-based PARD in this benchmark evaluation. Fol-lowing their default configurations, we use τc=0 .9
+
+for Fast-dLLM v2 and SDAR, and τc=0 .7 for LLaDA2.1-Mini. For LLaDA2.1-Mini, we use the default editing threshold τedit =0 .5.We include the sequential strategies of Confi-dence , Margin and Entropy as additional baselines, each of which unmasks one token per step. We also compare with pure AR sampling, which al-ways unmasks the leftmost masked position, and Uncode (Huang et al., 2026), a recent strong se-quential sampler with position-aware and token informativeness prior. For the parallel baselines KLASS, EB-Sampler, and APD, we follow their default settings, using a KL-divergence threshold of 0.01 , an entropy-bound threshold of 0.1, and a mixture weight of 0.5, respectively. We report APD only for Fast-dLLM v2 and SDAR, where a small AR verifier sharing the same tokenizer as the target DLM is available. For Hierarchy decoding, we use the default low confidence threshold of 0.5
+
+(Qi et al., 2026), while setting the high confidence threshold to the same value as τc, as they serve the same role. Table 1 shows the results of various sam-pling methods. Among the parallel samplers, PARD achieves the best average accuracy on ev-ery model, outperforming Confidence Parallel by 4.4,
+
+3.4, and 2.4 points on Fast-dLLM v2, SDAR, and LLaDA2.1-Mini, respectively. The improvements are more pronounced on code generation tasks. This may be because arbitrary-order samplers tend to bypass uncertain decision points and commit easier later tokens first (Ni et al., 2026), which can prematurely constrain the program structure. We provide a qualitative example in Appendix D.4 illustrating this behavior. Taking the sequential samplers also into account, pure AR achieves the best accuracy on all three models. PARD per-forms strongly, matching AR on SDAR and trail-ing AR by only 0.5 and 0.6 points on Fast-dLLM v2 and LLaDA2.1-Mini, respectively. We addi-tionally evaluate with stochastic top-p sampling in Appendix D.5, where PARD retains the highest mean performance among the competitive parallel samplers. Although AR achieves the strongest generation quality, it is sequential. We measure the decod-ing throughput of AR and confidence-based PARD across benchmarks using a batch size of 4. Ta-ble 2 reports throughput in generated tokens per second, with speedup over AR shown in parenthe-ses. Confidence-based PARD is consistently faster than AR across the benchmarks, often by a large margin, achieving up to 2.18 ×, 3.07 ×, and 3.64 ×
+
+speedup on Fast-dLLM v2, SDAR, and LLaDA2.1-Mini, respectively. These results highlight the role of PARD as an efficiency-oriented alternative to pure AR sampling. We further show the distribu-tion of the number of tokens unmasked per step of PARD in Appendix D.3. 
+
+5.3 Ablation 
+
+In this experiment, we ablate the effect of adaptive prefix-length selection by comparing confidence-based PARD with a static leftmost variant, which always unmasks a fixed number ( k) of leftmost masked tokens per step. Evaluation is performed 8Method Fast-dLLM v2 7B SDAR 8B LLaDA2.1-Mini             
+
+> PARD 69.6 77.0 84.9 Leftmost ( k=2 )49.5 57.7 76.5 Leftmost ( k=3 )34.4 34.7 69.0 Leftmost ( k=4 )22.8 23.5 61.6
+
+Table 3: MBPP Base pass@1 for PARD and static left-most variants on Fast-dLLM v2 7B, SDAR 8B, and LLaDA2.1-Mini. 
+
+on MBPP . PARD uses the same thresholds as in Section 5.2. As shown in Table 3, the static variants suffer large performance drops across all three models. Even with only k = 2 , pass@1 drops by 20.1 points on Fast-dLLM v2 7B, 19.3 points on SDAR 8B, and 8.4 points on LLaDA2.1-Mini. The degrada-tion becomes even more severe as k increases, with 
+
+k = 4 reducing pass@1 by 46.8, 53.5, and 23.3 points, respectively. These results show that simply committing multiple leftmost tokens is too aggres-sive. Effective parallel left-to-right decoding must also decide when the leftmost prefix is sufficiently reliable. 
+
+6 Conclusion 
+
+We revisited sampling for recent BDLMs in this work. Both empirical observations and training-context analysis suggest that BDLMs are better matched to left-to-right decoding than to fully arbitrary-order sampling. To recover parallel de-coding efficiency, we introduced PARD, which pre-serves the AR bias while committing multiple con-fident tokens per step. Across three recent BDLMs and six benchmarks, PARD substantially improves throughput over pure AR while incurring only a small quality drop, and consistently outperforms existing parallel samplers in generation quality. 
+
+Limitations 
+
+Our study focuses on inference-time sampling for recent block diffusion language models, and does not modify the training objective. PARD is de-signed as a simple plug-and-play sampler for exist-ing BDLMs, so we do not consider training-based approaches such as sampling-aware fine-tuning. These directions are complementary to our work and may further improve the quality–efficiency trade-off. In addition, due to computational con-straints, our experiments focus on publicly avail-able BDLMs in the 7B–16B scale, and we do not evaluate larger models such as 100B-scale BDLMs. Studying whether the same decoding behavior and speed–quality trade-off persist at larger scales is an interesting direction for future work. 
+
+References 
+
+Marianne Arriola, Aaron Gokaslan, Justin T Chiu, Zhi-han Yang, Zhixuan Qi, Jiaqi Han, Subham Sekhar Sahoo, and Volodymyr Kuleshov. 2025. Block dif-fusion: Interpolating between autoregressive and dif-fusion language models. In The Thirteenth Interna-tional Conference on Learning Representations .Jacob Austin, Daniel D Johnson, Jonathan Ho, Daniel Tarlow, and Rianne Van Den Berg. 2021a. Structured denoising diffusion models in discrete state-spaces. 
+
+Advances in neural information processing systems ,34:17981–17993. Jacob Austin, Augustus Odena, Maxwell Nye, Maarten Bosma, Henryk Michalewski, David Dohan, Ellen Jiang, Carrie Cai, Michael Terry, Quoc Le, and 1 oth-ers. 2021b. Program synthesis with large language models. arXiv preprint arXiv:2108.07732 .Heli Ben-Hamu, Itai Gat, Daniel Severo, Niklas Nolte, and Brian Karrer. 2025. Accelerated sampling from masked diffusion models via entropy bounded un-masking. arXiv preprint arXiv:2505.24857 .Tiwei Bie, Maosong Cao, Xiang Cao, Bingsen Chen, Fuyuan Chen, and 1 others. 2026. LLaDA 2.1: Speeding up text diffusion via token editing. arXiv preprint arXiv:2602.08676 .Tiwei Bie, Maosong Cao, Kun Chen, Lun Du, Min-gliang Gong, and 1 others. 2025. LLaDA 2.0: Scal-ing up diffusion language models to 100B. arXiv preprint arXiv:2512.15745 .Andrew Campbell, Joe Benton, Valentin De Bortoli, Thomas Rainforth, George Deligiannidis, and Ar-naud Doucet. 2022. A continuous time framework for discrete denoising models. Advances in Neural Information Processing Systems , 35:28266–28279. Huiwen Chang, Han Zhang, Lu Jiang, Ce Liu, and William T Freeman. 2022. Maskgit: Masked gen-erative image transformer. In Proceedings of the IEEE/CVF conference on computer vision and pat-tern recognition , pages 11315–11325. Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, Henrique Ponde de Oliveira Pinto, Jared Kaplan, Harri Edwards, Yuri Burda, Nicholas Joseph, Greg Brockman, and 1 others. 2021. Evaluating large language models trained on code. arXiv preprint arXiv:2107.03374 .Shuang Cheng, Yihan Bian, Dawei Liu, Linfeng Zhang, Qian Yao, Zhongbo Tian, Wenhai Wang, Qipeng Guo, Kai Chen, Biqing Qi, and Bowen Zhou. 2025. Sdar: A synergistic diffusion-autoregression paradigm for scalable sequence generation. arXiv preprint arXiv:2510.06303 .
+
+9Karl Cobbe, Vineet Kosaraju, Mohammad Bavarian, Mark Chen, Heewoo Jun, Lukasz Kaiser, Matthias Plappert, Jerry Tworek, Jacob Hilton, Reiichiro Nakano, Christopher Hesse, and John Schulman. 2021. Training verifiers to solve math word prob-lems. arXiv preprint arXiv:2110.14168 .Leo Gao, Jonathan Tow, Baber Abbasi, Stella Bider-man, Sid Black, Anthony DiPofi, Charles Foster, Laurence Golding, Jeffrey Hsu, Alain Le Noac’h, Haonan Li, Kyle McDonell, Niklas Muennighoff, Chris Ociepa, Jason Phang, Laria Reynolds, Hai-ley Schoelkopf, Aviya Skowron, Lintang Sutawika, and 5 others. 2024. A framework for few-shot lan-guage model evaluation. https://github.com/ EleutherAI/lm-evaluation-harness .Shansan Gong, Ruixiang Zhang, Huangjie Zheng, Ji-atao Gu, Navdeep Jaitly, Lingpeng Kong, and Yizhe Zhang. 2026. Diffucoder: Understanding and im-proving masked diffusion models for code genera-tion. In The Fourteenth International Conference on Learning Representations .Dan Hendrycks, Collin Burns, Saurav Kadavath, Akul Arora, Steven Basart, Eric Tang, Dawn Song, and Jacob Steinhardt. 2021. Measuring mathematical problem solving with the MATH dataset. Advances in Neural Information Processing Systems Datasets and Benchmarks Track .Jonathan Ho, Ajay Jain, and Pieter Abbeel. 2020. De-noising diffusion probabilistic models. Advances in neural information processing systems , 33:6840– 6851. Pengcheng Huang, Tianming Liu, Zhenghao Liu, Yukun Yan, Shuo Wang, Tong Xiao, Zulong Chen, and Maosong Sun. 2026. Empirical analysis of decoding biases in masked diffusion models. In Proceedings of the 64th Annual Meeting of the Association for Computational Linguistics (ACL) .Daniel Israel, Guy Van den Broeck, and Aditya Grover. 2025. Accelerating diffusion llms via adaptive par-allel decoding. In Advances in Neural Information Processing Systems , volume 38, pages 52870–52888. Curran Associates, Inc. Woogyeol Jin, Taywon Min, Yongjin Yang, Dennis Wei, Yi Zhou, Swanand Ravindra Kadhe, Nathalie Baracaldo, and Kimin Lee. 2026. Entropy-aware on-policy distillation of language models. In Forty-third International Conference on Machine Learning .Samar Khanna, Siddhant Kharbanda, Shufan Li, Harshit Varma, Eric Wang, Sawyer Birnbaum, Ziyang Luo, Yanis Miraoui, Akash Palrecha, Stefano Ermon, and 1 others. 2025. Mercury: Ultra-fast language mod-els based on diffusion. arXiv e-prints , pages arXiv– 2506. Jaeyeon Kim, Kulin Shah, Vasilis Kontonis, Sham M Kakade, and Sitan Chen. 2025a. Train for the worst, plan for the best: Understanding token ordering in masked diffusions. In International Conference on Machine Learning , pages 30749–30768. PMLR. Seo Hyun Kim, Sunwoo Hong, Hojung Jung, Youn-grok Park, and Se-Young Yun. 2025b. KLASS: KL-guided fast inference in masked diffusion models. 
+
+Advances in Neural Information Processing Systems .Pengxiang Li, Dilxat Muhtar, Tianlong Chen, Lu Yin, and Shiwei Liu. 2026. Why diffusion language mod-els struggle with truly parallel (non-autoregressive) decoding? arXiv preprint arXiv:2602.23225 .Tianyi Li, Mingda Chen, Bowei Guo, and Zhiqiang Shen. 2025. A survey on diffusion language models. 
+
+arXiv preprint arXiv:2508.10875 .Jiawei Liu, Chunqiu Steven Xia, Yuyao Wang, and Ling-ming Zhang. 2023. Is your code generated by Chat-GPT really correct? rigorous evaluation of large lan-guage models for code generation. In Advances in Neural Information Processing Systems .Junnan Liu, Hongwei Liu, Linchen Xiao, Ziyi Wang, Kuikun Liu, Songyang Gao, Wenwei Zhang, Songyang Zhang, and Kai Chen. 2025. Are your llms capable of stable reasoning? In Findings of the Association for Computational Linguistics: ACL 2025 , pages 17594–17632. Aaron Lou, Chenlin Meng, and Stefano Ermon. 2023. Discrete diffusion modeling by estimating the ratios of the data distribution. arXiv preprint arXiv:2310.16834 .Zanlin Ni, Shenzhi Wang, Yang Yue, Tianyu Yu, Weilin Zhao, Yeguo Hua, Tianyi Chen, Jun Song, Cheng Yu, Bo Zheng, and 1 others. 2026. The flexibility trap: Why arbitrary order limits reasoning poten-tial in diffusion language models. arXiv preprint arXiv:2601.15165 .Shen Nie, Fengqi Zhu, Zebin You, Xiaolu Zhang, Jingyang Ou, Jun Hu, Jun Zhou, Yankai Lin, Ji-Rong Wen, and Chongxuan Li. 2025. Large language dif-fusion models. arXiv preprint arXiv:2502.09992 .Jingyang Ou, Shen Nie, Kaiwen Xue, Fengqi Zhu, Ji-acheng Sun, Zhenguo Li, and Chongxuan Li. 2025. Your absorbing discrete diffusion secretly models the conditional distributions of clean data. In Inter-national Conference on Learning Representations ,volume 2025, pages 64972–65009. Xiaojing Qi, Lun Du, Xinyuan Zhang, Lanning Wei, Tao Jin, and Da Zheng. 2026. Hierarchy decoding: A training-free parallel decoding strategy for diffusion large language models. In The Fourteenth Interna-tional Conference on Learning Representations .Subham S Sahoo, Marianne Arriola, Yair Schiff, Aaron Gokaslan, Edgar Marroquin, Justin T Chiu, Alexan-der Rush, and Volodymyr Kuleshov. 2024. Simple and effective masked diffusion language models. Ad-vances in Neural Information Processing Systems ,37:130136–130184. 
+
+10 Jiaxin Shi, Kehang Han, Zhe Wang, Arnaud Doucet, and Michalis Titsias. 2024. Simplified and general-ized masked diffusion for discrete data. Advances in neural information processing systems , 37:103131– 103167. Jascha Sohl-Dickstein, Eric Weiss, Niru Mah-eswaranathan, and Surya Ganguli. 2015. Deep un-supervised learning using nonequilibrium thermo-dynamics. In International conference on machine learning , pages 2256–2265. pmlr. Yuxuan Song, Zheng Zhang, Cheng Luo, Pengyang Gao, Fan Xia, Hao Luo, Zheng Li, Yuehang Yang, Hongli Yu, Xingwei Qu, and 1 others. 2025. Seed diffusion: A large-scale diffusion language model with high-speed inference. arXiv preprint arXiv:2508.02193 .Mirac Suzgun, Nathan Scales, Nathanael Schärli, Se-bastian Gehrmann, Yi Tay, Hyung Won Chung, Aakanksha Chowdhery, Quoc V Le, Ed H Chi, Denny Zhou, , and Jason Wei. 2022. Challenging big-bench tasks and whether chain-of-thought can solve them. 
+
+arXiv preprint arXiv:2210.09261 .Yuchuan Tian, Yuchen Liang, Shuo Zhang, Yingte Shu, Guangwen Yang, and 1 others. 2025. From next-token to next-block: A principled adaptation path for diffusion LLMs. arXiv preprint arXiv:2512.06776 .Chengyue Wu, Shiyi Lan, Yonggan Fu, Sensen Gao, Jin Wang, Jincheng Yu, Jose M Alvarez, Pavlo Molchanov, Ping Luo, Song Han, and 1 others. 2026a. Fast-dvlm: Efficient block-diffusion vlm via direct conversion from autoregressive vlm. arXiv preprint arXiv:2604.06832 .Chengyue Wu, Hao Zhang, Shuchen Xue, Shizhe Diao, Yonggan Fu, Zhijian Liu, Pavlo Molchanov, Ping Luo, Song Han, and Enze Xie. 2026b. Fast-dLLM v2: Efficient block-diffusion LLM. In The Fourteenth In-ternational Conference on Learning Representations .Chengyue Wu, Hao Zhang, Shuchen Xue, Zhijian Liu, Shizhe Diao, Ligeng Zhu, Ping Luo, Song Han, and Enze Xie. 2025. Fast-dllm: Training-free accelera-tion of diffusion llm by enabling kv cache and parallel decoding. arXiv preprint arXiv:2505.22618 .An Yang, Anfeng Li, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chang Gao, Chengen Huang, Chenxu Lv, and 1 others. 2025. Qwen3 technical report. arXiv preprint arXiv:2505.09388 .An Yang, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chengyuan Li, Day-iheng Liu, Fei Huang, Haoran Wei, and 1 others. 2024. Qwen2.5 technical report. arXiv preprint arXiv:2412.15115 .Ling Yang, Zhilong Zhang, Yang Song, Shenda Hong, Runsheng Xu, Yue Zhao, Wentao Zhang, Bin Cui, and Ming-Hsuan Yang. 2023. Diffusion models: A comprehensive survey of methods and applications. 
+
+ACM computing surveys , 56(4):1–39. Jiacheng Ye, Zhihui Xie, Lin Zheng, Jiahui Gao, Zirui Wu, Xin Jiang, Zhenguo Li, and Lingpeng Kong. 2025. Dream 7b: Diffusion large language models. 
+
+arXiv preprint arXiv:2508.15487 .Runpeng Yu, Xinyin Ma, and Xinchao Wang. 2025. Dimple: Discrete diffusion multimodal large lan-guage model with parallel decoding. arXiv preprint arXiv:2505.16990 .Jeffrey Zhou, Tianjian Lu, Swaroop Mishra, Sid-dhartha Brahma, Sujoy Basu, Yi Luan, Denny Zhou, and Le Hou. 2023. Instruction-following evalu-ation for large language models. arXiv preprint arXiv:2311.07911 .Fengqi Zhu, Rongzhen Wang, Shen Nie, Xiaolu Zhang, Chunwei Wu, and 1 others. 2025. LLaDA 1.5: Variance-reduced preference optimization for large language diffusion models. arXiv preprint arXiv:2505.19223 .
+
+A Definitions of Local AR-ness@ k and Global AR-ness@ k
+
+Let L′ be the block size. For a generated block, let Ms−1 ⊆ { 1, . . . , L ′} denote the set of masked positions before step s, and let ps ∈ Ms−1 be the position unmasked at step s. Following Gong et al. (2026), we define local AR-ness by the step-level indicator 
+
+Iloc (s, k ) = 
+
+(
+
+1, {ps−i}ki=1 = {ps − i}ki=1 ,
+
+0, otherwise .
+
+The block-level local AR-ness@ k is computed as 
+
+1
+
+L′
+
+> L′
+
+X
+
+> s=1
+
+Iloc (s, k ).
+
+For global AR-ness, let Left k(Ms−1) denote the 
+
+k leftmost positions in Ms−1. We define 
+
+Iglob (s, k ) = 
+
+(
+
+1, ps ∈ Left k(Ms−1),
+
+0, otherwise .
+
+The block-level global AR-ness@ k is computed as 
+
+1
+
+L′
+
+> L′
+
+X
+
+> s=1
+
+Iglob (s, k ).
+
+B Proofs 
+
+B.1 Proof of Proposition 1 
+
+Proof. Given a clean training sequence x0. As-sume αt = 1 − t. During training, we draw 
+
+t ∼ U [0 , 1] , then draw the noised sequence xt ∼
+
+11 q(· | x0). Each token position is then masked independently by probability 1 − αt = t. Let 
+
+E = {mAR  
+
+> ℓ
+
+observed } denote the event of inter-est. For the MDM case, we have 
+
+Pr( E | t) = αℓ−1 
+
+> t
+
+· (1 − αt)L−ℓ+1 (3) 
+
+= (1 − t)ℓ−1 · tL−ℓ+1 (4) Then marginalize over t ∼ U [0 , 1] ,
+
+Pr( E) = Et∼U [0 ,1] Pr( E | t) (5) 
+
+=
+
+Z 10
+
+(1 − t)ℓ−1 · tL−ℓ+1 dt (6) 
+
+= (ℓ − 1)! ( L − ℓ + 1)! (L + 1)! (7) 
+
+= 1(L + 1)   Lℓ−1
+
+ (8) where (8) uses the definition of the Beta function. For the block diffusion case, let k = ℓ − 1 −
+
+(b−1) L′ be the number of positions before ℓ in this block b. Note that the positions in the conditioning prefix ( x<b  
+
+> 0
+
+) are deterministically unmasked. We have 
+
+Pr( E | t) = αkt · (1 − αt)L′−k (9) 
+
+= (1 − t)k · tL′−k (10) Then marginalize over t ∼ U [0 , 1] ,
+
+Pr( E) = Et∼U [0 ,1] Pr( E | t) (11) 
+
+=
+
+Z 10
+
+(1 − t)k · tL′−kdt (12) 
+
+= k!( L′ − k)! (L′ + 1)! (13) 
+
+= 1(L′ + 1)  L′
+
+> k
+
+ (14) 
+
+B.2 Proof of Proposition 2 
+
+Proof. Recall the definition of AR pattern align-ment : Under MDM, it is 
+
+ρℓ(MMDM ) = 1
+
+L − 1
+
+" ℓ−1X
+
+> j=1
+
+(1 − MMDM  
+
+> j
+
+)+
+
+> L
+
+X
+
+> j=ℓ+1
+
+MMDM 
+
+> j
+
+#
+
+.
+
+Similarly, under block diffusion, it is 
+
+ρℓ(MBDLM ) = 1
+
+bL ′ − 1
+
+" ℓ−1X
+
+> j=1
+
+(1 − MBDLM  
+
+> j
+
+)+
+
+> bL ′
+
+X
+
+> j=ℓ+1
+
+MBDLM 
+
+> j
+
+#
+
+.
+
+For the MDM case, for all positions j ∈{1, ..., L }, MMDM  
+
+> j
+
+| t ∼ Bernoulli (1 − αt) iid, with t ∼ U [0 , 1] . Assume the linear schedule 
+
+αt = 1 − t.
+
+E[MMDM  
+
+> j
+
+] = Et∼U [0 ,1] [E[MMDM  
+
+> j
+
+| t]] = Et∼U [0 ,1] [1 − αt]=
+
+Z 10
+
+t dt = 12 .
+
+Similarly, 
+
+E[1 − MMDM  
+
+> j
+
+] = Et∼U [0 ,1] [E[1 − MMDM  
+
+> j
+
+| t]] =
+
+Z 10
+
+(1 − t) dt = 12 .
+
+Therefore, 
+
+E[ρℓ(MMDM )] = 1
+
+L − 1
+
+
+
+(ℓ − 1) 12 + ( L − ℓ) 12
+
+
+
+= 12
+
+For the block diffusion case, MBDLM  
+
+> j
+
+= 0 for 
+
+j ∈ { 1, ..., (b − 1) L′} deterministically. For po-sitions j ∈ { (b − 1) L′ + 1 , ..., bL ′}, MBDLM  
+
+> j
+
+|
+
+t ∼ Bernoulli (1 − αt) iid, with t ∼ U [0 , 1] . Let 
+
+k = ℓ − 1 − (b − 1) L′ be the number of positions before ℓ in this block b. Let r = ( b − 1) L′, we split the first sum at the block-b boundary: 
+
+E
+
+ ℓ−1X
+
+> j=1
+
+(1 − MBDLM  
+
+> j
+
+)
+
+
+
+=
+
+> r
+
+X
+
+> j=1
+
+E[1 − MBDLM  
+
+> j
+
+]+
+
+> ℓ−1
+
+X
+
+> j=r+1
+
+E[1 − MBDLM  
+
+> j
+
+]= ( b − 1) L′ + k
+
+2 .
+
+For the second sum, 
+
+E
+
+ bL ′
+
+X
+
+> j=ℓ+1
+
+MBDLM 
+
+> j
+
+
+
+= L′ − k − 12
+
+12 Therefore, combining both expected sums, 
+
+E[ρℓ(MBDLM )] = 1
+
+bL ′ − 1
+
+
+
+(b − 1) L′ + k
+
+2 + L′ − k − 12
+
+
+
+= 12 + (b − 1) L′
+
+2( bL ′ − 1) 
+
+C Experimental Details 
+
+C.1 Model Checkpoints 
+
+We use the following publicly available Hugging Face checkpoints in our experiments. • Fast-dLLM v2 7B. The model is initialized from Qwen2.5-7B-Instruct (Yang et al., 2024) and adapted to block diffusion paradigm with ∼ 1B tokens of fine-tuning. We use 
+
+Efficient-Large-Model/Fast_dLLM_v2_7B 2,the 7B checkpoint released by Wu et al. (2026b). • SDAR 8B. The model is initialized from Qwen3-8B (Yang et al., 2025) and adapted to the block diffusion paradigm via contin-ued pretraining on 50 B tokens, followed by supervised fine-tuning on 4B instruction to-kens. We use JetLM/SDAR 8B-Chat-b32 3,the block-size-32 version 8B checkpoint re-leased by Cheng et al. (2025). • LLaDA 8B. This model is trained from scratch with MDM objective. We use 
+
+GSAI-ML/LLaDA 8B-Instruct 4, released by Nie et al. (2025). This model is used in the comparison experiment in Section 3.1 to con-trast the decoding behavior of an MDM with that of a BDLM. We use it with DualCache 
+
+from Wu et al. (2025) for faster inference. • LLaDA2.1-Mini 16B. A Mixture-of-Experts (MoE) block diffusion language model. Generation follows a block-wise denoising loop with token-to-token (T2T) editing within each block. We use 
+
+> 2https://huggingface.co/Efficient-Large-Model/ Fast_dLLM_v2_7B
+> 3https://huggingface.co/JetLM/ SDAR-8B-Chat-b32
+> 4https://huggingface.co/GSAI-ML/ LLaDA-8B-Instruct
+
+inclusionAI/LLaDA2.1-mini 5, released by Bie et al. (2026). All checkpoints are loaded and evaluated in 
+
+bfloat16 .
+
+C.2 Hyperparameter Values and APD Verifier Models 
+
+In the speed–quality trade-off experiments, we use the same set of threshold values for both Fast-dLLM v2 and SDAR. Specifically, we use 
+
+τc ∈ {0.7, 0.75 , 0.8, 0.85 , 0.9} for Confidence ,
+
+τm ∈ {0.7, 0.8, 0.9, 0.95 , 0.97 } for Margin , and 
+
+τh ∈ { 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7} for Entropy .For the comparison with advanced parallel samplers, we use τc ∈ { 0.7, 0.75 , 0.8, 0.85 , 0.9}
+
+for confidence-based PARD, entropy-bound thresholds in {0.01 , 0.05 , 0.1, 0.2, 0.3, 0.4}
+
+for EB-Sampler, KL-divergence thresholds in 
+
+{0.01 , 0.1, 1.0, 10 .0} for KLASS, and mixture weights in {0.01 , 0.1, 0.3, 0.5} for APD. For Hierarchy, which uses high- and low-confidence thresholds as well as a remasking step, we sweep the high threshold τhigh over the same grid as 
+
+τc, since both thresholds play a similar role in controlling confidence-based token acceptance. We set the low threshold to τlow = 0.5, as suggested by the authors (Qi et al., 2026), and disable remasking, as we empirically found it to degrade performance. APD requires an external small AR verifier that shares the same tokenizer as the target DLM. Following the original APD setup (Israel et al., 2025), we use verifiers at the 0.5–0.6B scale: Qwen2.5-0.5B for Fast-dLLM v2 and Qwen3-0.6B for SDAR, matching the model family of each BDLM. We omit APD for LLaDA2.1-Mini because we could not find a small AR verifier that shares its tokenizer. 
+
+C.3 Implementation Details 
+
+For all benchmarks and all samplers, we use greedy decoding (temperature = 0, top-p dis-abled). We apply each model’s default chat tem-plate to all question prompts. Generation stops at the end-of-sequence token or when the per-task 
+
+max_new_tokens budget is reached. All experi-ments run on a single NVIDIA A6000 GPU. 
+
+> 5https://huggingface.co/inclusionAI/LLaDA2. 1-mini
+
+13 Benchmark #-shot Max new tokens             
+
+> HumanEval 0768 MBPP 0768 GSM8K 02048 MATH 02048 IFEval 02048 BBH 01024
+
+Table 4: Per-benchmark evaluation setup. “#-shot” counts in-context demonstrations, we use zero-shot for all benchmarks in our evaluation. 
+
+C.4 Benchmarks 
+
+We use evalplus (Liu et al., 2023) for HumanEval and MBPP, and the 
+
+lm-evaluation-harness (Gao et al., 2024) for the remaining tasks. Table 4 summarizes the per-benchmark configuration, including the number of in-context demonstrations and the maximum new tokens allowed for generation. For HumanEval and MBPP we report both the Base and extended Plus pass@1, where a problem is counted as solved under Plus only if it passes both the base and extended test suites. For IFEval we report the prompt-level strict accuracy. For LLaDA2.1 BBH, due to computational con-straints, we evaluate on a balanced 8-task subset of BBH, with 4 tasks drawn from each of the two task groupings introduced by Suzgun et al. (2022): • Algorithmic and multi-step arithmetic rea-soning : boolean_expressions , navigate ,
+
+object_counting , web_of_lies .• Natural language understanding :
+
+causal_judgement , date_understanding ,
+
+logical_deduction_seven_objects ,
+
+temporal_sequences .We report the macro-mean over the eight tasks, following the convention of Suzgun et al. (2022). 
+
+D Additional Results 
+
+D.1 AR Bias Analysis on Dream 
+
+Dream is an MDM trained from an AR initializa-tion, unlike LLaDA, which is trained from scratch. To disentangle the effects of AR initialization and block diffusion training on AR bias, we com-pare Dream with SDAR in this section. We use 
+
+Dream-org/Dream-v0-Instruct-7B .Method SDAR 8B LLaDA 8B Dream 7B Confidence 75.0 45.7 51.8 Entropy 77.4 45.7 50.6 Margin 71.3 43.3 45.7 AR 79.3 41.5 52.4 
+
+Table 5: HumanEval base pass@1 (%) under arbitrary-order sampling and pure AR-order sampling. 
+
+Table 5 shows the pass@1 values obtained from pure AR sampling with the samplers ( con-fidence/entropy/margin ) across SDAR, LLaDA, and Dream on HumanEval . On Dream, pure AR sam-pling achieves the highest pass@1 (52.4). Note that this is consistent with Figure 3 of Ni et al. (2026), which likewise reports higher HumanEval pass@1 for AR decoding than for arbitrary-order decod-ing on Dream. Nevertheless, the gap between AR and the best sampler is only 0.6 points for Dream, compared with 1.9 points for SDAR. Thus, its AR bias remains weaker than that of SDAR. To further validate this observation, we compare the local and global AR-ness at different k for Dream, SDAR, and LLaDA in Figure 6. 1 2 3 4 5 6 7 8  
+
+> k
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> AR-ness@k
+> SDAR
+> LLaDA
+> Dream
+> 123
+> k
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> 0.8
+> 0.9
+> 1.0
+> AR-ness@k
+> SDAR
+> LLaDA
+> Dream
+
+Figure 6: Local (left) and global (right) AR-ness@ k of decoding on HumanEval under Confidence sampling. 
+
+Dream generally exhibits higher AR-ness than LLaDA. However, despite also being initialized from an AR model, its AR-ness remains consis-tently lower than that of SDAR across all values of k. This provides additional evidence that block-diffusion training contributes to AR bias beyond AR initialization. 
+
+D.2 Speed-Quality Trade-off 
+
+Figure 7 compares Confidence , Margin , and En-tropy with their PARD variants, and Figure 8 com-pares confidence-based PARD with EB-Sampler, KLASS, APD, and Hierarchy. Both of the figures show the pass@1-NFE trade-offs on HumanEval .PARD consistently achieves strong trade-offs in terms of NFE on HumanEval .14 12500 13000 13500 14000 14500 15000 
+
+NFE     
+
+> 52.5
+> 55
+> 57.5
+> 60
+> 62.5
+> 65
+> 67.5
+> 70
+> pass@1 (%)
+> Confidence (PARD)
+> Confidence
+> 14000 15000 16000 17000 18000
+
+NFE     
+
+> 55
+> 57.5
+> 60
+> 62.5
+> 65
+> 67.5
+> 70
+> 72.5
+> Margin (PARD)
+> Margin
+> 14000 15000 16000 17000 18000
+
+NFE       
+
+> 62
+> 64
+> 66
+> 68
+> 70
+> 72
+> Entropy (PARD)
+> Entropy
+> 8500 9000 9500 10000 10500 11000 11500
+
+NFE     
+
+> 65
+> 67.5
+> 70
+> 72.5
+> 75
+> 77.5
+> 80
+> pass@1 (%)
+> Confidence (PARD)
+> Confidence
+> 9000 10000 11000 12000 13000
+
+NFE     
+
+> 68
+> 70
+> 72
+> 74
+> 76
+> 78
+> 80 Margin (PARD)
+> Margin
+> 11000 12000 13000 14000
+
+NFE 
+
+> 73
+> 74
+> 75
+> 76
+> 77
+> 78
+> 79
+> 80
+> Entropy (PARD)
+> Entropy
+
+Figure 7: HumanEval pass@1 vs. Number of Function Evaluations (NFE) for Confidence (left), Margin (middle), and Entropy (right) parallel sampling and their PARD variants on Fast-dLLM v2 7B (top row) and SDAR 8B (bottom row). 12000 14000 16000 18000 20000 
+
+NFE 
+
+52.5 
+
+55 
+
+57.5 
+
+60 
+
+62.5 
+
+65 
+
+67.5 
+
+70 
+
+> pass@1 (%)
+
+Confidence (PARD) 
+
+Confidence 
+
+KLASS 
+
+EB-Sampler 
+
+APD 
+
+Hierarchy 
+
+8000 9000 10000 11000 12000 13000 14000 15000 
+
+NFE 
+
+65 
+
+67.5 
+
+70 
+
+72.5 
+
+75 
+
+77.5 
+
+80 
+
+Confidence (PARD) 
+
+Confidence 
+
+KLASS 
+
+EB-Sampler 
+
+APD 
+
+Hierarchy 
+
+Figure 8: HumanEval Base pass@1 vs. Number of Function Evaluations (NFE) for confidence-based PARD, EB-Sampler, KLASS, and APD on Fast-dLLM v2 7B (left) and SDAR 8B (right). 
+
+Figures 9 and 10 show the corresponding MBPP 
+
+pass@1–throughput and pass@1–NFE trade-offs for Confidence , Margin , and Entropy , along with their PARD variants. Figures 11 and 12 show the same MBPP trade-offs for confidence-based PARD, EB-Sampler, KLASS, APD, and Hierarchy. PARD achieves stronger trade-offs on MBPP than the other methods, except for SDAR 8B, where EB-Sampler performs best. 15 115 120 125 130 135 140 145 
+
+Throughput (token/s) 
+
+60 
+
+62 
+
+64 
+
+66 
+
+68 
+
+70 
+
+> pass@1 (%)
+
+Confidence 
+
+Confidence (PARD) 
+
+Confidence 
+
+100 105 110 115 120 125 130 
+
+Throughput (token/s) 
+
+58 
+
+60 
+
+62 
+
+64 
+
+66 
+
+Margin 
+
+Margin (PARD) 
+
+Margin 
+
+100 105 110 115 
+
+Throughput (token/s) 
+
+64 
+
+64.5 
+
+65 
+
+65.5 
+
+66 
+
+66.5 
+
+67 
+
+67.5 
+
+Entropy 
+
+Entropy (PARD) 
+
+Entropy 
+
+75 80 85 90 
+
+Throughput (token/s) 
+
+68 
+
+70 
+
+72 
+
+74 
+
+76 
+
+> pass@1 (%)
+
+Confidence (PARD) 
+
+Confidence 
+
+60 65 70 75 80 85 90 95 
+
+Throughput (token/s) 
+
+71 
+
+72 
+
+73 
+
+74 
+
+75 
+
+76 
+
+77 
+
+78 Margin (PARD) 
+
+Margin 
+
+60 65 70 75 
+
+Throughput (token/s) 
+
+74.5 
+
+75 
+
+75.5 
+
+76 
+
+76.5 
+
+77 
+
+77.5 
+
+78 Entropy (PARD) 
+
+Entropy Figure 9: MBPP pass@1 vs. decoding throughput for Confidence (left), Margin (middle), and Entropy (right) parallel sampling and their PARD variants on Fast-dLLM v2 7B (top row) and SDAR 8B (bottom row). 22.5 24.0 25.5 27.0 
+
+NFE ×10 3
+
+60 
+
+62 
+
+64 
+
+66 
+
+68 
+
+70 
+
+> pass@1 (%)
+
+Confidence 
+
+Confidence (PARD) 
+
+Confidence 
+
+24 26 28 30 32 
+
+NFE ×10 3
+
+58 
+
+60 
+
+62 
+
+64 
+
+66 
+
+Margin 
+
+Margin (PARD) 
+
+Margin 
+
+24 25 26 27 
+
+NFE ×10 3
+
+64 
+
+64.5 
+
+65 
+
+65.5 
+
+66 
+
+66.5 
+
+67 
+
+67.5 
+
+Entropy 
+
+Entropy (PARD) 
+
+Entropy 
+
+19.5 21.0 22.5 24.0 
+
+NFE ×10 3
+
+68 
+
+70 
+
+72 
+
+74 
+
+76 
+
+> pass@1 (%)
+
+Confidence (PARD) 
+
+Confidence 
+
+22 24 26 28 
+
+NFE ×10 3
+
+71 
+
+72 
+
+73 
+
+74 
+
+75 
+
+76 
+
+77 
+
+78 
+
+Margin (PARD) 
+
+Margin 
+
+22 24 26 28 
+
+NFE ×10 3
+
+74.5 
+
+75 
+
+75.5 
+
+76 
+
+76.5 
+
+77 
+
+77.5 
+
+78 Entropy (PARD) 
+
+Entropy 
+
+Figure 10: MBPP pass@1 vs. NFE for Confidence (left), Margin (middle), and Entropy (right) parallel sampling and their PARD variants on Fast-dLLM v2 7B (top row) and SDAR 8B (bottom row). 
+
+16 90 100 110 120 130 140 150 160 
+
+Throughput (token/s) 
+
+58 
+
+60 
+
+62 
+
+64 
+
+66 
+
+68 
+
+70 
+
+> pass@1 (%)
+
+Confidence (PARD) 
+
+Confidence 
+
+KLASS 
+
+EB-Sampler 
+
+APD 
+
+Hierarchy 
+
+50 60 70 80 90 100 110 
+
+Throughput (token/s) 
+
+68 
+
+70 
+
+72 
+
+74 
+
+76 
+
+78 
+
+Confidence (PARD) 
+
+Confidence 
+
+KLASS 
+
+EB-Sampler 
+
+APD 
+
+Hierarchy Figure 11: MBPP Base pass@1 vs. decoding throughput for confidence-based PARD, EB-Sampler, and KLASS on Fast-dLLM v2 7B (left) and SDAR 8B (right). 22000 24000 26000 28000 30000 32000 34000 36000 
+
+NFE 
+
+58 
+
+60 
+
+62 
+
+64 
+
+66 
+
+68 
+
+70 
+
+> pass@1 (%)
+> Confidence (PARD)
+> Confidence
+> KLASS
+> EB-Sampler
+> APD
+> Hierarchy
+
+18000 20000 22000 24000 26000 28000 30000 32000 
+
+NFE 
+
+68 
+
+70 
+
+72 
+
+74 
+
+76 
+
+78 
+
+> Confidence (PARD)
+> Confidence
+> KLASS
+> EB-Sampler
+> APD
+> Hierarchy
+
+Figure 12: MBPP Base pass@1 vs. NFE for confidence-based PARD, EB-Sampler, and KLASS on Fast-dLLM v2 7B (left) and SDAR 8B (right). 
+
+17 1 2 3 4 5 6 7 8                                                        
+
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> Number of steps
+> Fast-dLLM v2 7B / HumanEval
+> method (mean)
+> PARD (2.30)
+> Confidence parallel (2.38)
+> 12345678
+> 10 2
+> 10 3
+> 10 4
+> 10 5Fast-dLLM v2 7B / MBPP
+> method (mean)
+> PARD (1.72)
+> Confidence parallel (1.94)
+> 12345678
+> 10 3
+> 10 4
+> 10 5Fast-dLLM v2 7B / GSM8K
+> method (mean)
+> PARD (2.87)
+> Confidence parallel (2.92)
+> 1510 15 20 25 30
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> Number of steps
+> SDAR 8B / HumanEval
+> method (mean)
+> PARD (2.43)
+> Confidence parallel (2.36)
+> 1510 15 20 25 30
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> 10 5SDAR 8B / MBPP
+> method (mean)
+> PARD (2.02)
+> Confidence parallel (2.08)
+> 1510 15 20 25 30
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> 10 5SDAR 8B / GSM8K
+> method (mean)
+> PARD (3.14)
+> Confidence parallel (3.15)
+> 1510 15 20 25 30
+> Number of tokens unmasked
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> Number of steps
+> LLaDA2.1-Mini / HumanEval
+> method (mean)
+> PARD (7.40)
+> Confidence parallel (7.78)
+> 1510 15 20 25 30
+> Number of tokens unmasked
+> 10 1
+> 10 2
+> 10 3
+> 10 4LLaDA2.1-Mini / MBPP
+> method (mean)
+> PARD (5.51)
+> Confidence parallel (5.76)
+> 1510 15 20 25 30
+> Number of tokens unmasked
+> 10 2
+> 10 3
+> 10 4
+> 10 5LLaDA2.1-Mini / GSM8K
+> method (mean)
+> PARD (4.66)
+> Confidence parallel (4.99)
+
+Figure 13: Number of tokens unmasked per step by confidence-based PARD and Confidence Parallel on HumanEval ,
+
+MBPP , and GSM8K .
+
+D.3 Number of Tokens Unmasked per Step 
+
+Figure 13 shows the distributions of the number of tokens unmasked per step by confidence-based PARD and Confidence Parallel on HumanEval ,
+
+MBPP , and GSM8K . Under the default threshold configurations as in Section 5.2, Fast-dLLM v2 and SDAR use τc = 0 .9, while LLaDA2.1 uses a more permissive threshold of τc = 0 .7. We observe similar distributions for PARD and Confidence Par-allel, suggesting that PARD preserves most of the parallelism while enforcing a left-to-right prefix constraint. For Fast-dLLM v2, the number of to-kens unmasked in a single step is upper-bounded by 8 because we follow its default sub-block infer-ence strategy with sub-block size 8. Accordingly, Fast-dLLM v2 and SDAR generally unmask about 2-3 tokens per step on average, whereas LLaDA2.1 shows substantially higher parallelism, with aver-age unmasking counts around 5-8 tokens per step. 
+
+D.4 Qualitative Case Study 
+
+We study how arbitrary-order decoding can fail with a concrete example from HumanEval . Fig-ure 14 shows the generations produced by Con-fidence Parallel and confidence-based PARD on 
+
+HumanEval/111 , using SDAR 8B and the same de-fault confidence threshold τc. The two outputs are nearly identical and differ only in the empty-input guard if not test: return {} . PARD generates this guard, whereas Confidence Parallel omits this part. Without the guard, max(counts.values()) 
+
+is evaluated on an empty dictionary when the input is the empty string and raises a ValueError , so Confidence Parallel fails the histogram("") test while PARD passes. The omission stems from the decoding order, shown in Figure 15. Both samplers produce the function signature identically through step 0 and step 1. At step 2, the guard token "if" , at the slot immediately after the signature, has confidence 
+
+0.20 , while "=" , one slot later (starting letters = test.split() ), has confidence 0.28 . Confidence Parallel selects the most confident tokens first, so it unmasks "=" . This fixes the surrounding body and forces the earlier slot to become letters , leaving no room for the guard. PARD instead commits positions strictly left to right, so it resolves the earlier slot first and unmasks "if" despite its lower confidence, keeping the guard. 
+
+D.5 Top-p Sampling Experiments 
+
+All experiments in Section 5 use greedy decod-ing. To assess whether PARD’s advantage remains robust under stochastic nucleus decoding, we ad-ditionally evaluate top-p sampling on HumanEval ,
+
+MBPP , and GSM8K using temperature = 1.0 and 18 Sampling Example — HumanEval/111 ( histogram )
+
+Prompt:    
+
+> def histogram(test): """Given a string representing a space separated lowercase letters, return a dictionary of the letter with the most repetition and containing the corresponding count. If several letters have the same occurrence, return all of them. Example: histogram( 'a b c ') == { 'a': 1, 'b': 1, 'c': 1} histogram( 'a b b a ') == { 'a': 2, 'b': 2} histogram( 'b b b b a ') == { 'b': 4} histogram( '' ) == {} """
+
+Confidence Parallel (Fail): 
+
+> def histogram(test): letters = test.split() counts = {} for letter in letters: if letter in counts: counts[letter] += 1 else: counts[letter] = 1 max_count = max(counts.values()) return {letter: count for letter, count in counts.items() if count == max_count}
+
+PARD (Pass): 
+
+> def histogram(test):
+> if not test: return {}
+> letters = test.split() counts = {} for letter in letters: if letter in counts: counts[letter] += 1 else: counts[letter] = 1 max_count = max(counts.values()) return {letter: count for letter, count in counts.items() if count == max_count}
+
+Figure 14: Generations of Confidence Parallel and PARD on HumanEval/111 . The empty-input guard is highlighted in green. 
+
+p = 0.8, a configuration adopted in recent LLM reasoning studies (Liu et al., 2025; Jin et al., 2026). We compare PARD against the three most com-petitive parallel baselines used in our main ex-periments: Confidence Parallel, KLASS, and EB-Sampler. We repeat the experiment three times and report the mean and standard deviation of pass@1. Table 6 shows the results on Fast-dLLM v2, SDAR, and LLaDA2.1-Mini. We have two ma-jor observations. First, under top-p sampling, al-most all samplers perform worse than their greedy counterparts in Table 1. This is consistent with the default greedy decoding adopted by recent BDLMs such as Fast-dLLM v2 and LLaDA2.1, while also avoiding an additional hyperparameter search. Sec-ond, PARD achieves the highest mean performance among all parallel samplers, showing that its ad-vantage remains robust under stochastic top-p sam-pling. We conduct paired t-tests over all models and benchmarks for PARD vs each baseline. PARD significantly outperforms Confidence Parallel, EB-Sampler, and KLASS, with p-values of 3.5 × 10 −4,
+
+3.4 × 10 −4, and 1.7 × 10 −4, respectively. Overall, PARD retains its relative advantage under top-p
+
+sampling. 19 Step Confidence Parallel PARD 
+
+0 def def 
+
+1 histogram(test): histogram(test): 
+
+2 = (0.28) if (0.20) 
+
+... letters = test.split() ✗ if not test: return {} ✓
+
+> Figure 15: Tokens unmasked at the first few decoding step by Confidence Parallel and PARD for the example in Figure 14. Values in parentheses are the predictive confidence in the token.
+
+Model Method HumanEval MBPP GSM8K Base Plus Base Plus Fast-dLLM v2 7B KLASS 64.0 ±2.6 58.9 ±2.0 56.9 ±0.6 48.1 ±1.3 82.0 ±0.6 EB-Sampler 61.4 ±2.5 55.5 ±2.6 58.8 ±0.4 49.8 ±1.0 81.3 ±0.3 Confidence Parallel 58.1 ±3.7 53.9 ±3.7 57.5 ±1.5 49.1 ±2.2 81.9 ±0.4 PARD 67.1 ±1.8 62.6 ±1.2 63.4 ±1.6 53.5 ±1.5 82.2 ±0.9 
+
+SDAR 8B KLASS 67.3 ±2.7 63.4 ±2.2 69.8 ±1.3 59.1 ±1.2 90.3 ±0.6 EB-Sampler 71.5 ±2.4 64.8 ±1.0 72.7 ±0.8 61.1 ±1.6 90.0 ±0.4 Confidence Parallel 70.9 ±1.7 66.9 ±2.5 72.6 ±1.9 61.3 ±1.3 89.8 ±0.3 PARD 73.8 ±2.8 67.9 ±2.4 72.9 ±0.7 61.8 ±1.1 90.8 ±0.5 
+
+LLaDA2.1-Mini KLASS 73.6 ±2.9 70.3 ±2.7 78.4 ±0.5 65.5 ±1.5 90.2 ±0.3 EB-Sampler 76.6 ±1.3 74.0 ±1.0 79.6 ±0.2 67.7 ±0.6 90.8 ±0.4 Confidence Parallel 79.9 ±2.5 76.8 ±2.3 78.2 ±0.7 66.5 ±0.2 90.6 ±0.4 PARD 85.8 ±1.0 81.9 ±0.3 82.6 ±0.3 70.6 ±0.2 91.1 ±0.3           
+
+> Table 6: Performance of Fast-dLLM v2 7B, SDAR 8B, and LLaDA2.1-Mini under top-psampling with temperature
+> 1.0and p= 0 .8on HumanEval ,MBPP , and GSM8K . Results are reported as mean ±standard deviation over three runs. The best result for each model and benchmark is bolded.
+
+20

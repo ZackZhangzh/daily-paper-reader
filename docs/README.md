@@ -18,49 +18,79 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-27
-- 运行时间：2026-07-27 21:17:06 UTC
+- 最新运行日期：2026-07-29
+- 运行时间：2026-07-29 21:32:03 UTC
 - 运行状态：成功
-- 本次总论文数：9
-- 精读区：2
-- 速读区：7
+- 本次总论文数：19
+- 精读区：7
+- 速读区：12
 
 ### 今日简报（AI）
-1) 今日精读2篇、速读7篇，核心聚焦扩散模型的理论进阶与语音合成的轻量化落地。  
-2) 最值得关注：扩散模型从“分数近似”迈向“分布近似”的理论突破，以及用层级剪枝蒸馏将TTS模型压缩为轻量印地语合成器。  
-3) 若时间有限，可先看精读中的理论篇把握趋势，再留意医学图像修复和3D高斯声音生成的速读，捕捉跨领域应用灵感。
-- 详情：[/202607/27/README](/202607/27/README)
+今日精读7篇，聚焦混合数据生成与生成器分类一致性两大高分突破（均9.0/10）。  
+最值得关注：连续-类别混合表格数据的对数坐标生成模型，以及联合流匹配实现生成器与分类器协同优化。  
+普通读者可优先看这两篇精读，其余速读涉及视频压缩、平均场博弈和对称性破缺，按兴趣选读即可。
+- 详情：[/202607/29/README](/202607/29/README)
 
 ### 精读区论文标签
-1. [From Score Approximation to Distribution Approximation in Score-Based Diffusion Models](/202607/27/2607.22199v1-from-score-approximation-to-distribution-approximation-in-score-based-diffusion-models)  
+1. [Logit-Coordinate Generative Models for Mixed Continuous-Categorical Tabular Data](/202607/29/2607.23348v1-logit-coordinate-generative-models-for-mixed-continuous-categorical-tabular-data)  
    标签：评分：9.0/10、query:fm
-   evidence：基于得分的扩散模型直接理论分析
-2. [Staged Depth-Pruning Distillation of a Flow-Matching Text-to-Speech Teacher: A Compact Hindi Speech Synthesizer](/202607/27/2607.18662v1-staged-depth-pruning-distillation-of-a-flow-matching-text-to-speech-teacher-a-compact-hindi-speech-synthesizer)  
+   evidence：用于混合表格数据的流匹配和扩散
+2. [Joint Flow Matching for Generator-Consistent Classification](/202607/29/2607.23946v1-joint-flow-matching-for-generator-consistent-classification)  
+   标签：评分：9.0/10、query:fm
+   evidence：联合流匹配用于生成建模与分类
+3. [GrainGS: Gradient-Decoupled Gaussian Splatting for Efficient Dynamic Novel View Synthesis](/202607/29/2607.21448v1-graings-gradient-decoupled-gaussian-splatting-for-efficient-dynamic-novel-view-synthesis)  
+   标签：评分：8.0/10、query:dgs-physics
+   evidence：动态3D高斯溅射与逐高斯变形用于场景重建
+4. [Soft-Constrained Optimization of Latent Space in Variational Autoencoders](/202607/29/2607.23751v1-soft-constrained-optimization-of-latent-space-in-variational-autoencoders)  
    标签：评分：8.0/10、query:fm
-   evidence：流匹配蒸馏用于语音合成
+   evidence：潜在变量模型优化
+5. [Physics-Guided Generative AI for Property-Targeted 3D Porous Media Design](/202607/29/2607.24274v1-physics-guided-generative-ai-for-property-targeted-3d-porous-media-design)  
+   标签：评分：8.0/10、query:fm
+   evidence：物理引导的扩散生成模型用于多孔介质
+6. [Rethinking the Generation Order of Block Diffusion Language Models](/202607/29/2607.24306v1-rethinking-the-generation-order-of-block-diffusion-language-models)  
+   标签：评分：8.0/10、query:fm
+   evidence：扩散概率模型
+7. [Parallel Decoding Distillation for Fast Image and Video Generation](/202607/29/2607.26004v1-parallel-decoding-distillation-for-fast-image-and-video-generation)  
+   标签：评分：8.0/10、query:fm
+   evidence：流匹配模型的并行解码蒸馏加速
 
 ### 速读区论文标签
-1. [FillGauss: Fine-Grained Filling-Aware Impact Sound Generation for 3D Gaussian Splatting](/202607/27/2607.17773v1-fillgauss-fine-grained-filling-aware-impact-sound-generation-for-3d-gaussian-splatting)  
-   标签：评分：7.0/10、query:dgs-physics
-   evidence：基于3DGS的冲击声音生成，物理声学建模
-2. [Diffusion Models in Medical Image Inpainting: Challenges, Solution Taxonomy, and Future Directions](/202607/27/2607.21904v1-diffusion-models-in-medical-image-inpainting-challenges-solution-taxonomy-and-future-directions)  
+1. [Generative Video Compression with Adaptive Score Distillation](/202607/29/2607.22772v1-generative-video-compression-with-adaptive-score-distillation)  
    标签：评分：7.0/10、query:fm
-   evidence：扩散模型用于医学图像修复
-3. [InnoText: A Unified Model for Visual Text Generation and Editing](/202607/27/2607.22101v1-innotext-a-unified-model-for-visual-text-generation-and-editing)  
+   evidence：使用从头训练的扩散模型进行生成式视频压缩
+2. [All in One: Generative Modeling as Mean-Field Game Design](/202607/29/2607.23026v1-all-in-one-generative-modeling-as-mean-field-game-design)  
    标签：评分：7.0/10、query:fm
-   evidence：基于DiT的统一视觉文本生成与编辑模型
-4. [BoxTwin: Learning Elastoplastic Articulated Object Dynamics from Videos](/202607/27/2607.17132v1-boxtwin-learning-elastoplastic-articulated-object-dynamics-from-videos)  
-   标签：评分：6.0/10、query:dgs-physics
-   evidence：从视频学习弹塑性铰接物体动力学，物理仿真
-5. [AniGS: Bridging Rendering and Diffusion Prior for 3D Scene Animation](/202607/27/2607.18539v1-anigs-bridging-rendering-and-diffusion-prior-for-3d-scene-animation)  
-   标签：评分：6.0/10、query:dgs-physics
-   evidence：3DGS动画变形场，非物理驱动
-6. [TG-Diff: Coupling Discrete Topology Diffusion and Topology-conditioned Geometry Diffusions for B-Rep Generation](/202607/27/2607.21928v1-tg-diff-coupling-discrete-topology-diffusion-and-topology-conditioned-geometry-diffusions-for-b-rep-generation)  
+   evidence：生成模型作为平均场博弈设计
+3. [Beyond ICA: Identifiability by Symmetry Breaking](/202607/29/2607.23182v1-beyond-ica-identifiability-by-symmetry-breaking)  
+   标签：评分：7.0/10、query:fm
+   evidence：深度生成模型可识别性
+4. [From Score Learning to Discretized Sampling: An End-to-End Generalization Analysis of Diffusion Models](/202607/29/2607.23226v1-from-score-learning-to-discretized-sampling-an-end-to-end-generalization-analysis-of-diffusion-models)  
+   标签：评分：7.0/10、query:fm
+   evidence：基于分数的扩散模型泛化分析
+5. [VIPER: Visual In-Context Physics Reasoning for Physically Plausible Video Generation](/202607/29/2607.23472v1-viper-visual-in-context-physics-reasoning-for-physically-plausible-video-generation)  
+   标签：评分：7.0/10、query:fm
+   evidence：基于视觉上下文物理推理的视频生成，实现物理合理运动
+6. [Escaping the Euclidean Void: Manifold-Informed Flow Matching for Sequential Recommendation](/202607/29/2607.23762v1-escaping-the-euclidean-void-manifold-informed-flow-matching-for-sequential-recommendation)  
+   标签：评分：7.0/10、query:fm
+   evidence：流匹配生成建模
+7. [OmniCache: Multidimensional Hierarchical Feature Caching For Diffusion Models](/202607/29/2607.23844v1-omnicache-multidimensional-hierarchical-feature-caching-for-diffusion-models)  
+   标签：评分：7.0/10、query:fm
+   evidence：扩散概率模型推理加速
+8. [GenSplatCodec: Feed-Forward Gaussian Splatting Compression via One-Step Diffusion](/202607/29/2607.24403v1-gensplatcodec-feed-forward-gaussian-splatting-compression-via-one-step-diffusion)  
+   标签：评分：7.0/10、query:fm
+   evidence：用于3DGS压缩的生成模型
+9. [Physics-Grounded Fluid Video Generation with a Simulation Dataset and Dual-Stream Optical-Flow Supervision](/202607/29/2607.25321v1-physics-grounded-fluid-video-generation-with-a-simulation-dataset-and-dual-stream-optical-flow-supervision)  
+   标签：评分：7.0/10、query:fm
+   evidence：基于视频扩散模型的流体生成，加入物理监督
+10. [Nova3D: Code-Native Generation of Programmable 3D Assets](/202607/29/2607.22738v1-nova3d-code-native-generation-of-programmable-3d-assets)  
    标签：评分：6.0/10、query:fm
-   evidence：基于扩散的B-Rep生成，解耦拓扑与几何
-7. [Twins: Learn to Predict Unified Representations with Focal Loss](/202607/27/2607.22531v1-twins-learn-to-predict-unified-representations-with-focal-loss)  
+   evidence：可编程3D资产的生成模型
+11. [Generative Distributionally Robust Optimization](/202607/29/2607.24983v1-generative-distributionally-robust-optimization)  
    标签：评分：6.0/10、query:fm
-   evidence：使用扩散Transformer进行生成
+   evidence：分布鲁棒优化的生成模型
+12. [Normalizing Flows to Reconstruct Pseudo-PDFs](/202607/29/2607.25282v1-normalizing-flows-to-reconstruct-pseudo-pdfs)  
+   标签：评分：6.0/10、query:fm
+   evidence：正态流生成模型
 
 
 <div class="dpr-home-promo-card dpr-home-panel">

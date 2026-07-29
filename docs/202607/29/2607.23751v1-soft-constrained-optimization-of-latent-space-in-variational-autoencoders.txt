@@ -1,0 +1,973 @@
+Title: Soft-Constrained Optimization of Latent Space in Variational Autoencoders
+
+URL Source: https://arxiv.org/pdf/2607.23751v1
+
+Published Time: Tue, 28 Jul 2026 01:14:18 GMT
+
+Number of Pages: 16
+
+Markdown Content:
+> IEEE TRANSACTIONS ON ARTIFICIAL INTELLIGENCE, VOL. 00, NO. 0, MONTH 2026 1
+
+# Soft-Constrained Optimization of Latent Space in Variational Autoencoders 
+
+Ye Shi, Student Member, IEEE 
+
+Abstract —The variational autoencoder (VAE) is an unsuper-vised neural-network structure that has been adapted to awide range of learning tasks, and its usefulness depends on two properties of its latent space that are difficult to obtain simultaneously: high encoding capacity in the individual latent variables and a low-dimensional, disentangled organization of those variables. Weakening the Kullback–Leibler (KL) regular-ization raises capacity but degrades disentanglement, whereas strengthening it improves disentanglement but prunes latent variables away entirely. This paper formulates VAE training as a soft-constrained optimization problem and introduces two components that target the two facets of this trade-off. First, we impose an entropy-based constraint (EC) on individual latent variables. We show that, for the generative factors underlying the data, the entropy of a latent code upper-bounds the mutual information it can carry about those factors, and that the bound is attained in the deterministic-encoder limit; raising the entropy therefore raises the capacity available for encoding. Second, we propose a weight-filter method that exploits the slack of the soft constraint to prune low-entropy latent dimensions during downstream training, which yields an empirical lower bound on the usable latent-space dimensionality. On dSprites, the EC increases the aggregate latent-variable activation score by 43– 62% relative to a vanilla VAE and by up to 17% relative to a β-VAE, improves our correlation-based disentanglement score by 9–14%, and attains the highest FactorVAE score among the 
+
+β-VAE variants ( 0.891 versus 0.847 ); the best configuration also lowers the reconstruction error by 38%, although this reduction is not uniform across configurations. On MNIST, the weight filter reduces the latent dimensionality supplied to a downstream classifier from ten to two while holding classifier accuracy above 
+
+90% , and reaches convergence in 37% fewer epochs at that dimensionality than the same procedure without the EC. Finally, we characterize how the two kinds of generative factors are encoded: low-entropy discrete factors tend to be merged into a single latent variable, whereas high-entropy continuous factors are distributed across several. 
+
+Impact Statement —Unsupervised representation learning is used wherever labels are scarce, but the representations that autoencoders learn are often either too entangled to interpret or larger than the downstream task requires. This work addresses both problems within a single soft-constrained formulation. The entropy-based constraint gives practitioners a principled quantity—the entropy of each latent variable—to monitor and control, rather than a single regularization weight that trades capacity against disentanglement. The weight-filter method iden-tifies, during training and without a separate search, how many latent dimensions a downstream task actually needs; in our MNIST classification study it reduced that number from ten to two while holding accuracy above the specified threshold. Smaller latent spaces reduce the cost of the downstream models that consume them and make the learned factors easier to inspect, which matters in settings where a representation must 
+
+The authors are with the Elmore Family School of Electrical and Computer Engineering, Purdue University, West Lafayette, IN, 47906 USA (e-mail: shiye@purdue.edu) Manuscript received TBD; revised TBD 
+
+be audited before it is trusted. The analysis of how discrete and continuous generative factors are encoded also gives practitioners a diagnostic for deciding whether a latent space of a given size can represent the factors present in their data. 
+
+Index Terms —Autoencoder, Latent Representation, Con-strained Optimization, Disentanglement, VAE. 
+
+I. I NTRODUCTION 
+
+# VARIATIONAL Autoencoder (VAE) is a powerful and flexible unsupervised neural-network structure that is suitable for a wide range of applications such as image processing, natural language, and robotics [1]. Although it was initially introduced as a generative model [2], growing research in VAE has shown that it is more suitable for latent-space-based tasks such as dimensionality compression [3], [4], representation learning [5]–[9], and anomaly detection [10]– [12]. The latent space of VAEs is a crucial component structure that enables it to compress high-dimensional input data into a low-dimensional space. The latent space is represented by a set of latent variables that abstract the data features of the training set and that are independent under the factorized prior, although the aggregate posterior they induce need not be. Several studies have identified the over-pruning problem of latent variables in VAE models [13]–[15]. While training a VAE model with sufficient latent dimensions, some of the latent variables may fail to encode any data features, resulting in poor downstream performance. This problem is caused by a strong regularization term on the Kullback-Leibler (KL) divergence, which encourages the latent space to be as close to a standard normal distribution as possible. To overcome the over-pruning problem, researchers have used different techniques to weaken the regularization such as alternating the estimation of the KL divergence term [13], [15], [16] and masking the latent space [14], [17]. A weaker KL divergence term may encourage the latent space to encode more data. However, this relaxation tends to result in a compromised data representation concerning disentanglement and abstrac-tion [15], [18]. Nonetheless, with the emergence of new generative models such as Generative Adversarial Networks (GANs) [19] and Diffusion Models [20], the over-pruning problem has received less attention in recent years. It remains a crucial challenge for VAEs to determine what constitutes the optimal latent space. An optimal latent space is a representation of data that maximizes the ability of a model to capture and utilize important features of the data. It should be able to disentangle the different factors of variation that contribute to the data such as shape, color, texture, and style, and represent them in arXiv:2607.23751v1 [cs.LG] 26 Jul 2026 a way that allows easy manipulation in downstream tasks. An optimal latent space should also be efficient; that is, it should be the lowest-dimensional representation that still captures the information the downstream task requires. We address the optimal latent space problem using con-strained optimization techniques in two directions – optimizing the capacity of latent variables and the dimensionality of latent space. The capacity of latent variables is defined as the ability to completely encode a data feature and disentangle it from other data features, allowing the latent variables to preserve more information and less correlation. We propose an entropy-based constraint (EC) on latent variables to maximize the capacity of latent variables. A higher entropy indicates that the latent variable takes a more diverse range of values and can therefore encode more information. We show in Section III-A that the entropy of the latent code upper-bounds the mutual information it carries about the generative factors of the data, and that the bound is attained when the encoder becomes deterministic. Maximizing entropy therefore maximizes the capacity available for encoding, and imposing the EC makes the latent space more expressive. The dimensionality of latent space refers to the number of latent variables used to represent the input data. A higher-dimensional latent space can capture more intricate represen-tations of the data features, but it may result in increasing the risk of overfitting, leading to computational inefficien-cies [21]. To tackle the challenge of determining the optimal dimensionality, we introduce a weight-filter method grounded in the soft-constraint property. The method searches for the smallest latent-space dimensionality that a given downstream task tolerates, and thereby yields an empirical lower bound on that dimensionality. Unlike hard constraints, soft constraints can be loosely violated, but there is a penalty associated with each violation. Our proposed approach eliminates latent variables that do not satisfy the EC well, resulting in ashrunken latent space that better balances the trade-off between 
+
+expressiveness and efficiency .In our study, we have observed two properties of latent variables in VAEs:  
+
+> •
+
+Continuous data features with high entropy, such as the 
+
+X and Y positions, tend to be encoded in a more disen-tangled manner, and a single feature may be distributed across more than one latent variable.  
+
+> •
+
+When data features are discrete and take few values, such as shape and scale, a single latent variable may encode several of them jointly. The combined feature then has a higher entropy than either feature alone, which is what the constraint rewards. Our primary contributions are as follows. 1) We cast VAE training as a soft-constrained optimization problem in which reconstruction accuracy, KL regular-ization, and latent-variable entropy appear as separate constraints with separate multipliers, which makes the capacity requirement explicit rather than implicit in a single regularization weight. 2) We introduce an entropy-based constraint on individual latent variables and relate it to the mutual information between the latent code and the generative factors of the data: the entropy upper-bounds that mutual infor-mation, with equality in the deterministic-encoder limit. Empirically, the constraint raises the aggregate activation score of the latent space by 43–62% over a vanilla VAE and lowers the reconstruction error by up to 38%, while keeping disentanglement scores competitive. 3) We propose a weight-filter method that prunes low-entropy latent dimensions during downstream training. On MNIST it reduces the latent dimensionality con-sumed by the classifier from ten to two—an 80% reduction—subject to an accuracy threshold, and iden-tifies two as the point at which the threshold can no longer be met. 4) We characterize the encoding behavior of latent vari-ables as a function of the entropy of the underlying data feature: high-entropy continuous features (spatial coordinates) are encoded in a disentangled manner and may be split across latent variables, whereas low-entropy discrete features (shape, scale) are merged into a single latent variable. The paper is organized as follows. Section II presents an overview of related work and provides introductory concept about constrained optimization in VAEs. Section III outlines the optimal latent space problem and introduces our proposed approach, which is based on soft-constrained optimization. Section IV presents the experimental results derived from our approach. Section V provides a detailed analysis of the distri-butions of the latent variables. Finally, Section VI concludes the paper by summarizing the impacts of our proposed ap-proach and suggesting potential directions for future research. II. R ELATED WORK AND PRELIMINARIES 
+
+Latent-space optimization can take various forms depending on the task and the definition of optimality. Our approach is situated within the broader literature on VAE capacity optimization and optimization of latent-space dimensionality, and it draws inspiration from constrained optimization in deep learning. We first briefly review these areas and their connection to our proposed work, and we then provide an overview of the preliminaries for a better understanding of the constrained optimization in VAEs. 
+
+A. VAE Capacity Optimization 
+
+In VAEs, the problem of over-pruning poses a trade-off between downstream performance and disentangled repre-sentation, which leads to two directions in optimizing VAE capacity. 1) Increasing model capacity by weakening the regular-ization term. To enhance the downstream performance, this approach involves weakening the regularization term to increase the encoding capacity of latent space. For example, IWAE [13] estimates the KL divergence through weighted importance using the Monte-Carlo method, WAE [16] replaces the KL divergence with the Wasserstein distance, and eVAEs [14], [17] regulates the KL divergence of contiguous subsets of the latent space 2by introducing uniformly-distributed masks. Another approach is to find alternative closed-form expressions for the KL divergence such as [15] and [22]. Many re-searchers [13], [14], [23], [24] observed more latent vari-ables become active when enhancing the downstream tasks. The latent-variable activation score (LVAS) [13] is a common metric for judging whether a latent variable actively encodes data, and hence for counting how many latent variables have been over-pruned. 2) Regularizing the model to encourage disentangled repre-sentation. Disentangled representation aims to establish a one-to-one correspondence between data features and codec variables through unsupervised learning, mimick-ing human reasoning in summarizing high-dimensional data in low-dimensional features. The disentanglement approach seeks to encode each data feature into aseparate latent variable independently. For example, one common technique is to use the β-VAE approach [18], which introduces a hyper-parameter β to control the balance between the reconstruction error and the dis-entanglement constraint in the loss function. Another approach is to use adversarial training methods [5] or other regularization methods such as InfoGAN [25] or FactorVAE [26] to encourage the model to learn a more disentangled representation. However, researchers have yet to agree on a common metric. There are several metrics for measuring and quantifying disentanglement, and they are mostly based on approximating the correla-tion and covariance between feature variables and latent variables [7], [9], [18], [26]. Recently, researchers [27]– [29] prefer to use the correlation to evaluate the disen-tanglement. Both directions have their advantages and drawbacks, and the choice of the approach may depend on the specific task and the dataset at hand. The challenge is to find a balance between generative performance and disentanglement in the latent space, which can lead to more effective and interpretable models. 
+
+B. Dimensionality of Latent Space 
+
+The dimensionality of latent space is a crucial hyper-parameter in VAE-based models and is often associated with dimensionality reduction. The VAE structure has demonstrated an exceptional ability for dimensionality reduction in vari-ous types of data [30]–[32]. Some analyses [4], [33] have revealed that VAEs work as non-linear principal component analysis (PCA). Unlike PCA, however, the capacity of each latent variable is limited by the Gaussian prior it is regularized towards: reducing the number of latent dimensions does not, by itself, give the surviving dimensions more capacity. Hence, while dimensionality reduction simplifies the representation and improves computational efficiency for a given task, it may also degrade reconstruction quality and downstream-task performance. Conversely, if the latent-space dimension of a VAE is too high, it can lead to poor generalization performance on unseen data because the VAE may not be able to capture the true distribution of the input data. However, compared to GANs, the optimal dimensionality of latent space in VAEs has received less attention and discussion. Previous studies on GANs have mainly focused on optimizing the dimensionality of latent space using elbow methods linked to the output [34]– [36]. However, these methods are not applicable to VAEs because the latent space cannot be directly manipulated in the same way. 
+
+C. Constrained Optimization in Deep Learning 
+
+Constraints are commonly used in deep learning as aform of regularization for stochastic gradient descent (SGD) algorithms [37]. By limiting the feasible search space, the constraints help to prevent overfitting, improve generalization, and accelerate convergence [38]–[40]. These implicit con-straints are typically designed according to guidelines such as 
+
+Lp-norms [41]–[43], prior probability [18], Markov decision process [40], and indicator functions [38], [44], [45]. Constrained optimization is often applied to the training of autoencoders [2], [18], [26], which have been shown to enhance their ability to comprehend and disentangle latent rep-resentations [42], [46]. Recent research has explored the use of deep learning to solve constrained optimization problems [47]. Autoencoders have shown significant potential in constrained optimization by transforming the original data from a discrete space to a continuous latent space [48]. 
+
+D. Constrained Optimization in VAEs 
+
+The vanilla autoencoder optimizes the parameters ϕ and θ
+
+of the encoder and decoder, respectively, assuming that 
+
+qϕ(z|x) ≈ pθ (z|ˆx), (1) where qϕ(z|x) is the approximate posterior probability density function (PDF) of the latent vector z produced by the encoder, 
+
+pθ (z|ˆx) is the posterior PDF of z implied by the decoder, x
+
+is the input, and ˆx is the output, with ˆx ≈ x.VAE maximizes the marginal likelihood of pθ (x) and ex-pands it by Eq. (1) as 
+
+ln pθ (x) = Eqϕ(z|x)
+
+
+
+ln 
+
+ pθ (ˆ x, z)
+
+qϕ(z|x)
+
+ 
+
++ D KL (qϕ(z|x)∥pθ (z|ˆx)) ,
+
+(2) where E (·) is the expectation operator and DKL (·∥· ) is the KL divergence function. Under the assumption in Eq. (1), the second term on the right-hand side of Eq. (2) is the KL divergence of qϕ(z|x) from pθ (z|ˆx), which is non-negative, 
+
+DKL (qϕ(z|x)∥pθ (z|ˆx)) ≥ 0. (3) The first term on the right-hand side of Eq. (2) then is an evidence lower bound (ELBO) of ln pθ (x) as 
+
+LV (θ, ϕ ; x, ˆx, z) = Eqϕ(z|x)
+
+
+
+ln 
+
+ pθ (ˆ x, z)
+
+qϕ(z|x)
+
+ 
+
+=Eqϕ(z|x) [ln pθ (ˆ x|z)] 
+
+− DKL (qϕ(z|x)∥p(z)) ,
+
+(4) 3𝜇 𝐳 !
+
+> 𝜇 𝐳 "
+> 𝜇 𝐳 #
+> 𝜇 𝒛 $
+> 𝜇 𝐳 %
+> ︙
+> ︙
+> 𝜇 𝐳 &
+
+Encoder 
+
+𝑞 !(z|x)
+
+Decoder 
+
+𝑝 "(x|z)       
+
+> 𝐱 𝟏
+> 𝐱 𝟐
+> ︙
+> ︙
+> ︙
+> ︙
+> ︙
+> ︙
+> ︙
+> ︙
+> ︙
+> ︙
+> ︙
+> ︙
+> ︙
+> 𝐱 𝐧
+> 𝐱 #𝟏
+> 𝐱 #𝟐
+> ︙
+> ︙
+> ︙
+> ︙
+> ︙
+> ︙
+> ︙
+> ︙
+> ︙
+> ︙
+> ︙
+> ︙
+> ︙
+> 𝐱 #𝐧
+> Input Output
+> 𝜎 𝐳 !
+> &
+> 𝜎 𝐳 "
+> &
+> 𝜎 𝐳 #
+> &
+> 𝜎 𝐳 $
+> &
+> 𝜎 𝐳 %
+> &
+> ︙
+> ︙
+> 𝜎 𝐳 '
+> &
+> z'
+> z&
+> z(
+> z)
+> z*
+> ︙
+> ︙
+> z+
+> Latent Space Z
+> Hard Constraint
+> 𝐳 !=𝜇 "!+𝜎 "!𝜉
+
+Fig. 1. VAE structure. The red dashed box demonstrates how the latent variable maps to a random variable in a normal distribution. where p(z) is the PDF of z. Equation (4) then becomes the objective function of VAE because it is with respect to the parameters θ and ϕ, and maximizing it leads to a higher marginal likelihood of pθ (x) and minimizes the KL divergence of qϕ(z|x) from p(z).Because p(z) is difficult to estimate during training, VAE introduces a new random variable, ξ, with a known PDF, p(ξ),to formulate Eq. (4) as a hard-constrained optimization, 
+
+max  
+
+> ϕ,θ
+
+LV (θ, ϕ ; x, ˆx, z)
+
+s.t. z = gθ (ξ, x), where ξ ∼ p (ξ) ,
+
+(5) where gθ (·) is a mapping function for the reparameterization trick [49] . The vanilla VAE embeds the hard constraint in its structure as shown in Fig. 1. Each latent variable zm is mapped by 
+
+zm = μzm + σzm ξ and ξ ∼ N (0 , 1) , where zm is a latent variable in the latent vector z, M is the dimension of the latent space, m is an arbitrary integer, m ∈ [1 , M ], μzm is the mean of zm, and σzm is the standard deviation of zm.Because this construction makes qϕ(z|x) a diagonal Gaussian, a closed-form expression of the KL divergence with respect to the standard normal prior is obtained as 
+
+DKL (qϕ(z|x)∥p(z)) = − 12
+
+> M
+
+X
+
+> m=1
+
+ 1 + ln σ2 
+
+> zm
+
+− μ2 
+
+> zm
+
+− σ2
+
+> zm
+
+ .
+
+(6) 
+
+β-VAE [18] uses the vanilla VAE structure and decom-poses the ELBO in Eq. (4) by separating the first term, 
+
+Eqϕ(z|x) [ln pθ (ˆ x|z))] , as the reconstruction loss, and the sec-ond term, DKL (qϕ(z|x)∥p(z)) , as the regularization that encourages disentangled latent variables. Hence, β-VAE for-mulates the constrained optimization as 
+
+max  
+
+> ϕ,θ
+
+Eqϕ(z|x) [ln pθ (ˆ x|z)] 
+
+s.t. DKL (qϕ(z|x)∥p(z)) < ϵ, 
+
+(7) where ϵ is a relaxation factor and ϵ ≥ 0 holds the comple-mentary slackness condition of the soft constraint. For the Bernoulli decoder used throughout this paper, maximizing the objective function is equivalent to minimizing the cross en-tropy between the input and the reconstruction. The constraint pulls the approximate posterior towards the factorized prior and thereby encourages the latent variables to be mutually independent. We formulate Eq. (7) as a Lagrangian function under the Karush-Kuhn-Tucker (KKT) conditions [50], [51], 
+
+Fβ (θ, ϕ, β ; x, ˆx, z) = Eqϕ(z|x) [ln pθ (ˆ x|z))] 
+
+− β  DKL (qϕ(z|x)∥p(z)) − ϵ , (8) where β is a saddle point under the KKT conditions. Due to the dual feasibility condition, β ≥ 0, β—referred to as a KKT multiplier—is typically manually assigned due to the complexity of deep learning models. Consequently, these constraints operate as penalties within a soft-constrained framework. In practice, the constraint term is conducted as a summation of the KL divergence of all the latent variables. The β-VAE loss function is obtained as 
+
+Lβ (θ, ϕ, β ; x, ˆx, z) = Eqϕ(z|x) [ln pθ (ˆ x|z))] 
+
+− βDKL (qϕ(z|x)∥p(z)) . (9) When β = 1, β-VAE corresponds to the vanilla VAE. Adjusting the value of β in β-VAE can have significant effects on the training process and the model performance. Increasing the β value places more emphasis on the soft constraint, resulting in better disentanglement of latent variables but poorer reconstruction quality. Conversely, decreasing the β
+
+value improves the generative performance but may result in less disentangled latent variables. While this approach reduces the divergence between the prior, p(z), and the approximate posterior, qϕ(z|x), it does so at the cost of the information the latent variables retain about the input, and hence reduces their capacity [52]. Hence, the reconstruction performance of the 
+
+β-VAE decoder suffers when the β value is increased. The 
+
+β value is often considered as a balance parameter for the over-pruning problem [22]. III. P ROPOSED APPROACH 
+
+A. Problem Formulation 
+
+The primary objective of this study is to achieve optimal latent space of a VAE model with the perspective of the capacity of latent variables and the dimensionality of latent space in classification tasks. The encoding capacity is characterized by the mutual infor-mation between the generative factors y that produce the data 
+
+x and the latent variables z that encode x,
+
+I( y, z) = H( y, z) − H( y|z) − H( z|y), (10) where I( ·, ·) denotes mutual information, H( ·, ·) denotes the joint entropy, and H( ·|· ) denotes conditional entropy. Through-out, H( z) denotes the differential entropy of the aggregate posterior qϕ(z) = Ex [qϕ(z|x)] .4Lemma 3.1: Zero conditional entropy [53]. H( Y|X) = 0 ,if and only if the value of Y is completely determined by the value of X.If the encoder were deterministic, z = Encoder (G( y)) 
+
+would be completely determined by y, Lemma 3.1 would give H( z|y) = 0 , and Eq. (10) would collapse to I( y, z) = H( z). The encoder of a VAE, however, is stochastic: the reparameterization in Eq. (5) draws ξ independently of x, so 
+
+H( z|y)̸ = 0 in general and the residual term must be retained. Because x = G( y) is deterministic, conditioning on y and conditioning on x leave the same conditional law for z, and for the diagonal Gaussian encoder that conditional entropy is available in closed form, 
+
+H( z|y) = H( z|x) = Ex
+
+" MX
+
+> m=1
+
+12 ln  2πe σ 2
+
+> zm
+
+#
+
+. (11) Writing Eq. (10) in the equivalent form I( y, z) = H( z) −
+
+H( z|y) and substituting Eq. (11) gives 
+
+I( y, z) = H( z) − Ex
+
+" MX
+
+> m=1
+
+12 ln  2πe σ 2
+
+> zm
+
+#
+
+. (12) The second term of Eq. (12) is the entropy injected by the reparameterization noise, and it is exactly the term the KL regularizer controls: averaging DKL (qϕ(z|x)∥p(z)) over x
+
+yields −H( z|x) + M 
+
+> 2
+
+ln 2 π + 12
+
+P 
+
+> m
+
+E[μ2 
+
+> zm
+
++ σ2 
+
+> zm
+
+], which is minimized at σ2 
+
+> zm
+
+= 1 . For models trained with a common 
+
+β, the noise term is therefore held near the entropy of the prior and varies little across models, so differences in encoding capacity are governed by the first term, H( z). Maximizing 
+
+H( z) subject to the KL constraint consequently maximizes the capacity available for encoding the generative factors, and in the deterministic-encoder limit it maximizes I( y, z) exactly. The joint entropy is not directly accessible during training, but it is bounded by the marginal entropies of the individual latent variables, 
+
+H( z) = 
+
+> M
+
+X
+
+> m=1
+
+H( zm) − TC( z), TC( z) ≥ 0, (13) where TC( ·) is the total correlation, which vanishes when the latent variables are mutually independent. The KL constraint of Eq. (7) already drives TC( z) towards zero, so raising the individual marginal entropies raises H( z) as well. This is what makes a per-variable constraint a usable surrogate for the joint objective, and it is why the two goals of high capacity and low correlation need not conflict. The capacity of a latent variable 
+
+zm is accordingly measured by its differential entropy, 
+
+H( zm) = −
+
+Z
+
+qϕ (zm) ln qϕ (zm) d zm, (14) which Algorithm 2 estimates by the plug-in entropy of a K-bin histogram of zm. The two quantities are not identical: for bins of width ∆ the discrete estimate exceeds the differential entropy by approximately log(1 /∆) , a constant offset that cancels in comparisons between models but that must be kept in mind when the estimate is compared against an absolute scale such as the entropy of the prior. The optimal latent space problem then is considered as a VAE model with a sufficiently high-dimensional latent space, where some latent variables encounter the over-pruning prob-lem resulting in a loss of crucial real data features. To address this issue, we introduce a subspace of the original latent space for downstream tasks, with J ≤ M as the dimensionality of the subspace and z′ as the corresponding retained latent variables. Our objective is to use the smallest such subspace that the downstream task tolerates, while the encoder and decoder are trained to make the retained latent variables as informative as possible. This is naturally written as a bi-level problem, 
+
+min   
+
+> J∈[1 ,M ]
+
+J
+
+s.t. (ϕ⋆, θ ⋆) ∈ arg max  
+
+> ϕ,θ
+
+H( z′)
+
+a(ϕ⋆, θ ⋆, J ) ≥ α, 
+
+(15) where ϕ and θ denote the parameters of the encoder and the decoder, respectively, a(·) is the accuracy of the downstream classifier, and α is a user-specified accuracy threshold. The inner problem raises the capacity of the latent variables and is addressed by the entropy-based constraint of Section III-B; the outer problem shrinks the subspace and is addressed by the weight-filter method of Section III-C. We solve the two greedily and jointly rather than exactly: the dimensionality is decremented by one whenever the accuracy constraint is still satisfied, which returns a feasible—not certifiably optimal— value of J.
+
+B. Entropy-Based Constraint (EC) of Latent Variables 
+
+In order to maximize the entropy of latent variables, we introduce a lower-bound constraint δ on the entropy of the latent variable. By imposing this constraint, we effectively increase the entropy of the latent variable while preserving the decoder’s functionality. To achieve this, we incorporate the constraint as a soft constraint by applying a penalty term to the loss function, enabling us to jointly optimize both the loss of VAE and the entropy of latent variables. This constraint is represented as: 
+
+> M
+
+X
+
+> m=1
+
+(δ − H ( zm)) < ϵ H, (16) where δ ≥ 0 is the target entropy of each latent variable and ϵH ≥ 0 is the permitted slack. A natural reference scale for δ is 12 ln(2 πe ) ≈ 1.42 nats, the differential entropy of the standard normal prior: choosing δ at or below this value asks every latent variable to be at least as informative as a draw from the prior. We emphasize that 12 ln(2 πe ) is not an upper bound on H( zm). Among all distributions of variance 
+
+σ2 the Gaussian attains the maximum differential entropy  
+
+> 12
+
+ln(2 πeσ 2), so an active latent variable whose aggregate posterior has variance greater than one exceeds that value; the experiments in Section IV confirm this. Equation (16) is therefore a lower-bound constraint only, and it is the aggregate over the M latent variables that is constrained, so an individual variable may fall below δ provided the others compensate. 5TABLE I. Loss Function Comparison                                        
+
+> Loss Functions Accuracy KL Divergence Constraint Entropy-based Constraint
+> LV(θ, ϕ ;x,ˆx,z)- Vanilla VAE Eqϕ(z|x)[ln pθ(ˆ x|z))] −DKL
+>  qϕ(z|x)∥p(z)
+> Lβ(θ, ϕ, β ;x,ˆx,z)-β-VAE Eqϕ(z|x)[ln pθ(ˆ x|z))] −βDKL
+>  qϕ(z|x)∥p(z)
+> LH(θ, ϕ, β, γ ;x,ˆx,z)-Ours Eqϕ(z|x)[ln pθ(ˆ x|z))] −βDKL
+>  qϕ(z|x)∥p(z)−γPMm=1 (δ−H( zm))
+
+Using Eq. (7), the constrained optimization problem is rewritten with Eq. (16) as an additional constraint, 
+
+max  
+
+> ϕ,θ
+
+Eqϕ(z|x) [ln pθ (ˆ x|z))] 
+
+s.t. DKL (qϕ(z|x)∥p(z)) < ϵ K
+
+> M
+
+X
+
+> m=1
+
+(δ − H( zm)) < ϵ H.
+
+(17) The two constraints carry separate slack variables because they are not interchangeable: ϵK limits how far the approximate posterior may drift from the prior, whereas ϵH limits how much total entropy the latent space may forfeit. Equation (17) can be formulated as a Lagrangian function under the KKT conditions as 
+
+FH(θ, ϕ, β, γ ; x, ˆx, z) = Eqϕ(z|x) [ln pθ (ˆ x|z))] 
+
+− β  DKL (qϕ(z|x)∥p(z)) − ϵK
+
+
+
+− γ
+
+> M
+
+X
+
+> m=1
+
+(δ − H( zm)) − ϵH
+
+!
+
+,
+
+(18) where γ ≥ 0 is the KKT multiplier of the EC and holds the corresponding complementary slackness condition. Because β, γ, ϵ K, ϵ H ≥ 0, dropping the two constant terms 
+
+βϵ K and γϵ H yields a lower bound on Eq. (18) whose max-imizer is unchanged, since the dropped terms do not depend on ϕ or θ,
+
+LH(θ, ϕ, β, γ ; x, ˆx, z) = Eqϕ(z|x) [ln pθ (ˆ x|z))] 
+
+− βDKL (qϕ(z|x)∥p(z)) − γ
+
+> M
+
+X
+
+> m=1
+
+(δ − H( zm)) . (19) We summarize the difference in loss functions among vanilla VAE, β-VAE, and our approach in Table I. Following the convention of Eq. (4), LV , Lβ , and LH are all written as objectives to be maximized ; the quantities minimized by the optimizer in our implementation are their negatives. 
+
+C. Optimization of Latent-space Dimensionality 
+
+We present a weight-filter method that leverages the soft-constraint property to optimize the latent-space dimensionality, and thereby addresses the outer problem of Eq. (15). The method is implemented in the context of a classification task. The classifier and the autoencoder are updated in alternation within each epoch: the classifier descends LC with the encoder held fixed, and the autoencoder then descends LAE of Eq. (22), which contains LC as one of its terms. The classification loss therefore enters the autoencoder objective as a penalty: it constrains the encoder to retain whatever the classifier needs, while the reconstruction and entropy terms constrain it in their own directions. The method builds on the EC discussed previously. We introduce an entropy filter into the latent space, a linear filter whose weights are determined by the entropies of the latent variables. The filtered latent space z′ is obtained as the element-wise product 
+
+z′ = w ⊙ z, (20) where ⊙ denotes the element-wise (Hadamard) product and 
+
+w is a non-negative weight vector whose zero entries mark the pruned dimensions, w = w1, w 2, · · · , w M
+
+T, where the superscript T denotes transpose operation. A zero weight removes the corresponding dimension from the representation seen by the downstream task: it indicates that the dimension carries too little entropy to be worth retaining, and that re-moving it does not violate the accuracy constraint. The filtered latent variables serve as the input to the classifier, whose loss acts as an additional soft constraint on the autoencoder. The optimization is formulated by maximizing the expected log-likelihood of the reconstruction while satisfying the EC and the classification loss constraint, 
+
+max  
+
+> ϕ,θ
+
+Eqϕ(z|x) [ln pθ (ˆ x|z))] 
+
+s.t. DKL (qϕ(z|x)∥p(z)) < ϵ K
+
+> M
+
+X
+
+> m=1
+
+(δ − H( zm)) < ϵ H
+
+LC (y, ˆy) < ϵ C,
+
+(21) where LC (y, ˆy) is the loss function of the classifier, y is the ground-truth label, and ˆy is the predicted label. The classifier loss LC is a cross-entropy loss over the ten digit classes, computed from the sigmoid outputs of the classifier described in Section IV. Combining the negated autoencoder objective with the classifier loss gives the total loss that is minimized with respect to ϕ and θ,
+
+LAE (x, ˆx, z, y, ˆy) = − L H(x, ˆx, z) + LC (y, ˆy) , (22) The proposed optimization method of latent-space dimension-ality is illustrated in Fig. 2. The weights of the entropy filter are updated using Algo-rithm 1. A threshold α of the classifier accuracy controls the reduction of the dimensionality. The entropy filter first sorts the latent variables in descending order of entropy. If the accuracy of the classifier is above the threshold α, the filter eliminates the lowest-entropy latent variable that is still being fed to the classifier; otherwise the weights are left unchanged and the current dimensionality is retained. The retained weights are set to 1/J rather than to unity, so that the total scale of the filtered code z′ is preserved as J decreases and the classifier is not presented with an input whose magnitude 6𝐱 "              
+
+> 𝑦 "
+> Encoder
+> Latent
+> Entropy
+> Constraint
+> 𝐱
+> 𝐳
+> Classifier
+> Decoder
+> Entropy
+> Filter
+> 𝐳 !
+> ℒ"(𝐱 ,𝐱 ",𝐳 )
+> ℒ#(𝑦 ,𝑦 ")
+> (2) Update the autoencoder by ℒ"𝐱 ,𝐱 ",𝐳 +ℒ#(𝑦 ,𝑦 ")
+> (1) Update the classifier by ℒ#(𝑦 ,𝑦 ")
+> (3) Estimate H𝐳
+> and update the
+> filter
+
+Fig. 2. A schematic of the optimization of latent-space dimen-sionality. In each epoch, (1) the classifier is updated with LC,(2) the autoencoder is updated with LAE , and (3) the latent-variable entropies are re-estimated and the entropy filter is updated. grows as dimensions are removed. One consequence should be noted explicitly: because the scale factor changes whenever a dimension is dropped, the classifier sees a rescaled input at each reduction step, and the convergence comparison of Fig. 9 measures the combined effect of the reduced dimensionality and this rescaling. Both models in that comparison are subject to the same rescaling, so it does not bias the comparison between them; we return to the point in Section V-E. The output of the algorithm is the updated weight array and the resulting dimensionality. 
+
+Algorithm 1 Entropy-Filter Weight Update Algorithm 
+
+Input: H - entropy array of the latent variables, 
+
+H = {H1, H 2, · · · , H M },
+
+w - current filter weight array, 
+
+a - current classifier training accuracy, 
+
+α - training accuracy threshold. 
+
+Output: w - updated weight array of the entropy filter, 
+
+J - number of retained latent dimensions. 
+
+Initialization:  
+
+> 1:
+
+Obtain the number of currently retained dimensions, 
+
+J ← sum (w > 0) .
+
+Update:  
+
+> 2:
+
+Sort H in descending order and obtain the index array 
+
+j = {j1, j 2, · · · , j M }, so that j1 is the index of the latent variable with the highest entropy and jM that with the lowest.  
+
+> 3:
+
+if a > α and J > 1 then  
+
+> 4:
+
+Set J ← J − 1 to remove one dimension.  
+
+> 5:
+
+Retain the J highest-entropy latent variables and elim-inate the rest by setting their weights to 0,
+
+wji =
+
+( 1 
+
+> J
+
+, i ≤ J
+
+0, i > J . 
+
+> 6:
+
+end if  
+
+> 7:
+
+return w, J
+
+Estimating the entropy in the training process poses achallenge due to the lack of a well-established distribution of the latent space. To address this challenge, we propose an entropy-estimation algorithm that utilizes batch training as outlined in Algorithm 2. The algorithm computes a histogram of each latent variable for every batch in an epoch and accu-mulates the bin counts over the epoch. The accumulated counts are normalized to approximate the probability mass function (PMF) of the binned variable, and the entropy is estimated by the plug-in formula applied to that PMF. Two details matter for reproducibility. First, the bin edges must be fixed across batches and epochs, since otherwise the estimates are not comparable over training. Second, the resulting quantity is the discrete entropy of the binned variable, which exceeds the differential entropy of Eq. (14) by approximately log(1 /∆) 
+
+for bins of width ∆; the offset is constant across models and therefore does not affect the comparisons we report, but it does mean that the numerical values are not on the 12 ln(2 πe ) scale used to set δ.
+
+Algorithm 2 Entropy Estimation Algorithm 
+
+Input: zm - a latent variable batch, m ∈ [1 , M ] ,
+
+M - number of latent variables, 
+
+N - number of samples in the training set, 
+
+K - number of bins in the histogram, spanning a fixed range shared by all batches. 
+
+Output: Hm - estimated entropy of the latent variable zm. 
+
+> 1:
+
+Initialize the bin counts, B ← 0. 
+
+> 2:
+
+for each batch in an epoch do  
+
+> 3:
+
+Compute the histogram of zm over the K fixed bins and store the counts in an array b = {b1, b 2, · · · , b K }. 
+
+> 4:
+
+Accumulate the counts, B ← B + b, B =
+
+{B1, B 2, · · · , B K }. 
+
+> 5:
+
+end for  
+
+> 6:
+
+Normalize the total bin counts by B ← B 
+
+> N
+
+, which approximates the PMF of the binned latent variable.  
+
+> 7:
+
+Estimate the entropy as Hm ← − PKk=1 Bk log Bk, with the convention 0 log 0 = 0 . 
+
+> 8:
+
+return Hm
+
+The training procedure for optimizing the dimensionality of latent space is described in Algorithm 3. The algorithm initial-izes the entropy-filter weights uniformly. Within each epoch, the classifier and the autoencoder parameters are updated over each batch by minimizing LC and LAE , respectively. The classifier accuracy a is then recorded and each latent-variable entropy is estimated using Algorithm 2. Finally, the entropy-filter weights are updated using Algorithm 1, which determines the optimal dimensionality of the latent space 
+
+J by identifying the subset of latent variables with high entropy values. After the classifier and the autoencoder have converged, the latent variables z′ associated with the strictly positive entries of w constitute the retained latent space. The output of Algorithm 3 is the resulting dimensionality J and the corresponding weight vector w. Because the dimensionality is only ever decremented, and only while the accuracy threshold holds, the procedure returns a feasible value of J rather than 7a certified minimum; a dimension eliminated early is never reinstated. 
+
+Algorithm 3 Training Procedure for Optimization of Latent-space Dimensionality  
+
+> 1:
+
+Initialize each entropy filter weight evenly by wm = 1 
+
+> M
+
+. 
+
+> 2:
+
+for each epoch do  
+
+> 3:
+
+for each batch do  
+
+> 4:
+
+Update the classifier parameters using the loss func-tion LC. 
+
+> 5:
+
+Update the autoencoder parameters by minimizing the total loss LAE in Eq. (22).  
+
+> 6:
+
+end for  
+
+> 7:
+
+Obtain the classifier accuracy a. 
+
+> 8:
+
+Estimate the latent-variable entropies by Algorithm 2.  
+
+> 9:
+
+Update the entropy filter weights by Algorithm 1 and obtain the new dimensionality of latent space J. 
+
+> 10:
+
+end for  
+
+> 11:
+
+Return J as the resulting dimensionality; the retained latent space corresponds to the strictly positive entries of 
+
+w.The weight filter was designed to exploit the slack of the EC: the dimensions it removes are those for which the constraint of Eq. (16) is satisfied least well. It does not, however, depend on the EC being present. Over-pruning by itself depresses the entropy of the affected latent variables, so the ranking the filter needs is available even when γ = 0 , and the filter can be applied to a plain VAE. Sections IV and V report both cases. IV. E XPERIMENTAL RESULTS 
+
+Experiments were performed to verify and validate the improvement of EC of latent variables and the optimization of latent-space dimensionality. We first examined the latent-variable encoding capacity by imposing the EC. Then we evaluated the performance of the optimization of latent-space dimensionality in a classification task. 
+
+A. Setup 
+
+Datasets: We employed two datasets in our experiments. The first is dSprites [54], a synthetic dataset introduced by β-VAE, comprising over 700,000 images of 2D shapes with five different ground-truth labels (Table II). This dataset serves to assess the disentanglement and encoding capacity of latent variables. The second dataset is MNIST [55], a collection of handwritten digits containing 60,000 training samples and 10,000 testing samples, each represented as a grayscale 28 ×28 
+
+image. We utilized the dSprites dataset for conducting ex-periments on the EC of latent variables. This dataset was chosen due to its labeled data features, which allowed us to investigate the impact of the EC on specific attributes. For the purpose of the optimization of latent-space dimensionality, we employed the MNIST dataset. MNIST is widely used in such optimization tasks as it consists of real-world data, enabling us to evaluate the performance of our approach on practical image data. TABLE II. dSprites Dataset Labels               
+
+> Label Range Classes Shape 1,2,3 (square, ellipse, heart) 3Scale [0.5, 1] 6Orientation [0, 2π]40
+> X-Position [0, 1] 32
+> Y-Position [0, 1] 32
+
+VAE Reference Models: Table III lists the autoencoder configurations used for each dataset. We used the same latent-space dimension, M = 10 , as the reference models of β-VAE [18], [52]. For the MNIST dataset, we used the multilayer perceptron (MLP) model identical to the vanilla VAE’s setup. For the downstream task we built an MLP classifier with 100 hidden nodes, a ReLU activation at the hidden layer, and a sigmoid activation at the output layer. TABLE III. Experimental Autoencoder Settings                                                         
+
+> Dataset Optimizer Architecture Activation dSprites Adam Input 64 ×64
+> learning rate 5e-4 Encoder Conv 32 ×4×4(stride 2) ReLU Conv 32 ×4×4(stride 2) ReLU Conv 32 ×4×4(stride 2) ReLU Conv 32 ×4×4(stride 2) ReLU batch size: 128 FC 784,400 ReLU Latent space 10 Epochs: 200 Decoder Deconv reverse of encoder ReLU Output 64 ×64 Sigmoid MNIST Adam Input 28 ×28
+> learning rate 1e-2 Encoder FC 784,400 ReLU batch size: 200 Latent space 10 Epochs: 300 Decoder FC 400,784 Sigmoid Output 28 ×28
+
+Loss Function: The loss function in Eq. (19) consists of three terms: the reconstruction loss, KL divergence, and the EC. The KKT multipliers β and γ control the strength of the KL divergence term and the EC, respectively. A lower bound for the entropy of each latent variable is set by δ. When β = 1 ,the autoencoder is equivalent to the vanilla VAE. We used 
+
+β = 4 to match the β-VAE [52] for comparison purposes. We chose γ = 1 and δ = 1 to qualitatively evaluate the effect of the EC. 
+
+Training: For reproducibility, we fixed the random seed for the reparameterization trick in all experimental models. The multipliers β = 4 , γ = 1 , and the target δ = 1 were set a priori rather than tuned, so that the effect of the EC could be read off directly. The single exception is the EC ∗ variant: for the β-VAE family we ran a 10-trial Bayesian search with Optuna [56] over γ, minimizing the reconstruction loss, which returned γ = 0 .36 . The EC ∗ models therefore indicate the reconstruction quality attainable when γ is tuned, while all other models are untuned; this asymmetry should be kept in mind when reading Tables V and VII. 8We use the following abbreviations for our methods in the models:  
+
+> •
+
+EC: Entropy-based Constraint - Imposes the EC on latent variables with γ = 1 . 
+
+> •
+
+LB: Lower-Bound - Sets a lower-bound on the entropy of latent variables, ensuring a minimum information content within the latent variable. We set the lower-bound δ = 1 . 
+
+> •
+
+EC*: KKT Optimization - Involves fine-tuned γ = 0 .36 ,the KKT multiplier of the EC. 
+
+B. Evaluation Metrics 
+
+We evaluate the performance of the latent space by con-sidering both latent variable capacity and disentanglement. To achieve this, we utilize four distinct high-level metrics. 
+
+1) Latent Variable Activation Score (LVAS): LVAS was initially introduced in IWAE [13]. This score assesses the encoding capacity of a latent variable. If a latent variable ef-fectively captures information from the data, its distribution is expected to vary with different observations. Mathematically, LVAS is defined as the activity statistics of a latent variable: 
+
+Azm = Cov x
+
+ Ezm∼q(zm|x) [zm] , (23) which, for a scalar latent variable, is the variance across inputs of the posterior mean. A higher LVAS indicates superior encoding capacity. Addi-tionally, we define a latent variable as "active" when Azm >
+
+0.01 , signifying that the latent variable is not pruned. Gen-erally, a greater number of active latent variables (NALV) tends to result in improved downstream representations [24], although exceptions exist. A count of dimensions above a fixed threshold is a coarse statistic, however, since it weighs a marginally active di-mension the same as a strongly active one. To evaluate the encoding capacity of the latent space as a whole we therefore also report the total LVAS summed over the active latent variables, and we base our comparisons on that total rather than on the count. 
+
+2) β-VAE Metric: The β-VAE metric [18] assesses the disentanglement of the entire latent space. This metric employs the variance of the latent vector to train a linear classifier, which predicts the corresponding labeled feature. The accuracy of this classifier serves as an index for evaluating disentangle-ment performance. 
+
+3) FactorVAE Metric: The FactorVAE metric [26] comple-ments the β-VAE metric by normalizing the latent vector as input to a linear model, thereby expanding the quantitative range of the metric score beyond the variance of the latent vector. A voter classifier is then employed to tally the fre-quency with which an individual latent variable dominates an individual labeled feature. The accuracy score is derived from the proportion of this frequency returned by the voter classifier. Both β-VAE metric and Factor VAE metric use classifier accuracy as a measure of disentanglement, and a higher score indicates a better disentanglement. However, the β-VAE metric is more sensitive to the overall information preserved in the latent space, while the FactorVAE metric is more sensitive to the independent relationship between an individual latent variable and a labeled feature. These differences in sensitivity are due to the different preprocessing of the data as shown in Fig. 3. 
+
+Fig. 3. Comparison of data preprocessing for β-VAE metric and FactorVAE metric. The left flow chart shows the data preparation process for the β-VAE metric, while the right flow chart shows the process for the FactorVAE metric. 
+
+4) Correlation-based Metric: In our implementation, we have observed instances where certain labels are occasionally encoded in more than one latent variable. This occurrence may be attributed to either a labeled feature surpassing the encoding capacity of a latent variable or a lack of well-disentangled features leading to mixed encoding. To address this issue, we propose a correlation-based met-ric capable of compensating for such occurrences. For each labeled feature, the metric takes the two largest absolute correlations between that feature and any latent variable, and sums them over all features, as outlined in Algorithm 4. The score therefore lies in [0 , 2L], where L is the number of labeled features; with the L = 5 features of dSprites the maximum is 
+
+10 , and dividing by 2L gives a normalized score in [0 , 1] .Our metric draws inspiration from Canonical Correlation Analysis (CCA), which addresses the correspondence between two data sets. Specifically, our approach is akin to a n-component CCA, providing insights into both encoding ca-pacity through correlation and disentanglement by limiting the component number to 2. 
+
+C. Statistics of the Latent-variable Entropy 
+
+We applied both the vanilla VAE and β-VAE to encode the dSprites dataset. Experimental statistics of latent-variable entropy of the vanilla VAE models are presented in Table IV, while those of the β-VAE models are detailed in Table V. The reconstruction error, representing the average cross-entropy between the input and output, is also provided in the tables. The entropies are the plug-in estimates returned by Algo-rithm 2 and are therefore discrete entropies of the binned latent 9Algorithm 4 Correlation Score Algorithm 
+
+Input: {z, l} - a set of all latent variables and all label values, 
+
+z = {z1, z2, · · · , zM }, l = {l1, l2, · · · , lL}, where M
+
+is the total number of latent variables and L is the total number of labels. 
+
+Output: S - the correlation score  
+
+> 1:
+
+Compute the correlation absolute values, 
+
+c = |Corr (z, l)|, c ∈ R M ×L 
+
+> 2:
+
+Sort each column of c by descending order as 
+
+cl = cl, (1) , c l, (2) , · · · , c l, (M ) 
+
+> ⊤
+
+, l ∈ [1 , L ] 
+
+> 3:
+
+Compute the score by the top two correlations with each label, 
+
+S =
+
+> L
+
+X
+
+> l=1 2
+
+X
+
+> i=1
+
+cl, (i)
+
+variables, on the scale discussed in Section III-C; they are comparable across the rows of a table but not directly against the differential-entropy target δ.Every EC variant raised the average latent-variable entropy above its own baseline: from 5.1163 to 5.3573 and 5.2349 in the vanilla family, and from 5.1432 to between 5.1641 and 
+
+5.2409 in the β-VAE family. The increase is not uniform across the three statistics, however. The maximum entropy of VAE+EC+LB ( 5.3474 ) and the minimum entropy of β-VAE+EC*+LB ( 4.9239 ) both fall below the corresponding baseline values, so the EC raises the entropy of the latent space in aggregate rather than of every latent variable in-dividually. Reconstruction error behaves less uniformly still. VAE+EC attained the lowest reconstruction error of the entire study ( 19 .4627 , a 38% reduction relative to the vanilla VAE at 31 .2481 ), and β-VAE+EC*+LB attained the lowest error among the β-VAE models ( 28 .4817 against 29 .6556 , a 4% reduction). The remaining variants were worse than their baselines, with β-VAE+EC+LB the worst at 46 .1787 . The EC can therefore relieve the reconstruction penalty associated with over-pruning, but the size of γ and the presence of the lower bound matter, and a poor choice makes reconstruction worse rather than better. The spread across the five β-VAE rows, from 28 .48 to 46 .18 , is wide enough that we do not claim the ordering within it is significant on the basis of a single seed; Section V-E states what would be required to establish that. 
+
+D. Analysis of Encoding Capacity and Disentanglement of Latent Variables 
+
+We conducted a comparison between the vanilla VAE and 
+
+β-VAE using the evaluation metrics presented in Table VI and Table VII. The disentanglement scores, derived from both the 
+
+β-VAE metric and the FactorVAE metric, represent the average scores across all labels in the dSprites dataset. The two families behave differently, so we state the com-parison per family rather than in aggregate. TABLE IV. Vanilla VAE Latent-variable Entropy and Re-construction Error. Entropies are the plug-in estimates of Algorithm 2 and are comparable across rows but not against the differential-entropy target δ. Bold marks the best value in each column.                 
+
+> Latent Variable Entropy Model Ave. Min. Max. Reconstruction Error Vanilla VAE 5.1163 4.9495 5.4181 31.2481 VAE+EC 5.3573 5.0792 5.4167 19.4627
+> VAE+EC+LB 5.2349 5.0038 5.3474 32.4894
+
+TABLE V. β-VAE Latent-variable Entropy and Reconstruction Error. Entropies are on the same scale as Table IV. Bold marks the best value in each column.                          
+
+> Latent Variable Entropy Loss Model Ave. Min. Max. Reconstruction Error
+> β-VAE 5.1432 4.9593 5.2201 29.6556
+> β-VAE+EC* 5.1743 5.0122 5.2302 40.3712
+> β-VAE+EC*+LB 5.1641 4.9239 5.2174 28.4817
+> β-VAE+EC 5.2386 5.0959 5.2796 35.2022
+> β-VAE+EC+LB 5.2409 5.1566 5.2865 46.1787
+
+In the vanilla-VAE family (Table VI), the EC increased the total LVAS from 7.13 to 10 .18 and 11 .58 —gains of 43% and 62%—and the correlation metric from 3.6074 to 3.9361 and 
+
+4.1103 , gains of 9% and 14%. Both disentanglement metrics, however, fell slightly below the vanilla VAE: the β-VAE metric from 0.5733 to 0.5393 and 0.5272 , and the FactorVAE metric from 0.7454 to 0.7118 and 0.7115 .In the β-VAE family (Table VII), β-VAE+EC attained the highest total LVAS in this family ( 6.11 against 5.23 , a gain of 17%), the highest FactorVAE score of any model in the study ( 0.8907 , against 0.8468 for the β-VAE baseline), and the highest correlation score of any model ( 4.1268 ). The β-VAE metric moved in the opposite direction for three of the four variants; only the fine-tuned β-VAE+EC*+LB ( 0.5118 )exceeded the β-VAE baseline ( 0.5079 ), and β-VAE+EC+LB fell to 0.4172 .Two conclusions follow. The EC consistently increases the activation-based and correlation-based measures of capacity, which is what it was designed to do. Its effect on the two classifier-based disentanglement metrics is regime dependent: it improves the FactorVAE metric under strong KL regular-ization ( β = 4 ), where that metric rewards the one-to-one label–variable correspondence our constraint encourages, and it does not improve the β-VAE metric in either regime. Since the β-VAE metric is the more sensitive of the two to the total information retained in the latent space (Section IV-B2), and since the EC redistributes rather than uniformly increases that information, this asymmetry is consistent with the mechanism rather than evidence against it. We are careful not to overstate this reading. Two metrics that disagree cannot by themselves establish which of them is tracking the property of interest, and the disagreement here may reflect the metrics as much as the representation. A third, differently constructed measure would settle it, and Section V-E identifies this as the principal gap in the present evidence. The number of active latent variables (NALV) requires comment, because it is the one column in which the vanilla 10 TABLE VI. The Capacity of Latent Variables in Vanilla VAEs. Bold marks the best value in each column. The sixth active dimension counted for the vanilla VAE is borderline (LVAS = 0 .15 against a threshold of 0.01 ); see Fig. 4a. 
+
+Activation Disentanglement Correlation Model NALV Total LVAS β-VAE Metric FactorVAE Metric Corr. Metric Vanilla VAE 6 7.13 0.5733 0.7454 3.6074 VAE+EC 5 10.18 0.5272 0.7118 3.9361 VAE+EC+LB 5 11.58 0.5393 0.7115 4.1103 
+
+TABLE VII. The Capacity of Latent Variables in β-VAEs. Bold marks the best value in each column. EC ∗ variants use γ
+
+tuned by Optuna; all other rows use the untuned γ = 1 .
+
+Activation Disentanglement Correlation Model NALV Total LVAS β-VAE Metric FactorVAE Metric Corr. Metric 
+
+β-VAE 5 5.23 0.5079 0.8468 4.0011 
+
+β-VAE+EC* 5 5.07 0.4745 0.8682 3.6699 
+
+β-VAE+EC*+LB 6 6.01 0.5118 0.8449 3.8894 
+
+β-VAE+EC 5 6.11 0.4858 0.8907 4.1268 
+
+β-VAE+EC+LB 5 5.53 0.4172 0.8801 3.7112 
+
+VAE leads. Figure 4 displays the individual scores. The sixth active dimension of the vanilla VAE is z3, whose score of 0.15 
+
+only barely exceeds the activity threshold of 0.01 , whereas the five active dimensions of VAE+EC and VAE+EC+LB carry substantially more activity each, which is what produces their much higher totals. A count of dimensions above a fixed threshold is thus a coarse summary: it treats a marginally active dimension and a strongly active one alike. We therefore report the total LVAS alongside the count and base our claims on the former. For the same reason we do not claim that the EC increases the number of active latent variables; in the β-VAE family it does so for β-VAE+EC*+LB (six against five) and in the vanilla family it does not. z0 z1 z2 z3 z4 z5 z6 z7 z8 z9
+
+> Latent Variables
+> VAE+EC+LB
+> VAE+EC
+> Vanilla VAE
+> Models
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 0.01
+
+(a) Vanilla VAEs z0 z1 z2 z3 z4 z5 z6 z7 z8 z9
+
+> Latent Variables
+> -VAE+EC+LB
+> -VAE+EC
+> -VAE+EC*+LB
+> -VAE+EC*
+> -VAE
+> Models
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> 1.2
+> 0.02
+
+(b) β-VAEs 
+
+Fig. 4. Individual latent variable activation scores. The upper figure correspond to the vanilla VAE models, while the lower figures pertain to the β-VAE models. The LVAS values are represented within each colored box, with the color indicating the range of values according to the accompanying color bars. Individual labeled-feature disentanglement scores are given in Fig. 5 and Fig. 6. When analyzing the detailed label β-VAE disentanglement scores in Fig. 5a from the vanilla VAE models, our proposed approach outperformed the vanilla VAE model in encoding the orientation label, which was considered the most challenging to disentanglement [18], [52]. In addi-tion, our proposed approach achieved the highest FactorVAE disentanglement score, among the vanilla VAE and the β-VAE models, in encoding the scale label as shown in Fig. 5b. Our fine-tuned model β-VAE+EC*+LB achieved a signifi-cant improvement in the orientation label as shown in Fig. 6a. Furthermore, the FactorVAE score of the shape label, a discrete label feature, is higher in all of our models in Fig. 6b than in the β-VAE model. All of our models encoded the shape label in a more disentangled manner. Shape Scale Orientation X-Pos. Y-Pos. 00.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1 Vanilla VAE VAE+EC VAE+EC+LB 
+
+(a) β-VAE Metric Shape Scale Orientation X-Pos. Y-Pos. 00.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1 
+
+> Vanilla VAE VAE+EC VAE+EC+LB
+
+(b) FactorVAE Metric 
+
+Fig. 5. Vanilla VAE experiment disentanglement scores. The histograms show the disentanglement score of each label. The correlation scores are computed from the cross correla-tions in Fig. 7 and Fig. 8. We have included correlation plots in Fig. 7 to compare the relationship between the labels and latent variables in the vanilla VAEs. The correlation plot in Fig. 7a revealed that the vanilla VAE did not exhibit strong dependence between the labels and the latent variable in most cases. However, our proposed models VAE+EC (Fig. 7b) and VAE+EC+LB (Fig. 7c) showed a more pronounced relation-ship between the labels and the corresponding latent variables, except for the shape and scale labels. Interestingly, the Y -position label in Figs. 7b and 7c corresponded to z6 and z8,respectively. It is worth noting that in most cases, each latent variable in our models corresponded only to one label. 11 Shape Scale Orientation X-Pos. Y-Pos. 00.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1 -VAE -VAE+EC* -VAE+EC*+LB -VAE+EC -VAE+EC+LB (a) β-VAE Metric Shape Scale Orientation X-Pos. Y-Pos. 00.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1 
+
+> -VAE -VAE+EC* -VAE+EC*+LB -VAE+EC -VAE+EC+LB
+
+(b) FactorVAE Metric 
+
+Fig. 6. β-VAE experiment disentanglement scores. The his-tograms show the disentanglement score of each label. 
+
+(a) Vanilla VAE 
+
+(b) VAE+EC (c) VAE+EC+LB 
+
+Fig. 7. Cross correlation between latent variables and labeled features in the vanilla VAE models. The vertical axis is the labels of the dSprites in Table II. The horizontal axis is the latent variables from z0 to z9. The color of each box represents the absolute value of correlation between the label and latent variable. The higher value with lighter color indicates the latent variable encodes the more information of the certain label. Figure 8 presented the correlation plot in the β-VAE models, and we compared it with the plot in Fig. 7. We observed that the correlation patterns in Fig. 8 were more consistent across all plots. All models in Fig. 8 showed lower correlations for the orientation label. However, our models in Figs. 8b, 8d, and 8e exhibited a more distinguishable correlation pattern for the orientation label, as they had an independent latent variable that corresponded to it. This is why our proposed approach achieved higher FactorVAE scores for the orientation label as shown in Fig. 6b. Orientation is a special case. Although the label takes 40 nominal values, the rotational symmetry of the shapes makes many of those values indistinguishable in the rendered image, so the effective entropy of the factor is far lower than the nominal count suggests and its correlation with any latent variable is correspondingly weak. Section V-C examines this in detail. 
+
+(a) β-VAE 
+
+(b) β-VAE+EC* (c) β-VAE+EC*+LB 
+
+(d) β-VAE+EC (e) β-VAE+EC+LB 
+
+Fig. 8. Cross correlation between latent variables and labeled features in the β-VAE Models. 
+
+E. Demonstration of the Optimization of Latent-space Dimen-sionality 
+
+In this experiment, our objective is to minimize the dimen-sionality of the latent space and use the latent representation to train a MLP classifier on the MNIST dataset. Figure 9 shows the number of epochs to convergence and the classifier accu-racy at each dimensionality. Our model was a vanilla VAE with the EC ( γ = 1 ), compared against the same procedure applied to a vanilla VAE without it. The EC converged faster at every dimensionality: between 9% and 15% fewer epochs from ten dimensions down to three, and 37% fewer at two dimensions (178 against 284 epochs), where the classifier is under the most pressure. Both models then failed to maintain the accuracy threshold and halted the reduction at two dimensions. Within this setup—this classifier, this threshold α = 0 .9, and this dataset—two dimensions is therefore the smallest latent space the downstream task tolerates. We stress that this figure is a property of the task and the threshold rather than of MNIST: a different classifier or a different α will return a different value. In Fig. 10, the heatmap displays the latent-variable entropies throughout the training epochs. The entropy, estimated using Algorithm 2, indicates that our proposed encoder maintained a higher entropy throughout training due to the imposed EC. The entropy of our encoder exhibited a smoother transition from the beginning to the end of the training process, as shown in Fig. 10b. This stability in entropy ensured faster convergence of the classifier and enhanced overall training stability. 12 012345678910                
+
+> Latent Space Dimension
+> 0
+> 50
+> 100
+> 150
+> 200
+> 250
+> 300
+> Epochs to Convergence
+> 35 37 38 40 41 43 45 47
+> 284
+> 0
+> 31 32 33 34 35 37 41 43
+> 178
+> 00.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> 0.8
+> 0.9
+> 1.0
+> Accuracy
+> Vanilla VAE
+> Ours
+
+Fig. 9. MNIST latent-space dimension versus classifier ac-curacy and convergence epochs. The dash curves indicate the changes of the accuracy along the decreasing of the dimension. The green dash line is the threshold α = 0 .9. The bar indicates the epoch number when the classifier converges. 
+
+Fig. 10. Heatmap of normalized latent-variable entropy along training epochs. V. A NALYSIS OF THE DISTRIBUTIONS OF LATENT 
+
+VARIABLES 
+
+The EC on latent variables operates as a penalty term within the loss function that directs the optimizer to raise latent-variable entropy. In this section we examine the effect of that term on the distributions of the latent variables themselves, which is where the mechanism behind the numbers in Sec-tion IV becomes visible. 
+
+A. Entropy of Latent Variables 
+
+Figures 11 and 12 show the histogram and estimated entropy of the latent variables in vanilla VAE and β-VAE models, respectively. Compared to the vanilla VAE in Fig. 11a, our models exhibited a wider distribution. Our approach favored encoding as much information as possible of a label in a latent variable. Recalling the correlation plots from Figs. 7 and 8, all labels correlated with at least one latent variable in our models with a high value compared to the vanilla VAE and β-VAE. 
+
+(a) Vanilla VAE 
+
+(b) VAE+EC 
+
+(c) VAE+EC+LB 
+
+Fig. 11. Vanilla VAE latent-variable histograms of the dSprites dataset. In each latent variable’s histogram, the black shade is the histogram and the red curve is a normal distribution PDF 
+
+N (0 , 1) . The entropy of each latent variable is marked on the top right corner of each histogram. When the black shade and red curve are further, it indicates the latent variable has higher variance and higher entropy. When the entropy of a label feature was lower and the classes were distributed discretely, our methods favored com-bining these discrete features and encoding them into one latent variable. As seen in Figs. 7b, 7c, 8b, 8d, and 8e, the shape and scale labels are merged in our models and encoded into a single latent variable, z2, for which the number of distinct label combinations is 3 × 6 = 18 rather than the 
+
+3 and 6 of the individual labels. The histograms in Fig. 12 corroborate this: the distribution of z2 shows many local peaks, one group per combination, arranged so that the envelope still approximates the normal prior. We describe this merging as a property that the EC preserves and makes legible in the correlation structure, rather than as one it introduces; a comparable pattern is discernible in the β-VAE baseline of Fig. 8a, and what distinguishes our models is the strength and the isolation of the association rather than its existence. 13 (a) β-VAE 
+
+(b) β-VAE+EC* 
+
+(c) β-VAE+EC*+LB 
+
+(d) β-VAE+EC 
+
+(e) β-VAE+EC+LB 
+
+Fig. 12. β-VAE latent-variable histograms of the dSprites dataset. The figure setup is identical to Fig. 11. On the other hand, when a label’s entropy was high and the classes in the feature were continuous, our VAE models separated the data feature and embedded it into more than one latent variable. As seen in Figs. 7b and 7c, the Y -position label was encoded in the latent variables z6 and z8.
+
+B. Latent Variables in Gaussian Mixture Distribution 
+
+By introducing the β parameter in the VAE loss function, 
+
+β-VAE models encouraged the latent variables to have a more locally centralized distribution as seen in Figs. 11 and 12. This property is advantageous when encoding continuous features such as the X and Y positions, resulting in disentangled normal distributions such as z3 and z6 in Fig. 12. However, when encoding discrete features such as shape and scale, the normal distribution of the latent variable was no longer maintained. Instead, the latent variable formed a Gaussian mixture distribution with multiple local means such as z2
+
+in Fig. 12. It is worth noting that the histograms show the aggregate posterior qϕ(z) = Ex[qϕ(z|x)] , that is, the marginal over the data, and not any individual per-input posterior. A multi-modal aggregate posterior is therefore compatible with every per-input posterior being Gaussian, which is exactly what a mixture over discrete factor values produces. 
+
+C. Encoding Irregular Data Features 
+
+Our constraint was effective in encoding the orientation label of the dSprites dataset, which is the clearest case of an irregularly distributed factor. Both our results and previous work [52] identify orientation as the most difficult feature to encode. The reason is a mismatch between the label and the image it produces. Although dSprites samples orientations uniformly over [0 , 2π], a shape with rotational symmetry maps distinct orientation labels onto identical images: the square is invariant under rotations by multiples of π/ 2 and the ellipse under multiples of π, while the heart has no rotational symmetry at all. The number of distinguishable orientations therefore differs across the three shapes, the orientation factor is effectively non-uniform over the rendered images even though the label is uniform, and its correlation with the other factors is weak. Our fine-tuned model significantly improved the β-VAE dis-entanglement score as shown in Fig. 6a. Comparing, in Fig. 8, the latent variable most strongly correlated with orientation in each model, we found that every EC variant reached a higher correlation with the orientation label than the β-VAE baseline. The latent variable z5 in Fig. 12a, which had the highest correlation with the orientation label in the β-VAE model, has a Gaussian mixture-like distribution. In our implementation, all models were trained on a bal-anced dataset, which likely resulted in uniformly distributed data features. However, the irregular distribution of the ori-entation label highlighted the challenge of working with unbalanced datasets, which could be a subject for future work. 
+
+D. Induction Bias 
+
+Recent research [9] has demonstrated that induction bias in unsupervised disentanglement is significantly influenced by random seed selection. A judicious choice of random seed can lead to perfect disentanglement and distinctive patterns in latent-variable encoding. This phenomenon is evident in our implementation, as depicted in Figs. 7 and 8, where different random seeds were used for the vanilla VAE and β-VAE models, resulting in markedly different encoding patterns. We trained every model under ten random seeds. For each family we then report the single seed that produced the lowest reconstruction error: seed 1 for the vanilla-VAE family (Ta-bles IV and VI) and seed 10 for the β-VAE family (Tables V and VII). Within a family all models share a seed and are directly comparable; across families they are not, which is why we report the two families separately throughout Section IV rather than in a single table. This is a best-case rather than an expected-case protocol, and we treat it as a limitation below. 
+
+E. Limitations 
+
+Four limitations of the present study deserve statement. First, the seed protocol described above reports the best of ten runs rather than a mean over them, and the two model families were selected under different seeds. The tables therefore support statements about which configuration can perform best but not about expected performance or statistical significance. Second, the comparison covers the vanilla VAE and β-VAE only. Methods that target the same trade-off directly— FactorVAE [26], β-TCVAE [5], and the importance-weighted and Wasserstein variants surveyed in Section II—are discussed but not run, so the evidence that the EC is preferable to them remains indirect. Relatedly, disentanglement is assessed with 14 two classifier-based metrics that disagree about our models, and two metrics cannot adjudicate between themselves. A third measure of different construction, such as the informativeness and disentanglement axes of the DCI framework [7], would show whether the disagreement is a property of the learned representation or of the metrics, and this is the clearest gap in the present evidence. Third, the entropy estimate of Algorithm 2 is a histogram plug-in estimator. It is biased downwards for a fixed sample size, its value depends on the bin count, and it is applied per dimension, so it cannot detect the dependence between latent variables that Eq. (13) relies on being small. The constraint is imposed on a quantity whose scale differs from that of the differential-entropy target δ, as noted in Section III-C. Fourth, the weight filter was evaluated on one downstream task, with one classifier architecture and one threshold, α =0.9. The dimensionality it returns is a property of that combi-nation, and its greedy schedule never reinstates an eliminated dimension, so the reported J is feasible rather than provably minimal. The 1/J weighting also rescales the classifier input at every reduction step, so the epoch counts of Fig. 9 reflect the reduced dimensionality and that rescaling together; the effect is common to both compared models, but isolating it would require an ablation with fixed unit weights. VI. C ONCLUSION 
+
+This paper approached the optimal latent space of a VAE from two directions at once—the capacity of the individual la-tent variables and the dimensionality of the space they span— and treated both within a single soft-constrained formulation. The entropy-based constraint gives the capacity requirement an explicit representation in the objective, and we related it to the mutual information between the latent code and the generative factors: the entropy of the code bounds that mutual information, with the residual term determined by the encoder variances and hence controlled by the existing KL regularizer. On dSprites the constraint raised the aggregate activation score by 43–62% over a vanilla VAE and by up to 17% over a β-VAE, improved our correlation-based score by 9–14%, and produced the highest FactorVAE score among the β-VAE variants. It did not improve the β-VAE metric, and its effect on reconstruction error depends on γ; the best configuration reduced that error by 38% while the worst increased it. The weight-filter method exploits the slack of the soft constraint to remove the latent dimensions that satisfy it least well. On MNIST it reduced the dimensionality consumed by a downstream classifier from ten to two while holding accuracy above the threshold, converging in 37% fewer epochs at that dimensionality than the same procedure without the constraint, and identified two dimensions as the point at which the threshold can no longer be met for this task. The analysis of the latent distributions showed why the two effects arise together: low-entropy discrete factors are merged into a single latent variable whose aggregate posterior becomes a Gaussian mixture, whereas high-entropy continuous factors are distributed across several variables that remain close to Gaussian. Several directions follow from the limitations of Sec-tion V-E. A seed-averaged comparison against FactorVAE and 
+
+β-TCVAE would establish where the EC sits among methods that target the same trade-off. Replacing the histogram esti-mator with a lower-variance alternative, or constraining the joint entropy directly rather than the marginals, would tighten the link between the constraint and the quantity it is meant to control. Finally, the behavior observed on the orientation factor suggests that unbalanced or symmetry-degenerate factors are where an entropy-based constraint has the most to offer, and that is where we intend to take it next. REFERENCES [1] D. P. Kingma and M. Welling, “An introduction to variational autoen-coders,” Foundations and Trends® in Machine Learning , vol. 12, no. 4, p. 307–392, Nov 2019. [2] ——, “Auto-Encoding Variational Bayes,” arXiv:1312.6114 [cs, stat] ,Dec. 2013. [3] L. Theis, W. Shi, A. Cunningham, and F. Huszár, “Lossy image compres-sion with compressive autoencoders,” arXiv preprint arXiv:1703.00395 ,2017. [4] M. Rolinek, D. Zietlow, and G. Martius, “Variational autoencoders pursue pca directions (by accident),” in 2019 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) . IEEE, Jun. 2019, p. 12398–12407. [5] R. T. Q. Chen, X. Li, R. B. Grosse, and D. K. Duvenaud, “Isolating sources of disentanglement in variational autoencoders,” in                                                            
+
+> Advances in Neural Information Processing Systems ,S. Bengio, H. Wallach, H. Larochelle, K. Grauman, N. Cesa-Bianchi, and R. Garnett, Eds., vol. 31. Curran Associates, Inc., 2018. [Online]. Available: https://proceedings.neurips.cc/paper/2018/ file/1ee3dfcd8a0645a25a35977997223d22-Paper.pdf [6] I. Higgins, D. Amos, D. Pfau, S. Racaniere, L. Matthey, D. Rezende, and A. Lerchner, “Towards a definition of disentangled representations,”
+> arXiv preprint arXiv:1812.02230 , no. arXiv:1812.02230, Dec 2018, arXiv:1812.02230 [cs, stat]. [Online]. Available: http://arxiv.org/abs/ 1812.02230 [7] C. Eastwood and C. K. Williams, “A framework for the quantitative evaluation of disentangled representations,” in International Conference on Learning Representations , 2018. [8] D. Bouchacourt, R. Tomioka, and S. Nowozin, “Multi-level varia-tional autoencoder: Learning disentangled representations from grouped observations,” in Proceedings of the AAAI Conference on Artificial Intelligence , vol. 32, no. 1, 2018. [9] F. Locatello, S. Bauer, M. Lucic, G. Raetsch, S. Gelly, B. Schölkopf, and O. Bachem, “Challenging common assumptions in the unsupervised learning of disentangled representations,” in International Conference on Machine Learning .PMLR, 2019, pp. 4114–4124. [10] D. Park, Y. Hoshi, and C. C. Kemp, “A Multimodal Anomaly Detector for Robot-Assisted Feeding Using an LSTM-Based Variational Autoen-coder,” IEEE Robotics and Automation Letters , vol. 3, no. 3, pp. 1544– 1551, Jul. 2018. [11] S. N. Marimont and G. Tarroni, “Anomaly detection through latent space restoration using vector-quantized variational autoencoders,” Dec. 2020. [12] G. Arvanitidis, L. K. Hansen, and S. Hauberg, “Latent Space Oddity: On the Curvature of Deep Generative Models,” Dec. 2021. [13] Y. Burda, R. Grosse, and R. Salakhutdinov, “Importance Weighted Autoencoders,” Nov. 2016. [14] S. Yeung, A. Kannan, Y. Dauphin, and L. Fei-Fei, “Tackling Over-pruning in Variational Autoencoders,” Aug. 2017. [15] A. Asperti, “Sparsity in Variational Autoencoders,” Feb. 2019. [16] I. Tolstikhin, O. Bousquet, S. Gelly, and B. Schoelkopf, “Wasserstein Auto-Encoders,” Dec. 2019. [17] R. A. Khan, M. U. Anwaar, and M. Kleinsteuber, “Epitomic Variational Graph Autoencoder,” Apr. 2020. [18] I. Higgins, L. Matthey, A. Pal, C. P. Burgess, X. Glorot, M. Botvinick, S. Mohamed, and A. Lerchner, “Beta-VAE: Learning Basic Visual Concepts with a Constrained Variational Framework,” in International Conference on Learning Representations , Nov. 2016. [19] I. Goodfellow, J. Pouget-Abadie, M. Mirza, B. Xu, D. Warde-Farley, S. Ozair, A. C. Courville, and Y. Bengio, “Generative adversarial nets,” in NIPS , 2014.
+
+15 [20] H. Cao, C. Tan, Z. Gao, G. Chen, P.-A. Heng, and S. Z. Li, “A Survey on Generative Diffusion Model,” Dec. 2022. [21] A. Asperti, D. Evangelista, and E. Loli Piccolomini, “A Survey on Variational Autoencoders from a Green AI Perspective,” SN Computer Science , vol. 2, no. 4, p. 301, Jul. 2021. [22] A. Asperti and M. Trentin, “Balancing Reconstruction Error and Kullback-Leibler Divergence in Variational Autoencoders,” IEEE Ac-cess , vol. 8, pp. 199 440–199 448, 2020. [23] T. Cemgil, S. Ghaisas, K. Dvijotham, S. Gowal, and P. Kohli, “The Autoencoding Variational Autoencoder,” in Advances in Neural Infor-mation Processing Systems , vol. 33. Curran Associates, Inc., 2020, pp. 15 077–15 087. [24] S. Sinha and A. B. Dieng, “Consistency Regularization for Variational Auto-Encoders,” Jun. 2022. [25] X. Chen, Y. Duan, R. Houthooft, J. Schulman, I. Sutskever, and P. Abbeel, “Infogan: Interpretable representation learning by information maximizing generative adversarial nets,” arXiv:1606.03657 [cs, stat] ,Jun. 2016, arXiv: 1606.03657. [26] H. Kim and A. Mnih, “Disentangling by factorising,” in International Conference on Machine Learning . PMLR, 2018, pp. 2649–2658. [27] D. Horan, E. Richardson, and Y. Weiss, “When Is Unsupervised Dis-entanglement Possible?” in Advances in Neural Information Processing Systems , vol. 34. Curran Associates, Inc., 2021, pp. 5150–5161. [28] Y. Ge, Z. Xu, Y. Xiao, G. Xin, Y. Pang, and L. Itti, “Encouraging Disentangled and Convex Representation with Controllable Interpolation Regularization,” in 2023 IEEE/CVF Winter Conference on Applications of Computer Vision (WACV) . Waikoloa, HI, USA: IEEE, Jan. 2023, pp. 4750–4758. [29] I. Khemakhem, D. P. Kingma, R. P. Monti, and A. Hyvärinen, “Varia-tional Autoencoders and Nonlinear ICA: A Unifying Framework,” Dec. 2020. [30] R. Lopez and P. J. Atzberger, “GD-VAEs: Geometric Dynamic Varia-tional Autoencoders for Learning Nonlinear Dynamics and Dimension Reductions,” Dec. 2022. [31] P. M. Baggenstoss and S. Kay, “Nonlinear Dimension Reduction by PDF Estimation,” IEEE Transactions on Signal Processing , vol. 70, pp. 1493–1505, 2022. [32] D. Kaur, S. N. Islam, and M. A. Mahmud, “A Variational Autoencoder-Based Dimensionality Reduction Technique for Generation Forecasting in Cyber-Physical Smart Grids,” in 2021 IEEE International Conference on Communications Workshops (ICC Workshops) , Jun. 2021, pp. 1–6. [33] B. Dai, Y. Wang, J. Aston, G. Hua, and D. Wipf, “Connections with robust PCA and the role of emergent sparsity in variational autoencoder models,” Journal of Machine Learning Research , vol. 19, no. 41, pp. 1–42, 2018. [34] A. Tripp, E. Daxberger, and J. M. Hernández-Lobato, “Sample-efficient optimization in the latent space of deep generative models via weighted retraining,” arXiv:2006.09191 [cs, stat] , Jun. 2020, arXiv: 2006.09191. [35] P. Bojanowski, A. Joulin, D. Lopez-Paz, and A. Szlam, “Optimizing the latent space of generative networks,” arXiv preprint arXiv:1707.05776 ,2017. [36] A. Mondal, S. P. Chowdhury, A. Jayendran, H. Asnani, P. Singla, and P. A. P, “Maskaae: Latent space optimization for adversarial auto-encoders,” in Conference on Uncertainty in Artificial Intelligence .PMLR, Aug. 2020, p. 689–698. [37] I. Goodfellow, Y. Bengio, A. Courville, and Y. Bengio, Deep learning .MIT press Cambridge, 2016, vol. 1, no. 2. [38] S. N. Ravi, T. Dinh, V. S. Lokhande, and V. Singh, “Explicitly imposing constraints in deep networks via conditional gradients gives improved generalization and faster convergence,” in Proceedings of the AAAI Conference on Artificial Intelligence , vol. 33, no. 01, 2019, pp. 4772– 4779. [39] D. Pathak, P. Krahenbuhl, and T. Darrell, “Constrained convolutional neural networks for weakly supervised segmentation,” in Proceedings of the IEEE international conference on computer vision , 2015, pp. 1796– 1804. [40] J. Achiam, D. Held, A. Tamar, and P. Abbeel, “Constrained policy opti-mization,” in International Conference on Machine Learning . PMLR, 2017, pp. 22–31. [41] Y. Yoshida and T. Miyato, “Spectral norm regularization for improving the generalizability of deep learning,” arXiv preprint arXiv:1705.10941 ,no. arXiv:1705.10941, May 2017, arXiv:1705.10941 [cs, stat]. [Online]. Available: http://arxiv.org/abs/1705.10941 [42] B. O. Ayinde and J. M. Zurada, “Deep learning of constrained autoen-coders for enhanced understanding of data,” IEEE transactions on neural networks and learning systems , vol. 29, no. 9, pp. 3969–3979, 2017. [43] S. Wu, G. Li, L. Deng, L. Liu, D. Wu, Y. Xie, and L. Shi, “ l1 -norm batch normalization for efficient training of deep neural networks,” IEEE Transactions on Neural Networks and Learning Systems , vol. 30, no. 7, p. 2043–2051, Jul 2019. [44] A. Zhang, N. Li, J. Pu, J. Wang, J. Yan, and H. Zha, “Tau-fpl: Tolerance-constrained learning in linear time,” in Proceedings of the AAAI Conference on Artificial Intelligence , vol. 32, no. 1, 2018. [45] S. N. Ravi, T. Dinh, V. Lokhande, and V. Singh, “Constrained deep learning using conditional gradient and applications in computer vision,” 2018. [46] H. A. Ghiassirad, M. A. Shoorehdeli, and F. Farivar, “Application of constrained learning in making deep networks more transparent, regularized, and biologically plausible,” Engineering Applications of Artificial Intelligence , vol. 85, pp. 421–428, 2019. [47] J. Kotary, F. Fioretto, P. Van Hentenryck, and B. Wilder, “End-to-end constrained optimization learning: A survey,” arXiv:2103.16378 [cs] , Mar 2021, arXiv: 2103.16378. [Online]. Available: http: //arxiv.org/abs/2103.16378 [48] P. J. Bentley, S. L. Lim, A. Gaier, and L. Tran, “COIL: Constrained optimization in learned latent space: Learning representations for valid solutions,” in Proceedings of the Genetic and Evolutionary Computation Conference Companion , ser. GECCO ’22. New York, NY, USA: Association for Computing Machinery, Jul. 2022, pp. 1870–1877. [49] L. Devroye, “Sample-based non-uniform random variate generation,” in Proceedings of the 18th conference on Winter simulation , ser. WSC ’86. Association for Computing Machinery, Dec 1986, p. 260–265. [Online]. Available: https://doi.org/10.1145/318242.318443 [50] W. Karush, Minima of Functions of Several Variables with Inequalities as Side Conditions . Basel: Springer, 2014, p. 217–245. [Online]. Available: https://doi.org/10.1007/978-3-0348-0439-4_10 [51] H. W. Kuhn and A. W. Tucker, “Nonlinear programming,” Proceedings of the Second Berkeley Symposium on Mathematical Statistics and Probability , vol. 2, p. 481–493, Jan 1951. [52] C. P. Burgess, I. Higgins, A. Pal, L. Matthey, N. Watters, G. Desjardins, and A. Lerchner, “Understanding disentangling in β-vae,” arXiv preprint arXiv:1804.03599 , 2018. [53] T. M. Cover and J. A. Thomas, “Entropy, Relative Entropy, and Mutual Information,” in Elements of Information Theory . John Wiley & Sons, Ltd, 2005, ch. 2, pp. 13–55. [54] L. Matthey, I. Higgins, D. Hassabis, and A. Lerch-ner, “dsprites: Disentanglement testing sprites dataset,” https://github.com/deepmind/dsprites-dataset/, 2017. [55] L. Deng, “The mnist database of handwritten digit images for machine learning research [best of the web],” IEEE Signal Processing Magazine ,vol. 29, no. 6, pp. 141–142, 2012. [56] T. Akiba, S. Sano, T. Yanase, T. Ohta, and M. Koyama, “Optuna: A next-generation hyperparameter optimization framework,” in Proceedings of the 25rd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining , 2019. 
+
+16

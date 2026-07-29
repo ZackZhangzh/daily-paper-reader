@@ -1,0 +1,564 @@
+Title: Physics-Guided Generative AI for Property-Targeted 3D Porous Media Design
+
+URL Source: https://arxiv.org/pdf/2607.24274v1
+
+Published Time: Tue, 28 Jul 2026 01:51:03 GMT
+
+Number of Pages: 15
+
+Markdown Content:
+> 1
+
+# Physics-Guided Generative AI for Property-Targeted 3D Porous Media Design 
+
+Peng Wang 
+
+Abstract —Inverse design of three-dimensional porous media is central to applications in filtration, catalysis, energy storage, fuel cells, thermal management, and biomedical scaffolds, but remains challenging because many distinct pore geometries can share similar porosity or permeability while small structural changes can strongly affect transport behaviour. This paper proposes a physics-guided generative AI framework for property-targeted porous media design, combining a property-aware variational autoencoder, a conditional latent diffusion model, and an inde-pendently trained differentiable structure-to-property surrogate. The framework learns a compact, physically informative latent design space, generates porous structures conditioned on target porosity and directional permeability, and refines generated samples using property-level feedback during denoising and decoding. Experiments on procedurally generated structures and real micro-CT porous-media datasets show improved target-property matching, directional permeability control, and prop-erty correlation compared with representative property-aware variational-autoencoder and latent-diffusion baselines. The results demonstrate a scalable route towards controllable inverse design of complex porous geometries and establish a foundation for simulation-informed generative AI tools in engineering and advanced materials discovery. 
+
+Impact Statement —Porous materials are essential in many technologies that support clean energy, sustainable manufacturing, healthcare, and environmental engineering. However, designing porous structures with desired physical properties remains slow and expensive because candidate designs often need to be evaluated through repeated numerical simulation or laboratory testing. This work introduces a physics-guided generative AI framework that can create three-dimensional porous structures conditioned on target porosity and directional permeability. By combining latent diffusion with differentiable physical-property feedback, the method improves agreement between generated designs and desired engineering properties while preserving realistic pore structures. The approach could reduce trial-and-error design cycles and support faster discovery of porous materials for applications such as battery electrodes, filtration membranes, fuel-cell components, thermal-management devices, biomedical scaffolds, and additively manufactured materials. The framework also provides a broader route towards trustworthy AI-assisted inverse design for complex geometry-to-property problems in engineering and physical sciences. 
+
+Index Terms —Physics-guided generative AI, porous media, inverse design, latent diffusion models, permeability control, structure-property modelling, variational autoencoders, micro-CT, engineering design. 
+
+I. I NTRODUCTION 
+
+Porous materials are widely used in applications including catalysis, filtration, energy storage, and carbon storage, where internal pore morphology directly governs effective physical 
+
+Peng Wang is with the Centre for Vision, Speech and Signal Processing (CVSSP), University of Surrey, Guildford, UK. 
+
+properties such as porosity, permeability, and multiphase transport behaviour. This makes accurate reconstruction and controllable generation of three-dimensional (3D) porous structures critical for accelerating material analysis, simulation, and inverse design [ 1], [ 2]. However, controllable porous-media generation remains fundamentally challenging because the physical behaviour of porous materials depends on complex internal geometries that are difficult to reconstruct and optimise efficiently. This has motivated growing interest in data-driven generative models capable of reconstructing realistic 3D porous structures from limited observations [1], [3]. Early progress in this direction was driven largely by generative adversarial networks (GANs). Previous studies have shown that GAN-based approaches can generate realistic 3D porous structures either directly from volumetric training data or inferred from limited 2D observations. For instance, SliceGAN and related methods demonstrated the ability to reproduce structurally and morphologically meaningful porous geometries while alleviating imaging constraints [ 1], [ 4], [ 5 ], [ 6]. Subsequent studies further introduced property control by steering generation toward target properties or pore-scale statistics through latent-space optimisation, reinforcement learning, or physics-informed constraints [ 7], [ 8]. However, GAN-based models are still affected by factors such as unstable optimisation, mode collapse, and imperfect latent-space organisation, etc. [9], [10]. More recently, diffusion models have emerged as a strong alternative for microstructure reconstruction and porous-media generation [ 11 ]. Compared with GANs, diffusion models gen-erally provide more stable optimisation and better coverage of complex data distributions. Existing studies have demonstrated that diffusion-based methods can generate visually realistic and statistically consistent porous structures while preserving important morphological characteristics [ 9]. In porous-media applications, diffusion-based approaches have further shown the ability to reproduce pore-space geometry that relate to physical properties, while latent diffusion formulations enable stable and larger-volume generation with reduced computational cost [ 2], [ 3 ]. These developments suggest that diffusion models provide a promising foundation for controllable porous-media generation. At the same time, inverse-design research has highlighted the importance of structured latent representations for linking porous geometry and effective physical properties [ 12 ], [ 13 ]. Property-aware variational autoencoders (pVAEs), a property-augmented variants of variational autoencoders, are one of the representative approaches that are exploited to map complex porous microstructures into compact and continuous latent arXiv:2607.24274v1 [cs.LG] 27 Jul 2026 2
+
+spaces, to support structure reconstruction and property pre-diction [ 14 ], [ 15 ]. When combined with surrogate models for effective properties characterisation, such latent representations enable efficient exploration of structure-property relationships without repeated expensive numerical simulation and physical experiments [ 15 ], [ 16 ], [ 17 ]. This is particularly attractive for porous media, where permeability evaluation through direct numerical simulation remains computationally expensive, while laboratory experimental evaluation is both time-consuming and financially costly. Despite these advances, several important challenges remain. First, porous-media inverse design is inherently an ill-posed one-to-many mapping problem, where multiple structurally distinct porous geometries may correspond to similar effective properties. Second, existing controllable generation methods often lack differentiable closed-loop optimisation mechanisms capable of refining generated structures using physical property-aware feedback. Third, a mismatch may arise between diffusion-generated latent samples and the latent distribution originally learned by the porous-structure decoder (e.g., the pVAE decoder), reducing the physical consistency and controllability of generated porous structures during inverse-design. Motivated by these limitations, this work proposes a physical-property-guided latent diffusion framework for controllable porous-media inverse design. The proposed framework com-bines property-aware latent representation learning, conditional latent diffusion, and differentiable surrogate-based property evaluation within a unified optimisation pipeline. Generated porous structures are assessed using a differentiable structure-to-property predictor, enabling property discrepancies to be propagated back through the generation process to improve target-property consistency without requiring expensive online simulation or experimental feedback. The pipeline of the proposed work is shown in Fig. 1. The main contributions of this work are summarised as follows:  
+
+> •
+
+We propose a conditional latent diffusion framework for inverse porous-media design that integrates physical-property-aware latent representation learning with target-conditioned porous-structure generation.  
+
+> •
+
+We introduce a differentiable denoiser-decoder joint refine-ment mechanism that propagates surrogate-based property discrepancies through the generation pipeline, improving compatibility between diffusion-generated latent samples and physically meaningful porous geometries.  
+
+> •
+
+We develop a physics platform-verified porous-media generation framework that combines pVAE latent mod-elling, conditional latent diffusion, differentiable structure-to-property prediction, and Palabos-based permeability evaluation within a unified optimisation pipeline.  
+
+> •
+
+We perform extensive experiments on synthetic and real micro-CT porous-media datasets, demonstrating improved permeability controllability, target-property consistency, and simulator-verified inverse-design performance com-pared with representative pVAE-based and latent-diffusion-based baselines. II. R ELATED WORK 
+
+Inverse porous-material design requires simultaneously ad-dressing two tightly coupled challenges: controllable porous-structure generation and reliable physical-property evaluation. The former is inherently an ill-posed one-to-many mapping problem, where multiple distinct porous geometries may correspond to similar effective properties. The latter is computa-tionally challenging because accurate permeability and transport evaluation typically relies on expensive numerical simulation or physical experiments. Existing works have therefore fo-cused primarily on either generative porous reconstruction or physics-based property characterisation, while relatively few studies investigate differentiable closed-loop inverse-design frameworks that integrate both generation and property-aware optimisation. 
+
+A. Property-Guided Generation for Inverse Material Design 
+
+Most existing porous-media generation works primarily follow a forward design paradigm, where 3D porous structures are reconstructed from 2D micro-CT observations and subse-quently evaluated through physics-based simulation. Recent diffusion-based methods have demonstrated improved stability and generation quality for porous-media reconstruction. Zhu 
+
+et al. showed that diffusion models can effectively reproduce pore morphology and porosity distributions that are critical for downstream physical properties [ 2 ]. Naiff et al. further introduced controlled latent diffusion models for porous-media reconstruction, enabling larger-volume generation and improved coverage of porous-media statistics [ 3 ]. However, these methods primarily focus on controllable reconstruction, rather than differentiable inverse-design refinement guided by simulator-consistent property feedback. Beyond reconstruction, many practical applications require generated porous structures to satisfy prescribed physical properties. This has led to increasing interest in inverse design and property-guided synthesis. Early inverse-design approaches primarily relied on GAN-based frameworks. For example, Nguyen et al. proposed a combined GAN and actor-critic reinforcement learning framework for synthesizing porous microstructures with controllable structural properties [ 8 ]. Ren and Srinivasan similarly investigated property-constrained porous generation through latent-space deformation guided by pore-network-derived physical attributes [7]. More recently, VAE-based latent modelling has emerged as a more structured approach for porous-media inverse design. Nguyen et al. developed a pVAE-based inverse-design framework in which latent representations are jointly supervised by reconstruction and physical-property prediction [ 15 ]. By combining latent modelling with surrogate-based permeability prediction, the framework enables efficient structure-property exploration and gradient-based optimisation. This property-aware latent-space paradigm is particularly relevant because it provides a continuous and interpretable latent representation that is more suitable for controllable generation and inverse design than conventional GAN latent codes. Because recent porous-media inverse-design research has increasingly shifted toward latent diffusion and property-aware latent modelling, this 3
+
+Fig. 1: Overview of the proposed physical-property-guided latent diffusion framework for porous media inverse design. (a) A property-aware variational autoencoder maps a 3D porous structure into a compact latent representation parameterised by μ and 
+
+σ, while a latent property head encourages the representation to encode porosity nF and directional permeability (Kx, K y , K z ).(b) An independently trained structure-to-property surrogate predicts the physical-property vector ˆc from generated porous structures and provides differentiable feedback during refinement. (c) A conditional latent diffusion model uses the target property condition and timestep embedding to generate property-guided latent samples, which are decoded into candidate porous structures and subsequently verified using Palabos. work primarily compares against representative pVAE-based and latent-diffusion-based approaches that are more closely aligned with the proposed framework. 
+
+B. Physical Simulation for Real-time Property Evaluation 
+
+Generative inverse-design frameworks ultimately depend on reliable structure-property datasets, which in turn require accurate physics-based simulation or experimental characteri-sation. In porous-media inverse design, real-time evaluation of generated structures is particularly important because property discrepancies can potentially be used to guide the generation process through differentiable optimisation. Phu et al. investigated deformation-dependent permeability estimation using a pipeline that combines nano-CT recon-struction with Lattice Boltzmann Method (LBM) simulation in Palabos [ 18 ]. Their work demonstrated how permeability tensors can be estimated from realistic 3D porous geometries through physics-based simulation. Lavigne et al. proposed an open-source framework for synthetic porous-microstructure generation and permeability analysis by integrating geometric construction, meshing, and fluid-structure interaction simulation [ 19 ]. Although these works are not themselves generative-learning frameworks, they demonstrate the importance of physics-based simulation for reliable porous-media property evaluation. In parallel, indepent and reliable learning-based surrogate models are gaining attention for accelerating permeability prediction and structure-property analysis. Compared with repeated numerical simulation, surrogate models can pro-vide significantly faster property estimation while remaining differentiable, making them attractive for integration within generative inverse-design pipelines. However, relatively few existing works combine latent diffusion, differentiable surrogate evaluation, and simulator-verified inverse-design refinement within a unified porous-media generation framework. III. M ETHODOLOGY 
+
+A. Latent Diffusion Inverse Design Framework 
+
+Let x ∈ { 0, 1}w×h×l denote a binary porous microstructure of width w, height h, and depth l, where 1 represents the pore phase and 0 represents the solid phase. Each sample is associated with a raw physical-property vector. In this work, we focus on pore fraction and directional permeability, and define 
+
+y = [ nF , K x, K y , K z ]T , (1) where nF is the pore fraction, and Kx, Ky , and Kz are directional permeabilities along the three principal axes. It is worth noting that permeability values typically span several orders of magnitude and are often more naturally interpreted through relative rather than absolute differences. Training directly on raw permeability values can cause large-permeability samples to dominate the regression loss, leading to unstable optimisation and poorer accuracy in low-permeability regimes. Therefore, for stable model training, we have converted 4
+
+permeability through 
+
+c =
+
+
+
+(nF − μnF )/σ nF
+
+(log Kx − μlog Kx )/σ log Kx
+
+(log Ky − μlog Ky )/σ log Ky
+
+(log Kz − μlog Kz )/σ log Kz
+
+ . (2) We compute all property-based losses in the normalised/log-property space. But physical property verification and reported physical errors are computed after inverting Eq. (2) back to raw physical units. The goal of inverse porous-media design is to generate a porous structure xgen whose physical properties match a raw target property vector y∗. Since the models operate in the normalised condition space, this can be written as learning a conditional generative model 
+
+Gθ : ( c∗, ξ) 7 → xgen , (3) where c∗ is obtained by normalising the raw target vector y∗
+
+using Eq. (2) , ξ denotes stochastic latent noise, and θ denotes model parameters. The physical properties of a generated structure can be evaluated by high-fidelity LBM-based simulators such as Palabos: 
+
+ysim = S(xgen ), (4) where S(·) denotes the LBM-based simulator. However, S(·) is computationally expensive and non-differentiable with respect to the generator parameters. Therefore, during training and refinement, we use a differentiable surrogate model 
+
+ˆc = sψ (xgen ), (5) where sψ is a deep learning based structure-to-property predictor trained to approximate the mapping from porous geometry to normalised physical properties. The framework consists of four components. First, a pVAE maps voxelised porous structures into property-aware compact latent representations and reconstructs them back to voxel space. Second, a conditional latent diffusion model learns the distri-bution of pVAE latents conditioned on target properties, and the learned distributions are decoded by the pVAE decoder to achieve porous media generation. This constitutes the generative model Gθ . Third, an independently trained surrogate model that predicts c from voxel fields and provides differentiable property feedback to Gθ during denoiser-decoder refinement. Fourth, generated candidates are exported to Palabos for physics-based verification in raw physical units. 
+
+B. Differentiable Property Feedback 
+
+Given a target condition c∗, the generated structure is evaluated by the frozen surrogate: 
+
+ˆc = sψ (xgen ). (6) The property-matching loss is 
+
+Lprop = ∥sψ (xgen ) − c∗∥22 . (7) Because both the generator and surrogate are differentiable neural networks, gradients can be propagated from the property discrepancy back through the generated voxel field: 
+
+∂Lprop 
+
+∂θ = ∂Lprop 
+
+∂ˆc
+
+∂ˆc
+
+∂xgen 
+
+∂xgen 
+
+∂θ . (8) This enables property-guided refinement without requiring online LBM simulation or physical experiments during op-timisation. 
+
+C. Network Architectures a) Property-aware VAE.: The pVAE operates on voxelised porous structures and maps each input x into a compact latent representation. The encoder is implemented using a residual convolutional backbone that progressively downsamples the input volume and extracts hierarchical geometry features. Two convolutional heads then predict the mean and log-variance of the approximate posterior, 
+
+qϕ(z | x) = N  μϕ(x), diag( σ2
+
+> ϕ
+
+(x))  . (9) Latent samples are obtained using the reparameterisation trick: 
+
+z = μϕ(x) + σϕ(x) ⊙ ϵ, ϵ ∼ N (0, I). (10) The decoder maps the latent representation back to voxel space using residual upsampling blocks and produces a soft occupancy field ˆx ∈ [0 , 1] w×h×l through a sigmoid output layer. To make the latent space physically informative, the pVAE also includes a latent property head hϕ(·) that predicts the normalised condition vector c from the latent representation. The pVAE objective is 
+
+LpVAE = λrec LBCE + λKL DKL (qϕ(z | x) ∥ N (0, I)) + λlat ∥hϕ(z) − c∥22 . (11) Here, LBCE is the binary cross entropy (BCE) that preserves voxel-level reconstruction fidelity, the KL term is the Kull-back–Leibler divergence that regularises the latent distribution to remain smooth and sampleable, and the latent-property loss encourages the latent representation to encode physically meaningful information. 
+
+b) Conditional latent diffusion denoiser.: The conditional diffusion model operates in the pVAE latent space rather than directly in the high-dimensional voxel space for stability [ 20 ]. Let z0 denote a latent sample obtained from the pVAE encoder. The forward diffusion process gradually corrupts z0 with Gaussian noise: 
+
+zt = √¯αtz0 + √1 − ¯αtϵ, ϵ ∼ N (0, I). (12) A residual U-Net denoiser ϵθ is trained to predict the injected noise conditioned on the timestep t and the normalised property condition c:
+
+Ldiff = Ez0,t, ϵ
+
+h
+
+∥ϵ − ϵθ (zt, t, c)∥22
+
+i
+
+. (13) Conditioning is injected through FiLM residual blocks. A sinusoidal timestep embedding and an embedding of the property condition c are combined and used to modulate intermediate feature maps: 
+
+FiLM( h, c, t ) = h ⊙ (1 + γ(c, t )) + β(c, t ), (14) 5
+
+where h denotes an intermediate feature map in the denoiser, while γ(c, t ) and β(c, t ) are feature-wise scale and shift parameters predicted from the joint condition embedding. In this work, z0 is sampled from the pVAE posterior rather than using only the encoder mean, so that diffusion training better matches the latent distribution consumed by the decoder during pVAE training. At inference time, the conditional generator starts from a sampled latent noise tensor zT ∼ N (0, I) and applies the learned reverse denoising process conditioned on c to obtain a generated latent sample ˆz0, which is then decoded by the pVAE decoder. 
+
+c) Structure-to-property surrogate.: The surrogate sψ (x)
+
+is an independently trained residual convolutional network that predicts the normalised/log-property vector from a voxelised porous structure: 
+
+ˆc = sψ (x). (15) It is trained using 
+
+Lsur = ∥sψ (x) − c∥22 . (16) The surrogate is trained independently from the generative models and is frozen during all optimisation and refinement experiments. This ensures that property-guided improvements arise from updating the generator rather than from changing the evaluator. 
+
+D. Training and Refinement 
+
+The trained conditional diffusion module generates target-conditioned latent representations that are decoded by the pVAE decoder into voxelised porous structures for property evaluation. Although the diffusion model is trained on latent samples obtained from the pVAE encoder, the distribution of diffusion-generated latents may still differ from the posterior latent distribution on which the decoder was originally trained. This denoiser-decoder mismatch can lead to decoded structures whose surrogate-predicted or Palabos-verified properties deviate from the prescribed target condition. To reduce this mismatch, we introduce a surrogate-guided refinement stage. Optimising only the diffusion denoiser can improve the generated latent samples, while optimising only the decoder can adapt the latent-to-voxel mapping. However, neither option fully captures the coupling between the de-noising generated latent representation and the final decoded voxel structure. Therefore, this work proposes to refine the denoiser and decoder together. This allows the generated latent distribution and the reconstruction mapping to adapt jointly under the frozen surrogate property constraint, to improve overall generation performance. During refinement, the pVAE encoder, pVAE latent property head, and structure-to-property surrogate are frozen. The refinement objective is 
+
+Lft = λdiff Ldiff + λprop Lprop + λrec Lrec + λanchor Lanchor .
+
+(17) The diffusion loss Ldiff is the same noise-prediction objective used for conditional latent diffusion training. It preserves the denoising behaviour while allowing the denoiser to adapt to 
+
+Algorithm 1 Training and physics-verified inverse design pipeline 
+
+Require: Training geometries {xi}, raw properties {yi},normalisation statistics, Palabos solver  
+
+> 1:
+
+Convert raw properties yi = [ nF , K x, K y , K z ]T to nor-malised conditions ci using Eq. (2)  
+
+> 2:
+
+Train the pVAE using Eq. (11)  
+
+> 3:
+
+Train the surrogate model sψ (x) to predict ci from xi 
+
+> 4:
+
+Freeze the pVAE encoder, pVAE property head, and surrogate  
+
+> 5:
+
+Encode training samples, sample z0 from the pVAE posterior, and train the conditional latent denoiser using Eq. (13)  
+
+> 6:
+
+Initialise surrogate-guided refinement from the trained pVAE, surrogate, and denoiser checkpoints  
+
+> 7:
+
+In denoiser-decoder refinement mode, update only the denoiser and pVAE decoder  
+
+> 8:
+
+for each minibatch (x, c) do  
+
+> 9:
+
+Encode x to sampled latent z0 using the frozen pVAE encoder  
+
+> 10:
+
+Sample timestep t and noise ϵ, and construct zt 
+
+> 11:
+
+Predict ˆϵθ (zt, t, c) and compute Ldiff  
+
+> 12:
+
+Estimate ˆz0 = ( zt − √1 − ¯αtˆϵθ )/√¯αt 
+
+> 13:
+
+Decode ˆz0 to ˆxgen and predict ˆc = sψ (ˆ xgen ) 
+
+> 14:
+
+Compute Lprop = ∥ˆc − c∥22 
+
+> 15:
+
+Decode z0 to ˆxrec and compute Lrec = BCE(ˆ xrec , x) 
+
+> 16:
+
+Optionally compute Lanchor using Eq. (20)  
+
+> 17:
+
+Update trainable parameters with Eq. (17)  
+
+> 18:
+
+end for  
+
+> 19:
+
+For each target y∗, convert it to c∗, sample candidate latents, decode candidates, evaluate them with the surrogate, export selected geometries, and verify them with Palabos the property-guided refinement objective. The property loss is computed on generated samples. Given a target condition 
+
+c∗, the refined denoiser produces a generated latent sample ˆz0,which is decoded into a voxel structure by the trainable decoder. The frozen surrogate then predicts its normalised/log-property vector: 
+
+Lprop = ∥sψ (Dϕ(ˆ z0)) − c∗∥22 . (18) This term propagates the property discrepancy through the frozen surrogate and decoded voxel field back to the trainable generator components, enabling differentiable property-guided refinement without online Palabos simulation. The reconstruction-preservation loss Lrec is computed from real training samples. The frozen encoder maps an input structure x to a sampled latent representation z0, and the trainable decoder reconstructs the structure as Dϕ(z0). The reconstruction is compared with x using binary cross-entropy: 
+
+Lrec = BCE( Dϕ(z0), x). (19) This term helps preserve the decoder’s ability to reconstruct valid porous structures from pVAE latents and prevents refinement from degrading the learned voxel manifold. The optional anchor loss constrains the refined decoder to 6
+
+remain close to the original decoder: 
+
+Lanchor = ∥Dϕ(z0) − Dϕ0 (z0)∥22 , (20) where Dϕ0 denotes the original frozen decoder before refine-ment. This term regularises decoder updates by discouraging large deviations from the original reconstruction mapping. 
+
+E. Inference and Physical Platform Evaluation 
+
+Given a raw target property vector y∗, the target is first converted to the normalised/log-property condition c∗ using Eq. (2) . The pVAE baseline samples a number of latent representations (e.g., 50) from the prior and decodes them using the frozen pVAE decoder. Latent space optimsation will be applied for pVAE baseline as was done in [ 15 ]. The latent diffusion baseline samples a target-conditioned latent through the conditional reverse denoising process and decodes it using the original pVAE decoder. The proposed method samples a target-conditioned latent using the refined diffusion denoiser and decodes it using the refined decoder. The generated candidate is evaluated by the surrogate directly after sampling and decoding. For each sample, we define the relative pore-fraction error as 
+
+esur  
+
+> nF
+
+= |ˆnF − n∗ 
+
+> F
+
+||n∗ 
+
+> F
+
+| + δ , (21) and the relative permeability error as 
+
+esur  
+
+> Ki
+
+= | ˆKi − K∗ 
+
+> i
+
+||K∗ 
+
+> i
+
+| + δ , i ∈ { x, y, z }. (22) The raw relative evaluation score is then computed as 
+
+r(ˆ y, y∗) = 
+
+q
+
+(esur  
+
+> nF
+
+)2 + ( esur  
+
+> Kx
+
+)2 + ( esur  
+
+> Ky
+
+)2 + ( esur  
+
+> Kz
+
+)2. (23) where δ is a small numerical constant used for numerical stability. The generated samples in the voxel field is thresholded into a binary pore-solid structure and exported to Palabos for LBM-based verification. Final reported errors are computed from Palabos-measured properties in raw physical units, but these surrogate metrics are critical to enable real-time evaluations of the generated samples. IV. E XPERIMENTS 
+
+A. Datasets 
+
+Experiments are conducted on two datasets: a procedurally generated synthetic porous-media dataset and a real micro-CT porous-media dataset. In both datasets, each sample is represented as a binary voxel volume x ∈ { 0, 1}100 ×100 ×100 ,where 1 denotes pore and 0 denotes solid. Each sample is associated with the raw property vector defined in Eq. (1) .The properties of interest are pore fraction nF and directional permeability (Kx, K y , K z ).
+
+a) Synthetic dataset.: The synthetic dataset is generated procedurally and labelled using the Palabos LBM permeability solver. Each voxelised structure is exported into a Palabos-compatible geometry file. Permeability is simulated indepen-dently along the x, y, and z directions to obtain (Kx, K y , K z ).The synthetic dataset contains 17,000 samples. 
+
+b) Real micro-CT dataset.: The real dataset is constructed from micro-CT scans. The original grayscale volumes are centrally cropped to remove scan boundaries and surrounding background regions. The cropped volumes are segmented into binary pore/solid structures and smoothed using a signed-distance-field-based operation to suppress isolated voxel noise while preserving pore connectivity. The processed volumes are divided into overlapping 100 × 100 × 100 sub-volumes using a stride of 25 voxels. Each sub-volume is exported to Palabos and simulated along the three principal directions to obtain directional permeability labels. The real micro-CT dataset contains 5,525 samples. 
+
+c) Property normalisation.: All models are trained us-ing the normalised/log-property condition vector c defined in Eq. (2) . Permeability values are log-transformed before standardisation, while pore fraction is standardised directly. 
+
+d) Dataset split.: For both synthetic and real micro-CT datasets, 70% of the samples are used for training, 10% for validation, and 20% for testing. 
+
+B. Implementation Details 
+
+For all reported experiments, the pVAE encodes each volume into a latent representation of size 32 × 5 × 5 × 5, with 32 the batch size and 5 × 5 × 5 the bottleneck dimensions. More results can be found in Sec. IV-F . For the denoiser-decoder refinement setting, we use λdiff = 1 .0, λprop = 0 .1, λrec = 0 .1,and λanchor = 0 .001 . The denoiser and decoder are updated with learning rates of 10 −5 and 10 −6, respectively. We will first report results without (or with minimal) latent space optimisation, and then report results with latent space optimisation in the ablation. This is because the pVAE baseline vastly relies on the latent optimisation for good performance, while the diffusion based methods do not. We denote it as ‘no latent optimisation’ setting when no/minimal latent optimisation is applied. In the ablation, we introduce the latent space optimisation to the diffusion models to explore its impact. Please be aware that latent space optimisation is different to the denoiser-decoder joint refinement. 
+
+C. Baselines and Training 
+
+The proposed framework is compared with representative pVAE-based and latent-diffusion-based inverse-design baselines. All methods use the same datasets, target conditions, surrogate evaluator, and Palabos verification protocol. 
+
+a) Structure-to-property surrogate.: The surrogate sψ is trained to predict the normalised/log-property vector directly from voxelised porous structures, as shown in Eq. ( 15). The surrogate is trained using Eq. (16) . It is used both as a fast evaluator during inverse design and as a differentiable feedback module during denoiser-decoder refinement. An independent voxel-space surrogate is used instead of the pVAE latent-property head to reduce evaluation bias. The surrogate is frozen during all experiments. 
+
+b) Baseline I: pVAE latent optimisation.: The pVAE baseline follows property-aware VAE inverse design. Given a target condition c∗, multiple latent codes are initialised from 7
+
+the pVAE prior and optimised using the frozen decoder and surrogate: 
+
+z∗ = arg min  
+
+> z
+
+∥sψ (Dϕ(z)) − c∗∥22 + λz ∥z∥22. (24) The final structure is decoded as 
+
+x∗ 
+
+> pVAE
+
+= Dϕ(z∗). (25) 
+
+c) Baseline II: latent diffusion with frozen decoder.: The latent diffusion baseline is trained in the pVAE latent space using Eq. (13) . At inference time, the model samples target-conditioned latent candidates zdiff , which are decoded using the frozen pVAE decoder: 
+
+xdiff = Dϕ(zdiff ). (26) When latent optimisaton is applied, as in Sec. IV-F , the latent representation is further optimised as 
+
+z∗ 
+
+> diff
+
+= arg min  
+
+> z
+
+∥sψ (Dϕ(z)) − c∗∥22 + λz ∥z − zdiff ∥22 . (27) This baseline evaluates whether diffusion provides a stronger target-aware latent initialisation than random pVAE sampling while keeping the decoder fixed. 
+
+d) Our method.: The proposed method starts from the trained conditional latent diffusion model and jointly refines the diffusion denoiser and pVAE decoder using Eq. (17) .This refinement is designed to reduce the mismatch between diffusion-generated latent samples and the latent distribution originally observed by the pVAE decoder. 
+
+D. LBM-Based Verification and Evaluation Metrics 
+
+The surrogate provides differentiable property feedback during training and refinement, and the property is one option to be used for model evaluation. However, physical platforms can provide more physics-consistent evaluation. Therefore, the final evaluation is performed using Palabos-based LBM verification. For each generated sample, Palabos produces 
+
+yLBM = [ nLBM  
+
+> F
+
+, K LBM  
+
+> x
+
+, K LBM  
+
+> y
+
+, K LBM  
+
+> z
+
+]T . (28) 
+
+a) Palabos-verified relative error.: The relative porosity error is 
+
+EnF = nLBM  
+
+> F
+
+− n∗
+
+> F
+
+|n∗ 
+
+> F
+
+| + δ , (29) and the relative permeability error along direction i ∈ { x, y, z }
+
+is 
+
+EKi = KLBM  
+
+> i
+
+− K∗
+
+> i
+
+|K∗ 
+
+> i
+
+| + δ , (30) where δ is a small constant for numerical stability. The mean permeability error is 
+
+EK, mean = 13
+
+ EKx + EKy + EKz
+
+ . (31) 
+
+b) Multi-property evaluation score.: The overall target-matching score is defined as 
+
+R =
+
+q
+
+E2 
+
+> nF
+
++ E2 
+
+> Kx
+
++ E2 
+
+> Ky
+
++ E2 
+
+> Kz
+
+. (32) Lower R indicates closer agreement between the generated structure and the target properties. 
+
+c) Target controllability.: To measure whether generated structures follow the requested target trends, we compute Pear-son correlation between target and LBM-verified properties: 
+
+ρnF = corr  n∗ 
+
+> F
+
+, n LBM 
+
+> F
+
+ , (33) and 
+
+ρKi = corr  K∗ 
+
+> i
+
+, K LBM 
+
+> i
+
+ , i ∈ { x, y, z }. (34) Higher correlation indicates stronger target-aware controllabil-ity. 
+
+E. Results 
+
+All models are trained and evaluated on both the synthetic porous-media dataset and the real micro-CT dataset using an NVIDIA RTX 5090 GPU. For each evaluation setting, target property vectors are sampled and used to condition the generative models. Generated candidates are first evaluated using the frozen structure-to-property surrogate and are then verified using Palabos. We report both aggregate quantitative metrics and representative generated structures. Additional latent space optimisation results are provided in the ablation study. 
+
+1) Results on Synthetic Data: Table I reports the Palabos-verified results on the synthetic dataset under the ‘no latent space optimisation’ setting. In this setting, each method generates candidates directly from its learned sampling process, without additional latent-space optimisation after sampling. The pVAE baseline is evaluated with the minimum latent update required to produce a decoded candidate, while the latent diffusion baseline and the proposed method generate candidates directly from their conditional sampling processes. The proposed method achieves the best mean score, median score, porosity error, mean permeability error, and most controllability correlations. The only exception is the Pearson correlation for Kx, where the latent diffusion baseline and the proposed method perform similarly. Compared with the pVAE baseline, both diffusion-based methods substantially improve target controllability, indicating that conditional latent sampling provides a more effective mechanism for matching target physical properties than direct random latent search. The proposed method further improves over the latent diffusion baseline, suggesting that surrogate-guided denoiser-decoder refinement improves the compatibility between generated latent samples and physically meaningful decoded porous structures. Table II provides representative target, surrogate-predicted, and Palabos-verified properties for selected generated structures. The pVAE baseline often produces structures with large deviations from the target porosity and permeability values. In contrast, latent diffusion produces substantially closer target matches, while the proposed method achieves the lowest score for all selected cases. This confirms that the proposed framework improves not only average performance but also per-target property consistency. Representative generated samples are shown in Figs. 2, 3, and 4. Each column corresponds to one target, with isometric, front, side, and top views arranged from top to bottom. The pVAE baseline generate samples that do not consistently follow the requested target-property trends. The latent diffusion 8
+
+Fig. 2: Porous structures generated by the pVAE method for randomly selected synthetic targets. Each column corresponds to one target, with isometric, front, side, and top views arranged from top to bottom. 
+
+Fig. 3: Porous structures generated by the latent diffusion method for randomly selected synthetic targets. Each column corresponds to one target, with isometric, front, side, and top views arranged from top to bottom. 9
+
+Fig. 4: Porous structures generated by the proposed method for randomly selected synthetic targets. Each column corresponds to one target, with isometric, front, side, and top views arranged from top to bottom. TABLE I: LBM-verified comparison on the synthetic dataset under the ‘no latent space optimisation’ setting. The pVAE baseline requires latent-space optimisation for inverse design and is evaluated with the minimum update step needed to produce a decoded candidate, while the diffusion-based methods generate candidates directly from conditional sampling. Lower error values are better, while higher correlation values indicate stronger target controllability. Green indicates the best result in each column.                                                    
+
+> Method Steps Mean score ↓Median score ↓nFerror ↓Mean Kerror ↓Corr. nF↑Corr. Kx↑Corr. Ky↑Corr. Kz↑
+> pVAE 12.416 1.759 0.461 1.168 0.351 0.176 0.138 0.139 Latent diffusion -1.463 0.629 0.101 0.643 0.963 0.961 0.941 0.940 Ours -1.044 0.533 0.063 0.474 0.985 0.959 0.966 0.957
+
+baseline improves target alignment, while the proposed method further improves simulator-verified property matching while maintaining realistic porous geometry. 
+
+2) Results on Real Micro-CT Data: Table III reports the Palabos-verified results on the real micro-CT dataset. The proposed method achieves the best mean score, median score, mean permeability error, and all Pearson correlation metrics. This indicates that the generated structures not only reduce average property mismatch but also follow the requested target-property trends more consistently. The pVAE baseline achieves the lowest porosity error, but its correlations are weak, indicating limited controllability across different target conditions. The latent diffusion baseline improves controllability relative to pVAE, but its overall score and permeability errors remain higher than those of the proposed method. These results suggest that conditioning alone is insufficient when the decoder remains fixed. By jointly refining the denoiser and decoder using differentiable surrogate feedback, the proposed method better aligns diffusion-generated latent samples with physically meaningful decoded porous structures. The higher porosity error of the proposed method reflects a trade-off between global pore fraction and directional permeability consistency. Permeability is more sensitive to pore connectivity, channel continuity, and anisotropic flow pathways, whereas porosity is primarily a global volumetric statistic. During joint refinement, the model may therefore introduce small changes in pore volume fraction to improve transport-relevant structures and better match the target permeability. Table IV shows representative target, surrogate-predicted, and Palabos-verified properties for selected real micro-CT cases. Although the pVAE and latent diffusion baselines can generate visually plausible porous structures, their Palabos-verified properties often deviate from the desired targets, especially for directional permeability. This highlights an important challenge in porous-media inverse design: visual realism alone does not guarantee physical correctness. In contrast, the proposed method achieves lower target-matching scores for the selected cases, indicating stronger physical consistency. Representative structures are shown in Figs. 5, 6, and 7. The proposed method preserves realistic porous geometry while producing structures whose verified transport behaviour is more 10 
+
+TABLE II: Comparison between target properties, structure-to-property predicted properties, and Palabos-verified properties for selected generated porous structures from the synthetic dataset. nF denotes pore fraction. 
+
+ID Method Target Properties Structure-to-property Predictions Palabos-verified Properties Score 
+
+nF Kx Ky Kz nF Kx Ky Kz nF Kx Ky Kz
+
+1pVAE 0.875 117.687 228.855 168.397 0.406 17.175 10.298 7.566 0.281 2.673 0.796 0.542 1.845 Latent diffusion 0.875 117.687 228.855 168.397 0.849 100.813 205.168 183.697 0.816 111.421 175.623 187.364 0.272 Ours 0.875 117.687 228.855 168.397 0.855 100.302 188.197 139.339 0.862 111.028 234.246 165.783 0.065 
+
+2pVAE 0.878 224.861 77.083 239.821 0.375 11.418 9.875 26.398 0.326 3.615 2.411 2.754 1.811 Latent diffusion 0.878 224.861 77.083 239.821 0.859 187.219 84.603 235.333 0.866 245.116 91.869 250.609 0.217 Ours 0.878 224.861 77.083 239.821 0.862 206.237 89.079 227.428 0.851 241.310 78.662 232.455 0.088 
+
+3pVAE 0.910 256.143 207.859 222.744 0.368 15.056 7.723 11.848 0.280 3.264 0.561 2.745 1.851 Latent diffusion 0.910 256.143 207.859 222.744 0.867 214.016 195.375 213.649 0.859 192.145 221.089 185.535 0.312 Ours 0.910 256.143 207.859 222.744 0.904 220.319 212.285 225.264 0.895 246.565 209.390 201.243 0.105 
+
+4pVAE 0.934 259.180 249.850 297.041 0.386 16.601 15.597 14.409 0.334 3.640 3.026 3.984 1.826 Latent diffusion 0.934 259.180 249.850 297.041 0.943 265.442 237.413 282.057 0.936 317.784 202.094 259.254 0.322 Ours 0.934 259.180 249.850 297.041 0.939 249.215 259.628 278.530 0.941 289.683 278.780 284.199 0.171 
+
+5pVAE 0.848 159.312 115.907 193.426 0.420 13.440 6.031 18.698 0.326 3.944 1.724 1.991 1.811 Latent diffusion 0.848 159.312 115.907 193.426 0.881 171.213 128.412 209.799 0.884 202.090 170.276 236.629 0.586 Ours 0.848 159.312 115.907 193.426 0.855 181.886 115.072 186.911 0.857 187.127 100.546 197.972 0.221 
+
+6pVAE 0.613 26.383 89.462 94.756 0.381 7.039 31.923 10.495 0.304 1.471 2.148 3.138 1.741 Latent diffusion 0.613 26.383 89.462 94.756 0.593 19.078 93.047 54.702 0.604 45.665 73.350 62.330 0.827 Ours 0.613 26.383 89.462 94.756 0.643 19.047 105.179 109.422 0.683 22.476 92.771 79.589 0.249 
+
+7pVAE 0.804 74.783 132.944 119.116 0.384 4.432 12.551 19.979 0.296 2.026 1.336 1.495 1.817 Latent diffusion 0.804 74.783 132.944 119.116 0.754 94.037 105.831 107.379 0.760 82.806 85.905 119.638 0.374 Ours 0.804 74.783 132.944 119.116 0.833 73.049 181.073 158.302 0.799 89.401 145.305 103.401 0.254 
+
+8pVAE 0.447 19.021 26.187 46.286 0.412 11.306 21.206 13.006 0.300 1.825 3.184 0.666 1.633 Latent diffusion 0.447 19.021 26.187 46.286 0.547 21.827 26.291 36.406 0.532 4.307 32.363 28.209 0.918 Ours 0.447 19.021 26.187 46.286 0.498 20.659 30.740 33.725 0.468 19.006 28.994 35.817 0.255 
+
+TABLE III: LBM-verified comparison on the real micro-CT dataset under the ‘no latent space optimisation’ setting. The pVAE baseline requires latent-space optimisation for inverse design and is evaluated with the minimum update step needed to produce a decoded candidate, while the diffusion-based methods generate candidates directly from conditional sampling. Lower error values are better, while higher correlation values indicate stronger target controllability. Green indicates the best result in each column. 
+
+Method Steps Mean score ↓ Median score ↓ nF error ↓ Mean K error ↓ Corr. nF ↑ Corr. Kx ↑ Corr. Ky ↑ Corr. Kz ↑
+
+pVAE 1 0.309 0.314 0.019 0.157 -0.056 0.048 -0.017 0.171 Latent diffusion - 0.554 0.515 0.024 0.273 0.717 0.391 0.240 0.282 Ours - 0.306 0.285 0.106 0.147 0.821 0.758 0.727 0.740 
+
+consistent with the prescribed targets. 
+
+F. Ablation 1) Effect of Latent Space Optimisation: Tables V and VI evaluate the effect of latent-space optimisation steps on the synthetic and real micro-CT datasets, respectively. Following the optimisation strategy used in the pVAE inverse-design framework [ 15 ], we perform additional latent space optimi-sation for 10, 30, and 50 steps before decoding and Palabos verification. This experiment is designed to evaluate whether latent optimisation can improve target matching for the latent diffusion baseline and the proposed joint denoiser-decoder framework. Overall, latent optimisation improves controllability for all methods, particularly on the real micro-CT dataset. However, the magnitude of improvement differs substantially across methods. On the synthetic dataset, the pVAE baseline benefits from additional optimisation steps, especially in porosity and permeability correlations, but its overall mean score and mean permeability error remain substantially worse than the diffusion-based approaches. This indicates that direct latent optimisation can partially improve target matching, but the pVAE latent space alone is insufficient for reliable high-dimensional inverse design. The latent diffusion baseline achieves stronger performance than pVAE across most metrics, confirming that diffusion-11 
+
+TABLE IV: Comparison between target properties, structure-to-property predicted properties, and Palabos-verified properties for selected generated porous structures from the real micro-CT dataset. nF denotes pore fraction. 
+
+ID Method Target Properties Structure-to-property Predictions Palabos-verified Properties Score 
+
+nF Kx Ky Kz nF Kx Ky Kz nF Kx Ky Kz
+
+1pVAE 0.737 13.591 11.633 9.599 0.821 21.768 17.072 18.316 0.713 9.946 9.194 9.113 0.346 Latent diffusion 0.737 13.591 11.633 9.599 0.842 24.210 16.801 18.243 0.755 21.662 12.412 14.546 0.789 Ours 0.737 13.591 11.633 9.599 0.740 13.698 12.208 9.537 0.659 14.251 10.853 9.750 0.135 
+
+2pVAE 0.688 12.458 10.152 7.167 0.824 19.790 16.968 18.718 0.721 10.042 8.646 9.159 0.373 Latent diffusion 0.688 12.458 10.152 7.167 0.805 18.712 16.234 14.986 0.674 11.479 5.996 9.886 0.564 Ours 0.688 12.458 10.152 7.167 0.701 12.140 10.228 7.282 0.619 12.103 10.699 7.858 0.152 
+
+3pVAE 0.738 13.553 10.751 11.323 0.825 20.544 17.832 19.087 0.717 9.553 8.491 9.284 0.406 Latent diffusion 0.738 13.553 10.751 11.323 0.837 25.126 18.022 18.903 0.736 16.092 12.259 11.522 0.235 Ours 0.738 13.553 10.751 11.323 0.749 13.922 10.942 11.559 0.668 13.405 10.418 12.852 0.168 
+
+4pVAE 0.714 12.807 9.295 11.094 0.825 20.712 15.674 19.761 0.721 9.560 10.177 12.167 0.288 Latent diffusion 0.714 12.807 9.295 11.094 0.812 19.800 14.212 18.158 0.697 13.099 10.529 14.367 0.325 Ours 0.714 12.807 9.295 11.094 0.719 12.469 9.862 10.682 0.637 11.949 10.262 10.356 0.177 
+
+5pVAE 0.724 11.476 7.443 10.862 0.824 21.735 17.198 18.371 0.719 10.943 9.142 10.494 0.235 Latent diffusion 0.724 11.476 7.443 10.862 0.821 18.824 16.678 18.029 0.705 9.429 8.269 11.971 0.235 Ours 0.724 11.476 7.443 10.862 0.715 11.079 7.691 10.724 0.633 12.460 6.722 11.146 0.182 
+
+6pVAE 0.734 10.934 7.248 10.715 0.821 17.898 17.956 16.134 0.709 7.058 8.762 7.382 0.517 Latent diffusion 0.734 10.934 7.248 10.715 0.816 22.235 14.322 19.001 0.688 19.561 8.240 7.734 0.850 Ours 0.734 10.934 7.248 10.715 0.732 10.569 7.170 11.023 0.657 9.395 6.849 10.550 0.185 
+
+7pVAE 0.724 11.078 10.230 11.657 0.821 19.946 17.326 19.005 0.701 8.569 9.243 8.851 0.346 Latent diffusion 0.724 11.078 10.230 11.657 0.831 19.159 18.069 19.548 0.723 7.974 13.246 12.900 0.420 Ours 0.724 11.078 10.230 11.657 0.725 10.690 9.714 11.116 0.653 10.329 11.475 10.815 0.185 
+
+8pVAE 0.690 10.906 10.131 8.355 0.823 20.781 17.922 20.679 0.723 10.268 8.890 9.778 0.223 Latent diffusion 0.690 10.906 10.131 8.355 0.803 18.842 13.077 13.126 0.676 10.079 10.894 5.534 0.355 Ours 0.690 10.906 10.131 8.355 0.703 11.099 10.165 8.782 0.622 11.259 8.714 8.992 0.190 
+
+TABLE V: LBM-verified comparison on the synthetic dataset with latent-space optimisation. We follow the latent optimisation paradigm used by the pVAE-based inverse-design baseline and evaluate 10, 30, and 50 optimisation steps. Lower error values are better, while higher correlation values indicate stronger target controllability. Green, blue, and red indicate the best, second-best, and third-best results in each column, respectively.                                                                                                          
+
+> Method Steps Mean score ↓Median score ↓nFerror ↓Mean Kerror ↓Corr. nF↑Corr. Kx↑Corr. Ky↑Corr. Kz↑
+> pVAE 10 1.848 1.470 0.231 0.947 0.896 0.698 0.697 0.658 Latent diffusion 10 1.217 0.564 0.069 0.569 0.978 0.961 0.953 0.911 Ours 10 1.046 0.541 0.048 0.495 0.992 0.975 0.956 0.968 pVAE 30 2.756 1.313 0.136 1.262 0.979 0.897 0.811 0.831 Latent diffusion 30 1.249 0.651 0.044 0.584 0.993 0.949 0.935 0.905 Ours 30 1.821 0.605 0.042 0.771 0.993 0.962 0.930 0.920 pVAE 50 2.376 1.288 0.108 1.151 0.984 0.928 0.881 0.932 Latent diffusion 50 1.629 0.695 0.040 0.726 0.993 0.938 0.897 0.908 Ours 50 0.980 0.572 0.052 0.464 0.989 0.928 0.929 0.923 12
+
+Fig. 5: Porous structures generated by the pVAE method for randomly selected real micro-CT targets. Each column corresponds to one target, with isometric, front, side, and top views arranged from top to bottom. 
+
+Fig. 6: Porous structures generated by the latent diffusion method for randomly selected real micro-CT targets. Each column corresponds to one target, with isometric, front, side, and top views arranged from top to bottom. 13 
+
+Fig. 7: Porous structures generated by the proposed method for randomly selected real micro-CT targets. Each column corresponds to one target, with isometric, front, side, and top views arranged from top to bottom. TABLE VI: LBM-verified comparison on the real micro-CT dataset with latent-space optimisation. We follow the latent optimisation paradigm used by the pVAE-based inverse-design baseline and evaluate 10, 30, and 50 optimisation steps. Lower error values are better, while higher correlation values indicate stronger target controllability. Green, blue, and red indicate the best, second-best, and third-best results in each column, respectively.                                                                                                          
+
+> Method Steps Mean score ↓Median score ↓nFerror ↓Mean Kerror ↓Corr. nF↑Corr. Kx↑Corr. Ky↑Corr. Kz↑
+> pVAE 10 0.555 0.546 0.116 0.290 0.688 0.462 0.382 0.303 Latent diffusion 10 0.364 0.343 0.076 0.174 0.710 0.514 0.374 0.461 Ours 10 0.323 0.312 0.107 0.153 0.915 0.634 0.606 0.738 pVAE 30 0.473 0.492 0.145 0.237 0.912 0.644 0.746 0.671 Diffusion seed 30 0.418 0.406 0.124 0.196 0.778 0.525 0.527 0.590 Joint decoder 30 0.309 0.300 0.105 0.144 0.926 0.704 0.664 0.775 pVAE 50 0.425 0.407 0.146 0.208 0.905 0.710 0.621 0.727 Diffusion seed 50 0.429 0.389 0.137 0.200 0.903 0.625 0.630 0.650 Joint decoder 50 0.313 0.297 0.104 0.146 0.932 0.785 0.710 0.818
+
+generated latent initialisation provides a better starting point for inverse design than random pVAE latent sampling. However, increasing optimisation steps does not always improve the final score consistently. This suggests that optimisation within a frozen decoder space may gradually move latent samples away from the decoder’s most physically reliable region. The proposed method achieves the best overall balance between target accuracy and controllability. On the synthetic dataset, it achieves the best overall mean score at 50 opti-misation steps and produces strong or near-strong Pearson correlations across all physical properties. On the real micro-CT dataset, it consistently achieves the best or near-best mean score, median score, mean permeability error, and permeability correlations across optimisation settings. These results suggest that joint denoiser-decoder refinement is especially beneficial when dealing with real porous structures, where the latent distribution is more complex and decoder mismatch becomes more pronounced. An additional observation is that the porosity error of the proposed method is occasionally slightly higher than that of the latent diffusion baseline. This is likely caused by the stronger optimisation emphasis on directional permeability consistency. Permeability depends heavily on pore connectivity, and anisotropic flow pathways, whereas porosity is primarily a global volumetric statistic. During joint refinement, the model may introduce small changes in pore volume fraction to better preserve transport-relevant structures required for matching directional permeability. Despite this trade-off, the proposed method maintains competitive porosity accuracy while achieving stronger overall physical-property controllability and simulator-verified consistency. 14 
+
+2) Effect of Latent Space Resolution: All three methods rely on a pVAE to construct a compact latent representation for downstream porous-structure generation and inverse design. The quality of this latent representation is therefore critical, as it directly affects reconstruction fidelity, latent controllability, and the effectiveness of subsequent diffusion-based generation. To determine an appropriate latent representation size, we evaluate latent tensor resolutions of 33, 43, 53, and 63 using the real micro-CT dataset. The trained encoder maps porous structures into latent tensors of different spatial resolutions, while the decoder reconstructs the voxelised geometry from the latent representation. Figure 8 shows that a latent resolution of 53 achieves the best overall performance. Smaller latent spaces such as 33 and 43 introduce excessive information compression and reduce reconstruction fidelity, whereas larger latent spaces such as 63 increase latent complexity without providing consistent performance improvements. Based on these observations, a latent tensor resolution of 53 is adopted for all subsequent experiments. The resulting trained pVAE decoder is then shared across all compared methods to map latent representations back into voxelised porous structures. 
+
+Fig. 8: Comparison of the impact of latent space dimension on property prediction and decoder performance. Overall, these ablation results demonstrate that latent opti-misation alone is insufficient for robust inverse design unless the latent distribution, denoiser, and decoder remain physically compatible. The proposed joint denoiser-decoder refinement provides a more stable and controllable optimisation space, enabling diffusion-generated latent samples to remain aligned with physically meaningful porous structures during inverse-design refinement. V. C ONCLUSION 
+
+This paper presented a physical-property-guided latent diffu-sion framework for controllable 3D porous-media generation and inverse design. The framework combines property-aware latent modelling, conditional latent diffusion, differentiable structure-to-property feedback, and Palabos-based verification. By jointly refining the diffusion denoiser and pVAE decoder, the method reduces the mismatch between diffusion-generated latent samples and the decoder latent distribution, improving target-property consistency without requiring expensive online simulation. Experiments on both procedurally generated porous struc-tures and real micro-CT porous-media datasets showed that the proposed method improves simulator-verified inverse-design performance compared with representative pVAE-based and latent-diffusion-based baselines. The results demonstrate lower overall target-matching scores, stronger permeability controllability, and higher correlations between target and Palabos-verified properties. They also highlight that visual realism alone is insufficient for porous-media inverse design, as visually plausible structures may still deviate substantially from desired transport properties. Future work will extend the framework to additional physical quantities such as tortuosity, reactive surface area, thermal transport, and multiphase flow behaviour. REFERENCES [1] H. Amiri, H. Vogel, and O. Plümper, “New 2d to 3d reconstruction of heterogeneous porous media via deep generative adversarial networks (gans),” Journal of Geophysical Research: Machine Learning and Computation , vol. 1, no. 3, p. e2024JH000178, 2024. [2] L. Zhu, B. Bijeljic, and M. J. Blunt, “Diffusion model-based generation of three-dimensional multiphase pore-scale images,” Transport in Porous Media , vol. 152, no. 3, p. 22, 2025. [3] D. Naiff, B. P. Schaeffer, G. Pires, D. Stojkovic, T. Rapstine, and F. Ramos, “Controlled latent diffusion models for 3d porous media reconstruction,” arXiv preprint arXiv:2503.24083 , 2025. [4] S. Kench, I. Squires, A. Dahari, and S. J. Cooper, “Microlib: A library of 3d microstructures generated from 2d micrographs using slicegan,”                    
+
+> Scientific Data , vol. 9, no. 1, p. 645, 2022. [5] E. Kononov, M. Tashkinov, and V. V. Silberschmidt, “Reconstruction of 3d random media from 2d images: generative adversarial learning approach,” Computer-Aided Design , vol. 158, p. 103498, 2023. [6] D. Volkhonskiy, E. Muravleva, O. Sudakov, D. Orlov, E. Burnaev, D. Koroteev, B. Belozerov, and V. Krutko, “Generative adversarial networks for reconstruction of three-dimensional porous media from two-dimensional slices,” Physical Review E , vol. 105, no. 2, p. 025304, 2022. [7] Z. Ren and S. Srinivasan, “Using physics informed generative adversarial networks to model 3d porous media,” arXiv preprint arXiv:2409.11541 ,2024. [8] P. C. Nguyen, N. N. Vlassis, B. Bahmani, W. Sun, H. Udaykumar, and S. S. Baek, “Synthesizing controlled microstructures of porous media using generative adversarial networks and reinforcement learning,”
+> Scientific reports , vol. 12, no. 1, p. 9034, 2022. [9] C. Düreth, P. Seibert, D. Rücker, S. Handford, M. Kästner, and M. Gude, “Conditional diffusion-based microstructure reconstruction,” Materials Today Communications , vol. 35, p. 105608, 2023. [10] Y. Zhang, P. Seibert, A. Otto, A. Raßloff, M. Ambati, and M. Käst-ner, “Da-vegan: Differentiably augmenting vae-gan for microstructure reconstruction from extremely small data sets,” Computational Materials Science , vol. 232, p. 112661, 2024. [11] T. T. P. Nguyen, T. Gulrez, J. B. Culpepper, S. L. Phung, and H. T. Le, “Camox: A diffusion-based method with few-shot learning for environment-guided camouflage pattern generation,” IEEE Transactions on Artificial Intelligence , 2025. [12] Z. Zhou, Z. Wei, J. Ren, Y. Yin, G. F. Pedersen, and M. Shen, “Two-order deep learning for generalized synthesis of radiation patterns for antenna arrays,” IEEE Transactions on Artificial Intelligence , vol. 4, no. 5, pp. 1359–1368, 2022. [13] H. Klopries and A. Schwung, “Itf-vae: Variational auto-encoder using interpretable continuous time series features,” IEEE Transactions on Artificial Intelligence , 2025. [14] L. Wang, Y.-C. Chan, F. Ahmed, Z. Liu, P. Zhu, and W. Chen, “Deep generative modeling for mechanistic-based learning and design of metamaterial systems,” Computer Methods in Applied Mechanics and Engineering , vol. 372, p. 113377, 2020. 15
+
+[15] P. T. Nguyen, Y. Heider, D. M. Kochmann, and F. Aldakheel, “Deep learning-aided inverse design of porous metamaterials,” Computer Methods in Applied Mechanics and Engineering , vol. 449, no. 11849, p. 118499, 2026. [16] M. K. Alzahrani, A. Shapoval, Z. Chen, and S. S. Rahman, “Pore-gnn: A graph neural network-based framework for predicting flow properties of porous media from micro-ct images,” Advances in Geo-Energy Research ,vol. 10, no. 1, pp. 39–55, 2023. [17] R. E. Jones, C. M. Hamel, D. Bolintineanu, K. Johnson, R. B. de Macedo, J. Fuhg, N. Bouklas, and S. Kramer, “Multiscale simulation of spatially correlated microstructure via a latent space representation,” International Journal of Solids and Structures , vol. 301, p. 112966, 2024. [18] N. T. Phu, U. Navrath, Y. Heider, J. Carmai, and B. Markert, “Investigat-ing the impact of deformation on foam permeability through ct scans and the lattice-boltzmann method,” PAMM , vol. 24, no. 1, p. e202300154, 2024. [19] T. Lavigne, C. A. S. Afanador, A. Obeidat, and S. Urcun, “Synthetic porous microstructures: Automatic design, simulation, and permeability analysis,” arXiv preprint arXiv:2502.14518 , 2025. [20] R. Rombach, A. Blattmann, D. Lorenz, P. Esser, and B. Ommer, “High-resolution image synthesis with latent diffusion models,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition ,2022, pp. 10 684–10 695.

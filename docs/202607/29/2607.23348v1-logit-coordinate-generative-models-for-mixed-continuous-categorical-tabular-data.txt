@@ -1,0 +1,2006 @@
+Title: Logit-Coordinate Generative Models for Mixed Continuous-Categorical Tabular Data
+
+URL Source: https://arxiv.org/pdf/2607.23348v1
+
+Published Time: Tue, 28 Jul 2026 00:55:24 GMT
+
+Number of Pages: 47
+
+Markdown Content:
+# Logit–Coordinate Generative Models for Mixed Continuous–Categorical Tabular Data 
+
+Yuefei Shen Xiaotong Shen 
+
+yms5084@gmail.com xshen@umn.edu 
+
+School of Statistics, University of Minnesota Minneapolis, MN 55455, USA 
+
+Abstract 
+
+Mixed continuous–categorical data pose a representation problem for continuous generative models. Flow Matching and Gaussian diffusion operate in Euclidean spaces, whereas categorical laws lie on probability simplices and may be highly imbalanced. We study a logit-coordinate framework that encodes categorical variables as smoothed natural parameters and combines them with transformed numerical variables. This yields common formulations of Logit Flow Matching and Logit Diffusion. We introduce a mixed-distribution discrepancy separating categorical marginal error from conditional continuous Wasserstein error, and derive stability bounds and imbalance-aware nonparametric rates linking vector-field or drift error to decoded mixed-distribution error. Controlled simulations show that scaled-logit coordinates improve or match one-hot coordinates, especially under severe rare-cell imbalance. Across four real-data benchmarks and ten splits per dataset, Logit FM improves the primary distributional metrics on three datasets and is comparable on Churn2; Block-Conditional Logit FM consistently improves the flat model; and Logit Diffusion generally improves over or matches One-Hot Diffusion. 
+
+Keywords: mixed tabular data, logit coordinates, flow matching, diffusion models, information geometry 
+
+# 1 Introduction 
+
+Mixed tabular data are neither purely Euclidean nor purely discrete. A typical record contains numerical variables, categorical attributes, and often a response label whose distribution is strongly imbalanced. If 
+
+X = ( X(c), X (d)),
+
+with X(c) ∈ Rp and X(d) taking values in a finite set, a useful generative model must approximate both the categorical marginal law and the continuous law conditional on each category. These two requirements become coupled under imbalance: the categories that are hardest to preserve are also the categories with the fewest observations for learning conditional continuous structure. Transport-based generative models offer an attractive route for this problem. Flow Matching (FM) (Lipman et al., 2022) learns a time-dependent velocity field whose ordinary differential equation transports a simple base distribution to the data distribution. Diffusion models use stochastic noising and denoising processes, but their probability-flow representations also fit into a vector-field view. For continuous data, this viewpoint has led to stability and convergence analyses that relate vector-field error to distributional error. For mixed data, the same argument cannot be applied without first choosing how categorical variables enter the transport space. 1arXiv:2607.23348v1 [stat.ML] 25 Jul 2026 The representation choice is a modeling decision with statistical consequences. One-hot encodings place all categories at equal Euclidean distances and then ask a continuous vector field to interpolate through the ambient space. This construction is convenient, but it does not encode the changing local curvature of the probability simplex. Natural-parameter, or logit, coordinates give a different embedding: after smoothing categorical observations into the interior of the simplex, additive log-ratio coordinates map them to an unconstrained Euclidean space while preserving the exponential-family coordinate structure. This paper studies logit generative models for mixed continuous–categorical tabular data. The central idea is representation-level: embed categorical variables in smoothed natural-parameter coordinates, concatenate them with transformed numerical variables, and then apply a continuous generative model in the resulting Euclidean coordinate system. Flow Matching and diffusion are treated as two instantiations of this principle. The geometry is used in this coordinate sense: the proposed models use Euclidean dynamics in natural-parameter coordinates, with no Fisher–Rao training objective. The contribution is the combination of this classical log-ratio representation with a mixed-distribution discrepancy, stability analysis, imbalance-aware rates, and within-family empirical comparisons for mixed tabular generation. 
+
+1.1 Generative Modeling for Mixed Tabular Data 
+
+Recent research has extended generative models to tabular data in various forms. Early approaches adapted generative adversarial networks (GANs) to heterogeneous tabular settings (Xu et al., 2019; Zhao et al., 2021). These models incorporate conditional sampling mechanisms. They also introduce feature-wise normalization to handle mixed variable types and class imbalance. Variational autoencoder (VAE) frameworks take a similar approach by introducing differentiable relaxations, for example, the Gumbel–Softmax, to model categorical variables (Jang et al., 2017; Maddison et al., 2017). Diffusion and transport-based models have also been extended to tabular data. Approaches like TabDDPM (Kotelnikov et al., 2023) split continuous and categorical features into separate diffusion processes. Related approaches instead treat one-hot encodings as continuous vectors perturbed by Gaussian noise. In parallel, methods such as Argmax Flows (Hoogeboom et al., 2021) introduce continuous latent representations that are discretized later to recover categorical variables. Despite their empirical success, these approaches mostly rely on Euclidean embeddings of categorical variables, typically through one-hot vectors or learned continuous representations. The geometric consequences of this choice are rarely discussed explicitly, particularly when class proportions are highly imbalanced. 
+
+1.2 Related Work and Positioning 
+
+Several recent papers address categorical or mixed-type generation with flow or diffusion models. Hoogeboom et al. (2021) develop Argmax Flows and multinomial diffusion for categorical data. TabDDPM (Kotelnikov et al., 2023) combines Gaussian diffusion for numerical variables with multi-nomial diffusion for categorical variables. More recent flow-matching approaches treat heterogeneous tabular data through variational or cascaded constructions, including exponential-family variational Flow Matching (Guzm´ an-Cordero et al., 2025) and cascaded Flow Matching for heterogeneous tables (Mueller et al., 2026). A separate line studies categorical generation directly on, or through transformations of, the simplex. Statistical Flow Matching (Cheng et al., 2024) uses Fisher–Rao geometry on statistical manifolds, Categorical Flow Maps (Roos et al., 2026) use simplex-constrained endpoint parameterizations, and simplex-to-Euclidean methods use log-ratio-type bijections to make 2categorical flow matching compatible with standard Euclidean models (Williams et al., 2025). This paper is closest in spirit to the simplex-to-Euclidean and exponential-family viewpoints, but it asks a different statistical question. We focus on mixed continuous–categorical tabular distributions under imbalance, where fidelity requires preserving both categorical mass and numerical distributions conditional on categorical-label cells. The proposed logit representation is therefore studied as a representation principle for continuous generative modeling of mixed data. Flow Matching provides one instantiation through logit-space velocity fields, while diffusion provides another through Gaussian noising and denoising in the same transformed coordinates. This framing separates a coordinate-representation effect that can otherwise be bundled with architecture, conditioning, and benchmark design in mixed-tabular generation. 
+
+1.3 Continuous Generative Dynamics and Geometric Structure 
+
+The primary obstacle in applying continuous generative models to mixed tabular data is geometric. Flow Matching is defined through deterministic velocity fields in Euclidean space, while Gaussian diffusion models perturb and denoise variables in Euclidean coordinates. Even when diffusion is viewed through its probability-flow ODE representation, the generative dynamics operate through continuous vector fields. Thus, both Flow Matching and diffusion require categorical variables to be embedded into a continuous coordinate system before they can be modeled jointly with numerical variables. Categorical distributions reside on the probability simplex ∆K = {p ∈ RK : pk ≥ 0,
+
+> K
+
+X
+
+> k=1
+
+pk = 1 },
+
+which carries a non-Euclidean information geometry described by the Fisher–Rao metric (Amari, 2016). A common practice embeds categorical variables using one-hot encodings and treats them as continuous during training. Although it is computationally convenient, this approach implicitly treats the simplex as a flat Euclidean subset of RK . Consequently, this Euclidean relaxation potentially distorts statistical structure and degrades rare-category fidelity. Categorical distributions form an exponential family, and the natural parameters correspond to logits. The logit transformation maps the interior of the simplex to an unconstrained Euclidean space. In these coordinates, exponential-family structure is represented through natural parameters, which gives a statistically interpretable Euclidean embedding for transport-based generative modeling. This motivates a logit-coordinate representation of categorical variables for continuous generative dynamics. 
+
+1.4 Contributions 
+
+Building on this perspective, we develop a logit-coordinate framework for generative modeling of mixed continuous–categorical tabular data. The contribution is fivefold. 
+
+(1) Logit generative modeling for mixed data. We embed categorical variables in smoothed natural-parameter coordinates and concatenate them with transformed numerical variables, producing a continuous representation of mixed tabular data. This representation can be used with different continuous generative dynamics, including Flow Matching and Gaussian diffusion. 
+
+(2) Geometry-aware categorical representation. The proposed representation replaces one-hot Euclidean coordinates with logit coordinates associated with the categorical exponential family. 3This gives a simple unconstrained Euclidean training space while preserving the natural-parameter structure of categorical distributions. 
+
+(3) A mixed-distribution fidelity criterion. We introduce a discrepancy for mixed distributions that decomposes categorical marginal error and conditional continuous Wasserstein error. This discrepancy reflects the intrinsic mixture structure of mixed tabular data and directly evaluates whether a generator preserves both category proportions and within-category numerical distributions. 
+
+(4) Unified stability analysis for logit generative models. We establish stability bounds showing how errors in learned continuous dynamics propagate to mixed-distribution error after decoding from logit coordinates. For Flow Matching, this gives a velocity-field stability bound. For diffusion models, the same mechanism applies through the probability-flow ODE representation, where score-estimation error induces drift-field error. 
+
+(5) Imbalance-aware statistical rates and empirical validation. By reducing the learning problem to nonparametric estimation of time-dependent vector fields, we derive convergence rates that make the effective-sample-size loss for rare categories explicit. Controlled simulations compare logit and one-hot representations under rare-cell imbalance, while real-data experiments over ten data splits per dataset evaluate the representation effect and the benefit of additional block-conditional structure. Together, these results support a representation-level message: for mixed tabular generation under imbalance, the categorical coordinate system can materially affect distributional fidelity across continuous generative modeling frameworks. The empirical comparisons remain primarily within family, while the two TabDDPM variants serve as external references rather than a basis for direct cross-family ranking. 
+
+# 2 Mathematical Background 
+
+In this section, we formalize the statistical and geometric foundations for mixed discrete–continuous generative modeling. 
+
+Notation. Unless stated otherwise, a superscript ⋆ marks a population or data-generating (“true”) quantity and a hat marks its learned, estimated, or generated counterpart; for example, ( P ⋆, bP )and ( π⋆k, bπk). 
+
+2.1 Mixed Discrete–Continuous Probability Spaces 
+
+Let (Ω , F, P) be a probability space. We consider random variables 
+
+X = ( X(c), X (d)),
+
+where 
+
+X(c) ∈ Rp, X(d) ∈ D ,
+
+and D is a finite discrete space with total cardinality K; for multiple categorical variables, K denotes the number of joint categorical cells. A generic joint density admits the following factorization: 
+
+p(x(c), x (d)) = p(x(d)) p(x(c) | x(d)).
+
+This representation identifies the space of mixed distributions with 
+
+P(Rp × D ) ∼=
+
+(
+
+(πk, f k)Kk=1 : πk ≥ 0,
+
+> K
+
+X
+
+> k=1
+
+πk = 1 , f k ∈ P (Rp)
+
+)
+
+,
+
+4where πk = P(X(d) = k) and fk(·) = p( · | X(d) = k). For the true data-generating law P ⋆ with density p⋆, we use the starred components 
+
+π⋆k := P ⋆(X(d) = k), f ⋆k (·) := p⋆( · | X(d) = k).
+
+In particular, categorical imbalance corresponds to small π⋆k for some k. A generative model must preserve both marginal probabilities ( π⋆k) and conditional densities ( f ⋆k ). 
+
+2.2 Flow Matching in Continuous Spaces 
+
+Flow Matching (FM) (Lipman et al., 2022) learns a time-dependent vector field 
+
+vϕ : Rd × [0 , 1] → Rd
+
+that induces an ODE dY t
+
+dt = vϕ(Yt, t ),
+
+transporting a base distribution μ0 to a target distribution μ⋆
+
+> 1
+
+.Training proceeds by sampling 
+
+Y1 ∼ μ⋆
+
+> 1
+
+, Y0 ∼ μ0, t ∼ Unif(0 , 1) ,
+
+defining interpolation 
+
+Yt = (1 − t)Y0 + tY 1,
+
+and minimizing 
+
+L(ϕ) = E∥vϕ(Yt, t ) − (Y1 − Y0)∥2.
+
+Equivalently, with U = Y1 − Y0, the population Flow Matching velocity is v⋆(y, t ) = E[U | Yt = y]; the loss above is the squared-error regression objective for this conditional mean. This formulation assumes Y1 ∈ Rd. Thus categorical variables must be embedded in a continuous space prior to FM training. 
+
+2.3 The Probability Simplex 
+
+Categorical distributions over D = {1, . . . , K } form the probability simplex ∆K =
+
+(
+
+p ∈ RK : pk ≥ 0,
+
+> K
+
+X
+
+> k=1
+
+pk = 1 
+
+)
+
+.
+
+Its interior ∆◦ 
+
+> K
+
+= {p ∈ ∆K : pk > 0 ∀k}
+
+is a smooth ( K − 1)-dimensional manifold embedded in RK .Although ∆ K is a convex subset of RK , its intrinsic statistical geometry is not Euclidean. The Euclidean metric inherited from RK does not coincide with the Fisher–Rao metric that governs local behavior of statistical divergence (Section 2.4). Under one-hot encoding, category k is represented by the vertex ek ∈ RK , where ( ek)j = 1 {j = k}.A Euclidean interpolation between two categories ei and ej yields (1 − t)ei + te j , t ∈ [0 , 1] ,
+
+5which corresponds to a mixture distribution assigning probabilities (1 − t) and t to categories i
+
+and j.Such linear interpolation is natural in Euclidean space, but it does not correspond to the affine paths singled out by the exponential-family structure of categorical distributions. In particular, e-geodesic, or natural-parameter affine, paths are linear in natural-parameter coordinates rather than in probability coordinates. This difference becomes visible near the boundary of the simplex. For example, in the binary case 
+
+K = 2, the simplex reduces to the interval (0 , 1). Euclidean distance between probabilities scales linearly, whereas the Kullback–Leibler divergence depends on probability ratios such as p log (p/q ). When coordinates approach zero at different rates, the ratio between KL divergence and squared Euclidean distance can diverge. Thus, small Euclidean perturbations between probability vectors near the boundary need not provide uniform quadratic control of statistical divergence. 
+
+2.4 Information Geometry and the Fisher Metric 
+
+Categorical distributions form an exponential family with density 
+
+pθ(k) = exp( θk)
+
+PKj=1 exp( θj ) ,
+
+where the natural parameter θ ∈ RK is defined up to an additive constant. The associated log-partition function is 
+
+A(θ) = log 
+
+
+
+> K
+
+X
+
+> j=1
+
+exp( θj )
+
+ .
+
+The Fisher information matrix in natural-parameter coordinates is 
+
+I(θ) = ∇2A(θ) = diag( pθ) − pθp⊤ 
+
+> θ
+
+.
+
+This matrix defines a Riemannian metric on the interior ∆ ◦ 
+
+> K
+
+. For small perturbations dθ , the Kullback–Leibler divergence admits the second-order expansion KL( pθ ∥ pθ+dθ ) = 12 dθ ⊤I(θ) dθ + o(∥dθ ∥2).
+
+Thus the Fisher metric characterizes the local curvature of the simplex under statistical diver-gence. The entries of I(θ) depend on the probabilities pθ(k). As pθ(k) → 0, the Fisher matrix becomes increasingly anisotropic and loses uniform conditioning near the boundary of the simplex. Thus the constants that connect Euclidean perturbations in natural coordinates to statistical divergence deteriorate near rare-category faces. 
+
+Coordinates and metric. Natural-parameter coordinates remove the probability constraint and make e-geodesic, or natural-parameter affine, paths linear in θ. However, the intrinsic Riemannian metric on ∆ ◦ 
+
+> K
+
+is given by the Fisher information matrix I(θ), which is generally not the identity matrix. Thus, although θ-space is an unconstrained Euclidean space as a coordinate representation, the statistical geometry it represents remains curved. The full K × K Fisher matrix has null vector 1 because adding a constant to every natural parameter leaves the distribution unchanged. On any compact subset of ∆ ◦ 
+
+> K
+
+bounded away from the boundary, its nonzero eigenvalues are bounded above and below. Equivalently, after fixing a reference category, the reduced ( K − 1) × (K − 1) Fisher matrix is uniformly positive definite. 6The corresponding quadratic form is uniformly equivalent to the Euclidean norm on identifiable natural-parameter perturbations. Consequently, regression objectives based on the Euclidean norm in θ-space locally approximate the Fisher–Rao geometry rather than coincide with it. This local equivalence is made precise in Proposition 1 of Section 3.4, which establishes quadratic control of Kullback–Leibler divergence by Euclidean perturbations in natural-parameter space. 
+
+2.5 Logit (Natural Parameter) Coordinates 
+
+We use the final category as the reference, denoted r = K, and define reduced natural parameters 
+
+ηk = log pk
+
+pr
+
+, k = 1 , . . . , K − 1.
+
+The mapping 
+
+η 7 → p
+
+is smooth and bijective between RK−1 and ∆ ◦ 
+
+> K
+
+.In these coordinates, probability ratios vary linearly in η, and e-geodesic, or natural-parameter affine, paths correspond to linear paths in η-space (Amari, 2016). Accordingly, performing regression in η-space preserves the linear structure of the exponential family while removing the simplex constraint. 
+
+2.6 Implications for Mixed Transport 
+
+When categorical variables are embedded as one-hot vectors in RK , Flow Matching minimizes Euclidean error 
+
+∥v − v⋆∥2
+
+under the flat metric inherited from RK . This implicitly treats the probability simplex as a Euclidean subset. In contrast, embedding categories via natural parameters maps ∆ ◦ 
+
+> K
+
+to RK−1 through a smooth bijection. Transport is then performed in logit space. Although the optimization still uses a Euclidean norm in these coordinates, natural-parameter affine paths become linear trajectories, and small perturbations in η correspond locally to controlled perturbations in Kullback–Leibler divergence (Section 2.4). Thus the difference between one-hot and logit embeddings lies not in the optimization objective itself, but in the geometric structure imposed by the coordinate representation. 
+
+# 3 Geometry of Categorical Relaxations 
+
+In Section 2, we show that categorical distributions lie on the probability simplex equipped with the Fisher–Rao metric, whereas Flow Matching is formulated in Euclidean space. Applying Flow Matching to categorical variables therefore requires choosing an embedding into a Euclidean coordinate system. The choice of embedding determines how Euclidean regression errors translate into statistical discrepancies on the simplex. In this section we compare two embedding strategies: the standard one-hot Euclidean represen-tation and the logit (natural parameter) representation associated with the categorical exponential family. We show that these two constructions induce fundamentally different geometric behaviors. In particular, Euclidean regression in logit coordinates provides local control of Kullback–Leibler divergence and probability error, while Euclidean distances between probability vectors do not yield 7uniform control of statistical divergence, especially near the boundary of the simplex. These results clarify the geometric role of categorical embeddings in transport-based generative modeling. 
+
+3.1 One-Hot Euclidean Embedding 
+
+Under one-hot encoding, each category k ∈ { 1, . . . , K } is represented by the vertex ek ∈ RK .Flow Matching is then applied in RK by treating these vertices as ordinary Euclidean points. Let Π : RK → { 1, . . . , K } denote the decoding map Π( y) = arg max j yj . Training minimizes the Euclidean regression loss 
+
+Lone-hot = E∥vϕ(Yt, t ) − v⋆(Yt, t )∥2,
+
+where Yt interpolates between base samples and one-hot encoded data. This construction measures vector-field regression error in the flat geometry of RK . The loss 
+
+Lone-hot does not directly control a statistical divergence between decoded categorical laws; the behavior also depends on the learned flow and the argmax margins at decoding. 
+
+3.2 Logit Embedding 
+
+In the logit embedding, each categorical observation is mapped to natural parameters of the categorical exponential family. After introducing a small smoothing parameter to ensure strict positivity for pk, define the reduced logits 
+
+ηk = log pk
+
+pK
+
+, k = 1 , . . . , K − 1,
+
+where K is a fixed reference category. This yields a vector η ∈ RK−1.The mapping η 7 → p is smooth and bijective between RK−1 and the interior of the simplex ∆ ◦ 
+
+> K
+
+.Flow Matching is carried out in η-space, and categorical probabilities are recovered through the softmax map at decoding. 
+
+3.3 Choice of Log-Ratio Coordinates 
+
+We adopt the additive log-ratio (ALR) representation by fixing a reference category. This yields a (K −1)-dimensional unconstrained parameterization that coincides with the natural parameterization of the categorical exponential family. The ALR coordinates depend on the chosen reference category, so they are not permutation invariant. Changing the reference category applies an invertible linear transformation to the log-ratio coordinates and therefore does not change the represented probability vector. It can still affect finite-sample optimization because the Euclidean loss and network parameterization are not invariant to arbitrary linear reparameterizations. Alternative log-ratio transformations, such as the centered log-ratio (CLR) representation, provide symmetric embeddings at the cost of introducing a linear constraint. We use ALR for its minimal ( K − 1)-dimensional exponential-family parameterization. 
+
+Rare categories in logit space. 
+
+Log-ratio coordinates make rare-category contrasts explicit. If pk → 0 while the reference category probability remains bounded away from zero, then 
+
+ηk = log 
+
+ pk
+
+pK
+
+
+
+→ −∞ .
+
+Thus categories with small probability are mapped to extreme regions in logit space. In contrast to one-hot embeddings, where all vertices lie at equal Euclidean distance, logit coordinates induce reference-dependent contrasts whose magnitude grows as probabilities become more imbalanced. 8This observation should be read together with the effective-sample-size limitation for rare cells. Logit coordinates make rare/frequent contrasts explicit in the representation, while the available data in a rare cell remain of order nπ ⋆k.
+
+3.4 Embedding Geometry and Divergence Control 
+
+The distinction between one-hot and logit embeddings reduces to how Euclidean perturbations in the chosen coordinate system translate into statistical discrepancies on the simplex. In particular, we ask whether small Euclidean errors imply small divergence between the corresponding categorical distributions. In this section, we demonstrate two results which together clarify the geometric consequences of the embedding choice: (i) Local fidelity of the logit embedding. We show that, in natural parameter coordinates, Euclidean perturbations provide local quadratic control of Kullback–Leibler divergence. (ii) Global pathology of Euclidean relaxations. We show that no analogous global control holds when probability vectors are compared directly in Euclidean norm. Propositions 3.1 and 3.4 are proved below, and Proposition 3.2 is proved in Section 5.1. 
+
+Proposition 3.1 (Local equivalence of KL and reduced natural-parameter error) . Let pθ denote the categorical distribution with reduced natural parameters θ ∈ RK−1 (with a fixed reference category). For any compact set K ⊂ ∆◦ 
+
+> K
+
+, there exist constants 0 < c ≤ C < ∞ and r > 0 such that for all θ
+
+with pθ ∈ K and all δ with ∥δ∥ ≤ r,
+
+c∥δ∥2 ≤ KL( pθ∥pθ+δ) ≤ C∥δ∥2.
+
+Proof. We work in reduced natural-parameter coordinates θ ∈ RK−1, with the last category fixed as reference. The categorical model is an exponential family with log-partition function 
+
+A(θ) = log 1 + 
+
+> K−1
+
+X
+
+> k=1
+
+eθk
+
+!
+
+,
+
+and probabilities 
+
+pθ(k) = eθk
+
+1 + PK−1 
+
+> j=1
+
+eθj
+
+, pθ(K) = 11 + PK−1 
+
+> j=1
+
+eθj
+
+.
+
+Write ¯pθ = ( pθ(1) , . . . , p θ(K − 1)) ⊤.
+
+The Fisher information matrix in reduced natural coordinates is 
+
+Ired (θ) = ∇2A(θ) = diag(¯ pθ) − ¯pθ ¯p⊤ 
+
+> θ
+
+.
+
+For every θ, this ( K − 1) × (K − 1) matrix is positive definite. Because K is compact and lies in the simplex interior, there is a compact neighborhood K′ ⊂ ∆◦
+
+> K
+
+of K and constants 0 < m ≤ M < ∞ such that 
+
+mI K−1 ⪯ I red (ϑ) ⪯ M I K−1 whenever pϑ ∈ K ′.
+
+Choose r > 0 so that pθ+sδ ∈ K ′ for all pθ ∈ K , s ∈ [0 , 1], and ∥δ∥ ≤ r. The integral Taylor remainder for the log-partition function gives KL( pθ∥pθ+δ) = 
+
+Z 10
+
+(1 − s) δ⊤Ired (θ + sδ )δ ds. 
+
+9Consequently, m
+
+2 ∥δ∥2 ≤ KL( pθ∥pθ+δ) ≤ M
+
+2 ∥δ∥2,
+
+which proves the claim. 
+
+Proposition 3.2 (Probability error control via softmax Lipschitzness) . Let S be the reference-category softmax map on RK−1. Then for all θ, ˜θ ∈ RK−1,
+
+∥S(θ) − S(˜θ)∥1 ≤√K
+
+2 ∥θ − ˜θ∥2.
+
+The result follows from the ℓ2 Lipschitz bound proved in Section 5.1 together with norm equivalence between ℓ1 and ℓ2.
+
+Remark 3.3 . Proposition 3.2 provides a quantitative link between logit estimation error and proba-bility error. Since total variation distance between categorical marginals is given by T V (π⋆, bπ) =  
+
+> 12
+
+∥π⋆ − bπ∥1, the ℓ1 Lipschitz bound implies that small Euclidean errors in logit space yield controlled deviations in categorical probabilities. The factor √K arises from norm equivalence between ℓ1 and 
+
+ℓ2 norms in RK and depends only on the number of categories. 
+
+Proposition 3.4 (No global Euclidean control of KL on the simplex) . There does not exist a constant C > 0 such that for all p, q ∈ ∆◦ 
+
+> K
+
+,
+
+KL (p∥q) ≤ C∥p − q∥22.
+
+Proof. It suffices to construct a counterexample. Consider the binary case K = 2. For ε ∈ (0 , 1/2), define 
+
+pε = ( ε, 1 − ε), qε = ( ε2, 1 − ε2).
+
+First compute the squared Euclidean distance: 
+
+∥pε − qε∥22 = 2( ε − ε2)2 ∼ 2ε2 as ε → 0.
+
+Next compute the KL divergence: 
+
+KL (pε∥qε) = ε log 
+
+ εε2
+
+
+
++ (1 − ε) log 
+
+ 1 − ε
+
+1 − ε2
+
+
+
+.
+
+The first term equals ε log(1 /ε ), while the second term is O(ε). Hence 
+
+KL (pε∥qε) ∼ ε log(1 /ε ) as ε → 0.
+
+Therefore, 
+
+KL (pε∥qε)
+
+∥pε − qε∥22
+
+∼ ε log(1 /ε )2ε2 = log(1 /ε )2ε −→ ∞ .
+
+Thus no constant C can satisfy the proposed inequality uniformly on ∆ ◦ 
+
+> K
+
+.Proposition 3.4 concerns Euclidean error between probability vectors. It is not an impossibility result for a one-hot Flow Matching model with argmax decoding. Its role is narrower: flat probability-coordinate error alone supplies no uniform quadratic KL control near the simplex boundary, whereas reduced natural parameters provide local two-sided control on compact interior sets. 10 3.5 Remarks on Boundary Behavior and Smoothing 
+
+The two-sided equivalence in Proposition 3.1 is local. It holds uniformly on compact subsets of the simplex interior. As categorical probabilities approach zero, the smallest eigenvalue of the reduced Fisher information matrix can vanish, so the lower quadratic bound and uniform norm equivalence deteriorate. The global upper control used later for probability decoding remains valid through softmax Lipschitzness. In practice, categorical observations are smoothed to ensure strict positivity. The smoothing parameter ε keeps the encoded prototypes a fixed distance from the boundary, where the natural parameterization becomes unbounded. Learned trajectories are not automatically confined to a compact set, so the stability results below use the global Lipschitz property of the softmax decoder rather than a global KL equivalence. Finally, the regression objective uses the Euclidean norm in logit space. While natural coordinates align e-geodesic, or natural-parameter affine, paths with linear structure, the induced loss does not coincide exactly with the Fisher–Rao metric. A fully geometry-consistent alternative would incorporate Fisher-weighted norms, but such modifications are not required for the stability analysis developed in later sections. Thus, the method is information-geometry motivated rather than a Fisher–Rao flow. 
+
+# 4 Logit Generative Models for Mixed Data 
+
+We now formalize the logit-coordinate representation used by the continuous generative models studied in this paper. The same transformed representation supports both Logit Flow Matching and Logit Diffusion; the two methods differ in the continuous dynamics learned after the categorical variables have been embedded. 
+
+4.1 Problem Setup 
+
+Let 
+
+X = ( X(c), X (d))with 
+
+X(c) ∈ Rp, X(d) ∈ { 1, . . . , K }.
+
+We aim to learn a generative model for the true joint distribution 
+
+p⋆(x(c), x (d)).
+
+4.2 Smoothing of Categorical Observations 
+
+Since logit coordinates require strictly positive probabilities, we introduce a smoothing parameter 
+
+ε ∈ (0 , 1). For an observed category d ∈ { 1, . . . , K }, define the smoothed target vector 
+
+q(ε) 
+
+> k
+
+(d) = (1 − ε)1{k = d} + ε 1
+
+K .
+
+This vector is an encoding of the observed category, not a model for the conditional data law. This ensures 
+
+q(ε) 
+
+> k
+
+(d) > 0 for all k, 
+
+so the embedded representation lies strictly in ∆ ◦ 
+
+> K
+
+.11 4.3 Logit Transformation 
+
+Use the final category as the reference r = K. Define reduced natural parameters 
+
+ηk(d) = log q(ε) 
+
+> k
+
+(d)
+
+q(ε) 
+
+> r
+
+(d) , k = 1 , . . . , K − 1.
+
+The categorical observation d is thus embedded into 
+
+η(d) ∈ RK−1.
+
+The full transformed observation becomes 
+
+Y = ( X(c), η ) ∈ Rp+K−1.
+
+4.4 Logit Flow Matching 
+
+Let μ⋆ 
+
+> 1
+
+denote the distribution of transformed data Y . Let μ0 = N (0 , I ) be a base distribution in 
+
+Rp+K−1.Define interpolation: 
+
+Yt = (1 − t)Y0 + tY 1,
+
+where 
+
+Y0 ∼ μ0, Y1 ∼ μ⋆
+
+> 1
+
+, t ∼ Unif(0 , 1) .
+
+Let U = Y1 − Y0 be the samplewise regression target. The population velocity is v⋆(y, t ) = E[U |
+
+Yt = y]. We train a neural network vϕ by minimizing 
+
+L(ϕ) = E∥vϕ(Yt, t ) − U ∥2.
+
+4.5 Sampling Procedure 
+
+After training, generate samples by solving the ODE 
+
+dY t
+
+dt = vϕ(Yt, t ), t ∈ [0 , 1] ,
+
+with initial condition Y0 ∼ N (0 , I ). Let the final state be bY1 = ( bX(c), ˆη).
+
+4.6 Decoding to Categorical Variables 
+
+Recover categorical probabilities via softmax: 
+
+bpk = exp( bηk)1 + PK−1 
+
+> j=1
+
+exp( bηj ) , k = 1 , . . . , K − 1,
+
+and 
+
+bpK = 11 + PK−1 
+
+> j=1
+
+exp( bηj ) .
+
+12 Finally, sample bX(d) ∼ Categorical(ˆ p).
+
+This randomized decoder is useful for the probability-level stability analysis below. A deterministic alternative selects bX(d) = arg max k bpk. The experiments use this maximum-probability rule for both one-hot and scaled-logit coordinates. Randomized softmax decoding incurs an encoding bias of at most ε in total variation relative to the unsmoothed categorical law; maximum-probability decoding recovers every encoded prototype exactly but requires margin control for a perturbation guarantee. 
+
+Algorithm 1 Logit Flow Matching for Mixed Data 
+
+Require: Mixed data ( X(c), X (d)), smoothing parameter ε > 0 
+
+> 1:
+
+(Embedding) Embed categorical variables via smoothed logit map: 
+
+ηk = log q(ε)
+
+> k
+
+q(ε)
+
+> r
+
+, k = 1 , . . . , K − 1Form transformed data Y = ( X(c), η ) ∈ Rp+K−1. 
+
+> 2:
+
+(Training) Train Flow Matching in Rp+K−1 by minimizing 
+
+E∥vϕ(Yt, t ) − (Y1 − Y0)∥2. 
+
+> 3:
+
+(Sampling) Sample Y0 ∼ N (0 , I ) and solve ˙Yt = vϕ(Yt, t ). 
+
+> 4:
+
+(Decoding) Apply softmax to the logit coordinates and either sample from the resulting categorical distribution or select its maximum-probability category. Algorithm 1 summarizes the geometry-aware Flow Matching procedure, which modifies the categorical representation while retaining the standard Flow Matching framework. For multiple categorical variables, the same construction is applied blockwise. Each categorical column is smoothed, mapped to its own reduced logit coordinate system, and concatenated with the numerical variables before Flow Matching is trained. The theoretical analysis below is written for one categorical block to keep notation transparent; the blockwise product case follows by summing the corresponding categorical total-variation and conditional transport terms, with constants depending on the number and cardinalities of the blocks. 
+
+4.7 Logit Diffusion 
+
+Logit Diffusion applies Gaussian diffusion to the same transformed representation 
+
+Y = ( X(c), η ) ∈ Rp+K−1.
+
+Let Y0 denote the clean transformed data vector. A standard forward noising process (Song et al., 2021) has the form 
+
+Yt = √¯αt Y0 + √1 − ¯αt ξ, ξ ∼ N (0 , I ).
+
+A time-conditioned denoising network is trained either to predict the injected noise, the clean target 
+
+Y0, or an equivalent score parameterization. After reverse sampling, the numerical coordinates are 13 mapped back through the numerical inverse transform and the categorical coordinates are decoded by the softmax map described above. Thus, Logit Diffusion differs from ordinary Gaussian diffusion only in the coordinate representa-tion used for categorical variables. Through the probability-flow ODE representation, it also fits into the unified vector-field stability framework in the next section: the relevant vector field is the drift induced by the learned score or denoising model. 
+
+# 5 Stability Analysis for Logit Generative Models 
+
+This section states the stability facts needed for the rate analysis and the mixed-data discrepancy. Detailed derivations are collected in Appendix A.1; the main text keeps the assumptions, conclusions, and interpretation needed for the empirical sections. 
+
+5.1 Transport-Based Generative Models 
+
+Definition 5.1 (Transport-based generative model) . Let P0 be a base distribution on Rd with finite second moment. A transport-based generative model is defined by a time-dependent vector field 
+
+f : [0 , 1] × Rd → Rd and the ODE ˙Xt = f (t, X t), X0 ∼ P0.
+
+Let Φ ft denote the associated flow map. The generated distribution is P1 = (Φ f 
+
+> 1
+
+)#P0.
+
+Theorem 5.2 (Unified stability of transport-based generative models) . Let f ⋆ and ˆf be measurable in t and globally L-Lipschitz in x. Let P0 have finite second moment, and define 
+
+P ⋆ 
+
+> 1
+
+= (Φ f ⋆ 
+
+> 1
+
+)#P0, bP1 = (Φ ˆf 
+
+> 1
+
+)#P0.
+
+Then 
+
+W2(P ⋆ 
+
+> 1
+
+, bP1) ≤ C
+
+Z 10
+
+
+
+E∥ ˆf (t, X ⋆t ) − f ⋆(t, X ⋆t )∥21/2
+
+dt, 
+
+where X⋆t = Φ f ⋆ 
+
+> t
+
+(X0).
+
+The theorem is the common stability mechanism behind the later Flow Matching and diffusion statements: terminal distributional error is controlled by vector-field error accumulated along population trajectories. 
+
+5.2 Stability of the Logit Parameterization 
+
+Define S : RK−1 → ∆◦ 
+
+> K
+
+by 
+
+S(η)k = exp( ηk)1 + PK−1 
+
+> j=1
+
+exp( ηj ) , k = 1 , . . . , K − 1, S(η)K = 11 + PK−1 
+
+> j=1
+
+exp( ηj ) .
+
+This takes category K as the reference category. 
+
+Theorem 5.3 (Global Lipschitz bound of softmax) . For all η, ˜η ∈ RK−1,
+
+∥S(η) − S(˜ η)∥2 ≤ 12 ∥η − ˜η∥2.
+
+Consequently, 
+
+∥S(η) − S(˜ η)∥1 ≤√K
+
+2 ∥η − ˜η∥2.
+
+14 To see the reduced-coordinate bound, let E : RK−1 → RK insert a zero in the reference coordinate. The Jacobian of S is {diag (p) − pp ⊤}E, so its operator norm is at most 1 /2 by Lemma A.1. Thus logit-coordinate error gives direct control of categorical probability error. When the trained coordinate is the scaled logit z = η/a K , decoding is through S(aK z). The same stability statements therefore hold with the softmax Lipschitz constant multiplied by aK ; this factor is absorbed in Csm in the corollaries below. The theorem controls probability decoding. Hard decoding rules such as argmax require separate margin conditions or empirical diagnostics, which is why the experiments report categorical total-variation and rare-cell diagnostics directly. 
+
+5.3 Local KL Geometry and Mixed Fidelity 
+
+Natural-parameter coordinates also give local control of intrinsic divergence. For categorical exponential families, KL( pθ∥pθ+δ) = 12 δ⊤Ired (θ)δ + o(∥δ∥2),
+
+where Ired (θ) is the Fisher information matrix in the ( K − 1) reduced natural coordinates; see Lemma A.2. Let X = ( X(c), X (d)) with X(c) ∈ Rp and X(d) ∈ { 1, . . . , K }. For the true and generated laws 
+
+P ⋆ and bP , write 
+
+π⋆k = P ⋆(X(d) = k), bπk = bP (X(d) = k),
+
+and 
+
+P (c),⋆ k = LP ⋆ (X(c) | X(d) = k), bP (c) 
+
+> k
+
+= L( bX(c) | bX(d) = k).
+
+We use the mixed discrepancy 
+
+Dmix (P ⋆, bP ) := T V (π⋆, bπ) + 
+
+> K
+
+X
+
+> k=1
+
+π⋆k W2
+
+
+
+P (c),⋆ k , bP (c)
+
+> k
+
+
+
+, (1) where π⋆ = ( π⋆ 
+
+> 1
+
+, . . . , π ⋆K ) and T V (π⋆, bπ) = 12
+
+PKk=1 |π⋆k − bπk|. This discrepancy separates two errors that have different statistical origins: misallocation of categorical mass and distortion of the conditional continuous law. In the population definition, cells with π⋆k = 0 contribute zero to the weighted sum. The displayed discrepancy is used under the regularity convention that bP (c) 
+
+> k
+
+is defined for cells with positive true mass, as occurs for population softmax decoding with positive category probabilities. Finite generated samples can have empty empirical cells; empirical implementations should report the corresponding support convention when conditional Wasserstein summaries are computed. A joint product-space optimal transport distance can also be defined using 
+
+cλ
+
+ (x, d ), (x′, d ′) = ∥x − x′∥22 + λ1{d̸ = d′}, λ > 0.
+
+The decomposed discrepancy in (1) avoids choosing the calibration parameter λ and aligns directly with the logit and conditional-continuous stability bounds below. 
+
+5.4 Flow-Matching Fidelity Bounds and Extension to Mixed Data 
+
+Let v⋆, ˆv : [0 , 1] × Rp → Rp be measurable in t.15 Assumption 5.4 (Continuous Flow Regularity) . Both v⋆ and ˆv are globally L-Lipschitz in x,uniformly in t ∈ [0 , 1]; the initial law has finite second moment; and 
+
+Z 10
+
+E∥ˆv(t, X ⋆t ) − v⋆(t, X ⋆t )∥2 dt < ∞,
+
+where X⋆t = Φ v⋆ 
+
+> t
+
+(X0) and X0 ∼ P0.
+
+Theorem 5.5 (Wasserstein Stability for Flow Matching) . Suppose Assumption 5.4 holds. Then 
+
+W2(P ⋆ 
+
+> 1
+
+, bP1) ≤ eL
+
+Z 10
+
+
+
+E∥ˆv(t, X ⋆t ) − v⋆(t, X ⋆t )∥21/2
+
+dt, (2) 
+
+where P ⋆ 
+
+> 1
+
+= (Φ v⋆ 
+
+> 1
+
+)#P0 and bP1 = (Φ ˆv
+
+> 1
+
+)#P0.Proof. Use the synchronous coupling generated by the same X0, subtract the two ODEs, and apply Gronwall’s inequality followed by Minkowski’s inequality. Appendix A.1 gives the details. The next two corollaries concern a componentwise generator with a logit flow for categorical mass and separate continuous flows for the class-conditional laws. This formulation is an idealized version of the block-conditional factorization used in the experiments. For the flat joint model, Theorem 5.2 directly controls Wasserstein error for the full transformed row Y = ( X(c), η ). Projection gives marginal coordinate bounds, but it does not by itself give the class-conditional transport bounds assumed below; obtaining those bounds for a flat joint neural flow requires additional conditional-stability or margin assumptions. 
+
+Corollary 5.6 (Logit marginal fidelity for Flow Matching) . Let Zt ∈ RK−1 denote logit coordinates and let S be the softmax map. Suppose the population and learned logit dynamics are 
+
+˙Zt = v⋆Z (t, Z t), ˙bZt = ˆ vZ (t, bZt),
+
+with common base initialization Z0 ∼ P0,Z . Let 
+
+π⋆, (ε) := E[S(Z⋆ 
+
+> 1
+
+)] , bπ := E[S( bZ1)] .
+
+If the population endpoint is the smoothed encoding of a categorical variable with unsmoothed marginal 
+
+π⋆, then π⋆, (ε) = (1 − ε)π⋆ + εu K , where uK is uniform on the K categories, and T V (π⋆, π ⋆, (ε)) ≤ ε.If ˆvZ is globally LZ -Lipschitz in z and ∥S(z) − S(z′)∥1 ≤ Csm ∥z − z′∥2, then 
+
+T V (π⋆, bπ) ≤ ε + Csm 
+
+2 eLZ
+
+Z 10
+
+
+
+E ˆvZ (t, Z ⋆t ) − v⋆Z (t, Z ⋆t ) 22
+
+1/2
+
+dt. (3) 
+
+Corollary 5.7 (Mixed fidelity for Flow Matching) . Consider mixed data (X(c), X (d)) with X(c) ∈ Rp
+
+and X(d) ∈ { 1, . . . , K }. Let the logit component follow the dynamics in Corollary 5.6. For each class k, suppose the conditional continuous component evolves according to 
+
+˙X(c) 
+
+> t,k
+
+= v⋆k(t, X (c) 
+
+> t,k
+
+), ˙ˆX(c) 
+
+> t,k
+
+= ˆ vk(t, ˆX(c) 
+
+> t,k
+
+),
+
+with common base initialization and ˆvk globally Lk-Lipschitz. Then 
+
+Dmix (P ⋆, bP ) ≤ ε + Csm 
+
+2 eLZ
+
+Z 10
+
+
+
+E ˆvZ (t, Z ⋆t ) − v⋆Z (t, Z ⋆t ) 22
+
+1/2
+
+dt 
+
++
+
+> K
+
+X
+
+> k=1
+
+π⋆k eLk
+
+Z 10
+
+
+
+E ˆvk(t, X ⋆t,k ) − v⋆k(t, X ⋆t,k ) 22
+
+1/2
+
+dt. 
+
+(4) 16 Equation (4) is the componentwise bridge from learned velocity fields to mixed-data fidelity. It separates the logit marginal term, including smoothing bias, from the class-conditional continuous terms; the rate analysis uses the same componentwise contract. 
+
+5.5 Product-Space and Diffusion Consequences 
+
+For comparison with a single product-space transport metric, define Wcλ using the cost above. 
+
+Assumption 5.8 (Uniform conditional second moments) . For each cell with positive mass under 
+
+P ⋆ or bP , the continuous conditional laws satisfy 
+
+E
+
+
+
+∥X(c)∥22 | X(d) = k
+
+
+
+≤ M, E
+
+
+
+∥ bX(c)∥22 | bX(d) = k
+
+
+
+≤ M
+
+for some M < ∞.
+
+Lemma 5.9 (Joint transport upper bound) . Suppose Assumption 5.8 holds. Then 
+
+W 2 
+
+> cλ
+
+(P ⋆, bP ) ≤
+
+> K
+
+X
+
+> k=1
+
+π⋆kW 22
+
+
+
+P (c),⋆ k , bP (c)
+
+> k
+
+
+
++ ( λ + 4 M ) T V (π⋆, bπ).
+
+Theorem 5.10 (Product-space stability for mixed Flow Matching) . Assume the hypotheses of Corollary 5.7 and Assumption 5.8. Then W 2 
+
+> cλ
+
+(P ⋆, bP ) is bounded by the right side of Lemma 5.9 after substituting the classwise W2 bounds from Theorem 5.5 and the total-variation bound from Corollary 5.6. 
+
+Proposition 5.11 (Diffusion probability-flow stability) . Let s⋆(t, x ) = ∇ log p⋆t (x) be the population score and let ˆs be an estimator. For the probability flow drifts 
+
+f ⋆(t, x ) = μ(t, x ) − 12 σ2(t)s⋆(t, x ), ˆf (t, x ) = μ(t, x ) − 12 σ2(t)ˆ s(t, x ),
+
+assume f ⋆ and ˆf are globally Lipschitz in x uniformly over t ∈ [0 , 1] and that the initial laws have finite second moments. Then 
+
+W2(P ⋆ 
+
+> 1
+
+, bP1) ≤ C
+
+Z 10
+
+ E∥ˆs(t, X ⋆t ) − s⋆(t, X ⋆t )∥21/2 dt, 
+
+for a constant C depending on the Lipschitz constants and σ(t).
+
+Corollary 5.12 (Logit-diffusion fidelity) . Suppose the logit and class-conditional ODEs satisfy the conditions of Proposition 5.11. The mixed discrepancy then obeys the same structural bound as (4) ,with the Flow Matching velocity errors replaced by probability-flow drift errors. Equivalently, using 
+
+bf − f ⋆ = − 12 σ2(t)( bs − s⋆), the bound can be written directly in terms of score-estimation error. 
+
+These diffusion consequences are included to show that the logit-coordinate representation is algorithm-agnostic. The empirical comparisons later use the same representation principle within Flow Matching and diffusion families. 
+
+# 6 Statistical Convergence Rates for Logit Generative Models 
+
+This section gives the rate calculation needed to interpret the rare-cell behavior in the experiments. The argument combines the stability bound in Section 5.4 with standard nonparametric regres-sion rates for the learned vector fields. Related Flow Matching theory derives nearly minimax distributional rates under a different set of assumptions (Fukumizu et al., 2024). We state one explicit sieve result for the componentwise model used in Corollary 5.7. This avoids treating the calculation as an implementation-level guarantee for the flat joint neural generator. 17 6.1 Flow Matching as Nonparametric Regression 
+
+Let Y1 ∼ μ⋆ 
+
+> 1
+
+be the transformed data distribution, Y0 ∼ μ0 the base distribution, and t ∼ Unif (0 , 1) independent. Define 
+
+Yt = (1 − t)Y0 + tY 1, U = Y1 − Y0, X = ( Yt, t ).
+
+The population Flow Matching risk is L(v) = E∥v(X) − U ∥2.
+
+Proposition 6.1 (Population Minimizer) . The function v⋆(x) = E[U | X = x] is a minimizer of 
+
+L(v) over square-integrable functions. 
+
+This is the standard L2 projection property of conditional expectation; Appendix A.4 gives the proof. 
+
+Assumption 6.2 (Regularity for velocity regression) . Let dZ = K − 1. The population logit velocity v⋆Z (t, z ) is αZ -H¨ older on [0 , 1] × Z ⊂ R1+ dZ , and each class-conditional continuous velocity 
+
+v⋆k(t, x ) is αc-H¨ older on [0 , 1] × X ⊂ R1+ p. The domains Z and X are bounded, the conditional variance in the regression problem is uniformly finite, and the estimators use m-dimensional linear sieve classes Fm ⊂ L2(PX ). 
+
+Lemma 6.3 (Sieve regression rate) . Under Assumption 6.2, there exists a constant C > 0 such that 
+
+E∥ˆvm(X) − v⋆(X)∥2 ≤ C
+
+
+
+m−2α/d + mn
+
+
+
+,
+
+where d denotes the input dimension of X. Choosing m ≍ nd/ (2 α+d) gives E∥ˆvm −v⋆∥2 ≲ n−2α/ (2 α+d).
+
+The proof follows standard linear least-squares sieve bounds under finite conditional variance and H¨ older approximation (Tsybakov, 2009); see Appendix A.5. 
+
+Assumption 6.4 (Bounded Density Ratio) . The distribution of states visited by the population flow is absolutely continuous with respect to the regression input distribution, with Radon–Nikodym derivative dμ path /dμ train ≤ κ.
+
+Lemma 6.5 (Bridge Inequality) . Under Assumption 6.4, 
+
+Epath ∥ˆv − v⋆∥2 ≤ κ Etrain ∥ˆv − v⋆∥2.
+
+This is a change-of-measure step; Appendix A.6 gives the proof. 
+
+6.2 Main Result: Mixed Fidelity Rate 
+
+We now combine Lemma 6.3, Lemma 6.5, and Corollary 5.7. The result is a population-level regularity statement for bounded transformed domains and idealized componentwise velocity regressions. A finite-sample guarantee for the exact neural-network training and numerical sampling procedures used in the experiments would additionally require localization, optimization, and discretization analyses. 
+
+Theorem 6.6 (Nonparametric Rate for Componentwise Mixed Flow Matching) . Suppose Assump-tions 6.2 and 6.4 hold, and suppose that the population and learned velocity fields are uniformly Lipschitz on the bounded domains over t ∈ [0 , 1] . Then 
+
+Dmix (P ⋆, bP ) ≤ ε + C1n−αZ /(2 αZ +dZ +1) +
+
+> K
+
+X
+
+> k=1
+
+π⋆kC2,k (nπ ⋆k)−αc/(2 αc+p+1) ,
+
+where dZ = K − 1 and π⋆k = P ⋆(X(d) = k).
+
+18 The theorem separates categorical and conditional continuous estimation. The categorical logit component uses all n observations, whereas the conditional continuous component in cell k has effective sample size nπ ⋆k. Its contribution to Dmix is then weighted by the population mass π⋆k.Thus, Dmix summarizes population-level fidelity, while Dbal and the rare-cell diagnostics used in the simulation more directly expose errors in low-probability cells. Uniform finite-sample statements over rare cells would additionally require lower bounds on the relevant cell probabilities and concentration control for the empirical cell counts. 
+
+Remark 6.7 (Smoothing and decoding) . For fixed ε, the theorem controls fidelity to the unsmoothed data law up to the additive encoding bias. Consistency under randomized softmax decoding therefore requires a sequence ε = εn → 0. However, the scaled-logit decoding constant involves 
+
+aK = log 
+
+ 1 − ε + ε/K ε/K 
+
+
+
+,
+
+which diverges as ε → 0. The theorem therefore does not specify an optimal smoothing schedule, and any rate statement involving εn requires the regularity and stability constants to remain uniform along that sequence. The maximum-probability decoder used in the experiments has no prototype-level smoothing bias, but its perturbation analysis requires a margin condition and is outside the scope of the theorem. 
+
+Remark 6.8 (Dominating component of the rate) . Suppose that K is fixed, the constants in Theorem 6.6 do not depend on n, and min  
+
+> 1≤k≤K
+
+π⋆k ≥ π⋆ 
+
+> min
+
+> 0.
+
+Define 
+
+βZ = αZ
+
+2αZ + dZ + 1 , βc = αc
+
+2αc + p + 1 .
+
+Then KX
+
+> k=1
+
+π⋆kC2,k (nπ ⋆k)−βc = O(n−βc ),
+
+so the statistical rate is determined by the slower of n−βZ and n−βc .If 
+
+βZ < β c, equivalently αZ (p + 1) < α c(dZ + 1) ,
+
+then the categorical logit term dominates. If instead 
+
+βc < β Z , equivalently αc(dZ + 1) < α Z (p + 1) ,
+
+then the conditional continuous term dominates. When βZ = βc, both components contribute at the same order. Let 
+
+β∗ = min {βZ , β c}.
+
+If the smoothing parameter is chosen so that 
+
+εn = O(n−β∗ ),
+
+and the regularity and stability constants remain uniform over this sequence, then 
+
+Dmix (P ⋆, bP ) = Op(n−β∗ ).
+
+19 More explicitly, 
+
+Dmix (P ⋆, bP ) = 
+
+
+
+Op
+
+ n−αZ /(2 αZ +dZ +1)  , αZ (p + 1) < α c(dZ + 1) ,Op
+
+ n−αc/(2 αc+p+1)  , αc(dZ + 1) < α Z (p + 1) ,
+
+with both terms contributing at the same order in the equality case. If εn = o(n−β∗ ), the smoothing bias is asymptotically negligible. If some π⋆k decrease with n, the cellwise effective-sample-size terms must instead be retained explicitly. 
+
+# 7 Simulation Study 
+
+This section presents controlled simulation experiments designed to evaluate the role of categorical representation in generative modeling for mixed continuous–categorical data. The goal is to separate the effect of the categorical coordinate system from the effect of the surrounding generative algorithm. We therefore compare one-hot and scaled-logit embeddings within the same model families: Flow Matching and Gaussian diffusion. Unlike a purely categorical marginal experiment, the simulation below includes mixed conditional dependence. The data-generating process contains several categorical factors, a rare joint categorical cell, and continuous variables whose conditional distribution depends on the full categorical state. This design reflects the main difficulty of mixed tabular generation: a model must preserve both joint categorical mass and the numerical distribution within categorical cells. 
+
+7.1 Data-Generating Process 
+
+Each observation has the form 
+
+X = ( Xnum , A, B, Y ),
+
+where 
+
+Xnum ∈ R4, A ∈ { 0, 1, 2, 3}, B ∈ { 0, 1, 2}, Y ∈ { 0, 1}.
+
+We combine the categorical variables into the joint state 
+
+G = ( A, B, Y ),
+
+so that the categorical block has K = 4 × 3 × 2 = 24 possible states. We designate one rare joint cell, 
+
+grare = ( A = 3 , B = 2 , Y = 1) ,
+
+and set 
+
+P(G = grare ) = ρ, ρ ∈ { 0.05 , 0.01 }.
+
+The remaining categorical probabilities follow a long-tailed distribution with dependence among A,
+
+B, and Y ; the full specification is given in Appendix B. Conditional on the joint categorical state, the numerical variables follow a Gaussian distribution, 
+
+Xnum | G = g ∼ N (μg, Σg).
+
+Both the mean vector and covariance matrix depend on the full categorical state g = ( a, b, y )through additive and interaction effects. Thus, the conditional numerical distribution changes across categorical cells. This construction evaluates whether a generator preserves both P(G) and 
+
+P(Xnum | G). For each imbalance regime, we generate ntrain = 60 ,000 training samples and ntest = 20 ,000 test samples independently from the data-generating distribution. The generated sample size is also 20,000. All results are aggregated across ten random seeds. 20 7.2 Categorical Representations and Methods 
+
+We compare two continuous representations of the joint categorical state G. The one-hot repre-sentation maps each state g ∈ { 1, . . . , K } to the vertex eg ∈ RK , and generated categorical values are decoded by the argmax rule. The scaled-logit representation first smooths the categorical observation, 
+
+p(ε) 
+
+> j
+
+(g) = (1 − ε)1{j = g} + εK , j = 1 , . . . , K, 
+
+then applies additive log-ratio coordinates with a fixed reference category r,
+
+ηj (g) = log p(ε) 
+
+> j
+
+(g)
+
+p(ε) 
+
+> r
+
+(g) , j̸ = r. 
+
+The logits are normalized by the prototype magnitude 
+
+aK = log 1 − ε + ε/K ε/K , zj (g) = ηj (g)/a K .
+
+In implementation, the reference category is chosen as a high-frequency category from the training data for numerical stability and is fixed before model fitting. This is a coordinate convention, not a separate model component. Generated scaled logits are mapped through the inverse softmax and decoded by maximum-probability selection, matching the argmax rule used for the one-hot representation. Because ALR coordinates depend on the reference category, finite-sample training can in principle be sensitive to this choice; systematic reference-category sensitivity analysis is left for future work. We use a 2 ×2 comparison that varies the categorical representation and the generative algorithm: representation ∈ { one-hot , scaled-logit }, algorithm ∈ { Flow Matching , diffusion }.
+
+This gives four methods: OneHot-FM, Logit-FM, OneHot-Diffusion, and Logit-Diffusion. All methods are flat joint generators in the simulation and model the transformed vector ( Znum , Z cat )jointly. This choice keeps the comparison focused on representation, with conditional factorization held fixed. Within each algorithmic family, the one-hot and logit variants use the same architecture, optimizer, batch size, and sampling procedure. We therefore interpret the experiments as two within-family representation comparisons, with no general ranking of Flow Matching against diffusion. 
+
+7.3 Evaluation Metrics 
+
+Let π⋆g = P(G = g) denote the true joint categorical distribution and let bπg be the generated empirical distribution. We report categorical total variation T V (π⋆, bπ) = ∥bπ − π⋆∥1/2, the primary mixed discrepancy 
+
+Dmix (P ⋆, bP ) = T V (π⋆, bπ) + 
+
+> K
+
+X
+
+> g=1
+
+π⋆g W2
+
+
+
+P num ,⋆ g , bP num 
+
+> g
+
+
+
+,
+
+and the balanced diagnostic 
+
+Dbal (P ⋆, bP ) = T V (π⋆, bπ) + 1
+
+K
+
+> K
+
+X
+
+> g=1
+
+W2
+
+
+
+P num ,⋆ g , bP num 
+
+> g
+
+
+
+.
+
+21 The weighted version reflects the population mixed distribution, while the balanced version makes low-probability cell distortions more visible. For the designated rare cell grare , we also report generated rare-cell mass, absolute rare-cell error, and rare-cell conditional Wasserstein error. Finally, we report a factor-level conditional label diagnostic, CondErr Y |AB , and a two-sample AUC for distinguishing real from generated samples. 
+
+7.4 Results 
+
+Flow Matching results. Table 1 reports the mean and standard deviation over ten random seeds. At the moderate imbalance level ρ = 0 .05, the rare joint cell has expected training support 
+
+ntrain ρ = 3 ,000, and the two Flow Matching representations are essentially tied. Under severe imbalance, ρ = 0 .01, the expected rare-cell support falls to 600. In this setting, Logit-FM reduces categorical total variation, Dmix , Dbal , conditional label error, and two-sample AUC relative to OneHot-FM. Table 1: Flow Matching simulation. Here ρ is the rare-cell mass; TV compares joint categorical–label masses; Dmix combines TV with mass-weighted conditional numerical W2; Dbal weights cells equally; CondErr Y |AB measures error in P (Y | A, B ); and two-sample AUC has ideal value 0.5. Entries are mean ± SD over ten seeds. Lower is better, except AUC is better closer to 0.5. Logit-FM improves all five means at ρ = 0 .01 and is nearly tied with OneHot-FM at ρ = 0 .05. 
+
+ρ Method T V (π⋆, bπ) Dmix Dbal CondErr Y |AB AUC 0.05 OneHot-FM 0.040 ± 0.003 0.158 ± 0.010 0.190 ± 0.010 0.032 ± 0.009 0.518 ± 0.003 0.05 Logit-FM 0.039 ± 0.006 0.158 ± 0.011 0.190 ± 0.011 0.032 ± 0.007 0.517 ± 0.006 0.01 OneHot-FM 0.044 ± 0.007 0.165 ± 0.008 0.203 ± 0.008 0.036 ± 0.008 0.523 ± 0.005 0.01 Logit-FM 0.038 ± 0.007 0.157 ± 0.007 0.195 ± 0.007 0.032 ± 0.008 0.517 ± 0.006 
+
+Table 2: Flow Matching rare-cell diagnostics for grare = ( A = 3 , B = 2 , Y = 1), whose true mass is ρ.The columns report generated mass, absolute mass error, and conditional numerical W2 within grare .Entries are mean ± SD over ten seeds; lower error is better. At ρ = 0 .01, Logit-FM has smaller mean mass error, while the W2 means are similar relative to their SDs.                                                 
+
+> ρMethod bπgrare |bπgrare −π⋆grare |Rare-cell W2
+> 0.05 OneHot-FM 0.049 ±0.004 0.003 ±0.002 0.121 ±0.025 0.05 Logit-FM 0.051 ±0.005 0.004 ±0.003 0.127 ±0.022 0.01 OneHot-FM 0.010 ±0.003 0.002 ±0.002 0.284 ±0.077 0.01 Logit-FM 0.011 ±0.002 0.001 ±0.001 0.281 ±0.088
+
+The rare-cell diagnostics in Table 2 are more variable because they depend on the lowest-support joint categorical cell. At ρ = 0 .01, the rare-cell mass error is directionally smaller for Logit-FM, while the rare-cell conditional Wasserstein values are nearly tied relative to their standard deviations. The broader separation under severe imbalance is therefore read from the combined Dmix , Dbal ,categorical-mass, and conditional-label diagnostics rather than from rare-cell Wasserstein alone. 
+
+Diffusion results. Table 3 reports the corresponding diffusion comparison. Within the diffusion family, the scaled-logit representation has slightly lower reported mean mixed-distribution discrepancies than the one-hot representation in both imbalance regimes. At ρ = 0 .05, Logit-Diffusion reduces 
+
+Dmix from 0.398 to 0.392 and Dbal from 0.408 to 0.400. At ρ = 0 .01, it reduces Dmix from 0.390 to 0.383 and Dbal from 0.399 to 0.392. The conditional label error is essentially tied, so the diffusion gains are driven mainly by mixed-distribution fidelity. 22 Table 3: Gaussian diffusion simulation. Here ρ is the rare-cell mass; TV compares joint categorical– label masses; Dmix combines TV with mass-weighted conditional numerical W2; Dbal weights cells equally; CondErr Y |AB measures error in P (Y | A, B ); and two-sample AUC has ideal value 0.5. Entries are mean ± SD over ten seeds. Lower is better, except AUC is better closer to 0.5. Logit-Diffusion lowers both mixed discrepancies and AUC at each ρ; TV and conditional-label error are nearly tied.                                                                          
+
+> ρMethod T V (π⋆,bπ)Dmix Dbal CondErr Y|AB AUC 0.05 OneHot-Diffusion 0.016 ±0.003 0.398 ±0.009 0.408 ±0.013 0.0124 ±0.0019 0.608 ±0.004 0.05 Logit-Diffusion 0.016 ±0.003 0.392 ±0.008 0.400 ±0.010 0.0122 ±0.0035 0.606 ±0.003 0.01 OneHot-Diffusion 0.017 ±0.003 0.390 ±0.008 0.399 ±0.013 0.0143 ±0.0031 0.606 ±0.004 0.01 Logit-Diffusion 0.016 ±0.003 0.383 ±0.007 0.392 ±0.009 0.0143 ±0.0036 0.603 ±0.004
+
+Table 4: Gaussian diffusion rare-cell diagnostics for grare = ( A = 3 , B = 2 , Y = 1), whose true mass is ρ. The columns report generated mass, absolute mass error, and conditional numerical W2 within 
+
+grare . Entries are mean ± SD over ten seeds; lower error is better. The representations have similar rare-cell accuracy: Logit-Diffusion has slightly smaller mass error at both ρ values, while the W2
+
+ordering changes with ρ.                                                
+
+> ρMethod bπgrare |bπgrare −π⋆grare |Rare-cell W2
+> 0.05 OneHot-Diffusion 0.049 ±0.002 0.0019 ±0.0010 0.352 ±0.045 0.05 Logit-Diffusion 0.050 ±0.002 0.0013 ±0.0010 0.345 ±0.044 0.01 OneHot-Diffusion 0.010 ±0.001 0.0009 ±0.0005 0.407 ±0.077 0.01 Logit-Diffusion 0.009 ±0.001 0.0008 ±0.0008 0.415 ±0.090
+
+The diffusion results provide a second within-family representation comparison. Under the same diffusion architecture and training procedure, replacing one-hot categorical coordinates with scaled-logit coordinates gives slightly lower reported mean mixed-distribution metrics in most runs. The difference is modest but consistent across the two imbalance regimes, suggesting that the same coordinate choice can matter within diffusion as well. We do not interpret these results as a direct algorithmic comparison between diffusion and Flow Matching; each model family is used to test the effect of the categorical coordinate system under a fixed generative mechanism. 
+
+# 8 Real-Data Experiments 
+
+We evaluate the logit-coordinate framework on four real mixed-type tabular datasets: Adult, Churn2, Cardio, and Buddy. These datasets contain multiple categorical variables, non-Gaussian numerical variables, label-dependent structure, and higher-order dependence across feature blocks. The experiments address two main questions. First, within a fixed continuous generative model family, does replacing one-hot categorical coordinates with scaled-logit coordinates improve mixed-distribution fidelity? Second, does an explicit block-conditional factorization further improve the preservation of label–categorical–numerical dependence? To reduce sensitivity to a particular train–validation–test partition, each method is evaluated over ten data splits. These consist of the original benchmark split and nine additional random splits generated using distinct seeds. For a given split, all methods use the same training, validation, and test observations. We report the mean and standard deviation of each evaluation metric over the ten runs. The same model variants and probabilistic factorizations are used on all four datasets; in particular, no dataset-specific Logit-FM variant is introduced for Churn2. 23 8.1 Experimental Setup 
+
+For the continuous-representation models, categorical variables are embedded into Euclidean coordi-nates before applying either Flow Matching or Gaussian diffusion. We write Xcat and Xnum for the original categorical and numerical variables, and Zcat and Znum for their transformed continuous coordinates. Specifically, 
+
+Zcat = E(Xcat )is either a scaled-logit or one-hot categorical embedding, while 
+
+Znum = T (Xnum )is the numerical transformation used by the corresponding generative model. The Flow Matching models use empirical Gaussian-quantile transformations for numerical variables, whereas the Gaussian diffusion models use standardized numerical coordinates. Probabilistic factorizations are expressed in the original variables, whereas Flow Matching and diffusion dynamics are implemented in the transformed Z-coordinates. For every continuous-representation model, generated categorical coordinates are decoded by maximum probability; this holds for both the one-hot and scaled-logit variants. 
+
+Flow Matching models. We compare three Flow Matching models. One-Hot FM and Logit FM are flat joint models that transform each mixed-type observation into a single continuous vector, 
+
+Z = ( Znum , Z cat , Z y),
+
+and train one joint Flow Matching velocity field. The two models use the same joint-generation framework and differ in their categorical representations: One-Hot FM uses standard one-hot coordinates, whereas Logit FM uses scaled-logit coordinates. The flat Flow Matching network has hidden dimension 512 and six residual blocks, is trained with learning rate 10 −3, and is sampled by a 200-step Euler ODE solver. These settings are shared by the one-hot and logit variants. The Block-Conditional Logit FM model uses the factorization 
+
+P (y, X cat , X num ) = P (y)P (Xcat | y)P (Xnum | Xcat , y ).
+
+It first samples the label, then generates the categorical block conditional on the label, and finally generates the numerical block conditional on both the generated categorical variables and the label. This model uses the same scaled-logit representation as Logit FM but introduces additional conditional structure in the joint generator. The definitions of all three Flow Matching models are held fixed across Adult, Churn2, Cardio, and Buddy. 
+
+Continuous-representation diffusion models. We also evaluate One-Hot Diffusion and Logit Diffusion. Both use Gaussian diffusion in transformed continuous coordinates and the same block-conditional factorization, 
+
+P (y, X cat , X num ) = P (y)P (Xcat | y)P (Xnum | Xcat , y ).
+
+The two methods use the same diffusion parameterization and training protocol, differing only in whether categorical variables are represented by one-hot or scaled-logit coordinates. Neither method uses multinomial categorical diffusion. 24 TabDDPM baselines. TabDDPM (Kotelnikov et al., 2023) is included as an external mixed-type diffusion baseline. We report two baseline versions, denoted TabDDPM-MLP and TabDDPM-CB, corresponding to the MLP and CatBoost versions used in our TabDDPM experiments. Both variants are evaluated on the same ten data splits as the continuous-representation models. Reporting the two versions separately avoids combining results obtained from different TabDDPM configurations. The seven evaluated methods are One-Hot FM, Logit FM, Block-Conditional Logit FM, One-Hot Diffusion, Logit Diffusion, and the MLP and CB variants of TabDDPM. 
+
+8.2 Evaluation Metrics 
+
+We evaluate distributional fidelity, categorical dependence, and downstream predictive utility. The primary criterion is the standardized mixed discrepancy 
+
+Dmix = T V (π⋆y , bπy) + X
+
+> c∈Y
+
+π⋆y (c)W2
+
+
+
+P ⋆(Xnum | y = c), bP ( bXnum | by = c)
+
+
+
+,
+
+where numerical variables are standardized before computing the Wasserstein term. We also report the weighted conditional W2 component separately. Categorical fidelity is assessed using exact total variation over the joint categorical-label configu-rations and mean marginal total variation across the categorical predictors. Pairwise categorical dependence is measured by the mean absolute error in Cram´ er’s V . Downstream utility is evaluated using train-on-synthetic, test-on-real macro-F1 (TSTR). Each metric is computed for the original benchmark split and nine additional random splits. Results are reported as mean ± standard deviation over the ten runs. Lower values are better for the distributional and dependence metrics, whereas higher values are better for TSTR. 
+
+8.3 Results 
+
+Tables 5–12 report the ten-run results. The primary comparisons are within model family: One-Hot FM versus Logit FM, and One-Hot Diffusion versus Logit Diffusion. TabDDPM-MLP and TabDDPM-CB are reported separately as external mixed-type diffusion baselines. 
+
+Adult. Within Flow Matching, Logit FM improves all distributional and dependence metrics over One-Hot FM, with similar TSTR. Block-Conditional Logit FM further improves every reported metric relative to flat Logit FM. Within diffusion, Logit Diffusion has lower Dmix , conditional 
+
+W2, and Cram´ er’s V error, whereas One-Hot Diffusion has slightly lower exact and marginal categorical TV. The two diffusion representations have nearly identical TSTR. TabDDPM-CB is more competitive than TabDDPM-MLP on the primary distributional metrics, but also exhibits substantially greater variability across runs. 
+
+Churn2. Flat Logit FM and One-Hot FM perform similarly, with no consistent advantage in the primary distributional metrics. Block-Conditional Logit FM substantially improves Dmix , conditional 
+
+W2, categorical fidelity, and TSTR relative to both flat FM models. Within diffusion, Logit Diffusion consistently outperforms One-Hot Diffusion and achieves the best mean in all six reported metrics. TabDDPM-CB improves conditional W2 and TSTR over TabDDPM-MLP, but has markedly worse categorical fidelity. 25 Table 5: Adult distributional fidelity (mean ± SD over the benchmark split and nine random splits). 
+
+Dmix is label TV plus label-weighted conditional numerical W2 on standardized features; Conditional 
+
+W2 is its transport term; exact categorical TV compares joint categorical–label masses. Lower is better; boldface marks the best mean. The three column minima are attained by Logit Diffusion, TabDDPM-CB, and One-Hot Diffusion, respectively. Method Dmix Conditional W2 Exact categorical TV One-Hot FM 0.4967 ± 0.0186 0.3708 ± 0.0170 0.4966 ± 0.0073 Logit FM 0.4128 ± 0.0141 0.3421 ± 0.0145 0.3928 ± 0.0068 Block-Cond. Logit FM 0.3798 ± 0.0125 0.3245 ± 0.0111 0.3427 ± 0.0032 One-Hot Diffusion 0.3500 ± 0.0134 0.3309 ± 0.0132 0.2578 ± 0.0018 
+
+Logit Diffusion 0.3452 ± 0.0111 0.3256 ± 0.0104 0.2630 ± 0.0025 TabDDPM-MLP 0.4995 ± 0.0548 0.4695 ± 0.0555 0.2809 ± 0.0028 TabDDPM-CB 0.3576 ± 0.0688 0.3238 ± 0.0685 0.2729 ± 0.0047 Table 6: Adult categorical fidelity and utility (mean ± SD over ten splits). Marginal TV averages categorical-predictor TV; Cram´ er’s V error averages pairwise-dependence error; TSTR is train-on-synthetic, test-on-real macro-F1. Lower errors and higher TSTR are better; boldface marks the best mean. Block-Conditional Logit FM minimizes marginal TV, and Logit Diffusion is best on the other two metrics. Method Marginal categorical TV Cram´ er’s V error TSTR One-Hot FM 0.0307 ± 0.0023 0.0526 ± 0.0019 0.7968 ± 0.0027 Logit FM 0.0246 ± 0.0035 0.0368 ± 0.0026 0.7956 ± 0.0030 Block-Cond. Logit FM 0.0052 ± 0.0005 0.0168 ± 0.0012 0.8012 ± 0.0025 One-Hot Diffusion 0.0073 ± 0.0005 0.0062 ± 0.0010 0.8079 ± 0.0031 Logit Diffusion 0.0080 ± 0.0007 0.0058 ± 0.0009 0.8081 ± 0.0027 
+
+TabDDPM-MLP 0.0154 ± 0.0006 0.0080 ± 0.0040 0.7977 ± 0.0022 TabDDPM-CB 0.0173 ± 0.0009 0.0092 ± 0.0006 0.8006 ± 0.0027 
+
+Cardio. Logit FM improves the primary distributional metrics over One-Hot FM, and Block-Conditional Logit FM provides a further substantial reduction in Dmix and conditional W2. Within diffusion, Logit Diffusion consistently improves over One-Hot Diffusion and achieves the best mean for all three distributional metrics, Cram´ er’s V error, and TSTR. One-Hot FM and Block-Conditional Logit FM tie for the lowest marginal categorical TV at the reported precision. TabDDPM-CB improves Dmix , conditional W2, and TSTR over TabDDPM-MLP, but performs worse on categorical fidelity and dependence. 
+
+Buddy. Logit FM improves substantially over One-Hot FM across all reported metrics. Block-Conditional Logit FM provides a further large reduction in Dmix and conditional W2, and gives the best Flow Matching results overall. Within diffusion, One-Hot and Logit Diffusion are very close: One-Hot Diffusion has slightly better exact categorical TV, Cram´ er’s V error, and TSTR, while Logit Diffusion has slightly lower Dmix and conditional W2. TabDDPM-CB consistently improves over TabDDPM-MLP but remains behind the block-conditional FM and diffusion models on the primary fidelity metrics. 26 Table 7: Churn2 distributional fidelity (mean ± SD over the benchmark split and nine random splits). Dmix is label TV plus label-weighted conditional numerical W2 on standardized features; Conditional W2 is its transport term; exact categorical TV compares joint categorical–label masses. Lower is better; boldface marks the best mean. Logit Diffusion is best overall, and Block-Conditional Logit FM is best among the Flow Matching models, on all three metrics. Method Dmix Conditional W2 Exact categorical TV One-Hot FM 0.2973 ± 0.0047 0.2762 ± 0.0050 0.0211 ± 0.0009 Logit FM 0.3009 ± 0.0107 0.2797 ± 0.0094 0.0212 ± 0.0025 Block-Cond. Logit FM 0.2637 ± 0.0057 0.2445 ± 0.0057 0.0193 ± 0.0011 One-Hot Diffusion 0.1499 ± 0.0041 0.1364 ± 0.0041 0.0135 ± 0.0019 Logit Diffusion 0.1436 ± 0.0036 0.1314 ± 0.0029 0.0122 ± 0.0017 
+
+TabDDPM-MLP 0.3115 ± 0.0091 0.2900 ± 0.0088 0.0216 ± 0.0018 TabDDPM-CB 0.2835 ± 0.0079 0.2232 ± 0.0064 0.0603 ± 0.0029 Table 8: Churn2 categorical fidelity and utility (mean ± SD over ten splits). Marginal TV averages categorical-predictor TV; Cram´ er’s V error averages pairwise-dependence error; TSTR is train-on-synthetic, test-on-real macro-F1. Lower errors and higher TSTR are better; boldface marks the best mean. Block-Conditional Logit FM minimizes marginal TV, and Logit Diffusion is best on the other two metrics. Method Marginal categorical TV Cram´ er’s V error TSTR One-Hot FM 0.0042 ± 0.0018 0.0066 ± 0.0016 0.7637 ± 0.0061 Logit FM 0.0035 ± 0.0011 0.0064 ± 0.0009 0.7624 ± 0.0060 Block-Cond. Logit FM 0.0017 ± 0.0006 0.0055 ± 0.0007 0.7752 ± 0.0041 One-Hot Diffusion 0.0031 ± 0.0010 0.0037 ± 0.0013 0.8205 ± 0.0045 Logit Diffusion 0.0022 ± 0.0009 0.0036 ± 0.0008 0.8224 ± 0.0040 
+
+TabDDPM-MLP 0.0030 ± 0.0013 0.0061 ± 0.0014 0.7703 ± 0.0055 TabDDPM-CB 0.0215 ± 0.0016 0.0177 ± 0.0013 0.7937 ± 0.0047 
+
+8.4 Summary of Findings 
+
+The ten-run experiments show three main patterns. First, Logit FM improves the primary distribu-tional metrics over One-Hot FM on Adult, Cardio, and Buddy, while the two flat representations are comparable on Churn2. Second, Block-Conditional Logit FM consistently improves over flat Logit FM across all four datasets, indicating that categorical representation and conditional factorization address complementary aspects of mixed-data fidelity. Third, Logit Diffusion improves over One-Hot Diffusion on most metrics for Adult, Churn2, and Cardio. The two diffusion representations are nearly tied on Buddy, with different metrics favoring each representation. The separate TabDDPM results also show that its MLP and CatBoost variants can behave differently: the CatBoost version generally improves conditional Wasserstein error and TSTR, but may worsen categorical fidelity. Overall, the results provide uncertainty-quantified, within-family evidence that logit coordinates can improve mixed tabular generation, while explicit conditional structure is important for preserving higher-order dependence. Comparisons across Flow Matching, diffusion, and TabDDPM should remain descriptive because these model families differ in architecture, objective, and training procedure. 27 Table 9: Cardio distributional fidelity (mean ± SD over the benchmark split and nine random splits). Dmix is label TV plus label-weighted conditional numerical W2 on standardized features; Conditional W2 is its transport term; exact categorical TV compares joint categorical–label masses. Lower is better; boldface marks the best mean. Logit Diffusion is best overall on all three metrics; within Flow Matching, Logit FM improves on One-Hot FM and block conditioning improves further. Method Dmix Conditional W2 Exact categorical TV One-Hot FM 0.8383 ± 0.0892 0.8257 ± 0.0890 0.0147 ± 0.0009 Logit FM 0.7575 ± 0.0872 0.7462 ± 0.0879 0.0133 ± 0.0011 Block-Cond. Logit FM 0.6013 ± 0.0798 0.5917 ± 0.0796 0.0120 ± 0.0004 One-Hot Diffusion 0.4060 ± 0.0620 0.3963 ± 0.0613 0.0121 ± 0.0010 Logit Diffusion 0.3814 ± 0.0505 0.3729 ± 0.0506 0.0106 ± 0.0007 
+
+TabDDPM-MLP 0.9592 ± 0.0873 0.9460 ± 0.0876 0.0143 ± 0.0006 TabDDPM-CB 0.7112 ± 0.0834 0.6781 ± 0.0836 0.0332 ± 0.0013 Table 10: Cardio categorical fidelity and utility (mean ± SD over ten splits). Marginal TV averages categorical-predictor TV; Cram´ er’s V error averages pairwise-dependence error; TSTR is train-on-synthetic, test-on-real macro-F1. Lower errors and higher TSTR are better; boldface marks the best mean at the reported precision. One-Hot FM and Block-Conditional Logit FM tie on marginal TV, and Logit Diffusion is best on the other two metrics. Method Marginal categorical TV Cram´ er’s V error TSTR One-Hot FM 0.0010 ± 0.0001 0.0048 ± 0.0005 0.7366 ± 0.0014 Logit FM 0.0012 ± 0.0004 0.0040 ± 0.0006 0.7371 ± 0.0013 Block-Cond. Logit FM 0.0010 ± 0.0002 0.0028 ± 0.0003 0.7386 ± 0.0012 One-Hot Diffusion 0.0014 ± 0.0002 0.0028 ± 0.0005 0.7398 ± 0.0011 Logit Diffusion 0.0011 ± 0.0004 0.0027 ± 0.0004 0.7403 ± 0.0012 
+
+TabDDPM-MLP 0.0032 ± 0.0003 0.0044 ± 0.0006 0.7360 ± 0.0014 TabDDPM-CB 0.0092 ± 0.0006 0.0120 ± 0.0007 0.7385 ± 0.0016 
+
+# 9 Discussion 
+
+The theoretical and empirical results support a representation-level view of mixed tabular generation. Categorical variables are not ordinary Euclidean coordinates: their distributions live on probability simplices, and their statistical behavior is especially delicate under imbalance. The proposed logit-coordinate framework addresses this issue by embedding categorical variables in smoothed natural-parameter coordinates before applying continuous generative dynamics. This construction applies across generative algorithms. Flow Matching and diffusion use different training objectives and sampling procedures, and both can operate on the same transformed logit representation. 
+
+Choice of fidelity discrepancy. The mixed discrepancy Dmix is designed to respect the intrinsic mixture structure of mixed continuous–categorical distributions. Errors in generative modeling arise in two distinct forms: misallocation of categorical mass and distortion of class-conditional continuous geometry. By separating these components, Dmix isolates marginal imbalance from within-class transport distortion and makes explicit which aspect of the generator contributes to overall error. Wasserstein distances provide a natural notion of distributional comparison for transport-based generative models (Arjovsky et al., 2017; Villani, 2009; Peyr´ e and Cuturi, 2019). They metrize weak 28 Table 11: Buddy distributional fidelity (mean ± SD over the benchmark split and nine random splits). Dmix is label TV plus label-weighted conditional numerical W2 on standardized features; Conditional W2 is its transport term; exact categorical TV compares joint categorical–label masses. Lower is better; boldface marks the best mean. Block-Conditional Logit FM minimizes the first two metrics, and One-Hot Diffusion minimizes exact categorical TV. Method Dmix Conditional W2 Exact categorical TV One-Hot FM 0.4453 ± 0.0137 0.2663 ± 0.0081 0.2943 ± 0.0076 Logit FM 0.3177 ± 0.0157 0.2532 ± 0.0082 0.1507 ± 0.0104 Block-Cond. Logit FM 0.1826 ± 0.0057 0.1409 ± 0.0043 0.1096 ± 0.0015 One-Hot Diffusion 0.2032 ± 0.0080 0.1778 ± 0.0082 0.0761 ± 0.0027 
+
+Logit Diffusion 0.2017 ± 0.0074 0.1751 ± 0.0071 0.0801 ± 0.0023 TabDDPM-MLP 0.2776 ± 0.0100 0.2140 ± 0.0089 0.0908 ± 0.0019 TabDDPM-CB 0.2232 ± 0.0051 0.1653 ± 0.0056 0.0773 ± 0.0014 Table 12: Buddy categorical fidelity and utility (mean ± SD over ten splits). Marginal TV averages categorical-predictor TV; Cram´ er’s V error averages pairwise-dependence error; TSTR is train-on-synthetic, test-on-real macro-F1. Lower errors and higher TSTR are better; boldface marks the best mean. Block-Conditional Logit FM minimizes marginal TV, and One-Hot Diffusion is best on the other two metrics. Method Marginal categorical TV Cram´ er’s V error TSTR One-Hot FM 0.0318 ± 0.0019 0.0756 ± 0.0030 0.9078 ± 0.0023 Logit FM 0.0168 ± 0.0035 0.0328 ± 0.0035 0.9114 ± 0.0031 Block-Cond. Logit FM 0.0064 ± 0.0010 0.0177 ± 0.0019 0.9356 ± 0.0016 One-Hot Diffusion 0.0090 ± 0.0013 0.0082 ± 0.0039 0.9623 ± 0.0007 
+
+Logit Diffusion 0.0092 ± 0.0007 0.0121 ± 0.0035 0.9618 ± 0.0011 TabDDPM-MLP 0.0170 ± 0.0016 0.0188 ± 0.0029 0.9247 ± 0.0020 TabDDPM-CB 0.0156 ± 0.0012 0.0141 ± 0.0017 0.9300 ± 0.0021 convergence under suitable moment conditions and are stable under Lipschitz pushforward maps, properties that are well suited for analyzing continuous generative dynamics. In this setting, the Wasserstein component governs the stability of class-conditional continuous distributions, while categorical marginal errors are controlled through the stability of logit-coordinate decoding. While a joint optimal transport metric could be imposed on the product space Rp × { 1, . . . , K },as formalized in Appendix A.3.3, such constructions require a scale parameter to balance continuous distortion against categorical mismatch. The proposed decomposition avoids this calibration choice and aligns with the separate mechanisms governing categorical mass and conditional continuous geometry in logit-coordinate generative models. 
+
+Stability and transport geometry. The stability analysis helps explain why the logit representation can improve reported mixed-data fidelity in the evaluated model families. After categorical variables are embedded in logit coordinates, both Flow Matching and diffusion define continuous generative dynamics in a Euclidean transformed space. Errors in the learned dynamics then propagate to the decoded mixed distribution through two steps: Wasserstein stability in transformed coordinates and softmax stability of the categorical decoding map. This perspective separates the geometric effect of the categorical representation from the particular training objective used to learn the dynamics. Thus, 29 empirical gains of logit-coordinate models are best interpreted as representation-level improvements. 
+
+Rare-cell imbalance. The convergence analysis links the representation question to the statistical difficulty of mixed-data generation. For a categorical cell with population mass π⋆k, the conditional component is learned from an effective sample size of order nπ ⋆k. Rare cells therefore create two coupled demands: a generator must preserve their probability mass and estimate their conditional numerical laws from limited observations. This mechanism is consistent with the controlled simulations, in which the benefit of scaled-logit coordinates is most visible under severe imbalance. It also clarifies why categorical representation and conditional modeling must be considered together. 
+
+Representation versus conditional structure. Mixed tabular generation therefore involves two related but distinct design problems. The first is geometric: categorical variables should be represented in coordinates that respect their probabilistic structure. The scaled-logit embedding addresses this issue by mapping categorical observations into smoothed natural-parameter coordinates before applying continuous generative dynamics. The second is structural: realistic tabular data often contain strong dependence across labels, categorical variables, and numerical variables. A flat joint model may reproduce marginal distributions reasonably well while still failing to preserve conditional numerical structure within categorical-label cells. The block-conditional extension addresses this issue by explicitly factorizing the joint distribution into label, categorical, and numerical components. 
+
+Interpreting Flow Matching and diffusion comparisons. The Flow Matching and diffusion experiments provide complementary tests of the same representation principle rather than a direct ranking of generative algorithms. Because the two families differ in their objectives, architectures, conditioning mechanisms, and sampling procedures, the primary comparisons are within family: One-Hot FM versus Logit FM, and One-Hot Diffusion versus Logit Diffusion. These comparisons isolate the effect of replacing one-hot coordinates with scaled-logit coordinates while holding the model family fixed. Results over the original benchmark partition and nine additional random partitions show that Logit FM improves the primary distributional metrics on three datasets and is comparable on Churn2, while Logit Diffusion generally improves over or matches One-Hot Diffusion. The two TabDDPM variants serve as external references rather than a basis for direct cross-family ranking. 
+
+Limitations and future directions. The present results leave several questions open. First, logit coordinates address categorical representation, whereas higher-order dependence in mixed tabular data requires additional structural modeling. The block-conditional results indicate that preserving numerical structure within categorical-label cells may require additional architectural structure. Second, the diffusion experiments evaluate only particular Gaussian diffusion parameterizations in transformed coordinates. Performance may depend on the denoising objective, noise schedule, conditioning mechanism, and decoding rule. Third, the theory isolates the representation mechanism under population and nonparametric estimation conditions. A guarantee for the implemented neural procedures would also need to account for optimization error, finite-step sampling error, hyperparameter sensitivity, and model-selection effects. The experiments over ten data splits quantify variability across partitions and runs, while broader studies should examine sensitivity to computational budgets and design choices such as smoothing, logit scaling, the ALR reference category, and categorical decoding. Taken together, the analysis and experiments identify the categorical coordinate system as a sub-stantive design choice for mixed tabular generators. Logit coordinates provide a common Euclidean representation for Flow Matching and diffusion, while block-conditional modeling supplies additional structure for preserving conditional dependence. Promising directions include richer conditional architectures, support-aware diffusion mechanisms, Fisher-weighted objectives, alternative log-ratio 30 representations, and finite-sample theory that incorporates optimization and numerical sampling error. 
+
+# Acknowledgments 
+
+This work was supported in part by NSF grant DMS-1952539 and NIH grants R01GM113250, R01GM126002, R01AG065636, R01AG074858, R01AG069895, and U01AG073079. 31 A Supplemental Proofs 
+
+A.1 Proof Details for Stability Results 
+
+Proof of Theorem 5.2 and Theorem 5.5. Couple the two terminal laws by using the same initial random variable X0 ∼ P0. Let X⋆t = Φ f ⋆ 
+
+> t
+
+(X0) and bXt = Φ ˆft (X0). With ∆ t = bXt − X⋆t ,˙∆t = ˆf (t, bXt) − f ⋆(t, X ⋆t ) = { ˆf (t, bXt) − ˆf (t, X ⋆t )} + { ˆf (t, X ⋆t ) − f ⋆(t, X ⋆t )}.
+
+The Lipschitz condition gives, for almost every t,
+
+ddt ∥∆t∥ ≤ L∥∆t∥ + ∥ ˆf (t, X ⋆t ) − f ⋆(t, X ⋆t )∥.
+
+Since ∆ 0 = 0, Gronwall’s inequality yields 
+
+∥∆1∥ ≤ eL
+
+Z 10
+
+∥ ˆf (t, X ⋆t ) − f ⋆(t, X ⋆t )∥ dt. 
+
+Taking L2 norms and applying Minkowski’s inequality gives the stated bound. The Flow Matching statement is the same argument with f = v.
+
+Proof of Corollary 5.6. Use the synchronous coupling Z⋆t = Φ v⋆Z 
+
+> t
+
+(Z0) and bZt = Φ ˆvZ 
+
+> t
+
+(Z0). With Π = S(Z⋆ 
+
+> 1
+
+) and bΠ = S( bZ1), 
+
+T V (π⋆, bπ) ≤ TV( π⋆, π ⋆, (ε)) + 12 ∥EΠ − EbΠ∥1 ≤ ε + 12 E∥S(Z⋆ 
+
+> 1
+
+) − S( bZ1)∥1.
+
+The Lipschitz property of S and the preceding flow-stability bound applied in logit space give (3). 
+
+Proof of Corollary 5.7. The categorical part follows from Corollary 5.6. For each class k, Theorem 5.5 gives the conditional continuous bound 
+
+W2(P (c),⋆ k , bP (c) 
+
+> k
+
+) ≤ eLk
+
+Z 10
+
+ E∥ˆvk(t, X ⋆t,k ) − v⋆k(t, X ⋆t,k )∥22
+
+1/2 dt. 
+
+Multiplying by π⋆k, summing over k, and adding the total-variation term gives (4). 
+
+Proof of Lemma 5.9. Take a maximal coupling ( D, bD) of the categorical marginals, so that 
+
+P(D̸ = bD) = T V (π⋆, bπ). Conditional on D = bD = k, couple the continuous components by an optimal W2 coupling of P (c),⋆ k and bP (c) 
+
+> k
+
+. Conditional on D̸ = bD, use any coupling and the conditional second-moment bound from Assumption 5.8 together with ∥x − y∥22 ≤ 2∥x∥22 + 2 ∥y∥22. The matched part contributes at most P 
+
+> k
+
+π⋆kW 22 (P (c),⋆ k , bP (c) 
+
+> k
+
+), while the mismatched part contributes at most 4M T V (π⋆, bπ) plus the categorical cost λT V (π⋆, bπ). 
+
+Proof of Theorem 5.10. Substitute the class-conditional Wasserstein bounds from Theorem 5.5 and the categorical total-variation bound from Corollary 5.6 into Lemma 5.9. 
+
+Proof of Proposition 5.11 and Corollary 5.12. The probability flow ODE has drift f ⋆(t, x ) = 
+
+μ(t, x ) − 12 σ2(t)s⋆(t, x ), and the learned drift replaces s⋆ by bs. Applying Theorem 5.2 to these two drifts gives a bound in terms of ∥ bf − f ⋆∥. The identity 
+
+bf (t, x ) − f ⋆(t, x ) = − 12 σ2(t){bs(t, x ) − s⋆(t, x )}
+
+converts the drift error to score-estimation error. Applying the same argument componentwise to the logit and class-conditional probability-flow ODEs gives the mixed diffusion bound. 32 A.2 Spectral Bound for the Softmax Jacobian 
+
+Lemma A.1 (Spectral bound for the categorical Fisher matrix) . For any probability vector p ∈ ∆K ,
+
+∥diag( p) − pp ⊤∥op ≤ 12 .
+
+Moreover, the bound is sharp and is attained when p = (1 /2, 1/2, 0, . . . , 0) .Proof. Define 
+
+M (p) = diag( p) − pp ⊤.
+
+This matrix is symmetric and positive semidefinite. It equals the covariance matrix of the one-hot random vector eD, where P (D = k) = pk.For any unit vector u ∈ RK ,
+
+u⊤M (p)u =
+
+> K
+
+X
+
+> k=1
+
+pku2 
+
+> k
+
+−
+
+> K
+
+X
+
+> k=1
+
+pkuk
+
+!2
+
+.
+
+This equals Var p(uD), the variance of the scalar random variable uD under distribution p.Thus, 
+
+∥M (p)∥op = sup 
+
+> ∥u∥2=1
+
+Var p(uD).
+
+Popoviciu’s variance inequality and ∥u∥2 = 1 give Var p(uD) ≤ 14
+
+
+
+max  
+
+> i
+
+ui − min  
+
+> i
+
+ui
+
+2
+
+≤ 12 ∥u∥22 = 12 .
+
+The second inequality follows because |ui − uj | ≤ √2 (u2 
+
+> i
+
++ u2 
+
+> j
+
+)1/2 ≤ √2∥u∥2. Equality is attained by p = (1 /2, 1/2, 0, . . . , 0) and u = (1 /√2, −1/√2, 0, . . . , 0) ⊤. Therefore 
+
+∥M (p)∥op ≤ 12 for all p ∈ ∆K .
+
+A.3 Local KL Expansion in Natural Parameters 
+
+Lemma A.2 (Local KL expansion for categorical exponential family) . Let pθ denote the categorical distribution with reduced natural parameters θ ∈ RK−1. Then for sufficiently small δ,
+
+KL( pθ∥pθ+δ) = 12 δ⊤Ired (θ)δ + o(∥δ∥2),
+
+where 
+
+Ired (θ) = diag(¯ pθ) − ¯pθ ¯p⊤ 
+
+> θ
+
+, ¯pθ = ( pθ(1) , . . . , p θ(K − 1)) ⊤,
+
+is the Fisher information matrix in reduced natural coordinates. Proof. The categorical model forms an exponential family with log-partition function 
+
+A(θ) = log 1 + 
+
+> K−1
+
+X
+
+> k=1
+
+eθk
+
+!
+
+.
+
+33 Standard exponential-family theory gives 
+
+∇A(θ) = ¯ pθ, ∇2A(θ) = Ired (θ).
+
+The KL divergence between two exponential-family members satisfies KL( pθ∥pθ+δ) = A(θ + δ) − A(θ) − ∇ A(θ)⊤δ. 
+
+A second-order Taylor expansion of A around θ yields the stated formula. See Amari and Nagaoka (2000) for a general treatment. 
+
+A.4 Proof of Proposition 6.1 
+
+Proof. Let v be any measurable function with E∥v(X)∥2 < ∞ and define v⋆(X) = E[U | X]. Write 
+
+U − v(X) = ( U − v⋆(X)) + ( v⋆(X) − v(X)) .
+
+Taking squared norms and expanding, 
+
+∥U − v(X)∥2 = ∥U − v⋆(X)∥2 + ∥v⋆(X) − v(X)∥2 + 2 ⟨U − v⋆(X), v ⋆(X) − v(X)⟩.
+
+Taking expectations, the cross term vanishes because 
+
+E⟨U − v⋆(X), v ⋆(X) − v(X)⟩ = E
+
+h
+
+E⟨U − v⋆(X), v ⋆(X) − v(X)⟩ | Xi
+
+,
+
+and conditional on X, v⋆(X) − v(X) is deterministic while E[U − v⋆(X) | X] = 0. Hence the cross term is 0, and 
+
+E∥U − v(X)∥2 = E∥U − v⋆(X)∥2 + E∥v⋆(X) − v(X)∥2 ≥ E∥U − v⋆(X)∥2,
+
+showing v⋆ is a minimizer. 
+
+A.5 Proof of Lemma 6.3 
+
+Proof. Recall the regression model 
+
+X = ( Yt, t ), U = Y1 − Y0,
+
+and define 
+
+v⋆(x) = E[U | X = x].
+
+Let 
+
+L(v) = E∥v(X) − U ∥2, ˆLn(v) = 1
+
+n
+
+> n
+
+X
+
+> i=1
+
+∥v(Xi) − Ui∥2.
+
+Define the empirical minimizer ˆvm ∈ arg min 
+
+> v∈F m
+
+bLn(v),
+
+and let 
+
+v⋆m ∈ arg min 
+
+> v∈F m
+
+L(v)denote the population projection. 34 Because Fm is a linear subspace of L2(PX ), v⋆m is the L2(PX )-projection of v⋆ onto Fm. Hence the Pythagorean identity holds: 
+
+∥v − v⋆∥2  
+
+> L2(PX)
+
+= ∥v − v⋆m∥2  
+
+> L2(PX)
+
++ ∥v⋆m − v⋆∥2 
+
+> L2(PX)
+
+, ∀v ∈ F m.
+
+For each realized training sample, ˆvm ∈ F m, so the same identity applies to the data-dependent empirical minimizer: 
+
+∥ˆvm − v⋆∥2  
+
+> L2(PX)
+
+= ∥ˆvm − v⋆m∥2  
+
+> L2(PX)
+
++ ∥v⋆m − v⋆∥2 
+
+> L2(PX)
+
+.
+
+Taking expectations yields 
+
+E∥ˆvm − v⋆∥2  
+
+> L2(PX)
+
+= E∥ˆvm − v⋆m∥2  
+
+> L2(PX)
+
++ ∥v⋆m − v⋆∥2 
+
+> L2(PX)
+
+. (5) We now bound the two terms separately. First, under Assumption 6.2(iii), the conditional variance of U is uniformly bounded. Since Fm
+
+is an m-dimensional linear space (Assumption 6.2(iv)), Theorem 11.1 of Gy¨ orfi et al. (2002) implies that the least squares estimator satisfies 
+
+E∥ˆvm − v⋆m∥2  
+
+> L2(PX)
+
+≤ C1
+
+mn ,
+
+for a constant C1 depending only on the variance bound. Second, under Assumption 6.2(i), v⋆ ∈ H α(Ω). For standard spline or wavelet sieve spaces, classical approximation theory yields 
+
+∥v⋆m − v⋆∥2  
+
+> L2(PX)
+
+≤ C2m−2α/d ,
+
+where d is the input dimension of X.Substituting these bounds into (5) gives 
+
+E∥ˆvm − v⋆∥2  
+
+> L2(PX)
+
+≤ C1
+
+mn + C2m−2α/d .
+
+Absorbing constants completes the proof. 
+
+A.6 Proof of Lemma 6.5 
+
+Proof. By Assumption 6.4, for g ≥ 0, 
+
+Epath [g(X)] = 
+
+Z
+
+g(x) dμ path (x)=
+
+Z
+
+g(x) dμ path 
+
+dμ train 
+
+(x) dμ train (x)
+
+≤ κ
+
+Z
+
+g(x) dμ train (x) = κ Etrain [g(X)] .
+
+Taking g(x) = ∥ˆv(x) − v⋆(x)∥2 yields the stated inequality. 35 A.7 Proof of Theorem 6.6 
+
+Proof. We treat the logit marginal component and the class-conditional continuous component separately and combine the bounds according to the decomposition of Dmix .By Corollary 5.7, the mixed discrepancy satisfies 
+
+Dmix (P ⋆, bP ) ≤ ε + Csm 
+
+2 eLZ
+
+Z 10
+
+
+
+Epath ∥ˆvZ (t, Z ⋆t ) − v⋆Z (t, Z ⋆t )∥21/2
+
+dt 
+
++
+
+> K
+
+X
+
+> k=1
+
+π⋆k eLk
+
+Z 10
+
+
+
+Epath ∥ˆvk(t, X ⋆t,k ) − v⋆k(t, X ⋆t,k )∥21/2
+
+dt, 
+
+where ( Z⋆t ) and ( X⋆t,k ) denote the corresponding population flows. Since √· is concave, Jensen’s inequality implies 
+
+Z 10
+
+pg(t) dt ≤
+
+ Z 10
+
+g(t) dt 
+
+1/2
+
+for any nonnegative function g. Applying this inequality to each integral yields 
+
+Dmix (P ⋆, bP ) ≤ ε + Csm 
+
+2 eLZ
+
+Z 10
+
+Epath ∥ˆvZ (t, Z ⋆t ) − v⋆Z (t, Z ⋆t )∥2 dt 
+
+!1/2
+
++
+
+> K
+
+X
+
+> k=1
+
+π⋆k eLk
+
+Z 10
+
+Epath ∥ˆvk(t, X ⋆t,k ) − v⋆k(t, X ⋆t,k )∥2 dt 
+
+!1/2
+
+.
+
+We now relate the path-integrated mean squared errors to the training-distribution mean squared errors. For each component, the regression input consists of ( t, Z t) in the logit case and ( t, X t) in the k-th continuous case. By Lemma 6.5 and Assumption 6.4, there exists a constant κ > 0 such that Z 10
+
+Epath ∥ˆv(·) − v⋆(·)∥2 dt ≤ κ Etrain ∥ˆv(X) − v⋆(X)∥2.
+
+Substituting this bound into the previous inequality and absorbing constants ( κ, eLZ , eLk , Csm )yields 
+
+Dmix (P ⋆, bP ) ≤ ε + C1
+
+
+
+Etrain ∥ˆvZ (X) − v⋆Z (X)∥21/2
+
++
+
+> K
+
+X
+
+> k=1
+
+π⋆k C2,k 
+
+
+
+Etrain ∥ˆvk(X) − v⋆k(X)∥21/2
+
+.
+
+Applying Lemma 6.3 to each regression problem gives the corresponding mean squared error rates. For the logit component, the input dimension is dZ + 1 with H¨ older smoothness αZ , so that 
+
+Etrain ∥ˆvZ − v⋆Z ∥2 ≲ n−2αZ /(2 αZ +dZ +1) .
+
+Taking square roots yields 
+
+C1
+
+
+
+Etrain ∥ˆvZ − v⋆Z ∥21/2
+
+≲ n−αZ /(2 αZ +dZ +1) .
+
+For the k-th class-conditional component, the effective sample size is nπ ⋆k, the input dimension is p + 1, and the smoothness index is αc. Lemma 6.3 therefore gives 
+
+Etrain ∥ˆvk − v⋆k∥2 ≲ (nπ ⋆k)−2αc/(2 αc+p+1) .
+
+36 Taking square roots and multiplying by π⋆k yields 
+
+π⋆k C2,k 
+
+
+
+Etrain ∥ˆvk − v⋆k∥21/2
+
+≲ π⋆k (nπ ⋆k)−αc/(2 αc+p+1) .
+
+Combining the bounds for the logit and continuous components establishes the claimed result. 37 B Simulation Data-Generating Details 
+
+This section gives the full data-generating specification used in Section 7. The joint categorical state is 
+
+G = ( A, B, Y ), A ∈ { 0, 1, 2, 3}, B ∈ { 0, 1, 2}, Y ∈ { 0, 1}.
+
+The rare cell is 
+
+grare = ( A = 3 , B = 2 , Y = 1) ,
+
+with probability 
+
+P(G = grare ) = ρ, ρ ∈ { 0.05 , 0.01 }.
+
+For all other cells g = ( a, b, y )̸ = grare , probabilities are assigned proportionally to 
+
+qaby = 0 .63 a0.72 b0.58 y · 1.45 1{(a,b )∈{ (0 ,0) ,(1 ,1) ,(2 ,0) }} · 0.70 1{y=1 ,b =2 }.
+
+Thus, 
+
+π⋆aby = P(G = ( a, b, y )) = 
+
+
+
+ρ, (a, b, y ) = grare ,
+
+(1 − ρ) qaby 
+
+P 
+
+> (a′,b ′,y ′)̸=grare
+
+qa′b′y′
+
+, (a, b, y )̸ = grare .
+
+Conditional on G = ( a, b, y ), 
+
+Xnum | G = ( a, b, y ) ∼ N (μaby , Σaby ).
+
+The conditional mean is 
+
+μaby = αa + βb + γy + δaby ,
+
+where α0 = (0 , 0, 0, 0) , α1 = (0 .55 , −0.20 , 0.15 , 0) ,α2 = ( −0.40 , 0.45 , 0.20 , −0.15) , α3 = (0 .20 , 0.10 , −0.35 , 0.55) ,β0 = (0 , 0, 0, 0) , β1 = (0 .18 , 0.35 , −0.10 , 0.25) , β2 = ( −0.25 , 0.10 , 0.40 , −0.20) ,
+
+and 
+
+γ0 = (0 , 0, 0, 0) , γ1 = (0 .35 , −0.15 , 0.30 , 0.20) .
+
+The interaction term is 
+
+δaby =
+
+
+
+0.10 1{a = 3 , y = 1 } − 0.07 1{b = 2 }
+
+0.12 1{a = 1 , b = 1 } − 0.05 y
+
+0.08 1{a = 2 , y = 1 } + 0 .06 1{b = 2 , y = 0 }
+
+0.10 1{a = 3 , b = 2 } − 0.04 a
+
+ .
+
+The covariance matrix is Σaby = Daby Raby Daby + 10 −6I4,
+
+where Daby = diag( saby ) and 
+
+saby =
+
+
+
+0.85 + 0 .07 a
+
+0.95 + 0 .06 b
+
+0.90 + 0 .05 y + 0 .03(( a + b) mod 2) 0.80 + 0 .04 a + 0 .04 y
+
+ .
+
+38 The correlation matrix Raby has diagonal entries equal to one and off-diagonal entries (Raby )12 = ( Raby )21 = 0 .20 − 0.04 b, 
+
+(Raby )13 = ( Raby )31 = −0.10 + 0 .03 a, 
+
+(Raby )24 = ( Raby )42 = 0 .15 − 0.05 y, 
+
+(Raby )34 = ( Raby )43 = 0 .10 + 0 .02 b, 
+
+with all other off-diagonal entries equal to zero. 
+
+# C Additional Real-Data Results 
+
+C.1 Distributional Diagnostics 
+
+In addition to the quantitative results in Section 8, we provide qualitative distributional diagnostics based on the original benchmark partition of each dataset. These plots are not aggregated over the nine additional random partitions and should be interpreted as representative illustrations. The main evidence is the mean and standard deviation over the ten data splits reported in the main text. Figures 1–4 compare representative marginal numerical distributions, Figures 5–8 compare marginal categorical distributions, and Figures 9–12 compare conditional numerical distributions of the form 
+
+P (Xnum | Xcat , y ).
+
+The conditional plots are particularly relevant to the block-conditional factorization 
+
+P (y)P (Xcat | y)P (Xnum | Xcat , y ).
+
+Overall, the marginal plots show that individual numerical and categorical feature distributions are often easier to match than the full mixed joint distribution. The conditional plots are more directly related to the proposed structured modeling approach: they visualize whether generated data preserve conditional distributions of the form P (Xnum | Xcat , y ). These diagnostics support the use of the conditional Wasserstein term and standardized Dmix as the main quantitative criteria for real-data evaluation. 39 Figure 1: Adult marginal numerical distributions on the original benchmark split. Columns show TabDDPM; one-hot, logit, and block-conditional logit Flow Matching; and one-hot/logit diffusion. Rows are selected challenging features. Blue/orange histograms represent real/synthetic observations; the axes give feature value and density. Greater overlap indicates better marginal fidelity. Broad shapes align, with local bin differences. This is a single-split diagnostic of univariate marginals. 
+
+Figure 2: Churn2 marginal numerical distributions on the original benchmark split. Columns show TabDDPM; one-hot, logit, and block-conditional logit Flow Matching; and one-hot/logit diffusion. Rows are selected challenging features. Blue/orange histograms represent real/synthetic observations; the axes give feature value and density. Greater overlap indicates better marginal fidelity. All methods recover the main distributional shapes, with modest local and endpoint discrepancies. This is a single-split diagnostic of univariate marginals. 40 Figure 3: Cardio marginal numerical distributions on the original benchmark split. Columns show TabDDPM; one-hot, logit, and block-conditional logit Flow Matching; and one-hot/logit diffusion. Rows are selected challenging features. Blue/orange histograms represent real/synthetic observations; the axes give feature value and density. Greater overlap indicates better marginal fidelity. Spikes, skewness, and broad shapes align closely, with local bin differences. This is a single-split diagnostic of univariate marginals. 
+
+Figure 4: Buddy marginal numerical distributions on the original benchmark split. Columns show TabDDPM; one-hot, logit, and block-conditional logit Flow Matching; and one-hot/logit diffusion. Rows are selected challenging features. Blue/orange histograms represent real/synthetic observations; the axes give feature value and density. Greater overlap indicates better marginal fidelity. All methods preserve the broad bounded and skewed shapes, with local frequency differences. This is a single-split diagnostic of univariate marginals. 41 Figure 5: Adult marginal categorical distributions on the original benchmark split. Columns show TabDDPM; one-hot, logit, and block-conditional logit Flow Matching; and one-hot/logit diffusion. Rows are selected predictors and the label. Blue/orange bars are real/synthetic category probabilities; smaller gaps indicate lower marginal TV. Most probabilities align, although OneHotFM underrepresents the dominant United-States level in feature 7. This is a single-split marginal diagnostic. 
+
+Figure 6: Churn2 marginal categorical distributions on the original benchmark split. Columns show TabDDPM; one-hot, logit, and block-conditional logit Flow Matching; and one-hot/logit diffusion. Rows are selected predictors and the label. Blue/orange bars are real/synthetic category probabilities; smaller gaps indicate lower marginal TV. Most paired bars nearly coincide, with the largest displayed shift for TabDDPM in feature 2. This is a single-split marginal diagnostic. 42 Figure 7: Cardio marginal categorical distributions on the original benchmark split. Columns show TabDDPM; one-hot, logit, and block-conditional logit Flow Matching; and one-hot/logit diffusion. Rows are selected predictors and the label. Blue/orange bars are real/synthetic category probabilities; smaller gaps indicate lower marginal TV. The displayed proportions nearly coincide across variables and methods. This is a single-split marginal diagnostic. 
+
+Figure 8: Buddy marginal categorical distributions on the original benchmark split. Columns show TabDDPM; one-hot, logit, and block-conditional logit Flow Matching; and one-hot/logit diffusion. Rows are selected predictors and the three-level label. Blue/orange bars are real/synthetic category probabilities; smaller gaps indicate lower marginal TV. Binary and label proportions align closely; larger gaps occur in higher-cardinality predictors. This is a single-split marginal diagnostic. 43 Figure 9: Adult conditional numerical distributions on the original benchmark split. Columns show TabDDPM; one-hot, logit, and block-conditional logit Flow Matching; and one-hot/logit diffusion. Rows fix the categorical level and label shown at left and plot P (Xnum | Xcat , y ). Blue/orange histograms are real/synthetic; the axes give numerical value and density. Greater overlap indicates better conditional fidelity. The United-States cells align more closely than the displayed Mexico and Iran cells. This is a single-split diagnostic of selected high-support cells. 
+
+Figure 10: Churn2 conditional numerical distributions on the original benchmark split. Columns show TabDDPM; one-hot, logit, and block-conditional logit Flow Matching; and one-hot/logit diffusion. Rows fix ( z, y ) as shown at left and plot P (Xnum | z, y ). Blue/orange histograms are real/synthetic; the axes give numerical value and density. Greater overlap indicates better conditional fidelity. Broad shapes are recovered, with more binwise variation in the y = 1 cells. This is a single-split diagnostic of selected high-support cells. 44 Figure 11: Cardio conditional numerical distributions on the original benchmark split. Columns show TabDDPM; one-hot, logit, and block-conditional logit Flow Matching; and one-hot/logit diffusion. Rows fix ( z, y ) as shown at left and plot P (Xnum | z, y ). Blue/orange histograms are real/synthetic; the axes give numerical value and density. Greater overlap indicates better conditional fidelity. The increasing multimodal pattern is recovered, with local peak and tail differences in the y = 1 cells. This is a single-split diagnostic of selected high-support cells. 
+
+Figure 12: Buddy conditional numerical distributions on the original benchmark split. Columns show TabDDPM; one-hot, logit, and block-conditional logit Flow Matching; and one-hot/logit diffusion. Rows fix race and label as shown at left and plot P (Xnum | Xcat , y ). Blue/orange histograms are real/synthetic; the axes give numerical value and density. Greater overlap indicates better conditional fidelity. Broad levels are reproduced, with the largest local gaps in the displayed White, 
+
+y = 1 cell. This is a single-split diagnostic of selected high-support cells. 45 References 
+
+Amari, S. (2016). Information geometry and its applications . Springer. Amari, S., and Nagaoka, H. (2000). Methods of information geometry . American Mathematical Society. Arjovsky, M., Chintala, S., and Bottou, L. (2017). Wasserstein GAN. Proceedings of the 34th International Conference on Machine Learning (ICML) , 214–223. Cheng, C., Li, J., Peng, J., and Liu, G. (2024). Categorical flow matching on statistical manifolds. 
+
+Advances in Neural Information Processing Systems .Fukumizu, K., Suzuki, T., Isobe, T., Oko, K., and Koyama, M. (2024). Flow matching achieves almost minimax optimal convergence. arXiv preprint arXiv:2405.20879 .Guzm´ an-Cordero, A., Eijkelboom, F., and van de Meent, J.-W. (2025). Exponential family variational flow matching for tabular data generation. Proceedings of the 42nd International Conference on Machine Learning , PMLR 267:21516–21529. Gy¨ orfi, L., Kohler, M., Krzy˙ zak, A., and Walk, H. (2002). A distribution-free theory of nonparametric regression . Springer. Hoogeboom, E., Nielsen, D., Jaini, P., Forr´ e, P., and Welling, M. (2021). Argmax flows and multino-mial diffusion: Learning categorical distributions. Advances in Neural Information Processing Systems .Jang, E., Gu, S., and Poole, B. (2017). Categorical reparameterization with Gumbel-Softmax. 
+
+International Conference on Learning Representations (ICLR) .Kotelnikov, A., Baranchuk, D., Rubachev, I., and Babenko, A. (2023). TabDDPM: Modelling tabular data with diffusion models. Proceedings of the 40th International Conference on Machine Learning (ICML) .Lipman, Y., Chen, R. T. Q., Ben-Hamu, H., Nickel, M., and Le, M. (2022). Flow matching for generative modeling. Advances in Neural Information Processing Systems .Maddison, C., Mnih, A., and Teh, Y. W. (2017). The concrete distribution: A continuous relaxation of discrete random variables. International Conference on Learning Representations (ICLR) .Mueller, M., Gruber, K., and Fok, D. (2026). Cascaded flow matching for heterogeneous tabular data with mixed-type features. arXiv preprint arXiv:2601.22816 .Peyr´ e, G., and Cuturi, M. (2019). Computational optimal transport . Foundations and Trends in Machine Learning , 11(5–6), 355–607. Roos, D., Davis, O., Eijkelboom, F., Bronstein, M., Welling, M., Ceylan, I. I., Ambrogioni, L., and van de Meent, J.-W. (2026). Categorical flow maps. arXiv preprint arXiv:2602.12233 .Song, Y., Sohl-Dickstein, J., Kingma, D. P., Kumar, A., and Ermon, S. (2021). Score-based genera-tive modeling through stochastic differential equations. International Conference on Learning Representations (ICLR) .Tsybakov, A. B. (2009). Introduction to nonparametric estimation . Springer. 46 Villani, C. (2009). Optimal transport: Old and new . Springer. Williams, B., Yeom-Song, V. M., Hartmann, M., and Klami, A. (2025). Simplex-to-Euclidean bijections for categorical flow matching. arXiv preprint arXiv:2510.27480 .Xu, L., Skoularidou, M., Cuesta-Infante, A., and Veeramachaneni, K. (2019). Modeling tabular data using conditional GAN. Advances in Neural Information Processing Systems .Zhao, Z., Kunar, A., Birke, R., and Chen, L. Y. (2021). CTAB-GAN: Effective table data synthesizing. 
+
+Proceedings of the 13th Asian Conference on Machine Learning , PMLR 157:97–112. 47

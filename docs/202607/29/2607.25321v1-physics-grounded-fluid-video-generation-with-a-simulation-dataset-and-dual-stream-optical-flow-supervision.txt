@@ -1,0 +1,354 @@
+Title: Physics-Grounded Fluid Video Generation with a Simulation Dataset and Dual-Stream Optical-Flow Supervision
+
+URL Source: https://arxiv.org/pdf/2607.25321v1
+
+Published Time: Wed, 29 Jul 2026 00:33:22 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+## Physics-Grounded Fluid Video Generation with a Simulation Dataset and Dual-Stream Optical-Flow Supervision 
+
+Ruijie Su 1,∗ Yuanzhi Liang 2,∗ Xiaohua Xie 1,3,† Jianhuang Lai 1,31School of Computer Science and Engineering, Sun Yat-sen University, Guangzhou, China 
+
+> 2
+
+Institute of Artificial Intelligence, China Telecom (TeleAI), China 
+
+> 3
+
+Guangdong Province Key Laboratory of Information Security Technology, Sun Yat-sen University, Guangzhou, China 
+
+Abstract 
+
+Video diffusion models generate visually compelling content but routinely violate elementary physics when the subject involves fluids: liquid columns break apart in mid-air, container water levels fail to rise as liquid is poured in, and splashes disperse without regard to momentum or gravity. We attribute this gap to the fact that large-scale video-text corpora contain almost no explicit motion supervision, so models learn to imitate fluid appearance rather than dynamics. We address this with two contributions. First, we build a physics-simulation fluid dataset combining 1,638 MPM-simulated pouring/sloshing videos with 2,320 keyword-filtered real pouring videos mined from stock footage, plus two held-out test sets: a 1,515 -video real-video benchmark and an 18-prompt text-to-first-frame generalization benchmark. Second, we introduce a dual-stream image-to-video architecture built on a pretrained diffusion-transformer video generator. It augments the standard RGB decoder with a lightweight Optical-Flow Decoder branch trained with explicit end-point-error and smoothness losses, fused into the RGB stream via zero-initialized convolutions so the pretrained backbone starts undisturbed. Only the two decoders are updated; the encoder, temporal transformer, and text encoder remain frozen. Across two model scales ( 1.3B and 14 B) and two test sets, our method improves VideoPhy-2 Physical-Commonsense and Video-Quality scores over the frozen backbone by up to 8.75 and 4.65 
+
+points, outperforms a leading open competitor, and is preferred by human raters in a blind study. A direct optical-flow read-out evaluation further shows an end-point error as low as 0.54 pixels in-distribution, confirming the model has internalized a coherent motion prior rather than merely improving surface appearance. 
+
+## 1 Introduction 
+
+Recent video diffusion and diffusion-transformer mod-els [1, 2, 13, 14] have made rapid progress in producing temporally coherent, high-resolution video from a single image or text prompt. Yet a persistent failure mode remains largely unsolved: these models do not obey the physical laws that govern the objects they depict. Fluids are an es-pecially demanding case. Unlike rigid or piecewise-rigid objects, fluids exhibit continuous topology change, mo-mentum transfer, and boundary-dependent splashing, all of which are difficult to infer from appearance statistics alone. In practice, state-of-the-art video generators routinely pro-duce liquid columns that emerge from a cup wall rather than its rim, container water levels that do not rise as liquid is poured in (violating mass conservation), and splash patterns that are decoupled from the direction of impact. We argue that this failure stems less from a fundamen-tal architectural limitation than from a data and super-vision gap. Internet-scale video–text corpora rarely con-tain paired, physically-annotated fluid motion, so diffu-sion models trained purely with a photometric reconstruc-tion objective have no direct incentive to learn momentum-consistent dynamics; they instead learn shortcuts that repro-duce plausible-looking texture and color transitions. This  
+
+> ∗Equal contribution. †Corresponding author. Email: 472171770@qq.com
+
+motivates two complementary questions that this paper ad-dresses: (1) how can we construct training data that isolates and exhaustively covers fluid dynamics under controlled physical parameters, and (2) how can we inject an explicit motion-level training signal into a pretrained video gener-ator without discarding its strong prior for appearance and text alignment? For the first question, we build a physics-simulation fluid dataset. Using a particle-based multiphase simulation framework, we procedurally generate two canonical fluid behaviors — pouring (a container tips over a fixed pivot and empties onto a surface) and sloshing (a fluid volume is perturbed by an external horizontal force inside a fixed boundary) — while systematically sweeping container ge-ometry and physically meaningful parameters such as tilt speed, tilt angle, drop height, and applied force. This yields 
+
+1,638 simulated videos with exact control over the under-lying physics. We combine this simulated data with 2,320 
+
+real pouring videos mined from a large stock-footage cor-pus using a fluid-noun/pouring-verb keyword filter, so that the model retains exposure to real-world visual statistics. For the second question, we introduce a dual-stream 
+
+fine-tuning architecture. Starting from a pretrained image-to-video diffusion transformer, we keep the visual encoder, the diffusion transformer backbone, and the text encoder entirely frozen, and add a second, lightweight decoder branch — an Optical-Flow Decoder — that is trained 1arXiv:2607.25321v1 [cs.AI] 28 Jul 2026 jointly with the existing RGB decoder to directly regress the per-pixel motion field of the generated video. The two decoders share a similar architecture and are fused through zero-initialized convolutions, so that gradients from the new flow objective can influence the shared latent-to-pixel map-ping without destabilizing the pretrained RGB generation quality at the start of training. Because the flow branch is supervised with pseudo ground-truth optical flow extracted from both the simulated and real training videos, the model is explicitly forced to produce a self-consistent, pixel-level motion field, rather than only a photometrically plausible final frame. In summary, our contributions are: • A physics-simulation fluid video dataset spanning pour-ing and sloshing behaviors under systematically varied physical parameters, paired with a curated real-video benchmark, together comprising 3,958 training videos and two held-out test sets. • A dual-stream video diffusion architecture that adds an explicit, zero-convolution-fused optical-flow decoding branch to a frozen pretrained backbone, trained with a joint RGB–flow objective, at a cost of only ≈ 2% addi-tional decoder parameters. • Extensive quantitative and qualitative evaluation across two model scales (1.3B/14B parameters), two test distri-butions, a state-of-the-art competitor, a 36 -participant hu-man study, and a direct optical-flow accuracy probe, all of which show consistent gains in physical plausibility with-out degrading text alignment. 
+
+## 2 Related Work 
+
+Video diffusion generation. Diffusion-based video gen-erators [13, 14, 2, 1] have progressively scaled from short, low-resolution clips to minute-scale, high-definition, text-and image-conditioned generation, typically by operating a diffusion transformer over a compressed latent produced by a video VAE. Beyond raw generation capacity, system-atic alignment frameworks have recently been proposed to improve the fidelity, controllability, and robustness of such models [15]. Our method is architecture-agnostic and is instantiated on top of such a pretrained image-to-video dif-fusion transformer, which we treat as a frozen backbone. 
+
+Physically-grounded video and 4D generation. Agrowing line of work injects explicit physics into generative pipelines: rigid-body physics engines drive image-to-video synthesis [7]; physics-integrated 3D Gaussians couple a dif-ferentiable simulator with a Gaussian-splatting renderer for object dynamics [8]; and video-diffusion priors are distilled to recover or regularize physical material parameters for 3D assets [10, 11, 12]. These methods largely target rigid or piecewise-rigid object dynamics with a known 3D repre-sentation. In contrast, our target —pouring and sloshing fluids— involves continuous topology change that is diffi-cult to represent with a fixed mesh or particle skeleton, so we instead inject physical supervision indirectly, through simulation-generated training data and an explicit motion-field objective, rather than through a differentiable simu-lator in the generation loop. Situating this effort within a broader agenda, a recent roadmap argues for coupling phys-ical simulation with world-action models as a path toward embodied physical intelligence [17], while a concurrent survey charts how reinforcement-learning techniques are being integrated with visual generative models to improve controllability and physical fidelity [16]; our simulation-data-plus-explicit-motion-objective design can be viewed as one concrete instantiation of this broader direction, spe-cialized to fluid dynamics. 
+
+Optical flow as a training signal. Optical flow has long served as an intermediate representation for motion under-standing; RAFT [3] established an accurate, efficient recur-rent flow estimator that we use both to construct pseudo-ground-truth flow supervision for training and as an in-dependent evaluation tool for measuring the motion self-consistency of generated videos. Unlike prior work that uses optical flow purely as a post-hoc evaluation or warping mechanism, we introduce flow prediction as an auxiliary decoding branch trained jointly with RGB reconstruction, so that the motion objective directly shapes the shared video latent representation during generation. 
+
+Simulation-generated training data. Particle-based simulation frameworks that couple 3D Gaussian Splat-ting with physical solvers [8, 9, 6] enable photorealistic rendering of physically simulated dynamics from a single input image, providing a practical route to large-scale, parameter-controlled synthetic video generation. We build our fluid dataset on such a multiphase particle simulation framework [6], using it purely as a data generation tool that is decoupled from the downstream video generation model. 
+
+## 3 Method 
+
+3.1 Physics-Simulation Fluid Dataset 
+
+Because no existing corpus pairs fluid video with dense, physically grounded motion parameters at scale, we con-struct a dedicated training and evaluation dataset spanning two canonical fluid behaviors. 
+
+Pouring scenario. We simulate a container-tipping scene containing four physical entities — a container, a table, the floor, and the fluid itself, modeled with a weakly-compressible constitutive law — rendered using the multi-phase particle-simulation framework of [6]. The container’s Gaussian ellipsoids are rigidly frozen relative to one an-other to avoid unwanted deformation during rotation. We 2designed six containers spanning distinct geometric fami-lies (Fig. 1): a shallow ceramic bowl, a deep wood-grain bowl, a wide-brim plastic basin, a hexagonal open box, a handled cup, and a cartoon mug, so that the model is ex-posed to varied rim geometry and pouring affordances. For each container we systematically vary five physically mean-ingful parameters: tilt direction (front-side, front, side; 3 values), tilt angular speed ( 1.5, 3.0, 4.5 rad /s), final tilt an-gle ( 1.2, 2.1, 3.0 rad ), container-to-table drop height (three simulation-unit levels), and fluid volume (three relative lev-els). The full combinatorial sweep ( 6 × 3 × 3 × 3 × 3 × 3)yields 1,458 pouring videos, each 7.5 s long at 150 frames, capturing the complete process from the onset of tipping to the fluid settling on the ground. 
+
+Sloshing scenario. To capture fluid response to external perturbation without occluding containers, we simplify the scene to the fluid volume alone, bounded by a fixed rect-angular boundary, and apply a horizontal impulse force for a controlled duration. We vary force magnitude ( 0.8, 1.0,
+
+1.2 N ), force direction (5 in-plane directions), force appli-cation depth (3 levels), and application pattern (a single im-pulse, or a repeated impulse train at one of 3 inter-impulse intervals of 0.8/1.4/2.0 s). The sweep ( 3×5×3×(1+1 ×3) )produces 180 sloshing videos, each 25 s long at 500 frames, recording the fluid’s transition from rest through sloshing back to equilibrium. 
+
+Real video collection. To retain exposure to real-world visual statistics, we mine a large stock-footage corpus (10 ,000 professionally shot videos with automatically gen-erated short/long captions) for fluid-related content: we keep clips whose short caption jointly contains a fluid noun (water , liquid , fluid , etc. ) and a pouring verb ( dump , spill ,
+
+tip , pour , etc. ), yielding 3,835 curated real fluid videos. 
+
+Preprocessing and pseudo-flow supervision. All videos are unified to 81 frames. For simulated videos we crop the temporal window that contains the principal motion (frames 
+
+34 –115 for pouring, 179 –260 for sloshing); for real videos, whose motion onset is unknown and whose duration varies, we sample 81 frames uniformly. We then extract dense op-tical flow with a pretrained RAFT model [3] for every train-ing video to serve as pseudo ground-truth motion supervi-sion. Because the simulated videos are rendered against a texture-less white background, naive flow extraction spu-riously assigns motion to the static background; we sup-press this by masking the extracted flow with the simula-tor’s foreground segmentation, zeroing the flow outside the fluid/container region so that the supervision signal is con-centrated on genuine fluid motion (Fig. 2). The final train-ing set combines 1,638 simulated videos with 2,320 real videos ( 3,958 total); the remaining 1,515 real videos form our primary test set, which we refer to as iStock-Fluid . We additionally construct a generalization benchmark, Flux-           
+
+> Figure 1: Dataset overview. Left: pouring scenario with varied parameters including container geometries, tilt direc-tion/speed/angle, drop height, and fluid volume. Right: slosh-ing scenario with force parameters including magnitude, direction, depth, force count, and interval. Renders and simulations are gen-erated using the multiphase particle simulator of [6].
+
+Fluid , by writing 18 fluid-related text prompts and gener-ating their first frames with a text-to-image model [5], de-coupling evaluation from any visual bias present in the real-video corpus. 
+
+3.2 Dual-Stream Video Generation Architec-ture 
+
+We target the image-to-video (I2V) setting: given a first frame and a text prompt, generate a temporally coherent video. Our backbone is a pretrained diffusion-transformer I2V model [1] composed of a video encoder ( WanEncoder ), a stack of N diffusion-transformer (DiT) blocks condi-tioned on a text encoder, and an RGB decoder. Standard fine-tuning of such a backbone optimizes only a photomet-ric reconstruction objective, which we hypothesize under-constrains motion: the model can minimize per-frame RGB error while reproducing an appearance pattern memorized from limited training footage, without learning a generaliz-able notion of pixel-level motion. We therefore introduce a second decoding branch, the 
+
+Optical-Flow Decoder , that shares the RGB decoder’s ar-chitectural skeleton (a 3D input convolution, multi-scale upsampling stages, and a prediction head) but is configured with narrower channel widths, so that its parameter count is only ≈ 2% of the RGB decoder’s. Both decoders consume the same DiT output latent xlatent at each diffusion step and 3Figure 2: RGB and pseudo-ground-truth optical-flow supervi-sion. Representative frame sequences from the simulated (top) and real (bottom) training data, each with the corresponding RAFT-extracted, foreground-masked flow field used as pseudo ground truth for Lf (Eq. 3). 
+
+independently produce an RGB video ˆv and a per-pixel flow field ˆf (Fig. 3). 
+
+Zero-convolution fusion. To let the flow branch inform RGB generation without destabilizing the pretrained de-coder, each intermediate feature map produced by the flow decoder is passed through an independent zero-initialized convolution and added element-wise to the corresponding intermediate feature map in the RGB decoder. Because the fusion convolution starts at zero, the flow branch has no effect on RGB generation at the start of fine-tuning, guaranteeing that initial output quality matches the pre-trained backbone; as training proceeds, the fusion weights are learned, progressively injecting motion-aware features into the RGB stream. This produces a mutually reinforc-ing training dynamic: the RGB decoder receives motion-aware guidance from the flow branch, while the flow branch receives sharper geometric boundary cues from the jointly optimized RGB reconstruction. 
+
+Conditioning. In addition to the first frame, we condi-tion on an intermediate frame (the 10 th frame in our ex-periments), selected via a binary mask mechanism: the first and intermediate frames are VAE-encoded and con-catenated with the noise latent along the channel dimension, with an accompanying binary mask flagging them as condi-tioning frames (mask value 1) versus frames to be generated (mask value 0). The first frame anchors the static scene lay-out and container pose, while the intermediate frame carries an early cue about the container’s rotational speed and di-rection, steering the model to focus capacity on the fluid’s own dynamics rather than re-deriving rigid-body container motion from scratch. 
+
+Partial freezing. We freeze WanEncoder , all DiT blocks, and the text encoder, updating only the RGB decoder and the new Optical-Flow decoder. The frozen components al-ready encode broad visual and temporal priors learned from large-scale pretraining; freezing them mitigates overfitting to our comparatively small fluid dataset, reduces the train-able parameter count, and concentrates learning capacity on the decoder-level mapping from shared latents to physically consistent motion and appearance. 
+
+3.3 Joint RGB–Flow Objective 
+
+We train the two decoders with a joint loss 
+
+L = Lv + Lf , (1) where Lv supervises RGB reconstruction and Lf super-vises the predicted flow field. The RGB loss combines a per-pixel reconstruction term with a latent-space distribution matching term, 
+
+Lv = LMAE (v, ˆv) + λkl Lkl (v, ˆv), λkl = 0 .1, (2) where v and ˆv denote the ground-truth and predicted frames, LMAE is an outlier-robust mean-absolute-error re-construction loss, and Lkl regularizes the predicted latent distribution towards the ground-truth latent distribution. The flow loss combines an end-point-error term with two regularizers, 
+
+Lf = Lepe (f, ˆf ) + λss Lss (f, ˆf ) + λts Lts (f, ˆf ), (3) with λss = 0 .01 and λts = 0 .05 . Lepe is the standard per-pixel Euclidean distance between predicted and pseudo-ground-truth flow, directly penalizing displacement error. 
+
+Lss is an edge-aware spatial smoothness term that encour-ages flow continuity within homogeneous image regions while permitting discontinuities at object boundaries such as the fluid–container interface, matching the physical ex-pectation that fluid motion is smooth away from bound-aries but can change abruptly at them. Lts penalizes frame-to-frame flow variation, discouraging jitter and enforcing that the generated motion evolves in a temporally coherent, physically plausible manner. By jointly minimizing Eq. (1), the model is required not only to produce visually convincing RGB frames but also to internalize a self-consistent, per-pixel motion field, cou-pling appearance generation to an explicit physical-motion objective. 
+
+3.4 Training Procedure 
+
+Algorithm 1 summarizes the training loop. Only the de-coder parameters Θdec (RGB Decoder and Optical-Flow Decoder) are updated with AdamW at an initial learning rate of 1 × 10 −5 under a cosine annealing schedule, follow-ing the timestep-dependent loss weighting scheme of the base model [1]. Training videos are resized to 512 × 512 
+
+resolution, 81 frames, 16 fps. We fine-tune two backbone 4Wan -
+
+Encoder 
+
+A woman dressed in  Hanfu  is holding a 
+
+teapot and pouring water into a cup. 
+
+N x  DiT  Blocks 
+
+Timestep t 
+
+UMT5 
+
+> Zero Convolution
+
+RGB Decoder 
+
+Optical Flow Decoder 
+
+> First Frame
+> Middle Frame
+
+RGB Video 
+
+Optical Flow 
+
+Frozen 
+
+Fine -tuning Figure 3: Dual-stream architecture. A frozen WanEncoder and stack of DiT blocks (conditioned on a text prompt via a frozen text encoder) produce a shared latent that is decoded by two branches: a fine-tuned RGB Decoder and a new, lightweight Optical-Flow Decoder. Flow-decoder features are injected into the RGB stream through zero-initialized convolutions, so the flow branch has no effect at the start of training and is gradually blended in as its zero-convolution weights are learned. 
+
+Algorithm 1 Dual-Stream Training 
+
+Require: Pretrained backbone ΘWan , trainable decoder params Θdec , dataset D, AdamW, learning rate η 
+
+> 1:
+
+Freeze WanEncoder, DiT, text encoder; set only Θdec 
+
+trainable  
+
+> 2:
+
+for each epoch do  
+
+> 3:
+
+for each batch (vrgb , f gt , prompt) ∈ D do  
+
+> 4:
+
+z ← E VAE (vrgb ) ▷ encode to latent  
+
+> 5:
+
+sample timestep t; zt ← add _noise( z, t ) 
+
+> 6:
+
+ˆz0 ← denoise( zt, prompt) via frozen DiT  
+
+> 7:
+
+ˆf ← D flow (ˆ z0); ˆvrgb ← D rgb (ˆ z0) 
+
+> 8:
+
+compute Lv (Eq. 2), Lf (Eq. 3)  
+
+> 9:
+
+L ← w(t) · (Lv + Lf ) 
+
+> 10:
+
+Θdec ← Θdec − η∇Θdec L 
+
+> 11:
+
+end for  
+
+> 12:
+
+end for 
+
+scales, 1.3B and 14 B parameters, to study whether our gains persist as model capacity grows; the 1.3B model is trained with a per-GPU batch size of 1 on 8 GPUs and the 
+
+14 B model on 16 GPUs, both for 20 epochs, using ZeRO-2 distributed optimization. 
+
+## 4 Experiments 
+
+4.1 Setup 
+
+We train on the 3,958 -video mixed dataset of Sec. 3.1 and evaluate on iStock-Fluid ( 1,515 real videos) and Flux-Fluid (18 text prompts with Flux-generated first frames). All videos are unified to 81 frames, 512 × 512 , 16 fps. At inference, the flow decoder adds only ≈ 2% parameters relative to the RGB decoder, so overall compute is close to the unmodified backbone; generating a 5-second, 480 p(854 × 480 ) video takes ≈ 4 minutes on a single RTX 4090. 
+
+Metrics. Following the VIDEOPHY-2 protocol [4], we report Physical Commonsense (PC) , the percentage of generated videos scoring ≥ 4 on a 5-point automated physical-plausibility rating (gravity-consistent falling, plau-sible container collisions, mass-conserving level rise, splash direction consistent with impact force), and Video Quality (VQ) , the percentage of videos scoring ≥ 4 on both 
+
+PC and Semantic Adherence (SA, prompt–content align-ment), capturing joint physical and semantic fidelity. We additionally evaluate flow prediction accuracy directly, us-ing RAFT-extracted flow from the generated video as a ref-erence and comparing it to the flow decoder’s own output via End-Point-Error (EPE), the fraction of pixels with error 
+
+> 1px and > 3px, and F1-all (fraction with error > 3px and 
+
+relative error > 5% ). 
+
+4.2 Quantitative Comparison 
+
+Table 1 compares our dual-stream fine-tuned models against the unmodified backbone at both scales. On iStock-Fluid, our 1.3B model improves PC from 66 .92 to 70 .77 
+
+and VQ from 56 .92 to 60 .00 ; the 14 B model improves PC from 70 .00 to 78 .75 and VQ from 57 .50 to 61 .25 . Gains persist under the visually distinct Flux-Fluid distribution (PC 70 .59 → 76 .47 , VQ 70 .59 → 76 .47 for the 1.3Bmodel), indicating that the improvement generalizes be-yond the real-video training distribution rather than merely overfitting to it, and that it holds across a 10 × change in backbone scale. 5Table 1: Backbone comparison. PC/VQ ( %, higher is better) on iStock-Fluid and Flux-Fluid, before and after our dual-stream fine-tuning, at two model scales. Test set Model PC ↑ VQ ↑
+
+iStock-Fluid Wan2.1-1.3B 66.92 56.92 
+
+Ours-1.3B 70.77 60.00 
+
+Wan2.1-14B 70.00 57.50 
+
+Ours-14B 78.75 61.25 
+
+Flux-Fluid Wan2.1-1.3B 70.59 70.59 
+
+Ours-1.3B 76.47 76.47 Table 2: Comparison with a state-of-the-art competitor on a 
+
+51 -video iStock-Fluid sample. Model PC ↑ VQ ↑
+
+CogVideoX-5B [2] 62.75 52.94 Wan2.1 [1] 62.75 58.82 
+
+Ours 66.67 60.78 
+
+Table 2 additionally compares against a leading open-source competitor, CogVideoX-5B [2], on a 51 -video sam-ple of iStock-Fluid. Our method achieves the best PC (66 .67 ) and VQ ( 60 .78 ) among the three, ahead of both Wan2.1 and CogVideoX-5B, consistent with the qualitative findings in Sec. 4.3. Because Ours and Wan2.1 share an identical backbone and differ only in the addition of the flow-decoder branch and fluid-focused fine-tuning, Tables 1–2 also serve as an internal ablation: the consistent PC/VQ improvement over the frozen baseline, at both the 1.3B and 14 B scales and under two different test distributions, isolates the benefit of the proposed dual-stream, flow-supervised fine-tuning pro-cedure. 
+
+4.3 Qualitative Comparison 
+
+Figure 4 contrasts our 1.3B model against the unmod-ified Wan2.1-1.3B backbone across representative pour-ing, watering, and shower scenes. The unmodified back-bone exhibits two recurring failure patterns: (i) un-stable fluid geometry, including column breakage, sud-den volume change, and gravity-inconsistent bouncing or floating, reflecting insufficient modeling of continuity and momentum conservation; and (ii) inconsistent fluid– container/environment interaction, including offset entry points, discontinuous liquid-level changes, and splash di-rections misaligned with the applied force. Our fine-tuned model instead produces streams that enter consistently at the container rim and follow a gravity-consistent trajectory, liquid levels that rise smoothly with the poured volume, and splash/foam interactions — e.g. a poured stream vis-ibly displacing existing foam in a coffee cup — that bet-ter respect momentum transfer at the fluid–fluid interface. Figure 5 repeats the comparison at the 14 B scale: even After Finetune         
+
+> Before Finetune
+> A person pours water into glass on a wooden table. Hot water is being poured into a glass mug containing cherries.
+> After Finetune
+> Before Finetune
+> After Finetune
+> Before Finetune
+> A hand pours beer into a tall glass filled with ice and a slice of lime on the rim. Water is being poured into a glass, creating splashes.
+> After Finetune
+> Water is being poured onto plants in a garden, creating a refreshing ambiance. A young child is having a shower, while another hand gently touches the stream.
+> After Finetune
+> Before Finetune
+> After Finetune
+> Before Finetune
+> After Finetune
+> Before Finetune
+> After Finetune
+> Before Finetune
+> A hand is pouring water from a blue bottle into a glass on a table.
+> After Finetune
+> Before Finetune
+> A person is pouring water from a transparent bottle into a glass on a wooden
+> table against a black background.
+> After Finetune
+> Before Finetune
+> Hot water is being poured over coffee grounds in a filter to brew a cup of coffee.
+> After Finetune
+> Before Finetune
+> Water is being poured from a glass pitcher into a glass.
+> After Finetune
+> Before Finetune
+> A person is pouring water from a bottle onto their head in a dimly lit environment.
+> 12
+> 34
+> 56
+> 78
+> 910
+> 12
+> Before Finetune
+> 11
+> A person pours hot liquid from a thermos into a cup in a snowy setting.
+
+Figure 4: Qualitative comparison (1.3B). Our fine-tuned model (bottom row of each pair) vs. the unmodified Wan2.1-1.3B back-bone (top row), across pouring, watering, and shower scenes. Our model produces rim-consistent stream entry, smooth liquid-level rise, and momentum-consistent splash/foam interaction. 
+
+though the larger backbone has stronger baseline genera-tion quality, it exhibits the same qualitative failure modes (non-rising liquid levels, unrealistic hinge-like water trajec-tories when watering plants), which our fine-tuning likewise corrects. Figure 6 extends the comparison to CogVideoX-5B [2], whose splashes frequently disperse in an uncon-strained, momentum-inconsistent pattern; our method again produces the most physically coherent trajectory among the three methods compared. 
+
+4.4 Human Study 
+
+To complement the automated PC/VQ metrics, we ran a blind human study with 36 participants across a range of ages and occupations. For 10 fluid scenes, each participant rated 3 blindly ordered, method-anonymized clips (Ours, Wan2.1-1.3B, CogVideoX-5B) on a 4-point realism scale (1 = least, 4 = most realistic), for 30 ratings per participant. Table 3 reports the mean and standard deviation across all participants and scenes. The ranking mirrors the auto-mated metrics: our method is rated most realistic on aver-6Water is being poured into a clear glass on a blue background.     
+
+> After Finetune
+> Before Finetune
+> After Finetune
+> Before Finetune
+> Water is being poured into a glass on a black background.
+> After Finetune
+> Before Finetune
+> A man standing in a forested area pouring water from a container. Water is being poured onto plants in a garden, creating a refreshing ambiance.
+> Water is being poured into a glass , creating splashes.
+> Ours  Wan 2.1  CogVideo Ours  Wan 2.1  CogVideo
+> A person pours hot liquid from a thermos into a cup in a snowy setting.
+> 12
+> 34
+
+Figure 5: Qualitative comparison (14B). Same comparison as Fig. 4 at the larger 14B backbone scale. Water is being poured into a clear glass on a blue background.     
+
+> After Finetune
+> Before Finetune
+> After Finetune
+> Before Finetune
+> Water is being poured into a glass on a black background.
+> After Finetune
+> Before Finetune
+> A man standing in a forested area pouring water from a container. Water is being poured onto plants in a garden, creating a refreshing ambiance.
+> Water is being poured into a glass , creating splashes.
+> Ours  Wan 2.1  CogVideo Ours  Wan 2.1  CogVideo
+> A person pours hot liquid from a thermos into a cup in a snowy setting.
+> 12
+> 34
+
+Figure 6: Comparison with Wan2.1 and CogVideoX-5B [2] on two pouring prompts; our method most consistently respects rim-of-entry, level rise, and splash-direction constraints. 
+
+age, roughly 0.6 points above Wan2.1 on the 4-point scale, indicating that the physical-plausibility gains captured by PC/VQ are also perceptible to human observers. 
+
+4.5 Optical Flow Accuracy 
+
+Finally, we directly probe whether the model has learned a physically coherent motion field, independent of the RGB-based PC/VQ metrics. We extract RAFT flow from our model’s own generated video and compare it, as a refer-ence, to the flow predicted by the Optical-Flow Decoder for the same sample (Table 4). On iStock-Fluid, the two agree to an EPE of only 0.538 pixels, with 0% of pixels exceeding a 3-pixel error and 14 .7% exceeding 1 pixel (concentrated at high-frequency fluid–container boundaries). On the more distributionally distant Flux-Fluid set, EPE rises to 1.541 
+
+pixels, with 21 .8% and 10 .0% of pixels exceeding 1 and 
+
+3 pixels respectively, still within an acceptable range given the domain shift. These results indicate that the explicit flow objective yields a self-consistent, generalizable inter-nal motion representation, rather than a flow branch that is decoupled from what the RGB stream actually renders. 
+
+Table 3: Human study. Mean realism rating (4-point scale, higher is better) with standard deviation, 36 raters × 10 scenes. Model Mean rating ↑ Std. dev. CogVideoX-5B [2] 1.2500 0.5000 Wan2.1 [1] 2.2500 1.0522 
+
+Ours 2.8667 1.3074 
+
+Table 4: Optical-flow self-consistency. Error between the de-coder’s predicted flow and RAFT flow re-extracted from the gen-erated video. Test set EPE ↓ > 1px ↓ > 3px ↓ F1-all ↓
+
+iStock-Fluid 0.538 14.7% 0.0% 4.680 Flux-Fluid 1.541 21.8% 10.0% 10.040 
+
+## 5 Future Work 
+
+Our dataset currently spans two canonical fluid behaviors, pouring and sloshing; a natural extension is to broaden the underlying multiphase simulator [6] to additional sce-narios such as phase change (boiling, freezing) and fluid– fluid mixing across distinct viscosities, further widening the range of physical motion the model is exposed to. The sim-ulated videos are rendered against a simplified background, and foreground flow-masking already concentrates super-vision on genuine fluid motion; extending pseudo-ground-truth flow supervision to weakly-labeled internet video is a promising way to further narrow the residual simulation-to-real gap reflected in the higher Flux-Fluid EPE relative to iStock-Fluid. Our physics-grounded fine-tuning is complementary to, and can be directly built upon by, reinforcement-learning-style post-training. Because the PC/VQ physical-plausibility score used for evaluation in Sec. 4 already yields a scalar signal for any generated clip, it is well suited to serve as a reward for a post-training stage ap-plied on top of our fine-tuned model. Recent post-training and alignment techniques for visual generation offer con-crete recipes for such a stage: self-paced curricula that adapt sampling difficulty to the generator’s current com-petence [18], preference-based policy optimization [19], objective-aware credit assignment along the denoising tra-jectory [20], reward-aware trajectory shaping for few-step samplers [21], and Bayesian prior-guided optimiza-tion [22]. Chaining one of these procedures, driven by our PC/VQ scorer, onto our physics-grounded fine-tuning is a natural next step towards further strengthening the physical plausibility gains reported in this paper. 
+
+## 6 Conclusion 
+
+We presented a physics-simulation approach to improving the physical realism of fluid video generation. We con-7structed a controlled fluid dataset spanning pouring and sloshing behaviors, combined it with curated real footage, and used it to train a dual-stream fine-tuning architecture that augments a frozen pretrained video diffusion trans-former with an explicit, zero-convolution-fused optical-flow decoding branch. Across two model scales, two test distributions, a state-of-the-art competitor, a blind human study, and a direct flow-accuracy probe, our method consis-tently improves physical plausibility while preserving the generation quality and generalization ability of the underly-ing pretrained backbone. 
+
+## References 
+
+[1] T. Wan, A. Wang, B. Ai, et al. Wan: Open and ad-vanced large-scale video generative models. arXiv preprint arXiv:2503.20314 , 2025. [2] Z. Yang, J. Teng, W. Zheng, et al. CogVideoX: Text-to-video diffusion models with an expert transformer. arXiv preprint arXiv:2408.06072 , 2024. [3] Z. Teed and J. Deng. RAFT: Recurrent all-pairs field trans-forms for optical flow. In European Conference on Computer Vision (ECCV) , pages 402–419, 2020. [4] H. Bansal, C. Peng, Y. Bitton, et al. VideoPhy-2: A chal-lenging action-centric physical commonsense evaluation in video generation. arXiv preprint arXiv:2503.06800 , 2025. [5] S. Batifol, A. Blattmann, F. Boesel, et al. FLUX.1 Kontext: Flow matching for in-context image generation and editing in latent space. arXiv e-prints , arXiv:2506, 2025. [6] R. Su, L. Yang, X. Xie, J.-H. Lai, et al. VersaGauss: A ver-satile framework for generating multiphase dynamics with 3D Gaussians. IEEE International Conference on Multime-dia and Expo (ICME) , in press. [7] S. Liu, Z. Ren, S. Gupta, et al. PhysGen: Rigid-body physics-grounded image-to-video generation. In European Conference on Computer Vision (ECCV) , pages 360–378. Springer, 2024. [8] T. Xie, Z. Zong, Y. Qiu, et al. PhysGaussian: Physics-integrated 3D Gaussians for generative dynamics. In Pro-ceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 4389–4398, 2024. [9] Y. Feng, X. Feng, Y. Shang, et al. Gaussian Splashing: Uni-fied particles for versatile motion synthesis and rendering. In 
+
+Proceedings of the Computer Vision and Pattern Recognition Conference (CVPR) , pages 518–529, 2025. [10] T. Zhang, H.-X. Yu, R. Wu, et al. PhysDreamer: Physics-based interaction with 3D objects via video generation. In 
+
+European Conference on Computer Vision (ECCV) , pages 388–406. Springer, 2024. [11] T. Huang, H. Zhang, Y. Zeng, et al. DreamPhysics: Learn-ing physics-based 3D dynamics with video diffusion priors. In Proceedings of the AAAI Conference on Artificial Intelli-gence , volume 39, pages 3733–3741, 2025. [12] J. Lin, Z. Wang, D. Xu, et al. Phys4DGen: Physics-compliant 4D generation with multi-material composition perception. In Proceedings of the 33rd ACM International Conference on Multimedia , pages 10398–10407, 2025. [13] J. Ho, T. Salimans, A. Gritsenko, et al. Video diffusion mod-els. In Advances in Neural Information Processing Systems (NeurIPS) , volume 35, pages 8633–8646, 2022. [14] U. Singer, A. Polyak, T. Hayes, et al. Make-A-Video: Text-to-video generation without text-video data. arXiv preprint arXiv:2209.14792 , 2022. [15] Y. Liang, X. Wu, Y. Liu, et al. TeleBoost: A systematic align-ment framework for high-fidelity, controllable, and robust video generation. arXiv preprint arXiv:2602.07595 , 2026. [16] Y. Liang, Y. Fang, R. Li, et al. Integrating reinforcement learning with visual generative models: foundations and ad-vances. Vicinagearth , 3(1):2, 2026. [17] Y. Liang, X. Zhan, H. Huang, C. Zhang, and X. Li. From world action models to embodied brains: A roadmap for open-world physical intelligence. arXiv preprint arXiv:2607.11689 , 2026. [18] R. Li, Y. Liang, Z. Ni, H. Huang, C. Zhang, and X. Li. Grow-ing with the generator: Self-paced GRPO for video genera-tion. arXiv preprint arXiv:2511.19356 , 2025. [19] Z. Ni, Y. Liang, R. Li, Y. Zhou, H. Huang, C. Zhang, and X. Li. Seeing what matters: Visual preference policy optimiza-tion for visual generation. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 27260–27269, 2026. [20] R. Li, K. Hao, Y. Liang, H. Huang, C. Zhang, Y. Gu, and X. Li. Learning to credit the right steps: Objective-aware process optimization for visual generation. arXiv preprint arXiv:2604.19234 , 2026. [21] R. Li, B. Li, Y. Liang, H. Huang, C. Zhang, and X. Li. Reward-aware trajectory shaping for few-step visual genera-tion. arXiv preprint arXiv:2604.14910 , 2026. [22] R. Liu, Y. Liang, H. Huang, T. Yu, and C. Zhang. Learn-ing what to trust: Bayesian prior-guided optimization for visual generation. In Proceedings of the IEEE/CVF Confer-ence on Computer Vision and Pattern Recognition (CVPR) ,pages 34408–34417, 2026. 
+
+8

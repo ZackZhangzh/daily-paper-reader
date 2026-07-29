@@ -1,0 +1,1571 @@
+Title: Nova3D: Code-Native Generation of Programmable 3D Assets
+
+URL Source: https://arxiv.org/pdf/2607.22738v1
+
+Published Time: Tue, 28 Jul 2026 00:13:19 GMT
+
+Number of Pages: 24
+
+Markdown Content:
+## Nova3D : Code-Native Generation of Programmable 3D Assets 
+
+Generating structured, editable, constraint-consistent 3D assets as executable programs Nimra Noor 1 Muhammad Bilal 1,2 Abdullah Hussain 1 Hassan Baig 11Raresense Inc 2University of Edinburgh 
+
+Code and benchmark: https://github.com/RareSense/Nova3D 
+
+Abstract 
+
+Current 3D generative models mostly produce a final surface: a visually strong but largely opaque mesh. Interactive 3D worlds need more than a surface. They need named parts, an assembly hierarchy, measurable constraints, local edit handles, and joints for articulation. We present Nova3D , a system that generates 3D assets as executable Blender source code; the compiled mesh, a binary glTF (GLB), is treated as the artifact, not the asset. Because the output is a program, semantic handles exist at generation time rather than being recovered afterward by segmentation or rigging. We evaluate on Nova3D-Bench , a frozen, spec-grounded benchmark of 54 items across six domains and three difficulty levels with text and image inputs, against eleven baselines in four families (mesh-native, part-structured, code-native, and CAD) plus a same-LLM ablation. Nova3D produces an executable program and a valid artifact for 54/54 items. Every asset exposes named parts organized in a parent–child assembly tree; no mesh-native, CAD, or segmentation baseline exposes either. It satisfies 51/52 prompt-stated numeric and count constraints (best baseline: 11/52), passes 14/18 blinded local edits with locality preserved in 18/18, and articulates 59 joints across 12 assets at 98.3% geometric validity, where every baseline exposes zero native joints. Its geometry is competitive: it wins the structured domains in a pairwise shape-quality tournament and is second only to the strongest mesh-native model, while conceding texture realism to baked-PBR systems. The central result is representational: code-native generation turns a generated 3D object from an opaque surface into a programmable asset that downstream systems can inspect, measure, edit, and animate. 
+
+1 Introduction 
+
+Mesh-native 3D generation has become remarkably good at synthesizing surfaces [ 1 , 2, 7 , 6 , 8]. Given a prompt, these systems produce a visually convincing mesh. But a generated object that will live in an interactive world is not just something to render; it is something an agent, script, physics engine, or animator must act on. Acting on an object requires handles: the ability to name a part, count it, measure it, move it, edit it, and attach a joint to it. A mesh-native generator delivers a fused surface with, at best, a few generic nodes ( geometry 0 ). Those handles do not come for free; they have to be recovered afterward, through a separate segmentation, naming, and rigging pipeline. Nova3D takes a different route. Instead of generating the final surface, it generates the asset’s source code : a self-contained Blender Python program whose compiled GLB is merely the output of running it. The guiding principle is simple. The program is the asset; the mesh is a compiled artifact. 
+
+Because the asset is a program, the structure an interactive world needs is present at generation time. Where a mesh-native generator emits geometry 0 , Nova3D emits Gear 12T Small Tooth 07 and 
+
+Gear 32T Large Rotating Axle Pivot , organized into a parent–child hierarchy with pivots, materi-als, and edit handles (Figure 8). Figure 1 gives the system overview. This is a representation shift, not a claim of visual superiority. Nova3D does not aim to beat mesh-native generators on texture realism or freeform organic surfaces. Those methods are strong there, and our results 1arXiv:2607.22738v1 [cs.GR] 22 Jul 2026 place Nova3D close behind the best of them, which anchors the comparison rather than overturning it. The contribution is that an executable program keeps the asset inspectable, addressable, measurable, editable, and animatable, while a baked mesh does not natively expose any of these without post-hoc processing. We summarize the thesis as: 
+
+Nova3D shows that generating 3D as code preserves parity-or-better shape quality in structured domains while adding structural affordances that mesh-native generators do not natively expose. 
+
+We support this with a single causal chain rather than a catalog of metrics. (1) Nova3D reliably generates executable Blender source and a valid GLB, and a same-model ablation without the Nova3D system package does not, which answers the natural objection that this is “just prompting an LLM to write Blender.” (2) The resulting assets are visually and geometrically adequate : competitive on shape, conceding texture. (3) The code representation exposes native semantic structure : named parts and a real assembly hierarchy. (4–6) That structure is what makes constraints measurable , local edits possible , and articulation possible . Throughout, the comparison is not a single universal leaderboard; each axis uses the baseline families for which that representation exposes the relevant affordance, stated explicitly in Table 3. 
+
+Figure 1: Nova3D system overview: single input to production 3D asset. From one input view (sketch, photo, render, or blueprint), the system extracts prior maps (depth, surface normals, edges) and ViT patch features (stages 01–03), verifies sampled pixel values for material and color consistency, rejecting outliers (04), and compiles the verified evidence into an executable build program (05). The program is executed deterministically in headless Blender, with build errors routed back for repair (06); autonomous agents then inspect the live geometry against the reference for shape, scale, and parts, and any mismatch triggers a refine-and-rebuild cycle (07). The approved asset is finalized as a part graph of named, addressable parts whose movable ones carry joints and limits (08), and exported as a runtime-ready GLB with names, hierarchy, and articulation (09). Text-conditioned items enter directly at program synthesis. 2Contributions. 
+
+1. Nova3D , a code-native 3D generation pipeline that turns text, image, or sketch inputs into an executable Blender program and a compiled GLB with named parts, hierarchy, pivots, and materials, refined by a closed-loop system package combining perception, verification, execution, and render feedback. 2. Nova3D-Bench , a frozen, spec-grounded benchmark of 54 items for evaluating programmable 3D assets, with machine-checkable ground truth for parts, counts, joints, dimensions, and symmetry. 3. A comprehensive evaluation spanning reliability, visual/geometry quality, semantic structure, constraints, editing, and articulation, against four baseline families under an input-parity rule. 4. Evidence that code-native assets expose programmable structure, and support downstream constraint measurement, local editing, and articulation, that mesh-native outputs do not natively expose. 
+
+2 Related Work 
+
+The dominant line of work in generative 3D synthesizes the final surface directly. Optimization-based systems such as DreamFusion [ 1] and Magic3D [ 2 ] distill 2D diffusion priors into 3D representations, and feed-forward systems including Point-E [ 3], Shap-E [ 4], Zero-1-to-3 [ 5 ], TripoSG [ 6 ], TRELLIS [ 7 ], Hunyuan3D [ 8 ], and the commercial Meshy [ 9] have steadily improved speed, fidelity, and texture quality. These methods are the right comparison class for perceptual fidelity, and we treat them as such. Their limitation is representational rather than visual: the output is a fused mesh or an opaque reconstruction with a few generic nodes, so addressing “front wheel” or “elbow pivot” requires a separate segmentation and rigging stage after generation. Nova3D is complementary to this line of work in that it makes the construction procedure and the scene graph part of the output itself. A second family targets part structure. Part123 [ 14 ], PartGen [ 15 ], and PartCrafter [ 16 ] recover or jointly generate part-level meshes from image cues, while segmentation methods such as PartSLIP [ 11 ], SAMPart3D [ 12 ], and Find3D [ 13 ] decompose a given shape, with PartNet [ 10 ] and the Name-That-Part benchmark [ 17 ] providing the standard datasets and label-aware metrics. The outputs of this family are typically flat or schema-conditioned: unnamed part meshes, or region labels that require the answer vocabulary as input. Our evaluation therefore includes PartCrafter as a closed-book born-segmented baseline and CubePart as an oracle post-hoc segmenter that operates on TripoSG meshes and is handed the spec part names, and it scores native named handles and assembly structure rather than segmentation IoU, for which the benchmark has no shared point-level masks. Closest to our approach are systems in which a language model writes the 3D content as code. 3D-GPT [ 18 ], L3GO [ 19 ], SceneCraft [ 20 ], LL3M [ 21 ], and BlenderLLM [ 22 ] emit procedural or Blender scripts and validate the premise that code is a natural medium for structured 3D. They also expose the practical gap Nova3D targets: several are scene-layout rather than single-asset generators, some depend on unreleased backends, and vanilla script generation lacks robust repair, validation, hierarchy discipline, and reliable export. The CAD literature pursues the same representational idea in a narrower substrate: DeepCAD [ 23 ], Text2CAD [ 24 ], Text-to-CadQuery [ 25 ], CAD-Coder [ 26 ], and CADFusion [ 27 ] produce editable CAD programs or B-rep solids that are valid, compact, and often watertight, but that usually compile to a fused solid or a few generic bodies and are strongest on mechanical prompts rather than textured multi-domain assets. We compare directly against BlenderLLM, against Text2CAD, Text-to-CadQuery, and CAD-Coder as runnable CAD baselines, and against a naive same-LLM ablation that uses the identical model and route without the Nova3D system package, isolating the contribution of the system rather than the base model. Finally, our evaluation protocol builds on prior work in automatic 3D assessment. GPTEval3D [ 30 ]showed that GPT-4V-style pairwise judgments over rendered views align with human preference and aggregate 3into Elo rankings, and we follow this protocol for perceptual fidelity while keeping the visual track separate from structural claims. Executable CAD benchmarks such as CADSmith [ 28 ] and CADTestBench [ 29 ]motivate our choice to score constraints with automated tests rather than visual scores alone. Existing benchmarks each target a different slice of the problem: T3Bench [ 31 ] and GT23D-Bench [ 32 ] measure rendered quality and text alignment, Objaverse [ 33 ] provides scale without controlled construction tasks, and ABC [ 34 ], Fusion 360 [ 35 ], and GenCAD-Code [ 36 ] are tied to parametric CAD substrates. Nova3D-Bench addresses the intersection these miss and is a complement to them, not a replacement. 
+
+3 Method: Nova3D Code-Native Generation 
+
+Nova3D’s contribution is a representation contract, not a specific prompt. The asset is generated as a program that, when executed, builds a named, hierarchical, constraint-checkable object (Figure 1). 
+
+3.1 Inputs and outputs 
+
+Nova3D accepts a text prompt, a sketch or reference image, or an existing design paired with an edit instruction. Each run produces an executable code.py Blender program, a compiled model.glb , named mesh nodes, named group nodes, joint/pivot handles, and materials with vertex-baked ambient occlusion. The runtime, prompt scaffolding, and orchestration are fixed across all six evaluated domains; only the per-item request varies. Generation sees only the manifest prompt (and reference image where present), never the benchmark spec, so the naming and structure results in Sections 7–10 are closed-book. 
+
+3.2 Code as the source of truth 
+
+The Blender source stores construction intent; the GLB is the compiled result. Named objects in the source become handles in the exported scene graph, and those handles are what later make constraints measurable, edits local, and articulation possible. This is the property that post-hoc segmentation of a finished mesh cannot recover: the construction logic was never present to begin with. Figure 2 shows an excerpt of an actual generated program; the same asset’s exported scene graph appears in Figure 10b.                          
+
+> # Dimensions are named constants derived from the request BASE_FLANGE_R =0.170 BASE_BOLT_COUNT =8SHOULDER =Vector((0.0, 0.000, 0.405)) # physical joint locations ELBOW =Vector((0.0, -0.105, 0.865)) def set_pivot(obj, pivot_world): # part origin = its pivot obj.data.transform(Matrix.Translation(-Vector(pivot_world))) obj.location =Vector(pivot_world) core = build_arm_core("Lower_Arm_Core") # one named mesh per component set_pivot(core, SHOULDER) # rotating this node IS the motion parent_to(core, shoulder_parent) # under Axis_2_Shoulder_Pitch
+
+Figure 2: Excerpt from a generated program (the desktop robot arm, abridged). Dimensions are named constants, each component is a separately named mesh, its origin is set at the physical pivot, and it is parented into a named joint group. This is why a dimension is checkable against the source’s own anchors and why “make it taller” is a one-constant edit. 43.3 Perception, verification, and program synthesis 
+
+The pipeline in Figure 1 recovers an editable asset from a single conditioning input through a sequence of perception, verification, synthesis, and validation stages. Let x ∈ RH×W ×3 denote the input view (a sketch, photograph, render, or blueprint) and t the textual request; text-conditioned items omit x and enter the pipeline directly at program synthesis. From x, the system first estimates a set of geometric prior maps, 
+
+( ˆd, ˆn, ˆe) = Φ( x), (1) where ˆd, ˆn, and ˆe are monocular depth, surface-normal, and edge estimates that expose the object’s coarse geometry, orientation, and silhouette independently of its texturing. In parallel, the image is tokenized into patch embeddings by a vision transformer, F = ViT( x) ∈ RN ×d, whose attended regions indicate which parts of the view carry structural evidence. Appearance evidence is verified before any code is written. The system draws a sample set S =
+
+{(ui, c i)}mi=1 of image locations ui and their observed colors ci, aggregates them into candidate material assignments (body, trim, accent), and retains only those whose consistency score exceeds a threshold, 
+
+C∗ = { c : ρ(c | S) ≥ τ }, (2) rejecting outliers. Only verified values propagate forward, so the program’s material choices are grounded in observed evidence rather than guessed. Program synthesis then compiles this evidence into an executable build program. Conditioned on the request, the priors, the attended features, the verified palette, and the representation doctrine D of Section 3.4, a frontier language model Mθ emits the initial program 
+
+P0 = Mθ
+
+
+
+t, ˆd, ˆn, ˆe, F, C∗; D
+
+
+
+, (3) a self-contained Blender Python script that constructs the object part by part. Execution grounds the synthesized program in geometry. Headless Blender implements a deterministic operator 
+
+Exec( Pi) = ( Gi, R i, ε i), (4) mapping a program Pi to its scene graph and geometry Gi, a fixed set of canonical renders Ri, and execution diagnostics εi (error traces, offending API calls, partial scene state); determinism guarantees that identical programs yield identical geometry, making every downstream measurement reproducible. Execution acts as a ground-truth validator for syntax, API compatibility, and basic constructibility, failure modes the language model cannot reliably detect from source alone. After a successful build, a set of autonomous checker agents {A k} inspects the live geometry against the reference along complementary aspects (shape, scale, and part coverage in our configuration), producing verdicts vk = Ak(Ri, x ). Any build error or agent-detected mismatch triggers a repair iteration in which the model revises the program conditioned on the accumulated evidence, 
+
+Pi+1 = Mθ(Pi, ε i, {vk}; D) , i < i max = 3 , (5) and the revision is re-executed under the same protocol. The loop terminates when all agents approve the asset, or when the retry budget is exhausted, in which case a graceful fallback returns the best successful intermediate artifact. The approved program is finalized as a part graph of named, addressable components, movable parts are assigned joints and limits, and the asset is exported as a runtime-ready GLB carrying names, hierarchy, and articulation. Our experiments isolate this system package as a whole, comprising perception (Eq. 1), verification (Eq. 2), doctrine-conditioned synthesis (Eq. 3), execution feedback, agent checks, and repair (Eqs. 4–5), against the same base model without it (Section 5). We do not claim that any single component, such as the repair loop alone, is independently responsible for the gains. 53.4 Representation doctrine 
+
+The export requirements encode a doctrine that makes the asset programmable. Every visually distinct com-ponent is a separate, semantically named mesh, and repeated instances are named individually ( Spoke 17 ,never one merged Spokes ). Meshes are parented into a real transform tree with one root node and semantic group nodes ( Body , Doors , Left Arm ) that exports directly as glTF scene-graph structure. Every part that should move owns its origin at its physical pivot: a door’s hinge edge, a wheel’s axle, a limb’s proximal joint, so rotating that node is the correct motion. Dimensions are named constants derived from the request and its stated constraints rather than scattered literals, which is what later makes a dimension checkable against the source’s own anchors and makes “make it taller” a one-constant edit. Materials are a small set of physically based families assigned by part meaning. The doctrine holds because it is enforced, not merely requested. After a successful build, canonical renders are compared against the request by a vision-capable LLM, which either accepts the asset or proposes a corrected program; a deterministic guard then rejects any correction that shrinks the source by more than 15%, drops hierarchy constructs, or loses the entry point, in which case the pipeline falls back to the last successful artifact. The same contract governs downstream operations: local edits and articulation are additive, surgical changes to the source. Articulation adds joint nodes at pivots and re-parents existing meshes without moving a vertex, which is why edits preserve non-target content (Section 9) and the rest pose stays frozen under articulation (Section 10). The remainder of the paper measures the affordances this doctrine produces. 
+
+4 Benchmark and Baselines 
+
+4.1 Nova3D-Bench 
+
+Nova3D-Bench is a frozen benchmark of 54 items organized as 6 domains × 3 difficulty levels × 3 items 
+
+(Table 1). Domains are chosen as distinct construction strategies rather than visual categories. Difficulty is defined from the spec, not prompt length: L1 has ≤ 8 parts and no joints; L2 has 9–25 parts and 1–2 joints; L3 has > 25 parts or ≥ 3 joints. Each domain contributes 4 text- and 5 image-conditioned items (24 text, 30 image overall), and one item per domain ×level cell (18 total) carries a multi-constraint set covering lengths, exact counts, angles, and gear module/pitch diameters, stated in the prompt text the pipeline sees. Each item ships a machine-checkable spec.yaml ground truth (parts and counts, expected joints, symmetry, key dimensions with explicit measure: recipes). Ground truth was produced by a dual-pass, AI-assisted, author-adjudicated protocol (Figure 3): an independent Pass A and Pass B (different models, fresh context) were checked for agreement ( part-F1 0.79 , count agreement 0.93 , dimension agreement 0.90 , mean), then author-adjudicated to a canonical functional-part level and frozen. We explicitly do not claim independent human annotation ; multi-pass cross-model agreement plus author adjudication is the auditability mechanism, and after freeze no item or spec changes (failures remain in the results). 
+
+4.2 Baselines 
+
+Under an input-parity rule, meaning a baseline never receives more input than Nova3D had on an item, we compare against four families (Table 2). Item sets differ by native modality: text-only systems run the 24 text items, image-only systems the 30 image items, and Nova3D, the naive ablation, and Meshy run all 54. CubePart is an oracle baseline: it cannot name segments itself, so it is handed the spec part names, and it operates by segmenting the TripoSG mesh rather than generating geometry of its own. Every asset, whatever its native format, is converted to GLB and rendered through one shared headless scene (identical camera, lighting, scale normalization). 6Table 1: Nova3D-Bench composition. Six construction-strategy domains, nine items each (three per difficulty level), 4 text / 5 image, 3 constrained (one per level). Domain L1/L2/L3 Text/Image Constrained Representative items Furniture & household 3/3/3 4/5 3 three-leg stool, office chair, wardrobe Mechanical 3/3/3 4/5 3 gear train, robot arm, bench vise Vehicles 3/3/3 4/5 3 city bicycle, quadcopter drone, forklift Tools 3/3/3 4/5 3 cordless drill, wristwatch, claw hammer Characters 3/3/3 4/5 3 garden gnome, rubber duck, dragon figurine Architecture 3/3/3 4/5 3 curbside mailbox, footbridge, garden gazebo 
+
+Total 18/18/18 24/30 18 54 items             
+
+> manifest prompts →Pass A annotation →Pass B annotation (independent)
+> ↓
+> agreement report (part-F1 0.79, count 0.93, dim 0.90)
+> ↓
+> author adjudication →frozen spec.yaml →no post-freeze item/spec changes
+
+Figure 3: Benchmark freeze protocol. A dual-pass, AI-assisted, author-adjudicated annotation pipeline with a reported agreement gate. There is no independent human annotation; the protocol and agreement numbers make the ground truth auditable. Table 2: Baselines. Four families under input parity. Not all rows share an item set. CubePart is oracle-vocabulary and segments TripoSG meshes. System Family Input Items Output representation Meshy 5 [9] mesh-native (commercial) text+image 54 fused textured mesh TRELLIS.2 [7] mesh-native image 30 fused mesh TripoSG [6] mesh-native image 30 fused mesh LLaMA-Mesh [37] mesh-native (tokens) text 24 fused mesh PartCrafter [16] born-seg diffusion image 30 unnamed part meshes CubePart (oracle) post-hoc seg. of TripoSG image 30 flat labeled parts MeshAnything [38] retopology image 30 artist mesh BlenderLLM [22] code-native text 24 Blender script naive same-LLM code-native (ablation) text+image 54 Blender script Text2CAD [24] CAD text 24 parametric STEP Text-to-CadQuery [25] CAD code text 24 CadQuery / STL CAD-Coder [26] CAD code image 30 CadQuery / STEP 
+
+4.3 Evaluation axes and coverage 
+
+The evaluation is not one universal leaderboard. Each axis uses the baselines whose representation exposes the relevant affordance, and Table 3 states the item set, metric source, and explicit non-claim for each axis. 7Table 3: Evaluation coverage matrix. Which baselines each claim uses, the metric source, and what the axis does not prove.                    
+
+> Axis Methods included Item set Metric source Does not prove Reliability Nova3D, naive same-LLM, BlenderLLM, Text2CAD, Text-to-CadQuery, CAD-Coder modality-specific execution + arti-fact logs visual quality Visual shape Nova3D vs Meshy, TRELLIS.2, Tri-poSG, PartCrafter 54/30, mixed by modality VLM pairwise normal renders texture SOTA Textured fidelity Nova3D vs mesh-native + code-native modality-specific VLM pairwise textured renders editability / seman-tics Naming 13 systems produced assets scene-graph names + semantic judges point-mask IoU Hierarchy 13 systems produced assets glTF scene graph provable nesting correctness Constraints code-native + CAD slice constrained items deterministic GLB measurement beauty / texture Editability Nova3D only 18 local edits deterministic gates + blinded human review general editing SOTA Articulation all baselines (none expose native joints) 12 articulated + all-54 readiness joint sidecars + scene-graph actuation perfect operating limits Production readiness Nova3D/code vs baked GLB; part-aware where applicable varies by met-ric UV, primitive residual, material telemetry artist-final quality
+
+5 Code-Native Reliability and the System Package 
+
+The first link in the chain is reliability, and it answers the sharpest objection up front: is this just prompting an LLM to write Blender? It is not. Nova3D is the only evaluated code-native system that produces an executable program and a valid artifact for all 54 mixed-modality items: 100% executable, 100% artifact-saved . The same base model without the Nova3D system package (the naive same-LLM ablation) succeeds on only 31/54; the published BlenderLLM on 16/24; and the CAD baselines range from 13/24 to 22/24 (Table 4, Figure 4). Item sets differ by modality and are reported, not assumed identical. Crucially, Text2CAD’s high basic validity is reconstruction success, not visual or semantic success: it typically emits a crude fused solid that ignores most of the prompt. 
+
+Systems telemetry (compact). Under a single fixed configuration, Nova3D reaches a 100% final success rate (all 54 items repaired within ≤ 3 iterations) with an 81.5% first-shot rate (44 items needed no repair, 8 needed one, 2 needed two). Median wall time is 218.5 s and median token usage 74.5k; assets carry a median of 31 mesh-bearing parts (up to 339). First-shot rates hold across domains and difficulty (L1 100%, L2 67%, L3 78%), indicating that the harness, not per-domain engineering, drives reliability. Full telemetry is in the appendix. 8Table 4: Code-native reliability and compactness. Executable and artifact-saved rates on each system’s native item set. System Item set N Executable Artifact saved Compactness 
+
+Nova3D text+image (54) 54 100.0% 100.0% 489 LOC / 18.7 KB naive same-LLM text+image (54) 54 57.4% 57.4% 210 LOC / 7.9 KB BlenderLLM text (24) 24 66.7% 66.7% 41 LOC / 1.4 KB Text-to-CadQuery text (24) 24 54.2% 54.2% 51 LOC / 1.3 KB Text2CAD text (24) 24 91.7% 91.7% STEP avg 31.3 KB CAD-Coder image (30) 30 63.3% 60.0% 52 LOC / 4.1 KB Nova3D 
+
+> naive same-LLM
+> BlenderLLM
+> Text-to-CadQuery
+> Text2CAD
+> CAD-Coder
+> System
+> arch-L1-01
+> arch-L1-02
+> arch-L1-03
+> arch-L2-01
+> arch-L2-02
+> arch-L2-03
+> arch-L3-01
+> arch-L3-02
+> arch-L3-03
+> char-L1-01
+> char-L1-02
+> char-L1-03
+> char-L2-01
+> char-L2-02
+> char-L2-03
+> char-L3-01
+> char-L3-02
+> char-L3-03
+> fur-L1-01
+> fur-L1-02
+> fur-L1-03
+> fur-L2-01
+> fur-L2-02
+> fur-L2-03
+> fur-L3-01
+> fur-L3-02
+> fur-L3-03
+> mech-L1-01
+> mech-L1-02
+> mech-L1-03
+> mech-L2-01
+> mech-L2-02
+> mech-L2-03
+> mech-L3-01
+> mech-L3-02
+> mech-L3-03
+> tool-L1-01
+> tool-L1-02
+> tool-L1-03
+> tool-L2-01
+> tool-L2-02
+> tool-L2-03
+> tool-L3-01
+> tool-L3-02
+> tool-L3-03
+> veh-L1-01
+> veh-L1-02
+> veh-L1-03
+> veh-L2-01
+> veh-L2-02
+> veh-L2-03
+> veh-L3-01
+> veh-L3-02
+> veh-L3-03
+> Benchmark item
+
+Per-item execution outcome          
+
+> success failed/invalid not native / not run
+> 050 100 150 200 250 300 350
+> Mean generation time, seconds (Text2CAD placed in no-timing band)
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Executable success, %
+> Nova3D
+> naive same-LLM
+> BlenderLLM
+> Text-to-CadQuery
+> Text2CAD
+> CAD-Coder
+> no timing
+> recorded
+
+Success vs time; bubble area = compactness KB 
+
+Fig. 11 Code-native reliability: item outcomes and runtime/compactness tradeoff 
+
+(a) Reliability matrix Prompt    
+
+> align
+> Structure Geometry Texture Overall
+> naive same-LLM
+> BlenderLLM
+> Text-to-CadQuery
+> Text2CAD
+> CAD-Coder
+> 58
+> 32/10
+> n=31
+> 61
+> 26/13
+> n=31
+> 55
+> 32/13
+> n=31
+> 55
+> 39/6
+> n=31
+> 68
+> 19/13
+> n=31
+> 100
+> 0/0
+> n=16
+> 100
+> 0/0
+> n=16
+> 100
+> 0/0
+> n=16
+> 100
+> 0/0
+> n=16
+> 100
+> 0/0
+> n=16
+> 100
+> 0/0
+> n=13
+> 100
+> 0/0
+> n=13
+> 100
+> 0/0
+> n=13
+> 100
+> 0/0
+> n=13
+> 100
+> 0/0
+> n=13
+> 100
+> 0/0
+> n=22
+> 100
+> 0/0
+> n=22
+> 96
+> 4/0
+> n=22
+> 100
+> 0/0
+> n=22
+> 100
+> 0/0
+> n=22
+> 100
+> 0/0
+> n=18
+> 100
+> 0/0
+> n=18
+> 100
+> 0/0
+> n=18
+> 100
+> 0/0
+> n=18
+> 100
+> 0/0
+> n=18
+
+Nova3D textured VLM win rate by opponent and criterion 
+
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Nova3D win % (cell text: win / tie-loss / n)
+
+Fig. 13 Textured code-native VLM fidelity: where the wins come from (b) Textured fidelity vs code-native 
+
+Figure 4: The system package, not the base model. (a) Per-item execution outcome plus suc-cess/time/compactness; only Nova3D runs and saves an artifact for all 54 items, while the same base model without the package fails or invalidates nearly half. (b) Nova3D win-rate against each code-native opponent by criterion (textured, both-orders-resolved); its closest competitor is the naive ablation (overall 67.7/19.4/12.9 win/tie/loss). 
+
+6 Visual and Geometry Quality 
+
+The second link answers a different reviewer question, namely whether the structure costs asset quality, and it is deliberately a defensive check, not the headline. The answer is that Nova3D’s assets are competitive on shape, conceding texture realism to baked-PBR systems (Figure 5). 
+
+6.1 Perceptual geometry 
+
+We run a GPTEval3D-style pairwise tournament: every asset, every system, is rendered through one identical headless scene as a texture-free surface-normal map (front and back, 1024 px, tight-cropped) to isolate shape, and GPT-4o compares two anonymized assets on prompt alignment, structural plausibility, and geometric quality. Each pair is judged in both A/B orders and a win is counted only when both agree; all 324 pairs (648 judgments) completed. Aggregated, Nova3D wins geometric quality outright (55.6% win / 27.1% loss) and is even-to-ahead on the other two criteria. The result is strongly domain-dependent: Nova3D wins all four structured domains and loses tools and characters (Table 5, Figure 6). The losses are not a surface-quality 9failure. Geometric quality is Nova3D’s strongest criterion in every domain, including the two it loses (62% in tools, 32% in characters); the deficits concentrate in prompt alignment and structural plausibility, that is, in reproducing the object’s identity and completeness rather than in surface quality. By opponent, Nova3D is even with commercial Meshy and ahead of TripoSG and PartCrafter, and it trails only TRELLIS.2, placing second of five in Bradley–Terry Elo on every criterion. We do not claim state-of-the-art fidelity; the point is parity-or-better shape quality alongside structure the other methods do not natively expose. Table 5: Pairwise shape-quality by domain (Nova3D POV, averaged over three criteria, both-orders-resolved, n = 72 /domain; texture-free normal renders, GPT-4o). Domain Win Tie Loss Verdict Architecture 72.2% 15.3% 12.5% strong win Furniture 63.9% 25.0% 11.1% strong win Mechanical 55.6% 15.3% 29.2% win Vehicles 55.6% 15.3% 29.2% win Tools 33.3% 16.7% 50.0% loss (alignment-driven) Characters 19.4% 11.1% 69.4% loss (alignment-driven) 
+
+6.2 Textured (as-delivered) disclosure 
+
+Because delivered assets include appearance, we additionally judge as-delivered renders under neutral image-based lighting, adding texture-quality and overall criteria. The geometry verdict is stable with textures visible (geometric quality 56.2%, essentially identical to the normals track), confirming it is not a render artifact. As expected, Nova3D concedes texture realism: per opponent (which we report instead of the PartCrafter-inflated aggregate), it loses texture quality to Meshy and TRELLIS.2 and is even with TripoSG (Table 6). The honest statement is that code-native concedes texture realism to baked-PBR mesh-native methods while keeping its geometry edge. Table 6: Textured/as-delivered fidelity, per opponent (Nova3D win-rate, both-orders-resolved). Reported per opponent because the aggregate is inflated by PartCrafter. Opponent Geometric quality Texture quality Overall Meshy (commercial) 54% 19% 39% TRELLIS.2 43% 23% 37% TripoSG 43% 43% 43% PartCrafter 87% 90% 83% 
+
+6.3 Geometry integrity 
+
+Reference-free integrity metrics, computed fairly across single-mesh and multi-part outputs (a seam-merged copy per component), show a sharp split by representation. Single-mesh diffusion produces open shells: 0% watertight , with 17,000–97,000 open-boundary edges per asset. Part-structured methods produce sealed solids, and among them Nova3D is cleanest at 88.8% watertight and 91.0% manifold (median ∼ 0 open edges); PartCrafter reaches 72.8%/76.0% (Table 7, Figure 7). Nova3D also produces the lightest geometry (∼39k triangles, 1.16 MB) and, uniquely, an editable source of only 18.7 KB , the description-length argument made concrete. The clean split is single-mesh vs part-structured, so we claim “cleanest among part-aware 10 methods,” not unique solidity; and the single-mesh failure is sealing, not manifoldness (TripoSG is 0.90 manifold yet 0.00 watertight). Table 7: Geometry integrity and compactness (reference-free). N: Nova3D/Meshy 54, others 30. We do not report triangle-shape/dihedral metrics: they rank by tessellation density, not quality, and would invert the conclusion (a 1.39M-triangle output tops them). Method Watertight ↑ Manifold ↑ Open edges ↓ Triangles GLB size ↓ Source ↓
+
+Nova3D 0.89 0.91 42 39k 1.16 MB 18.7 KB 
+
+PartCrafter 0.73 0.76 53 1,394k 27.9 MB —TripoSG 0.00 0.90 17,664 50k 2.8 MB —Meshy 0.00 0.67 47,319 213k 12.5 MB —TRELLIS.2 0.00 0.37 96,840 194k 16.4 MB —
+
+7 Native Semantic Structure 
+
+This is the core of the paper: the code representation exposes named parts and a real assembly tree at generation time. These are two distinct claims, whether parts are named and whether they are organized into a tree , and we evaluate them separately. 
+
+7.1 Semantic naming 
+
+We order systems as a capability staircase (produces parts → named → richness ) and lead with richness, meaning meaningful named parts divided by spec parts, because it counts structure and cannot be gamed by copying the spec’s words. Nova3D exposes 7.4 × the spec’s parts with full nameability, versus 3.4× for the naive ablation, 1.26 × for BlenderLLM, 0.96 × for the oracle CubePart (capped), and 0 for mesh-native and CAD baselines (Table 8, Figure 9). It also individually names repeated instances (separate teeth, spokes, legs), reflected in its instance-discriminability score. CubePart is marked oracle in every table and is never pooled with closed-book systems: it was handed the spec vocabulary, so its high recall is expected. Table 8: Semantic naming capability staircase (means over produced assets). Richness is the headline; recall is a parroting-biased lower bound († CubePart was handed the spec strings, so its high recall is expected). Method Condition Parts (#) Named? Richness Instance Recall† 
+
+Nova3D closed-book 53.5 1.00 7.40 0.46 0.81 naive same-LLM closed-book 36.5 0.84 3.40 0.25 0.60 BlenderLLM closed-book 5.9 0.98 1.26 0.36 0.71 CubePart oracle 6.5 1.00 0.96 0.01 0.96† PartCrafter closed-book 7.0 0.00 0.00 0.00 0.00 Mesh-native / CAD — 1.0 — 0.00 0.00 0.00 
+
+Judge-validated semantic correctness 
+
+Because generated scene graphs do not share point-level ground-truth masks, we evaluate semantic naming with exported node names, reference part lists, and a multi-judge semantic-matching protocol; this is not 
+
+11 segmentation IoU, and it validates whether native names denote real object parts. It preempts the natural objection that the names are just plausible-sounding hallucinations. Under a three-judge consensus (Table 9), Nova3D’s closed-book semantic recall is 0.82 with precision 0.99 (almost no hallucinated parts) and roughly 
+
+14 judge-confirmed real parts beyond the spec per asset; oracle CubePart out-recalls on the spec words but exposes no extra real parts. The judges are consistent with one another: mean inter-judge recall spread is 0.141 (median 0.0) and 70% of assets fall within a 0.20 spread. Table 9: Semantic-judge reliability and results. A multi-judge matching protocol was the only available way to score native names in the absence of shared point-level masks. Item Value Verdicts 387 Judge models Claude Opus 4.8, GPT-5, Gemini 3.1 Pro Nova3D recall 0.82 Nova3D precision 0.99 Nova3D extra real parts 14.0 Inter-judge recall mean spread 0.141 Inter-judge recall median spread 0.0 Assets within 0.20 recall spread 70% 
+
+7.2 Assembly hierarchy 
+
+Naming is not hierarchy: a system can name parts and still export them flat (BlenderLLM names objects but emits no tree; CubePart labels regions but returns a flat list). This axis asks whether parts are organized into a tree of named sub-assemblies and joint pivots, the structure an engine, animator, or agent actually edits. We read every metric deterministically from the exported glTF scene graph. A flat mesh has semantic depth 1; unnamed exporter wrapper nodes are collapsed so they cannot fake hierarchy. Nova3D emits a real assembly tree for 100% of assets (mean depth 3.7, ≈6 named groups, ≈8 pivots). Every non-code-native mesh/CAD/segmentation/retopology baseline is flat, while the naive same-LLM code ablation produces a tree only inconsistently (45% of assets), so the consistent, deep tree is a product of the Nova3D system package, not of an LLM writing code per se (Table 10). We score that a real, named, deep tree with pivots exists ;we do not put a number on whether every nesting decision is provably semantically correct (an LLM-judge correctness rung was designed and dropped to keep the axis deterministic). Table 10: Assembly-tree structure (deterministic, from the glTF scene graph). CubePart is oracle-vocabulary; all others closed-book. The naive ablation is separated from the non-code baselines because it is partially hierarchical. Method Type N Has tree Depth Named groups Pivots 
+
+Nova3D code-native 54 1.00 3.69 6.20 8.17 
+
+naive same-LLM (ablation) code-native 31 0.45 1.55 1.03 1.10 BlenderLLM code-native 16 0.00 1.0 0 0CubePart oracle seg. of TripoSG 30 0.00 1.0 0 0.2 PartCrafter born-seg diffusion 30 0.00 1.0 0 0mesh-native / CAD / retopo various 24–54 0.00 1.0 0 012 8 Constraint Satisfaction 
+
+Structure is only useful if it is measurable, not decorative. We test whether assets satisfy the frozen numeric and count constraints in the specs: the scorer loads the exported GLB, anchors semantic nodes from the scene graph, measures counts or dimensions directly from geometry, and applies the declared comparator and tolerance. We report coverage (fraction measurable), satisfaction (fraction passing), conditional accuracy 
+
+(pass rate among measurable), and the count-constraint pass rate. Nova3D is the only method with full formal coverage and passes 51 of 52 constraints (98.1%) , including 32/32 count constraints ; the best baseline passes 11/52 and all CAD/text-CAD baselines pass zero counts (Table 11, Figure 11). The count split is the strongest structural proof: counting “four wheels” or “twelve teeth” requires the parts to exist as separable named entities. The single Nova3D miss is a small gear’s pitch diameter (0.0695 m vs 0.06 m target at 10% tolerance), a pitch-circle-vs-envelope issue left as a fail. Table 11: Constraint satisfaction, measured from the exported GLB. Item sets differ by native modality. Satisfaction = coverage × conditional accuracy. Nova3D is the only method that is both measurable and correct on essentially every row.                                                  
+
+> Method Constraints Measurable Passed Coverage Satisfaction Conditional Counts CAD-Coder 15 500.333 0.000 0.000 0/10 Text2CAD 37 32 20.865 0.054 0.062 0/22 Text-to-CadQuery 37 19 70.514 0.189 0.368 0/22 BlenderLLM 37 22 40.595 0.108 0.182 0/22 naive same-LLM 52 24 11 0.462 0.212 0.458 6/32
+> Nova3D 52 52 51 1.000 0.981 0.981 32/32
+
+Worked example. The aggregate is strong, but a worked measurement shows the metric is an audit chain, not magic. For the city bicycle, the scorer anchors semantic nodes in the exported scene graph (the two wheel sub-assemblies, the front basket) and measures directly from geometry (Table 12). Each row reduces the score to a concrete anchor, a measured value, and a tolerance verdict. Table 12: Worked constraint audit (city bicycle). Measurements are taken from named anchors in the exported GLB and compared to the frozen spec. Constraint Target Measured Verdict wheel count 2 2 pass wheel diameter 0.66 m ±10% 0.659 m pass fender count 2 2 pass basket count 1 1 pass 
+
+9 Local Editability 
+
+Programmable structure should make local editing possible, which is the bridge to interactive world-building. We evaluate 18 generated assets (six domains, three levels), each receiving one neutral edit instruction (13 additive, e.g. “add a headrest”; 5 modifications, e.g. “make the wheels chunkier”), through the protocol in Figure 12. A deterministic core checks artifact validity, target addressability, source/GLB change, and 13 hierarchy preservation; visual target semantics and locality are then scored by two human reviewers with adjudication. The reviewers are project-team members; consistent with the benchmark’s stated no-independent-annotation policy (Section 4.1), we do not claim external raters, and instead report chance-corrected agreement and release the review panels. Reviews are blinded in the sense that each reviewer scores randomized base/edit render panels that hide the deterministic gate outcomes, run metadata, and the other reviewer’s labels; only the edit instruction and the two panels are shown. The deterministic gates saturate at 18/18 , and the final adjudicated result is 14/18 successful local edits 
+
+(additive 10/13, modifications 4/5; Table 13, Figure 13). Critically, both reviewers agreed that all 18/18 edits preserved non-target content and passed the locality gate: the four failures are target-semantic (a too-small newspaper tube, unresolved watch hands, an unrecognizable belt pouch, a missing wrist strap), not global rewrites. Chance-corrected agreement is perfect exactly on the locality claims ( κ = 1 .0 for non-target preservation and locality) and moderate on target fulfillment ( κ = 0 .46 ), which is the field the adjudication step exists to resolve (Table 14). The supported claim is precise: Nova3D makes local programmatic edits while preserving the rest of the asset. This is not perfect editing and not a baseline leaderboard, and target-level precision for small accessories is the limiting factor. Table 13: Local editability outcomes. Determin-istic gates saturate; the final adjudicated visual pass is 14/18, with non-target preservation and lo-cality 18/18. Slice N Final pass All edits 18 14 (77.8%) Additive 13 10 (76.9%) Modified-existing 5 4 (80.0%) Text-conditioned base 13 11 (84.6%) Image-conditioned base 5 3 (60.0%) Non-target preserved 18 18 (100%) Locality preserved 18 18 (100%) Table 14: Reviewer agreement (before adjudication). Chance-corrected agreement is perfect on the locality claims and moderate on target fulfillment. Field Agreement Cohen’s κ
+
+target fulfilled 88.9% 0.455 target anchor ok 94.4% 0.769 target scale ok 94.4% 0.824 non-target preserved 100.0% 1.000 locality pass 100.0% 1.000 overall pass 94.4% 0.769 
+
+10 Articulation and Interaction Readiness 
+
+The final downstream operation is turning a static asset into a moving one. A joint must attach to a part, so articulation is available natively only when parts exist as addressable entities. Across the full corpus, Nova3D assets average 8.17 readiness pivots per asset (measured in the hierarchy axis); on a stratified case study of 12 articulated assets (59 joints), Nova3D produces 4.92 joints per asset while every mesh-native, CAD, and segmentation baseline produces zero (Table 15, Figure 14). Of the joints an object should have, Nova3D assigns the correct kinematic class with accuracy 0.955 and recovers them with recall 0.761 , and 
+
+58/59 (98.3%) joints are geometrically valid (axis on the moving part, and the part admits collision-free motion), with the original geometry frozen under articulation on 11/12 assets (Table 16). The one disclosed failure is a pendulum sign whose axis sits on its support bar. This is a capability case study, not a large statistical benchmark. The strong claim is categorical: baselines expose no native joints. The careful claim is that Nova3D’s joints are geometrically valid but their operating limits are generic (29/56 revolute joints declare ≥ 300 ◦) and need future work. 14 Table 15: Articulation capability (Tier 1). No base-line exposes native joints. Method Articulable? Joints/asset 
+
+Nova3D yes 4.92 
+
+naive same-LLM no 0CubePart (oracle) no 0mesh-native / CAD / seg. no 0Table 16: Spec correctness & functional validity 
+
+(Nova3D, 12 assets). Metric Value Articulated assets 12 Total joints 59 Revolute / prismatic 56 / 3 Type accuracy 0.955 Joint recall 0.761 required / optional 0.700 / 0.722 Extra joints beyond spec 29 Rest pose frozen 11 / 12 Axis on moving part 58 / 59 Geometrically valid 58 / 59 Generic-range issue 29 / 56 rev. 
+
+11 Production Readiness from Source Representation 
+
+Keeping the asset as source code preserves production affordances that are damaged when the same asset is flattened to a baked mesh. These are not random extras but direct consequences of the representation (Table 17, Figure 15). Table 17: Source-derived production affordances. Each affordance follows from keeping the asset as clean, part-structured source code. Affordance Why code helps Evidence Clean primitive surfaces parts are built from explicit primitives and modifiers 0.3% median primitive residual; 84% primitive-clean UV readiness the pre-modifier construc-tion geometry can be un-wrapped before mesh bak-ing 214 vs 1,345 median islands (6.0 × fewer); code wins 54/54 Material intent semantic parts receive ma-terial families by meaning PBR-style material parameters, emissive flags, vertex AO Compact source the asset is stored as source, not only binary geometry 18.7 KB source program 
+
+Surface finish. Fitting the best of {plane, cylinder, sphere } to each part, a Nova3D part deviates by a median of 0.3% of its size (84% primitive-clean), versus 2.5% for PartCrafter and 3.6% for CubePart, whose segmentation-derived parts carry TripoSG’s surface plus the cut. The diffusion- and segmentation-derived parts are 6–11 × bumpier. This is a per-part metric, so single-mesh methods cannot enter it. 
+
+UV-readiness. In a controlled paired ablation on all 54 items (same object, same named parts, same unwrapper, changing only the representation), unwrapping the pre-modifier construction geometry, the base cage, yields a median of 214 UV islands versus 1,345 from the compiled GLB, a 6× reduction, and the code wins all 54 items (Wilcoxon p = 1 .6 × 10 −10 ; Table 18). Because the baked condition uses our own clean, still-part-structured geometry, it is a charitable stand-in for the mesh-native setting; we report this as a 15 representation claim (“code unwraps cleaner than the mesh it compiles to”), not a head-to-head against a specific system’s delivered UVs. 
+
+Engine-ready materials. The program emits material intent directly: PBR-style material parameters assigned by part meaning, emissive flags on light sources, and ambient occlusion baked into vertex colors with no UVs and no texture files. Despite shipping no texture maps, this lightweight approach is even with TripoSG on texture quality and well ahead of PartCrafter, doing the first hour of a 3D artist’s job automatically (implementation detail in the appendix). Table 18: UV-readiness, code vs compiled mesh (paired, N=54). Median UV island count per atlas; lower is better. Code wins all 54 items. Domain Code islands GLB islands Ratio (GLB ÷ code) Architecture 347 2,677 13.1 ×
+
+Tools 233 2,199 9.4 ×
+
+Mechanical 267 2,021 6.5 ×
+
+Furniture 138 705 5.5 ×
+
+Vehicles 576 3,083 5.3 ×
+
+Characters (organic) 168 624 4.0 ×
+
+All (median) 214 1,345 6.0 ×
+
+12 Discussion 
+
+The results form one argument rather than eleven. Nova3D reliably generates executable 3D code where the same base model without the system package does not; the resulting assets are visually competitive; the code representation exposes native named parts and a real assembly tree; and that structure is what makes constraints measurable, edits local, and articulation possible. Read together, these are not separate wins but a chain in which each link depends on the previous one. Code-native and mesh-native generation are complementary. Mesh-native methods remain stronger for texture realism and freeform organic forms, and our perceptual results place Nova3D close behind the best of them rather than ahead, which is the right framing for a representation paper. Where Nova3D leads is on programmable affordances: handles, hierarchy, constraints, edits, pivots, and articulation. Post-hoc segmentation is not an equivalent substitute: it requires a finished mesh, is often flat, may need an oracle vocabulary, and does not recover the source construction logic. The naive same-LLM ablation shows that these affordances come from the Nova3D system package, not from an LLM writing code in general. 
+
+Nova3D’s advantage is not that code is a prettier surface generator; it is that code preserves the asset as an object a downstream system can inspect, measure, modify, and animate. 
+
+13 Limitations 
+
+We state limitations explicitly rather than folding them into the discussion. Nova3D-Bench has N = 54 items, uses synthetic reference images, and relies on AI-assisted, author-adjudicated annotation with no independent human spec annotation. The perceptual VLM judge follows GPTEval3D but is not yet human-validated on normal-render inputs specifically, and sees only two views. The editability and articulation results are stratified case studies (18 and 12 assets), not statistical samples; the editability reviewers are project-team members rather than external raters; and articulation operating limits are generic LLM defaults rather than 16 physically validated ranges. Geometric integrity is shared with part-aware diffusion (“cleanest among part-aware methods,” not unique). Hierarchy is scored for existence, depth, and pivots, not provable nesting correctness. Texture realism is conceded to baked-PBR systems, and organic characters remain weaker. Finally, the representation depends on Blender/Python as the execution substrate. 
+
+14 Conclusion 
+
+This paper reframes 3D generation from surface synthesis to source-code synthesis. By generating an executable program whose compiled mesh is merely the artifact, Nova3D produces assets that are visually competitive while natively exposing the structure interactive worlds require: named parts, an assembly hierarchy, pivots, and edit handles. Constraints can therefore be measured against the source’s named anchors, edits stay local, and articulation is an additive operation on the program. Across reliability, visual quality, structure, constraints, editing, and articulation, the evidence supports a single claim: code-native generation turns a generated 3D object from an opaque surface into a programmable asset. Programmable assets are the bridge from one-off renders toward interactive 3D worlds. 
+
+References 
+
+[1] Ben Poole et al. DreamFusion: Text-to-3D using 2D Diffusion . 2022. [2] Chen-Hsuan Lin et al. Magic3D: High-Resolution Text-to-3D Content Creation . 2023. [3] Alex Nichol et al. Point-E: A System for Generating 3D Point Clouds from Complex Prompts . 2022. [4] Heewoo Jun and Alex Nichol. Shap-E: Generating Conditional 3D Implicit Functions . 2023. [5] Ruoshi Liu et al. Zero-1-to-3: Zero-shot One Image to 3D Object . 2023. [6] Yangguang Li et al. TripoSG: High-Fidelity 3D Shape Synthesis using Large-Scale Rectified Flow Models . 2025. [7] Jianfeng Xiang et al. Structured 3D Latents for Scalable and Versatile 3D Generation (TRELLIS) . 2024. [8] Tencent Hunyuan3D Team. Hunyuan3D 2.0: Scaling Diffusion Models for High-Resolution Textured 3D Asset Generation . 2025. [9] Meshy. Meshy 5: Commercial Text/Image-to-3D Generation . 2024. [10] Kaichun Mo et al. PartNet: A Large-Scale Benchmark for Fine-Grained and Hierarchical Part-Level 3D Object Understanding . 2019. [11] Minghua Liu et al. PartSLIP: Low-Shot Part Segmentation for 3D Point Clouds via Pretrained Image-Language Models . 2023. [12] Yunhan Yang et al. SAMPart3D: Segment Any Part in 3D Objects . 2024. [13] Ziqi Ma et al. Find Any Part in 3D (Find3D) . 2024. [14] Anran Liu et al. Part123: Part-aware 3D Reconstruction from a Single-view Image . 2024. [15] Minghao Chen et al. PartGen: Part-level 3D Generation and Reconstruction with Multi-view Diffusion Models . 2024. 17 [16] Yuchen Lin et al. PartCrafter: Structured 3D Mesh Generation via Compositional Latent Diffusion Transformers . 2025. [17] Sumit Paul et al. Name That Part: 3D Part Segmentation and Naming (ALIGN-Parts) . 2025. arXiv:2512.18003. [18] Chunyi Sun et al. 3D-GPT: Procedural 3D Modeling with Large Language Models . 2024. [19] Yutaro Yamada et al. L3GO: Language Agents with Chain-of-3D-Thoughts for Generating Unconven-tional Objects . 2024. [20] Ziniu Hu et al. SceneCraft: An LLM Agent for Synthesizing 3D Scenes as Blender Code . 2024. [21] Sining Lu, Guan Chen, Nam Anh Dinh, Itai Lang, Ari Holtzman, and Rana Hanocka. LL3M: Large Language 3D Modelers . 2025. arXiv:2508.08228. [22] Yuhao Du et al. BlenderLLM: Training Large Language Models for Computer-Aided Design with Self-improvement . 2024. [23] Rundi Wu et al. DeepCAD: A Deep Generative Network for Computer-Aided Design Models . 2021. [24] Mohammad Sadil Khan et al. Text2CAD: Generating Sequential CAD Models from Beginner-to-Expert Level Text Prompts . 2024. [25] Haoyang Xie and Feng Ju. Text-to-CadQuery: A New Paradigm for CAD Generation with Scalable Large Model Capabilities . 2025. arXiv:2505.06507. [26] Anna C. Doris, Md Ferdous Alam, Amin Heyrani Nobari, and Faez Ahmed. CAD-Coder: An Open-Source Vision-Language Model for Computer-Aided Design Code Generation . 2025. arXiv:2505.14646. [27] Ruiyu Wang, Yu Yuan, Shizhao Sun, and Jiang Bian. Text-to-CAD Generation Through Infusing Visual Feedback in Large Language Models (CADFusion) . ICML 2025. arXiv:2501.19054. [28] J. Barkley et al. CADSmith: Multi-Agent CAD Generation with Programmatic Geometric Validation .2026. arXiv:2603.26512. [29] Anonymous. Text-to-CAD Evaluation with CADTests (CADTestBench) . 2026. arXiv:2605.07807. [30] Tong Wu et al. GPT-4V(ision) is a Human-Aligned Evaluator for Text-to-3D Generation . CVPR 2024. [31] Yuze He et al. T3Bench: Benchmarking Current Progress in Text-to-3D Generation . 2023. [32] Sitong Su et al. GT23D-Bench: A Comprehensive General Text-to-3D Generation Benchmark . 2024. [33] Matt Deitke et al. Objaverse: A Universe of Annotated 3D Objects . 2023. [34] Sebastian Koch et al. ABC: A Big CAD Model Dataset for Geometric Deep Learning . 2019. [35] Karl D.D. Willis et al. Fusion 360 Gallery: A Dataset and Environment for Programmatic CAD Construction from Human Design Sequences . 2021. [36] Anna C. Doris, Md Ferdous Alam, Amin Heyrani Nobari, and Faez Ahmed. GenCAD-Code: A Dataset of CAD-Model Image and Code Pairs (introduced with CAD-Coder). 2025. arXiv:2505.14646. [37] Zhengyi Wang et al. LLaMA-Mesh: Unifying 3D Mesh Generation with Language Models . 2024. [38] Yiwen Chen et al. MeshAnything: Artist-Created Mesh Generation with Autoregressive Transformers .2024. 18 Nova3D (ours) Mesh-native 
+
+> Architecture (structured win)
+> Vehicles (win)
+> Characters (conceded)
+
+Figure 5: Honest qualitative comparison (as-delivered renders, shared scene). Nova3D holds the structured domains (top: a garden gazebo with clean panels and posts) and wins vehicles (middle: a go-kart, 55.6% domain win-rate), while it concedes freeform organic surface detail and baked-texture realism to the strongest mesh-native model on characters (bottom: a dragon). Right column is Meshy (top, middle) and TRELLIS.2 (bottom). 19 0 20 40 60 80 100 
+
+share of pairwise comparisons (%) 
+
+Architecture 
+
+Furniture 
+
+Mechanical 
+
+Vehicles 
+
+Tools 
+
+Characters 
+
+72 15 12 
+
+64 25 11 
+
+56 15 29 
+
+56 15 29 
+
+33 17 50 
+
+19 11 69 
+
+Pairwise shape-quality outcomes by domain (Nova3D vs all mesh-native baselines) 
+
+Nova3D wins tie Nova3D loses 
+
+texture-free normal renders · GPT-4o pairwise, both-orders-resolved · n = 72 comparisons / domain (a) By domain 900 1000 1100 
+
+Elo (Bradley Terry) 
+
+PartCrafter 
+
+Meshy 
+
+TripoSG 
+
+Nova3D 
+
+TRELLIS.2 
+
+Prompt alignment 
+
+800 900 1000 1100 1200 
+
+Elo (Bradley Terry) 
+
+Structural plausibility 
+
+800 900 1000 1100 1200 
+
+Elo (Bradley Terry) 
+
+Geometric quality 
+
+Pairwise-Elo ranking on texture-free geometry Nova3D is #2 of 5, behind only TRELLIS.2 
+
+mean Elo ± 95% bootstrap CI (resampled by item); dotted line = 1000 field average · n_games: Nova3D 144, baselines 120 (b) Elo ranking Prompt alignment 
+
+Structural plausibility 
+
+Geometric quality 
+
+Overall 
+
+Architecture 
+
+Furniture 
+
+Vehicles 
+
+Mechanical 
+
+Tools 
+
+Characters 
+
+81 81 95 85 
+
+83 89 83 85 
+
+62 64 72 66 
+
+65 65 67 66 
+
+21 35 62 40 
+
+14 19 32 22 
+
+Shape-quality win-rate by domain × criterion (Nova3D vs all mesh-native baselines) 
+
+10 
+
+20 
+
+30 
+
+40 
+
+50 
+
+60 
+
+70 
+
+80 
+
+90 
+
+> Nova3D win-rate among decided comparisons (%)
+
+parity 
+
+texture-free normal renders · GPT-4o pairwise, both-orders-resolved · ties excluded · green = Nova3D ahead, red = behind (c) Domain × criterion 
+
+Figure 6: Perceptual fidelity on texture-free geometry. Nova3D wins the structured domains and is #2 of 5 in Elo, behind only TRELLIS.2. Panel (c) shows that geometric quality is Nova3D’s strongest criterion in every domain, including the domains it loses (62% in tools); the losses concentrate in prompt alignment and structural plausibility, i.e. in matching the object’s identity and completeness, not in surface quality. Nova3D 
+
+(code-native) 
+
+PartCrafter Meshy TRELLIS.2 TripoSG 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Sealed (watertight) parts  [%]
+
+89 
+
+73 
+
+0 0 0
+
+(a) Solidity higher is better 
+
+Nova3D 
+
+(code-native) 
+
+PartCrafter Meshy TRELLIS.2 TripoSG 
+
+10 0
+
+10 1
+
+10 2
+
+10 3
+
+10 4
+
+10 5
+
+> Open-boundary edges per asset  [log, lower is better]
+
+(b) Unsealed surface lower is better 
+
+Part-aware methods build sealed solids; single-mesh diffusion outputs open shells 
+
+n = Nova3D 54, PartCrafter 30, Meshy 54, TRELLIS.2 30, TripoSG 30 
+
+(a) bars: mean ± 95% CI, dots: per-asset. (b) box: median / IQR / range across assets. 
+
+(a) Integrity Nova3D 
+
+(code-native) 
+
+TripoSG TRELLIS.2 Meshy PartCrafter 
+
+10 3
+
+10 4
+
+10 5
+
+10 6
+
+> Triangles per asset  [log  geometry footprint]
+
+(a) Geometry footprint (texture-independent) 
+
+Nova3D 
+
+(code-native) 
+
+TripoSG TRELLIS.2 Meshy PartCrafter 
+
+0
+
+5
+
+10 
+
+15 
+
+20 
+
+25 
+
+> Editable source size  [KB]
+
+19 KB 
+
+none 
+
+(opaque mesh) 
+
+none 
+
+(opaque mesh) 
+
+none 
+
+(opaque mesh) 
+
+none 
+
+(opaque mesh) 
+
+(b) Re-runnable source of truth 
+
+Code-native ships a tiny editable program; mesh-native ships only an opaque mesh 
+
+n = Nova3D 54, TripoSG 30, TRELLIS.2 30, Meshy 54, PartCrafter 30 
+
+Delivered GLB byte-size is intentionally NOT compared: baseline GLBs embed PBR texture maps (a difference we concede), 
+
+so geometry footprint is shown as texture-independent triangle count instead. Triangle count is descriptive (engine cost), not a quality score. (b) Compactness 
+
+Figure 7: Part-aware methods build sealed solids; single-mesh diffusion outputs open shells; only code-native ships a tiny editable program. Delivered GLB byte-size is not compared as a geometry win because baseline GLBs embed PBR texture maps; compactness is argued on triangle count and editable-source size. 20 120 named parts 
+
+Nova3D 
+
+6 named parts (oracle) 
+
+CubePart (oracle) 
+
+6 parts, UNNAMED 
+
+PartCrafter 
+
+1 unnamed blob 
+
+TRELLIS.2 
+
+real node names: 
+
+Base_Plate_Bevelled_Rectangle 
+
+Gear_12T_Small_Root_Circle_Annul 
+
+Gear_12T_Small_Raised_Brass_Cent 
+
+Gear_12T_Small_Open_Web_Spoke 
+
+Gear_12T_Small_Tooth_07_of_12 
+
+Gear_32T_Large_Rotating_Axle_Pivot 
+
+Corner_Post_Body_03 
+
+Rubber_Foot 
+
++112 more named parts 
+
+real node names: 
+
+part_00_base_plate 
+
+part_01_spur_gear_small 
+
+part_02_spur_gear_medium 
+
+part_03_spur_gear_large 
+
+part_04_axle (one node for 3) 
+
+part_05_standoff_spacer 
+
+node names (no identity): 
+
+geometry_0 
+
+geometry_1 
+
+geometry_2 
+
+geometry_3 
+
+geometry_4 
+
+geometry_5 
+
+node names (no identity): 
+
+geometry_0 
+
+Same object, four representations what the parts are actually called 
+
+Gear train (mech-L3-02): spec = base plate, 3 spur gears (12/20/32T), 3 axles, 3 standoffs Figure 8: The program is the asset: native semantic handles, shown rather than told. A generated gear train rendered alongside each system’s actual exported node names. Nova3D exposes individually named teeth, hubs, and pivots organized into a parent–child tree. CubePart, the oracle post-hoc segmenter that operates on a TripoSG mesh and is handed the target part names, returns a short flat list of labels (capped); the part-aware diffusion model returns unnamed geometry N ; the mesh-native model returns a single blob. These handles are present at generation time in Nova3D, and must be recovered by post-hoc segmentation and rigging for the others. Nova3D 
+
+> naive
+> same-LLM
+> BlenderLLM
+> CubePart
+> (oracle)
+> PartCrafter
+> TRELLIS.2
+> TripoSG
+> Meshy
+> LLaMA-Mesh
+> MeshAnything
+> CAD-Coder
+> Text-to-
+> CadQuery
+> Text2CAD
+
+10 0
+
+10 1
+
+10 2
+
+> mean parts (mesh nodes) per asset  log
+
+single unnamed node 
+
+(no parts) 
+
+(a) Gate 1+2: does it produce parts, and are they named? 
+
+parts are named 
+
+parts unnamed 
+
+> Nova3D
+> naive
+> same-LLM
+> BlenderLLM
+> CubePart
+> (oracle)
+> PartCrafter
+> TRELLIS.2
+> TripoSG
+> Meshy
+> LLaMA-Mesh
+> MeshAnything
+> CAD-Coder
+> Text-to-
+> CadQuery
+> Text2CAD
+
+0
+
+2
+
+4
+
+6
+
+8
+
+> naming richness (named parts ÷ spec parts)
+
+spec floor (1 named part / spec part) 
+
+oracle: handed the spec 
+
+names, capped at 8 
+
+7.4× the spec 
+
+(b) Gate 3: how richly named? ( better) 
+
+Semantic naming capability staircase (N = 382 assets, 13 systems) 
+
+Closed-book systems must invent names; CubePart is given the spec vocabulary (oracle) shown for contrast, never averaged with closed-book systems. 
+
+(a) Capability staircase 339 named parts 
+
+Nova3D 
+
+8 named (oracle, CAPPED) 
+
+CubePart (oracle) 
+
+12 parts, UNNAMED 
+
+PartCrafter 
+
+1 unnamed blob 
+
+TRELLIS.2 
+
+real node names: 
+
+Rear_Spoke_35 
+
+Rear_Black_Tire 
+
+Swept_City_Handlebar_Chrome 
+
+Silver_Chainring 
+
+Far_Black_Pedal 
+
+Left_Crank_Arm_Chrome 
+
+Rear_Chrome_Fender_Shell 
+
+Black_Kickstand_Foot 
+
++331 more named parts 
+
+real node names: 
+
+part_00_frame 
+
+part_01_wheel (one node for 2) 
+
+part_02_fender 
+
+part_03_front_basket 
+
+part_04_saddle 
+
+part_05_handlebar 
+
+part_06_front_fork 
+
+part_07_pedal 
+
+cap-8 DROPPED 4 spec parts: 
+
+crank_arm, chain, chain_guard, kickstand 
+
+node names (no identity): 
+
+geometry_0 
+
+geometry_1 
+
+geometry_2 
+
+geometry_3 
+
+geometry_4 
+
+geometry_5 
+
+geometry_6 
+
+geometry_7 
+
+geometry_8 geometry_11 
+
+node names (no identity): 
+
+geometry_0 
+
+A richer object (bicycle) naming richness, instances, and the segmentation cap 
+
+City bicycle (veh-L3-02): spec = frame, 2 wheels, 2 fenders, basket, saddle, handlebar, fork, 2 pedals, 2 crank arms, chain, chain guard, kickstand (b) Worked example (city bicycle) 
+
+Figure 9: Native semantic handles. (a) The parts → named → richness staircase across 13 systems (bootstrap CIs). (b) A city bicycle: Nova3D exposes hundreds of individually named parts (spokes, crank arms); oracle CubePart is capped at 8 and drops four real spec parts; the part-aware diffusion model returns geometry N ;the mesh-native model returns a single blob. 21 Nova3D 
+
+> naive
+> same-LLM
+> BlenderLLM
+> CubePart
+> (oracle)
+> PartCrafter
+> TRELLIS.2
+> TripoSG
+> Meshy
+> LLaMA-Mesh
+> MeshAnything
+> CAD-Coder
+> Text-to-
+> CadQuery
+> Text2CAD
+
+0
+
+25 
+
+50 
+
+75 
+
+100% 
+
+> share of assets with a named tree
+
+100% 
+
+(a) Has a real assembly tree? 
+
+> Nova3D
+> naive
+> same-LLM
+> BlenderLLM
+> CubePart
+> (oracle)
+> PartCrafter
+> TRELLIS.2
+> TripoSG
+> Meshy
+> LLaMA-Mesh
+> MeshAnything
+> CAD-Coder
+> Text-to-
+> CadQuery
+> Text2CAD
+
+0.0 
+
+0.5 
+
+1.0 
+
+1.5 
+
+2.0 
+
+2.5 
+
+3.0 
+
+3.5 
+
+4.0 
+
+> named grouping levels above a part (1 = flat)
+
+3.7 
+
+(b) Semantic tree depth 
+
+> Nova3D
+> naive
+> same-LLM
+> BlenderLLM
+> CubePart
+> (oracle)
+> PartCrafter
+> TRELLIS.2
+> TripoSG
+> Meshy
+> LLaMA-Mesh
+> MeshAnything
+> CAD-Coder
+> Text-to-
+> CadQuery
+> Text2CAD
+
+0
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+> semantic sub-assembly nodes per asset
+
+6.2 
+
+(c) Named group nodes 
+
+> Nova3D
+> naive
+> same-LLM
+> BlenderLLM
+> CubePart
+> (oracle)
+> PartCrafter
+> TRELLIS.2
+> TripoSG
+> Meshy
+> LLaMA-Mesh
+> MeshAnything
+> CAD-Coder
+> Text-to-
+> CadQuery
+> Text2CAD
+
+0
+
+2
+
+4
+
+6
+
+8
+
+10 
+
+12 
+
+> joint/pivot/axle nodes per asset
+
+8.2 
+
+(d) Articulation pivots 
+
+Assembly-tree structure across 13 systems (Nova3D N = 54 assets; bootstrap 95% CI) 
+
+A flat list of meshes is depth 1 with zero named groups and zero pivots. Only code-native generation (Nova3D, partial on the naive same-LLM ablation) emits a real parentchild assembly tree; mesh-native, CAD, and post-hoc 
+
+segmentation are flat by construction. CubePart (hatched) is the oracle baseline handed the spec part names. (a) Assembly-tree statistics segmented color render (per-part) 
+
+x-ray parts by lightness 
+
+its actual exported scene graph 
+
+DesktopRobotArm Root 
+
+Kinematic Arm 
+
+Axis 1 Base Yaw Pivot 
+
+Axis 2 Shoulder Pitch Pivot 
+
+Axis 3 Elbow Pitch Pivot 
+
+Wrist EndEffector Pivot 
+
+Gripper WristRoll Pivot 
+
+Gripper Finger R Pivot 
+
+Gripper Finger R Pivot Screw ×4 
+
+Gripper Finger R Upper Link 
+
+Gripper Finger R Outer Jaw 
+
++2 more parts 
+
+Gripper Finger L Pivot 
+
+Gripper Finger L Pivot Screw ×4 
+
+Gripper Finger L Upper Link 
+
+Gripper Finger L Outer Jaw 
+
++2 more parts 
+
+Gripper Mount Flange Bolt ×6 
+
+Gripper Upper U Bridge 
+
+Gripper Round Mount Flange 
+
++2 more parts 
+
+Wrist Joint R Bolt ×5 
+
+Wrist Joint L Bolt ×5 
+
+Wrist Joint Through Axle Pin 
+
+Wrist Joint Side Disk R
+
++9 more parts 
+
+Elbow Joint R Bolt ×6 
+
+Elbow Joint L Bolt ×6 
+
+UpperArm Wrist End Band 
+
+UpperArm Underside Dark Seam 
+
++14 more parts 
+
+Shoulder Joint R Bolt ×6 
+
+Shoulder Joint L Bolt ×6 
+
+Shoulder Joint Through Axle Pin 
+
+Shoulder Joint Side Disk R
+
++13 more parts 
+
+Turntable Dark Seam Ring 
+
+Base Yoke Front Spacer 
+
++3 more parts 
+
+Base Static 
+
+Base Flange Recess Hole ×8 
+
+Tapered Base Pedestal 
+
+Pedestal Top Trim Ring 
+
++2 more parts 
+
+root 
+
+semantic group 
+
+articulation pivot (joint) 
+
+part / ×N instance fan 
+
+CubePart (oracle) 
+
+part_00_base 
+
+part_01_link 
+
+part_02_gripper 
+
+(capped at 8) 
+
+flat list · 0 pivots · 0 groups 
+
+PartCrafter 
+
+geometry_0 
+
+geometry_1 
+
+geometry_5 
+
+6 parts · unnamed · no tree 
+
+TRELLIS.2 / TripoSG 
+
+geometry_0 
+
+single unnamed blob 
+
+every other paradigm: 
+
+flat no assembly tree 
+
+A parent child assembly tree vs a flat list of meshes 
+
+Robot arm (mech-L3-03): a depth-7 kinematic chain every nesting level is a named joint pivot (yaw pitch pitch wrist roll two finger pivots). Posing the arm = rotating these pivot nodes; the children move with the parent. (b) A tree vs a flat list (robot arm) 
+
+Figure 10: A parent–child assembly tree is exposed natively only by code-native generation. The robot arm’s actual scene graph is a depth-7 kinematic chain, every level a named pivot; the baselines are flat lists with nothing to address or move. 0 10 20 30 40 50 60 70 
+
+Expected benchmark constraints in this method slice 
+
+CAD-Coder 
+
+Text2CAD 
+
+Text-to-
+
+CadQuery 
+
+BlenderLLM 
+
+naive 
+
+same-LLM 
+
+Nova3D 
+
+5 3 7 0/15 pass cov 0.333 sat 0.000 cond 0.000 
+
+30 3 2/37 pass cov 0.865 sat 0.054 cond 0.062 
+
+7 12 17 7/37 pass cov 0.514 sat 0.189 cond 0.368 
+
+4 18 14 4/37 pass cov 0.595 sat 0.108 cond 0.182 
+
+11 13 27 11/52 pass cov 0.462 sat 0.212 cond 0.458 
+
+51 51/52 pass cov 1.000 sat 0.981 cond 0.981 
+
+passed measured fail unaddressable missing artifact unsupported/error 
+
+Constraint scorecard: most baselines lose before correctness is even tested 
+
+coverage = measurable / expected satisfaction = passed / expected conditional = passed / measurable 
+
+Insight: Nova3D is measured on every constraint and misses one pitch-diameter row. Other code-native baselines mix missing artifacts, unaddressable anchors, and measured failures. 
+
+Figure 11: Constraint scorecard. Stacked per-method bars: passed (green), measured failures (orange), unaddressable anchors (yellow), and missing artifacts (grey). Nova3D is measured on every row and misses one; baselines fail through missing artifacts, missing anchors, or wrong values. 
+
+base generated asset → natural edit instruction → source-level edit 
+
+↓
+
+edited code.py + edited model.glb → deterministic gates 
+
+↓
+
+blinded human review → adjudicated final label 
+
+Figure 12: Local-edit protocol. Deterministic representation gates precede a blinded, adjudicated human visual review. 22 E001 
+
+> E002
+> E003
+> E005
+> E006
+> E007
+> E009
+> E010
+> E011
+> E013
+> E015
+> E016
+> E017
+> E018
+> E004
+> E008
+> E012
+> E014
+
+artifact 
+
+target handle 
+
+source+GLB changed 
+
+hierarchy 
+
+target fulfilled 
+
+anchor 
+
+scale 
+
+non-target preserved 
+
+locality 
+
+final pass 
+
+18/18 
+
+18/18 
+
+18/18 
+
+18/18 
+
+15/18 
+
+15/18 
+
+14/18 
+
+18/18 
+
+18/18 
+
+14/18 
+
+gate pass gate fail 
+
+Editability Gate Matrix 
+
+Columns are blinded edit tasks. Green = pass, red = fail. Red outlines mark final failures. (a) Gate matrix char-L2-01-edit-01 
+
+PASS | E001 
+
+add battery backpack 
+
+arch-L3-03-edit-01 
+
+PASS | E006 
+
+add lantern posts 
+
+mech-L1-02-edit-01 
+
+PASS | E010 
+
+make swivel plate circular 
+
+veh-L3-02-edit-01 
+
+PASS | E018 
+
+make front basket round 
+
+arch-L1-01-edit-01 | scale_wrong 
+
+FAIL | E004 
+
+newspaper tube scale 
+
+tool-L3-02-edit-01 | material_drift, view_uncertain 
+
+FAIL | E008 
+
+watch hands unresolved 
+
+char-L1-01-edit-01 | wrong_part, wrong_shape 
+
+FAIL | E012 
+
+pouch not readable 
+
+tool-L2-02-edit-01 | insufficient_evidence, target_missing 
+
+FAIL | E014 
+
+wrist strap not visible 
+
+Qualitative editability gallery: local structure is preserved; failures are target-specific 
+
+Each panel is blinded base/edit evidence shown to human reviewers. Top row: passes; bottom row: adjudicated failures. (b) Qualitative gallery 
+
+Figure 13: Local edits preserve the surrounding asset. Deterministic representation gates saturate at 18/18; the limiting stage is target semantics. In both successful and failed edits the surrounding asset stays intact. Failures are local targets that are not visually correct enough, not global regenerations. Nova3D 
+
+> naive
+> same-LLM
+> BlenderLLM
+> CubePart
+> (oracle)
+> PartCrafter
+> TRELLIS.2
+> TripoSG
+> Meshy
+> LLaMA-Mesh
+> MeshAnything
+> CAD-Coder
+> Text-to-
+> CadQuery
+> Text2CAD
+
+0
+
+1
+
+2
+
+3
+
+4
+
+5
+
+> named joints with pivot + axis + limits
+
+4.92 
+
+every other system = 0 
+
+(a) Articulable joints per asset 
+
+> Nova3D
+> naive
+> same-LLM
+> BlenderLLM
+> CubePart
+> (oracle)
+> PartCrafter
+> TRELLIS.2
+> TripoSG
+> Meshy
+> LLaMA-Mesh
+> MeshAnything
+> CAD-Coder
+> Text-to-
+> CadQuery
+> Text2CAD
+
+0
+
+2
+
+4
+
+6
+
+8
+
+> pivot / axle / hinge nodes per asset
+
+8.17 
+
+baselines 0
+
+(b) Joint pivots already in the BASE asset (articulation-readiness) 
+
+rest-pose 
+
+frozen 
+
+axis on 
+
+the part 
+
+geometrically 
+
+VALID 
+
+0
+
+25 
+
+50 
+
+75 
+
+100% 91.7% 
+
+98.3% 98.3% 
+
+freeze = directed Chamfer base articulated 1% bbox-diag (the additive-commit guarantee). 
+
+valid = pivot on the part AND part admits collision-free motion; spinners spin in place. 
+
+(c) Functional validity range-independent (59 joints: 26 spinners + 33 limited) 
+
+declared range 
+
+generic ( 300°) 
+
+control nests 
+
+>30% at rest 
+
+0
+
+25 
+
+50 
+
+75 
+
+100% 
+
+51.8% 
+
+16.9% 
+
+Pivots/axes are placed well; the model under-specifies operating LIMITS 
+
+(half the joints declare a generic free-spin range) and occasionally nests recessed 
+
+controls both honest, named directions, neither a geometric defect. 
+
+(d) Reported limitations (separate findings, NOT validity gates) 
+
+Articulation: a code-native-only capability, and its joints are geometrically valid (Nova3D N = 12 assets, 59 joints; all 12 baselines produce 0) 
+
+(a) Capability and validity rest pose 1 pose 2 pose 3 pose 4 
+
+One asset, joints actuating geometry frozen, motion added as code 
+
+Robot arm (mech-L3-03), frames from the exported articulation preview. The articulation pass appended 6 named joints (base yaw shoulder/elbow/wrist pitch 2 gripper fingers) as Empty parents at real pivots; rotating a pivot 
+
+carries its whole subtree. The visible geometry is byte-for-byte the base asset (the original build() is preserved verbatim directed Chamfer base articulated = 0.7% of the bbox diagonal); only the joint transforms move. (b) Robot-arm motion (geometry frozen) 
+
+Figure 14: Articulation as an additive operation on a program. Nova3D produces articulable joints and readiness pivots while all baselines are at zero; the robot arm actuates across poses while its visible geometry stays frozen. Motion is added as code, not regenerated. 23 Caster (mech) 
+
+CODE: 96 islands in primary atlas (136 total over 3 pages) GLB: 2,563 islands in primary atlas (2,638 total over 3 pages) 
+
+> Cordless drill (tool)
+
+CODE: 116 islands in primary atlas (142 total over 3 pages) GLB: 431 islands in primary atlas (549 total over 3 pages) 
+
+> Office chair
+
+CODE: 60 islands in primary atlas (138 total over 3 pages) GLB: 400 islands in primary atlas (705 total over 2 pages) 
+
+> Rubber duck (organic)
+
+CODE: 68 islands in primary atlas (68 total over 1 pages) GLB: 497 islands in primary atlas (497 total over 1 pages) 
+
+> Dragon (organic)
+
+CODE: 272 islands in primary atlas (296 total over 3 pages) GLB: 524 islands in primary atlas (546 total over 3 pages) 
+
+Primary UV atlas from CODE vs from baked GLB (same object, same parts; each colour = one island) (a) UV atlases: code vs baked GLB Nova3D 
+
+(code-native) 
+
+PartCrafter CubePart 
+
+(segmentation of 
+
+TripoSG not 1:1) 
+
+0
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+> Per-asset median part deviation from a
+> clean primitive  [% of part size, lower is better]
+
+84% of parts 
+
+are clean primitives 
+
+61% of parts 
+
+are clean primitives 
+
+40% of parts 
+
+are clean primitives 
+
+single-mesh methods (Meshy/TRELLIS/TripoSG) excluded: 
+
+a primitive cannot be fit to one fused blob 
+
+Code-native parts are clean flats/cylinders/spheres; diffusion & segmentation parts are bumpy 
+
+n = Nova3D 54, PartCrafter 30, CubePart 30 (b) Per-part primitive residual 
+
+Figure 15: Production readiness from source representation. (a) Unwrapping the pre-modifier construction geometry yields few large UV islands; unwrapping the baked GLB shatters the surface into many small islands. (b) Code-built parts deviate far less from clean fitted primitives than diffusion- or segmentation-derived parts. 24
