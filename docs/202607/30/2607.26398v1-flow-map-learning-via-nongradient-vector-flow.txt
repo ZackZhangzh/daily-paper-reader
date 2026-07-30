@@ -1,0 +1,1634 @@
+Title: Flow Map Learning via Nongradient Vector Flow
+
+URL Source: https://arxiv.org/pdf/2607.26398v1
+
+Published Time: Thu, 30 Jul 2026 00:21:23 GMT
+
+Number of Pages: 23
+
+Markdown Content:
+Published as a conference paper at ICLR 2026 
+
+# FLOW MAP LEARNING VIA NONGRADIENT VECTOR 
+
+# FLOW 
+
+Mark Goldstein 1∗
+
+, Anshuk Uppal 2, Raghav Singhal 3, Aahlad Puli 3, & Rajesh Ranganath 31Center for Computational Mathematics, Flatiron Institute. 
+
+> 2
+
+Department of Applied Mathematics and Computer Science, Technical University of Denmark. 
+
+> 3
+
+Courant Institute, New York University. 
+
+## ABSTRACT 
+
+Diffusion and flow-based models benefit from simple regression losses, but infer-ence incurs significant overhead because sampling requires integration. Consistency models address this by directly learning the flow maps along the ODE trajectory, opening a design space between one-step and many-step approaches. However, existing methods face computational challenges such as requiring model inverses or backpropagation through iterated model calls, and do not always prove that the desired ODE flow map is a solution to the loss. We introduce SGFlow, an approach for learning flow maps that bypasses explicit invertibility constraints and expensive differentiation through model iteration. SGFlow trains a model to compute both the ODE solutions and the implied velocity from scratch by following non-conservative dynamics with a stationary point at the desired flow map. On the CIFAR image benchmark, no single method attains the best FID at every step count: SGFlow attains the best FID at 10 sampling steps and remains competitive with flow match-ing, Meanflow, and Lagrangian map matching at other step counts, while being the only one with a proven stationary-point guarantee for its stopgrad-based dynamics. 
+
+## 1 INTRODUCTION 
+
+Diffusion and flow models (Sohl-Dickstein et al., 2015; Ho et al., 2020; Song et al., 2020; Kingma et al., 2021; Albergo and Vanden-Eijnden, 2022; Singhal et al., 2023; Pandey and Mandt, 2023; Bartosh et al., 2024; Singhal et al., 2024; Albergo et al., 2023; Lipman et al., 2022; Liu et al., 2022) have improved generation in domains such as proteins (Abramson et al., 2024) and images (Peebles and Xie, 2023; Esser et al., 2024). Sampling from these models typically requires numerically integrating an ordinary or stochastic differential equation. Numerical integration requires multiple forward passes of a neural network, leading to increased sampling latency and cost. To ameliorate this generation cost by changing the training, recent approaches for consistency modeling and map matching (Song et al., 2023; Song and Dhariwal, 2023; Kim et al., 2023; Lu and Song, 2024; Boffi et al., 2024; 2025) aim to learn direct mappings from noise to intermediate or final data points along trajectories defined by probability flow ODEs, thereby avoiding costly integration. However, the methods have their respective complexities. For example, flow map matching requires model invertibility, while consistency models need either to map in one step or introduce extra steps that leave the target ODE trajectory. We introduce SGFlow (for StopGrad Flow), an approach that builds on flows and map matching methods and • Has true flow map as a unique stationary point • Does not restrict the class of neural networks used (e.g., to invertible functions) • Does not require auxiliary losses involving invertibility or adversarial optimization • Does not require optimizing through nested calls to the model • Allows for generation along the ODE trajectory with any number of steps 
+
+> ∗
+
+mgoldstein@flatironinstitute.org 
+
+1arXiv:2607.26398v1 [cs.LG] 29 Jul 2026 Published as a conference paper at ICLR 2026                                                                       
+
+> Methods Multistep Follows ODE Sim. Free Regression Loss Inverse-Free Prove Optimum No Nesting
+> Consistency Distillation (Song et al., 2023) ✗✓✗✓✓✓✓
+> Consistency Training (Song et al., 2023) ✗✓✓✓✓✓✓
+> Consistency Trajectory Models (Kim et al., 2023) ✓✓✗✗✓✓✓
+> L-FMM (Boffi et al., 2024) ✓✓✓✓✗✓✓
+> LSD (Boffi et al., 2025) ✓✓✓✓✓✓✗
+> ESD (Boffi et al., 2025) ✓✓✓✓✓✓✓
+> PSD (Boffi et al., 2025) ✓✓✓✓✓✓✗
+> Meanflow (Geng et al., 2025) ✓✓✓✓✓✗✓
+> SGFlow (this work) ✓✓✓✓✓✓✓
+
+Table 1: Comparison to prior works . We categorize flow map learning (or consistency modeling )techniques and our proposed SGFlow method according to: (1) ability to adjust sampling steps post-training, (2) whether they follow the PF-ODE (Song et al., 2020), (3) whether they allow simulation-free training, (4) whether their objectives use regression, (5) whether training is free of model inversion, (6) whether the true flow map is proven to be optimal or stationary, and (7) whether training avoids differentiation through nested model calls. See Section 6 for details. Existing methods for learning flow maps fall into a few categories in terms of their challenges; all challenges relate to the idea that a flow map is characterized by certain derivative properties and that losses minimize squared error to make these properties hold. Flow map matching and related methods rely on a fundamental relationship between invertible mappings and ordinary differential equations (ODEs). This relationship typically requires explicitly computing both the forward map (the model being trained) and its inverse during training, complicating training, or requires expensive backpropagation through nested model calls. Boffi et al. (2025) propose stopgrad placements for the flow map matching losses of Boffi et al. (2024) that bypass this expensive nested differentiation, but do not prove that the stopgrads preserve the stationary point at the true flow map. Meanflow (Geng et al., 2025) does not explicitly enforce the model inverse identities, and avoids backpropagation through forward-mode derivatives altogether, achieving good image generation performance with low step counts; Meanflow is also not shown to have a stationary point at the true flow map. SGFlow avoids the complexity of tracking a model and its inverse by exploiting an alternate identity involving only Jacobian-vector products (JVPs) without inverse functions. This identity allows us to formulate the objective purely in terms of the forward map, without needing explicit access to its inverse. Since solutions to ODEs naturally produce invertible mappings, the SGFlow objective implicitly encourages invertibility without explicitly enforcing it. Thus, at optimality, SGFlow yields a continuously differentiable function that precisely integrates the velocity field, directly generating the desired data distribution. We summarize the trade-offs among recent methods in Table 1 and in Section 6. Experimentally, for a basic training setup using the same common architecture, we ask how flow matching, Meanflow, SGFlow, and Lagrangian map matching compare in moderate dimensions (CIFAR-10) on unconditional metrics (FID) when decreasing the number of sampling steps. 
+
+## 2 BACKGROUND 
+
+Stochastic interpolants (Lipman et al., 2022; Albergo et al., 2023), and more generally most diffusion and flow methods, hereafter just flows , pose generative modeling as transport of a simple base density to a target density. Interpolants tackle the problem as follows. For t ∈ [0 , 1] :1. Choose ( αt, σt) where α0 = σ1 = 1 and α1 = σ0 = 0 . Commonly, αt = 1 − t and σt = t.2. Define Xt = αtX0 + σtX1 for base density X0 ∼ q0 and data X1 ∼ q1 (or vice versa). 3. Learn to produce new samples along the trajectory of densities. For a function f , let ˙ft := ddt ft. Thus ˙Xt := ˙αtX0 + ˙ σtX1. It follows that Xt has density qt
+
+satisfying: 
+
+∂tqt(x) = −∇ x · (qt(x)v(t, x )) , v(t, x ) := E[ ˙Xt | Xt = x], (1) 2Published as a conference paper at ICLR 2026 where v is called the velocity. The PDE in Equation (1) is derived in the above works. To accomplish step three, one starts by making the observation that a density satisfies Equation (1) if and only if it is the density of the solution to the probability flow ODE dX = vdt integrated forward from 
+
+X0 ∼ q0 or in reverse from X1 ∼ q1 (Albergo and Vanden-Eijnden, 2024). One then proceeds by first approximating v using the following (simulation-free) loss: 
+
+Lv (vθ ) = E
+
+h
+
+∥vθ (t, X t) − ( ˙ αtX0 + ˙ σtX1)∥2i
+
+> Xt=αtX0+σtX1
+
+, (2) which has minimizer vθ = v and then solving dx = vθ dt .
+
+Background on Consistency Methods. Sampling from flows requires integration, where each step evaluates a neural network vθ modeling a score, velocity, or similar. Knowing integrals of v
+
+directly could, in principle, speed up sampling. The goal of consistency and map matching methods is to learn to map along the trajectory implied by the optimal v. We review an example here, with others in Section 6. Song et al. (2023); Song and Dhariwal (2023) seek to learn a mapping ˆg that takes interpolant samples Xt ∼ qt to bX0, the t = 0 solution to dx = v dt starting at Xt (note that 
+
+bX0 usually differs from the endpoint X0 used to draw Xt). The loss measures the distance between modeled outputs at two nearby points. Let SG [ˆ g] indicate stopgrad. Then: Consistency (ˆ g) := Eq(Xt)[dist (ˆ g(t, X t), SG [ˆ g]( t − ∆t, bXt−∆t))] . (3) The target bXt−∆t should come from integrating the true velocity a small step ∆t from Xt, but since v is unknown, it is typically approximated using a pretrained vθ or a vθ derived jointly with 
+
+ˆg — increasing training cost and introducing approximation error. Allowing multistep sampling requires a re-noising step that takes the trajectory off the probability-flow ODE, so the resulting updates no longer correspond to integrating the PF-ODE. Kim et al. (2023) observe that this multistep approach “exhibits degrading sample quality with increasing NFE, lacking a clear trade-off between computational budget (NFE) and sample fidelity”. Subsequent works introduce various training- and inference-time modifications to bridge the gap between one-step and many-step sampling (Song et al., 2023; Lu and Song, 2024; Kim et al., 2023; Boffi et al., 2024; Sabour et al., 2025; Geng et al., 2025; Zhou et al., 2025); see Section 6. 
+
+## 3 METHOD 
+
+We present SGFlow, a method for learning to solve the probability flow ODE without adversarial training, without model inverse during training, without representing explicit derivative matrices, and without costly simulations from pretrained models. SGFlow trains a model to compute both the ODE solutions and the implied velocity from scratch by following non-conservative dynamics. Consider a two-time map f that for t ≤ u brings Xt up to Xu by solving the probability flow ODE 
+
+dx = vdt . Such an f that integrates v can be defined as follows: 
+
+f (t, u, x ) = x +
+
+Z ut
+
+v(s, X s)ds = x +
+
+Z ut
+
+v(s, f (t, s, x )) ds (4) Differentiating the recursive form on the RHS w.r.t. t using the total (material) derivative yields: 
+
+∂tf + ( ∂xf )v(t, x ) = 0 , f (u, u, x ) = x (5) This is uniquely solved at the true flow map f . We can square the left-hand side for a parameterized 
+
+fθ and take an expectation. Xt is sampled by drawing data X1, noise X0, and computing Xt =
+
+αtX0 + σtX1:
+
+L := EXt [∥∂tfθ + ( ∂xfθ )v∥2] = EXt [∥∂tfθ + ( ∂xfθ )E[ ˙Xt|Xt]∥2]. (6) The true map f is the unique minimizer of this loss. Using v(t, x ) = E[ ˙Xt|Xt = x], we can expand, 
+
+L = EXt [∥∂tfθ + ( ∂xfθ ) ˙Xt∥2 − ∥ (∂xfθ )( ˙Xt − E[ ˙Xt|Xt]) ∥2] (7) For an underlying model ˜fθ , we can then use the parameterization 
+
+fθ (t, u, x ) := x + ( u − t) ˜fθ (t, u, x ) (8) 3Published as a conference paper at ICLR 2026 This parameterization automatically satisfies the boundary condition fθ (u, u, x ) = x. The parameter-ization yields two additional properties: • time derivative: ∂tfθ (t, t, x ) = − ˜fθ (t, t, x )
+
+• Jacobian: ∂xfθ (t, t, x ) = I
+
+Using these properties and evaluating at t = u, we see that the minimization of eq. (7) reduces to flow matching where ˜fθ (t, t, x ) is trained to match the velocity: 
+
+L t=u = EXt [∥ ˜fθ (t, t, X t) − ˙Xt∥2], (9) which reveals that for the true f , we have that 
+
+−∂tf (t, t, ·) = ˜f (t, t, ·) = v(t, x ) = E[ ˙Xt|Xt = x] (10) This motivates replacing the unknown v in eq. (7) with stopgrad [ ˜fθ (t, t, ·)] . The stopgrad is used under the principle that since the original v did not provide gradient updates for f , neither should a term that approximates it. Let SG () denote the stopgrad () operator. The SGFlow method follows parameter updates to θ by differentiating 
+
+Lsg := EXt [∥(∂tfθ ) + ( ∂xfθ ) ˙Xt∥2 − ∥ (∂xfθ )( ˙Xt − SG [ ˜fθ ]) ∥2]. (11) Here, the model fθ uses the parameterization from eq. (8). The derivatives ∂tfθ and ∂xfθ are evaluated at (t, u, X t) and ˜fθ is evaluated at (t, t, X t). The expectation is taken over Xt sampled by drawing data X1, noise X0, and computing Xt = αtX0 + σtX1 and ˙Xt = ˙ αtX0 + ˙ σtX1.In practice, the PDE in eq. (5) must hold for all pairs t ≤ u. Let q(t, u ) be a joint distribution with support over t ≤ u and with positive probability on t = u. We take expectations over time and define 
+
+L = Eq(t,u )[L], Lsg = Eq(t,u )[Lsg ]
+
+We now connect L and Lsg formally. Theorem 1 shows that parameter updates of L and Lsg are 0 at the same solutions. 
+
+Theorem 1. Let q(t, u ) be a joint distribution over time pairs with support over t ≤ u and with positive probability on t = u. Let the family ˜F include functions ˜f that are continuously differentiable in all arguments. Let Xt = αtX0 + σtX1 and ˙Xt = ˙αtX0 + ˙ σtX1. Define 
+
+f (t, u, x ) := x + ( u − t) ˜f (t, u, x ). Let expectations be computed over q(X0)q(X1). Let sg 
+
+stand for stop-gradient. Define L = Eq(t,u )[L] and Lsg = Eq(t,u )[Lsg ]. Then ˜f ∗ is a stationary point of Lsg with respect to ˜F if and only if ˜f ∗ is a stationary point of L with respect to ˜F.
+
+This is shown in Section A.5. 
+
+Intuition. The purpose of the theorem is to establish that Lsg has the same set of solutions as 
+
+L despite not having access to v; here, solution is defined as a stationary point. The intuition is that, despite the stopgrad, when t = u, Lsg tries to match the velocity. We show that Lsg is not at a stationary point when this velocity estimate is inaccurate, so the optimization continues moving and does not become stuck at functions that integrate (“distill") an incorrect velocity. As this match improves so does the match between the parameter updates from Lsg and L at t̸ = u. The main reason this works is that ˜f (t, t, ·) appears in other terms outside of the stopgrad, and those terms tell it where to go. This is crucial and not all stopgrad optimizations benefit from this property. 
+
+Computation. Both terms in Lsg can be computed as expected squared norms of Jacobian-vector products (JVPs), which use forward-mode autodifferentiation to avoid explicitly materializing Jaco-bians, saving memory. Let the derivatives (∂tf, ∂ uf, ∂ xf ) be evaluated at (t, u, x ). Using PyTorch notation, JVP [f, (t, u, x ), (a, b, c )] := ( ∂tf ) · a + ( ∂uf ) · b + ( ∂xf ) · c
+
+4Published as a conference paper at ICLR 2026 For the first loss term, a = 1 , b = 0 , and c = ˙Xt. For the second term: 
+
+a = 0 , b = 0 , c = ˙Xt + SG [∂tf (t, t, X t)] = ˙Xt − SG [ ˜f (t, t, X t)] .
+
+Though we have two distinct JVPs, we can split the batch and randomly assign either set of (a, b, c )
+
+values to each batch element. 
+
+Nongradient Flow Most analyses in machine learning implicitly assume that optimization performs gradient descent on a scalar loss, so that stationary points coincide with minima. This assumption does not hold here: following the update rules of Lsg does not correspond to following the gradients of any single scalar objective, as we demonstrate in section B.1. The stopgrad structure breaks the symmetry required for the updates to be expressible as the gradient of a scalar function; such broken symmetry renders the dynamics non-conservative (Balduzzi et al., 2018), meaning they do not necessarily minimize any quantity. Thus, in the limit of small step size, the optimization dynamics correspond to a nongradient vector flow, where it is crucial to analyze stationary points rather than minima. 
+
+## 4 WHEN CAN STOPGRADS FIX THINGS ?
+
+The stopgrad in SGFlow is not just a computational convenience, but is essential for correctness. To see why, consider what happens without it. Meanflow (Geng et al., 2025) and SGFlow both replace the unknown conditional velocity v(t, x ) = E[ ˙Xt | Xt = x] with the sample-level ˙Xt. In standard flow matching this substitution is harmless: the loss is linear in ˙Xt, so pulling the conditional expectation out of the square only adds a constant, the posterior variance, 
+
+V (t, x ) := Var ( ˙Xt | Xt = x), (12) and does not move the optimum. SGFlow’s second term compensates for this. In Meanflow without stopgrads, the term ∂x ˜f v makes the integrand nonlinear in ˙Xt. The v → ˙Xt replacement, without a compensating term, then introduces cross-terms involving V > 0 that shift the gradient away from the truth. By contrast, with the stopgrad, ˙Xt shows up linearly in the Meanflow parameter updates, meaning the expected update is equal to the correct one with v. This was also used to show correctness in Sabour et al. (2025). 
+
+Gaussian example. We make this concrete in 1D. Let X0 ∼ N (0 , 1) and X1 ∼ N (μ, λ 2) with 
+
+λ > 0. Let us use the linear interpolant Xt = (1 − t)X0 + tX 1 with ˙Xt = X1 − X0. In this setting everything is in closed form (Appendix B.2): the marginal variance is σ2 
+
+> t
+
+= (1 − t)2 + t2λ2, the flow map Jacobian is ∂xf ∗ = m(t, u ) = σu/σ t, and the posterior variance is V (t) = λ2/σ 2 
+
+> t
+
+> 0.Consider the Meanflow functional without stopgrads, 
+
+Lnosg [ ˜f ] = E
+
+h ˜f − ˙Xt − (u − t) ∂t ˜f + ∂x ˜f ˙Xt
+
+ 2i
+
+. (13) Evaluating the first variation at the true flow map ˜f ∗ in the direction h(t, u, x ) = x gives (see Appendix B.2 for the calculation): 
+
+δLnosg [ ˜f ∗; h = x] = 2 λ2 E
+
+> t,u
+
+ (u − t) m(t, u )
+
+σ2
+
+> t
+
+
+
+> 0. (14) Every factor in the integrand is strictly positive, so the gradient at the truth is nonzero—the true flow map is not a stationary point of the no-stopgrad functional. With the stopgrad, Theorem 1 guarantees the true flow map is the unique stationary point. 
+
+## 5 EXPERIMENTS 
+
+5.1 GAUSSIAN ILLUSTRATION : M EANFLOW WITH AND WITHOUT STOPGRADS 
+
+As shown in §4, removing stopgrads from Meanflow destroys stationarity at the true flow map. We illustrate this concretely in the 1D Gaussian setting. We parameterize the target distribution as 
+
+X1 ∼ N (μ, λ 2) and study the parameter update field of the Meanflow functional over the parameter space (μ, λ ). The model family is well-specified: 
+
+˜fˆμ, ˆλ = exact flow map for N (0 , 1) → N (ˆ μ, ˆλ2) (15) 5Published as a conference paper at ICLR 2026 
+
+Figure 1: Update vector field of the Meanflow functional over the well-specified Gaussian family, with data (μ∗, λ ∗) = (0 .5, 1.0) (star, ⋆). We use ∇L to denote the update field, though it is not a gradient field in the stopgrad case. Arrows are unit-normalized; color encodes ∥∇L∥ on log scale. Left: with stopgrad . The truth is the unique stationary point; arrows converge to ⋆ from all directions, and the update magnitude vanishes to machine precision at the truth. Right: without stopgrad . The truth is not stationary; the field flows past ⋆ and converges to a spurious attractor at (ˆ μ, ˆλ) ≈ (0 .50 , 0.41) (diamond, ♦). Due to the form of the Gaussian family, it happens that 
+
+ˆμspurious = μ∗ exactly, with the bias entirely along the ˆλ component. The truth (μ∗, λ ∗) lies in the model family. All expectations admit closed-form expressions in the Gaussian case with linear interpolant. We plot the update fields in Figure 1. With the stopgrad, the true flow map is the unique stationary point, so the negative update arrows converge to the truth. Without the stopgrad, the true parameters are not stationary: the update field, which is a gradient field, is nonzero at the truth, and the field drifts toward a spurious point. Due to the form of the Gaussian family, it happens that ˆμspurious = μ∗
+
+exactly, with the bias entirely along ˆλ.5.2 IMAGE MODELING ON CIFAR-10 
+
+Architecture. We modify the time embedding of the existing diffusion U-Net from Dhariwal and Nichol (2021) to handle two times. We embed both times t and u with the usual Fourier embeddings, concatenate them, and pass the result through a small feedforward network that outputs a hidden representation for use in the usual U-Net. We use 128 U-Net channels and channel multipliers set to (1,2,2,2) with attention bools set to (False, False, True, False). 
+
+Training Settings. We use dropout 0.1. We choose the unconditional image generative modeling task (we do not condition on the class label). We use αt = 1 − t and σt = t, with noise at X0 and data at X1. We train for 200,000 steps at learning rate 2 × 10 −4. The FID is monitored every 25,000 training steps, and the best is reported. 
+
+Losses. We benchmark based on Flow Matching (Lipman et al., 2022) as the reference method for sampling in the O(100) step regime. For few-step sampling, we benchmark with Meanflow (Geng et al., 2025), which stopgrads all model derivatives in the loss to avoid backpropagation through differentiation. We also benchmark against Lagrangian flow map matching (Boffi et al., 2024) using the stopgrad placement suggested in Boffi et al. (2025). We do not compare against the Eulerian self-distillation (ESD) loss, which Boffi et al. (2025) report as unstable for image experiments, nor against the Progressive self-distillation (PSD) loss, which enforces the semigroup identity rather than a transport PDE. We focus here on the PDE-based functionals. 
+
+Results. We report the Fréchet Inception Distance (FID) (Heusel et al., 2017) in Table 2. No single method dominates across all step counts: Meanflow is strongest at 1 step, the Lagrangian loss is strongest at 50 and 100 steps, and SGFlow attains the best FID at 10 steps. SGFlow is the only method in the comparison whose stationary points under stopgrad-induced dynamics are characterized, while 6Published as a conference paper at ICLR 2026 
+
+Method 1 step 10 steps 50 steps 100 steps SG theory 
+
+Flow Matching >100 84.39 4.51 3.97 no Meanflow 8.67 5.26 5.12 4.07 no Lagrangian 26.21 4.08 3.37 3.20 no SGFlow 37.29 4.00 3.87 3.85 yes 
+
+Table 2: FID scores versus sampling steps on CIFAR-10, computed from 50,000 EMA samples. The FID is monitored every 25,000 training steps up to 200,000 training steps, and the best is reported. Lower is better; bold indicates best per column. The “SG theory” column indicates whether the method has a proven stationary-point guarantee for its stopgrad-based dynamics (i.e., whether the true flow map has been proven to be a stationary point of the optimization). remaining competitive with, and at 10 steps surpassing, methods that do not provide such guarantees. This suggests that the stationary-point analysis we develop does not come at a cost in empirical performance. 
+
+## 6 RELATED WORK 
+
+Sampling from continuous-time generative models such as diffusion and flow models requires numerical integration. Each integration step requires a forward pass of a neural network, leading to computational costs and slow sampling. Current approaches to address this cost can be broadly categorized into two types: (1) distilling a pretrained diffusion or flow model into a few-step solver (Salimans and Ho, 2022; Kim et al., 2023; Liu et al., 2023), and (2) learning a few-step solver (Zhou et al., 2025). Some approaches in this area allow for distillation as well as training from scratch (Song et al., 2023; Boffi et al., 2024; Boffi and Vanden-Eijnden, 2023). Consistency Models (CMs) (Song et al., 2023; Song and Dhariwal, 2023; Lu and Song, 2024) learn a one-step map from noise to data, either by distilling a pretrained model or by learning from scratch. Distillation requires sampling trajectories from the teacher model. To allow for more steps after either training approach, CMs iteratively re-noise the one-step solution back to successively smaller time under the interpolant and then denoise, but this can take the solver off the probability flow. Consistency trajectory models (CTMs) (Kim et al., 2023) extend CMs to learn two-time maps using a combination of consistency and adversarial objectives, which requires training an additional discriminator model (Goodfellow et al., 2014). CTM and SGFlow both target the same mathematical object, the probability flow ODE flow map (i.e., the integral of the ODE), but they learn this map through different means. CTM learns the map by distilling a teacher solver, and the losses for teacher and student involve several nested model evaluations (with data at x0, for 0 ≤ s ≤ u ≤ t ≤ 1, the teacher integrates from t to u, then jumps from u to s, then from s to 0; and the student jumps from 
+
+t to s and then to 0). The objective depends on a chosen feature-space distance and, in practice, includes DSM and GAN terms that further influence the optimum. Consequently, the CTM loss is sensitive to the quality of the ODE discretization used by the teacher (in practice CTM finds the need to use a 2nd order solver during training) and necessitates the presence of the GAN. Inductive Moment Matching (IMM) (Zhou et al., 2025) learns a few-step model via an implicit generative model trained with MMD (Smola et al., 2006; Gretton et al., 2012), where the MMD is estimated with bias within subsets of data. In practice, the authors must use time-weighting schedules and specific curriculum/inductive procedure to stabilize optimization. While IMM produces high-quality image samples, it solves the problem of marginally sampling the data distribution rather than sampling along a probability flow, where the latter is the task studied in this work. Meanflow (Geng et al., 2025) derives a JVP-based objective for flow maps from the same PDE in eq. (5): 
+
+Lmeanflow  
+
+> t,u
+
+:= E[∥ ˜fθ (t, u, X t) − ˙Xt − (u − t)SG (∂x ˜fθ · ˙Xt + ∂t ˜fθ )∥2]. (16) Here Meanflow is written in forward time with t derivatives rather than reverse time with u derivatives (section B.3). Applying the stopgrad SG to all model derivatives improves efficiency, but there are no 7Published as a conference paper at ICLR 2026 differentiated loss terms that encourage the model derivatives ∂t ˜fθ and ∂x ˜fθ to move toward the true flow map derivatives. This contrasts with SGFlow where SG [ ˜fθ (t, t, x )] is used in place of E[ ˙Xt|Xt],but where another term in the loss trains these two quantities to match. Finally, between equations (10, 11) in Geng et al. (2025), v is replaced with ˙Xt where it appears quadratically, thereby pulling an expectation through a square and missing a resulting trace covariance term (Boffi et al., 2025); interestingly, this causes Meanflow to have wrong stationary points when the stopgrad is not used. Meanflow with stopgrad does have correct stationary points (Sabour et al., 2025). Flow Map Matching (Boffi et al., 2024) learns a two-time flow map, enabling mapping along the probability flow in either direction without adversarial training. The Lagrangian loss requires only time derivatives, but relies on an additional invertibility loss, which encourages invertibility via swapping the time arguments: 
+
+fθ (t, u, f θ (u, t, x )) ≈ x. 
+
+Here the model is trained with the second time argument either larger or smaller than the first. This is straightforward to compute, but gradient steps require evaluating the model and its inverse at each training step. Boffi et al. (2025) introduce stopgrad placements for the LSD, ESD, and PSD loss functionals from Boffi et al. (2024) that substantially improve image generation performance. Given this empirical success, understanding why these stopgrads help is important: they likely have good theoretical properties, but this remains to be shown. 
+
+Distillation methods . A complementary line of work approaches flow map learning by distilling the outputs of fully pretrained flow matching velocity models into few-step solvers. Specifically, the unknown v in the flow map identities is taken to be a pretrained network. By contrast, we emphasize training from scratch, avoiding dependence on a teacher model and ensuring that all components of the flow map are learned end-to-end. That said, distillation can be attractive in practice when a pretrained model is already trusted (when vθ corresponds to the endpoint distributions and the chosen αt and σt, or when the objective is weaker—for example, to marginally sample from the approximated data distribution without explicitly solving the probability flow ODE). 
+
+## 7 DISCUSSION AND LIMITATIONS 
+
+Identifying functions through PDEs Consider a PDE solved by a sought-after mapping f , fea-turing a combination of terms such as the time and space derivatives ∂tf, ∂ xf . The PDE being solved means that f sets the residual to 0. Such an f can be found by minimizing a squared error loss built from the residual. Which terms should be parameterized by the model and which should be approximated as part of a ground-truth loss target? If the equations can be rewritten in several ways, which yield easier or more challenging objectives? Answering this is applicable to improving training objectives for generative models as well as solving more general PDE-related tasks with neural networks and optimization. 
+
+Invertibility The loss targets an invertible function at optimum. To simplify training, we explicitly give up knowing the inverse, meaning that we only learn maps in one direction. Luckily, this is the usual scenario for generative modeling. For likelihoods, one can still substitute −∂tfθ for vθ in the probability flow ODE (Song et al., 2021; Boffi and Vanden-Eijnden, 2023). Thus this method can be seen from the perspective of training a normalizing flow (Tabak and Vanden-Eijnden, 2010; Tabak and Turner, 2013; Rezende and Mohamed, 2015; Papamakarios et al., 2021) without requiring the invertible architecture or inverse-dependent loss. 
+
+Architectures. SGFlow, Flow Map Matching, Simplified Consistency Models, and Meanflow all specify models whose time-derivatives equal the target of diffusion model training, but directly adapt architectures meant for diffusion models themselves. Example architectures used in these works are the UNet from Dhariwal and Nichol (2021), the diffusion transformer from Peebles and Xie (2023); Ma et al. (2024), and the EDM architecture from Karras et al. (2022; 2024). These architectures may thus be suboptimal for the problem at hand, precisely because the target of interest is defined as a function often computed in many diffusion model forward passes (an integral). In this work, compute limitations did not allow for the thorough exploration of architectures, but the authors believe that rethinking architectures is a convincing direction to improve the quality and training-efficiency of learned flow maps. 8Published as a conference paper at ICLR 2026 
+
+## REFERENCES 
+
+Abramson, J., Adler, J., Dunger, J., Evans, R., Green, T., Pritzel, A., Ronneberger, O., Willmore, L., Ballard, A. J., Bambrick, J., et al. (2024). Accurate structure prediction of biomolecular interactions with alphafold 3. Nature , 630(8016):493–500. Albergo, M. S., Boffi, N. M., and Vanden-Eijnden, E. (2023). Stochastic interpolants: A unifying framework for flows and diffusions. arXiv preprint arXiv:2303.08797 .Albergo, M. S. and Vanden-Eijnden, E. (2022). Building normalizing flows with stochastic inter-polants. arXiv preprint arXiv:2209.15571 .Albergo, M. S. and Vanden-Eijnden, E. (2024). Learning to sample better. Journal of Statistical Mechanics: Theory and Experiment , 2024(10):104014. Balduzzi, D., Racaniere, S., Martens, J., Foerster, J., Tuyls, K., and Graepel, T. (2018). The mechanics of n-player differentiable games. In International Conference on Machine Learning ,pages 354–363. PMLR. Bartosh, G., Vetrov, D. P., and Andersson Naesseth, C. (2024). Neural flow diffusion models: Learnable forward process for improved diffusion modelling. Advances in Neural Information Processing Systems , 37:73952–73985. Boffi, N. M., Albergo, M. S., and Vanden-Eijnden, E. (2024). Flow map matching. arXiv preprint arXiv:2406.07507 .Boffi, N. M., Albergo, M. S., and Vanden-Eijnden, E. (2025). How to build a consistency model: Learning flow maps via self-distillation. arXiv preprint arXiv:2505.18825 .Boffi, N. M. and Vanden-Eijnden, E. (2023). Probability flow solution of the fokker–planck equation. 
+
+Machine Learning: Science and Technology , 4(3):035012. Dhariwal, P. and Nichol, A. (2021). Diffusion models beat gans on image synthesis. Advances in neural information processing systems , 34:8780–8794. Esser, P., Kulal, S., Blattmann, A., Entezari, R., Müller, J., Saini, H., Levi, Y., Lorenz, D., Sauer, A., Boesel, F., et al. (2024). Scaling rectified flow transformers for high-resolution image synthesis. 
+
+arXiv preprint arXiv:2403.03206 .Geng, Z., Deng, M., Bai, X., Kolter, J. Z., and He, K. (2025). Mean flows for one-step generative modeling. arXiv preprint arXiv:2505.13447 .Goodfellow, I. J., Pouget-Abadie, J., Mirza, M., Xu, B., Warde-Farley, D., Ozair, S., Courville, A., and Bengio, Y. (2014). Generative adversarial nets. Advances in neural information processing systems , 27. Gretton, A., Borgwardt, K. M., Rasch, M. J., Schölkopf, B., and Smola, A. (2012). A kernel two-sample test. The Journal of Machine Learning Research , 13(1):723–773. Heusel, M., Ramsauer, H., Unterthiner, T., Nessler, B., and Hochreiter, S. (2017). Gans trained by a two time-scale update rule converge to a local nash equilibrium. Advances in neural information processing systems , 30. Ho, J., Jain, A., and Abbeel, P. (2020). Denoising diffusion probabilistic models. Advances in neural information processing systems , 33:6840–6851. Karras, T., Aittala, M., Aila, T., and Laine, S. (2022). Elucidating the design space of diffusion-based generative models. Advances in neural information processing systems , 35:26565–26577. Karras, T., Aittala, M., Lehtinen, J., Hellsten, J., Aila, T., and Laine, S. (2024). Analyzing and improving the training dynamics of diffusion models. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 24174–24184. Kim, D., Lai, C.-H., Liao, W.-H., Murata, N., Takida, Y., Uesaka, T., He, Y., Mitsufuji, Y., and Ermon, S. (2023). Consistency trajectory models: Learning probability flow ode trajectory of diffusion. 
+
+arXiv preprint arXiv:2310.02279 .9Published as a conference paper at ICLR 2026 Kingma, D. P., Salimans, T., Poole, B., and Ho, J. (2021). Variational diffusion models. arXiv preprint arXiv:2107.00630 .Lipman, Y., Chen, R. T., Ben-Hamu, H., Nickel, M., and Le, M. (2022). Flow matching for generative modeling. arXiv preprint arXiv:2210.02747 .Liu, X., Gong, C., and Liu, Q. (2022). Flow straight and fast: Learning to generate and transfer data with rectified flow. arXiv preprint arXiv:2209.03003 .Liu, X., Zhang, X., Ma, J., Peng, J., et al. (2023). Instaflow: One step is enough for high-quality diffusion-based text-to-image generation. In The Twelfth International Conference on Learning Representations .Lu, C. and Song, Y. (2024). Simplifying, stabilizing and scaling continuous-time consistency models. 
+
+arXiv preprint arXiv:2410.11081 .Ma, N., Goldstein, M., Albergo, M. S., Boffi, N. M., Vanden-Eijnden, E., and Xie, S. (2024). Sit: Exploring flow and diffusion-based generative models with scalable interpolant transformers. In 
+
+European Conference on Computer Vision , pages 23–40. Springer. Pandey, K. and Mandt, S. (2023). A complete recipe for diffusion generative models. In Proceedings of the IEEE/CVF International Conference on Computer Vision , pages 4261–4272. Papamakarios, G., Nalisnick, E., Rezende, D. J., Mohamed, S., and Lakshminarayanan, B. (2021). Normalizing flows for probabilistic modeling and inference. Journal of Machine Learning Research ,22(57):1–64. Peebles, W. and Xie, S. (2023). Scalable diffusion models with transformers. In Proceedings of the IEEE/CVF international conference on computer vision , pages 4195–4205. Rezende, D. and Mohamed, S. (2015). Variational inference with normalizing flows. In International conference on machine learning , pages 1530–1538. PMLR. Sabour, A., Fidler, S., and Kreis, K. (2025). Align your flow: Scaling continuous-time flow map distillation. arXiv preprint arXiv:2506.14603 .Salimans, T. and Ho, J. (2022). Progressive distillation for fast sampling of diffusion models. arXiv preprint arXiv:2202.00512 .Singhal, R., Goldstein, M., and Ranganath, R. (2023). Where to diffuse, how to diffuse, and how to get back: Automated learning for multivariate diffusions. arXiv preprint arXiv:2302.07261 .Singhal, R., Goldstein, M., and Ranganath, R. (2024). What’s the score? automated denoising score matching for nonlinear diffusions. In International Conference on Machine Learning , pages 45734–45758. PMLR. Smola, A. J., Gretton, A., and Borgwardt, K. (2006). Maximum mean discrepancy. In 13th international conference, ICONIP , volume 6. Sohl-Dickstein, J., Weiss, E., Maheswaranathan, N., and Ganguli, S. (2015). Deep unsupervised learning using nonequilibrium thermodynamics. In International conference on machine learning ,pages 2256–2265. pmlr. Song, Y. and Dhariwal, P. (2023). Improved techniques for training consistency models. arXiv preprint arXiv:2310.14189 .Song, Y., Dhariwal, P., Chen, M., and Sutskever, I. (2023). Consistency models. arXiv preprint arXiv:2303.01469 .Song, Y., Durkan, C., Murray, I., and Ermon, S. (2021). Maximum likelihood training of score-based diffusion models. Advances in neural information processing systems , 34:1415–1428. Song, Y., Sohl-Dickstein, J., Kingma, D. P., Kumar, A., Ermon, S., and Poole, B. (2020). Score-based generative modeling through stochastic differential equations. arXiv preprint arXiv:2011.13456 .Tabak, E. G. and Turner, C. V. (2013). A family of nonparametric density estimation algorithms. 
+
+Communications on Pure and Applied Mathematics , 66(2):145–164. 10 Published as a conference paper at ICLR 2026 Tabak, E. G. and Vanden-Eijnden, E. (2010). Density estimation by dual ascent of the log-likelihood. 
+
+Communications in Mathematical Sciences , 8(1):217–233. Zhou, L., Ermon, S., and Song, J. (2025). Inductive moment matching. arXiv preprint arXiv:2503.07565 .11 Published as a conference paper at ICLR 2026 
+
+## ACKNOWLEDGMENTS 
+
+This work was partly supported by the NIH/NHLBI Award R01HL148248, NSF Award 1922658 NRT-HDR: FUTURE Foundations, Translation, and Responsibility for Data Science, NSF CAREER Award 2145542, NSF Award 2404476, ONR N00014-23-1-2634, Optum, and Apple. This work was also supported by IITP with a grant funded by the MSIT of the Republic of Korea in connection with the Global AI Frontier Lab International Collaborative Research. Mark Goldstein would like to thank the Simons Foundation and Flatiron Institute for funding and compute resources that supported this project. Anshuk Uppal would like to thank the Centre for Basic Machine Learning Research in Life Sciences, and Technical University Denmark. The authors thank Eric Vanden-Eijnden and Amirmojtaba Sabour for fruitful discussion on related work and for providing feedback on the theoretical results. 
+
+## A PROOFS FOR STATIONARY POINTS 
+
+A.1 FIRST VARIATION DEFINITIONS 
+
+We consider scalar-valued loss functions L : F → R that map a function f ∈ F to a real value. Define the tangent space Tf (F) at f . This space contains functions h ∈ T f (F) such that there exists a curve indexed by scalar ϵ such that for each ϵ, fϵ ∈ F , and we have that f0 = f and ( ddϵ fϵ)|ϵ=0 = h.The first variation δL of such a functional L evaluated at f ∈ F in direction h ∈ T f (F) is defined as: 
+
+δL[f ; h] := 
+
+ ddϵ L[f + ϵh ]
+
+
+
+> ϵ=0
+
+(17) We then have that f ∗ is a stationary point w.r.t. F if δL[f ∗; h] = 0 for all h ∈ T f ∗ (F).A.2 STOPGRAD FOR FUNCTIONALS 
+
+We define the stopgrad symbol sg for a functional as follows. Let O be a functional that maps two functions f, g to a real value. Let L[f ] be a functional that is written in terms of O with symbol sg as 
+
+L[f ] := O[f, sg [f ]] , then we evaluate the following two quantities as follows 
+
+L[f ] = O[f, f ] (18) 
+
+δL[f ; h] = δO[f, f ; h, 0] (19) That is, the functional evaluates as usual but in a first variation, we do not perturb terms in sg . This corresponds to the stopgrad or detach() operation used in machine learning code with autodifferentia-tion. 12 Published as a conference paper at ICLR 2026 A.3 FIRST VARIATION OF ORIGINAL LOSS FUNCTIONAL 
+
+Our functional L[ ˜f ] acts on functions ˜f . According to the definitions in Section A.1, we need to compute δL[ ˜f ; h] = ( ddϵ L[ ˜f + ϵh ]) ϵ=0 . The functional is: 
+
+T1[ ˜f ] : = ∥(∂tf )(t,u,x t) + ( ∂xf )(t,u,x t) ˙xt∥2 
+
+> f=x+( u−t) ˜f
+
+T2[ ˜f ] : = ∥(∂xf )(t,u,x t)( ˙ xt − E[ ˙ xt|xt]) ∥2 
+
+> f=x+( u−t) ˜f
+
+A[ ˜f ] = T1[ ˜f ] − T2[ ˜f ]
+
+L[ ˜f ] = Eq(t,u ),q (x0),q (x1)
+
+h
+
+A[ ˜f ]
+
+i
+
+Lets define the path fϵ by replacing ˜f with ˜fϵ := ˜f + ϵh . Then: 
+
+fϵ := x + ( u − t) ˜fϵ = x + ( u − t)( ˜f + ϵh ) = x + ( u − t) ˜f + ϵ(u − t)h (20) Then 
+
+ddϵ L[ ˜f + ϵh ] = E
+
+h ddϵ A[ ˜fϵ]
+
+i
+
+= E
+
+h ddϵ T1[ ˜f + ϵh ] − ddϵ T2[ ˜f + ϵh ]
+
+i
+
+(21) We first compute this derivative and then evaluate it at ϵ = 0 .So 
+
+∂tfϵ = ∂t
+
+h
+
+x + ( u − t) ˜f + ϵ(u − t)h
+
+i
+
+(22) 
+
+= ∂tx + ∂t
+
+h
+
+(u − t) ˜f
+
+i
+
++ ϵ∂ t
+
+h
+
+(u − t)h
+
+i
+
+(23) 
+
+= ( u − t)∂t ˜f − ˜f + ϵ
+
+
+
+(u − t)∂th − h
+
+
+
+(24) 
+
+= ( u − t)( ∂t ˜f + ϵ∂ th) − ( ˜f + ϵh ) (25) and 
+
+∂xfϵ = ∂x
+
+h
+
+x + ( u − t) ˜f + ϵ(u − t)h
+
+i
+
+= I + ( u − t)∂x( ˜f + ϵh ) (26) and 
+
+ddϵ ∂tfϵ = ddϵ 
+
+h
+
+(u − t)( ∂t ˜f + ϵ∂ th) − ( ˜f + ϵh )
+
+i
+
+(27) 
+
+= ddϵ 
+
+h
+
+(u − t)∂t ˜f + ϵ(u − t)∂th − ˜f − ϵh 
+
+i
+
+(28) 
+
+= ddϵ 
+
+h
+
+ϵ(u − t)∂th − ϵh 
+
+i
+
+(29) 
+
+= ( u − t)∂th − h (30) and 
+
+ddϵ ∂xfϵ = ddϵ 
+
+h
+
+I + ( u − t)∂x( ˜f + ϵh )
+
+i
+
+(31) 
+
+= ddϵ I + ddϵ (u − t)∂x ˜f + ddϵ (u − t)∂xϵh (32) 
+
+= ( u − t)∂xh (33) For the first term, 
+
+T1[ ˜f + ϵh ] = ∥∂tfϵ + ( ∂xfϵ) ˙ xt∥2
+
+Differentiating 
+
+ddϵ T1[ ˜f + ϵh ] = 2 
+
+
+
+∂tfϵ + ( ∂xfϵ) ˙ xt
+
+⊤ ddϵ 
+
+
+
+∂tfϵ + ( ∂xfϵ) ˙ xt
+
+
+
+(34) 
+
+= 2 
+
+
+
+∂tfϵ + ( ∂xfϵ) ˙ xt
+
+⊤
+
+(u − t)∂th − h
+
+| {z } + ( u − t)∂xh
+
+| {z } ˙xt
+
+
+
+(35) 13 Published as a conference paper at ICLR 2026 
+
+= 2 
+
+
+
+(u − t)( ∂t ˜f + ϵ∂ th) − ( ˜f + ϵh )
+
+| {z } +( I + ( u − t)∂x( ˜f + ϵh )
+
+| {z }) ˙ xt
+
+⊤
+
+(36) 
+
+
+
+(u − t)∂th − h
+
+| {z } + ( u − t)∂xh
+
+| {z } ˙xt
+
+
+
+(37) So 
+
+ddϵ T1[ ˜f + ϵh ] ϵ=0 
+
+= 2 
+
+
+
+(u − t)( ∂t ˜f + ∂x ˜f ˙xt) − ˜f + ˙ xt
+
+⊤
+
+(u − t)( ∂th + ∂xh ˙xt) − h
+
+
+
+(38) For the second term, 
+
+T2[ ˜f + ϵh ] = ∥∂xfϵ( ˙ xt − v)∥2 (39) and 
+
+ddϵ T2[ ˜f + ϵh ] = 2 
+
+h
+
+∂xfϵ( ˙ xt − v)
+
+i⊤ ddϵ 
+
+h
+
+∂xfϵ( ˙ xt − v)
+
+i
+
+(40) 
+
+= 2 
+
+h
+
+∂xfϵ( ˙ xt − v)
+
+i⊤ ddϵ (∂xfϵ)( ˙ xt − v) (41) 
+
+= 2 
+
+h 
+
+I + ( u − t)∂x( ˜f + ϵh )
+
+
+
+( ˙ xt − v)
+
+i⊤
+
+(u − t)∂xh( ˙ xt − v) (42) So 
+
+ddϵ T2[ ˜f + ϵh ] ϵ=0 = 2 
+
+h 
+
+I + ( u − t)∂x ˜f
+
+
+
+( ˙ xt − v)
+
+i⊤
+
+(u − t)∂xh( ˙ xt − v) (43) So combining 
+
+ddϵ A ϵ=0 
+
+= 2 
+
+
+
+(u − t)( ∂t ˜f + ∂x ˜f ˙xt) − ˜f + ˙ xt
+
+⊤
+
+(u − t)( ∂th + ∂xh ˙xt) − h
+
+
+
+(44) 
+
+− 2
+
+h 
+
+I + ( u − t)∂x ˜f
+
+
+
+( ˙ xt − v)
+
+i⊤
+
+(u − t)∂xh( ˙ xt − v) (45) At t = u, this simplifies 
+
+1[ t = u] ddϵ A[ ˜fϵ] ϵ=0 
+
+= 2( ˙ xt − ˜f )⊤(−h) (46) which is the first variation for regression that makes ˜f equal to E[ ˙ xt|xt]. Summarizing, 
+
+δL[ ˜f ; h] = E
+
+h
+
+2
+
+
+
+(u − t)( ∂t ˜f + ∂x ˜f ˙xt) − ˜f + ˙ xt
+
+⊤
+
+(u − t)( ∂th + ∂xh ˙xt) − h
+
+
+
+(47) 
+
+− 2  I + ( u − t)∂x ˜f ( ˙ xt − v)⊤(u − t)∂xh( ˙ xt − v)
+
+i
+
+(48) 14 Published as a conference paper at ICLR 2026 A.4 LEMMA : VELOCITY MATCHES AT A STATIONARY POINT OF ORIGINAL FUNCTIONAL 
+
+Lemma 1. Let ˜f ∗ be a stationary point of L. Assume that ˜f ∗ is bounded. Assume that ˜f ∗, v ∈
+
+C1 in arguments (t, u, x ) and that all expectations of terms featured in the integrand of L (i.e., 
+
+v, ˜f , ∂ t ˜f , ∂ u ˜f , ∂ x ˜f , . . . ) are finite. Then we have that ˜f ∗(t, t, ·) = v(t, ·) where the velocity v(t, x ) = 
+
+E[ ˙ xt|xt].Proof. We proceed by contradiction. By the premise, we are at a stationary point ˜f ∗. Let f ∗ := 
+
+x + ( u − t) ˜f ∗. By the definition of stationary point in section A.1, we have that δL[ ˜f ∗; h] = 0 for all admissible h. Suppose for the sake of contradiction that at this stationary point, the velocity does not match, meaning 
+
+−∂tf ∗(t, t, ·) = ˜f ∗(t, t, ·)̸ =
+
+|{z} 
+
+> suppose for contradiction
+
+v(t, ·) (49) The proof proceeds by picking a direction for which the first variation is nonzero, providing a contradiction to being at a stationary point. The contradiction (the direction for which the first variation is nonzero) is constructed to arise from assuming that the velocity does not match, meaning that by contradiction the velocity does not match. Specific care is taken to ensure that this direction is admissible, in this case meaning it is a continuous function. We name a sequence of functions gη such that there exists η∗ such that gη∗ is continuous but yields the nonzero variation when chosen as a direction. To establish this existence under continuity, the dominated convergence theorem is used. Let us define g(t, u, x ) = 1[ t = u]
+
+ ˜f ∗(t, u, x ) − v(t, x )
+
+
+
+and evaluate it at t = u so that g(t, t, x ) = ˜f ∗(t, t, x ) − v(t, x ). We then define the soft indicator Iη (t, u ) that goes to 1[ t = u] as η → 0 and define it as: 
+
+Iη (t, u ) = 1[ η > 0]2 
+
+
+
+1 − 11 + exp( − 1 
+
+> η2
+
+(t − u)2)
+
+
+
++ 1[ η = 0]1[ t = u] (50) Using the soft indicator, we define a sequence of functions gη so that as η → 0 we will have pointwise convergence of gη (t, t, x ) → g(t, t, x ) which also means that gη (t, u, x ) for t̸ = u goes to 0. We pick 
+
+gη (t, u, x ) = Iη (t, u )
+
+ ˜f ∗(t, t, x ) − v(t, x )
+
+
+
+(51) 
+
+Pointwise convergence of g in eta. We first establish pointwise convergence of gη to g for all arguments (t, u, x ) as η → 0 from the right. 
+
+∀ˆη ≥ 0, lim 
+
+> η→(ˆ η)+
+
+gη (t, u, x ) = gˆη (t, u, x ) (52) To show this, for any ˆη > 0, use continuity of gˆη (t, u, x ) in ˆη (product of function without η times the soft indicator which is continuous). Then to establish for ˆη = 0 , we consider two cases t = u
+
+and t̸ = u. For equality: 
+
+lim  
+
+> η→0+
+
+gη (t, t, x ) (53) 
+
+= lim 
+
+> η→0+
+
+Iη (t, t )
+
+ ˜f ∗(t, t, x ) − v(t, x )
+
+
+
+(54) 
+
+= lim 
+
+> η→0+
+
+h
+
+1[ η > 0]2 
+
+
+
+1 − 11 + exp(0) 
+
+
+
++ 1[ η = 0] 
+
+i ˜f ∗(t, t, x ) − v(t, x )
+
+
+
+(55) 
+
+= lim 
+
+> η→0+
+
+h
+
+1[ η > 0]1 + 1[ η = 0] 
+
+i ˜f ∗(t, t, x ) − v(t, x )
+
+
+
+(56) 
+
+= lim 
+
+> η→0+
+
+1[ η ≥ 0] 
+
+ ˜f ∗(t, t, x ) − v(t, x )
+
+
+
+(57) 
+
+= ˜f ∗ − v (58) 15 Published as a conference paper at ICLR 2026 which equals gη=0 (t, t, x ), establishing continuity. Now for t̸ = u. ∀δ > 0 we must name an η(δ)
+
+such that |gη(δ) − g0| < δ , i.e., |gη(δ) − 0| < δ . Assume | ˜f ∗ − v| < k uniformly in all input values t,x. 
+
+lim  
+
+> η→0+
+
+gη (t, u, x )= lim 
+
+> η→0+
+
+h
+
+1[ η > 0]2 
+
+
+
+1 − 11 + exp( − 1 
+
+> η2
+
+(t − u)2)
+
+
+
++ 1[ η = 0]1[ t = u]
+
+i ˜f ∗(t, t, x ) − v(t, x )
+
+
+
+= lim 
+
+> η→0+
+
+h
+
+1[ η > 0]2 
+
+
+
+1 − 11 + exp( − 1 
+
+> η2
+
+(t − u)2)
+
+i ˜f ∗(t, t, x ) − v(t, x )
+
+
+
+Since we are finding a δ and η(δ) so that |gη(δ) − 0| < δ which means |gη(δ)| < δ , this just means we can set δ to an upper bound on the term we are limiting: let the indicator take on 1 as when it is 0 we are done. 
+
+δ = 2(1 − 11 + exp( ... ) ) k (59) 
+
+⇐⇒ δk = 2(1 − 11 + exp( − 1 
+
+> η2
+
+(t − u)2) ) (60) 
+
+⇐⇒ δ
+
+2k = 1 − 11 + exp( − 1 
+
+> η2
+
+(t − u)2) (61) 
+
+⇐⇒ 1 − δ
+
+2k = 11 + exp( − 1 
+
+> η2
+
+(t − u)2) (62) 
+
+⇐⇒ 2k
+
+2k − δ
+
+2k = 11 + exp( − 1 
+
+> η2
+
+(t − u)2) (63) 
+
+⇐⇒ 2k − δ
+
+2k = 11 + exp( − 1 
+
+> η2
+
+(t − u)2) (64) 
+
+⇐⇒ 2k
+
+2k − δ = 1 + exp( − 1
+
+η2 (t − u)2) (65) 
+
+⇐⇒ 2k
+
+2k − δ − 1 = exp( − 1
+
+η2 (t − u)2) (66) 
+
+⇐⇒ 2k
+
+2k − δ − 2k − δ
+
+2k − δ = exp( − 1
+
+η2 (t − u)2) (67) 
+
+⇐⇒ δ
+
+2k − δ = exp( − 1
+
+η2 (t − u)2) (68) 
+
+⇐⇒ log δ
+
+2k − δ = − 1
+
+η2 (t − u)2 (69) 
+
+⇐⇒ − log δ
+
+2k − δ = 1
+
+η2 (t − u)2 (70) 
+
+⇐⇒ − log δ
+
+> 2k−δ
+
+(t − u)2 = 1
+
+η2 (71) 
+
+⇐⇒ − (t − u)2
+
+log δ
+
+> 2k−δ
+
+= η2 (72) Now note that the soft indicator is strictly < 1 and that gη for fixed (t, u, x ) is between −k and 0 or 0
+
+and k depending on the sign of ˜f ∗ − v, but never both. So its magnitude is at most k. So 
+
+|gη(δ) − g0| = |gη(δ) − 0| < δ < k (73) This can help us ascertain that the above square root to solve for η will be well defined: 
+
+δ < k =⇒ 2k − δ > k (74) 
+
+=⇒ 12k − δ < 1
+
+k (75) 16 Published as a conference paper at ICLR 2026 
+
+=⇒ δ
+
+2k − δ < δk (76) 
+
+=⇒ δ
+
+2k − δ < 1 (77) 
+
+=⇒ log δ
+
+2k − δ < log 1 (78) 
+
+=⇒ log δ
+
+2k − δ < 0 (79) meaning 
+
+η(δ) = 
+
+s (t − u)2
+
+| log δ 
+
+> 2k−δ
+
+| (80) thus establishing convergence of gη → g as η → 0+ for each (t, u, x ) i.e. pointwise convergence. Now recall the first variation of L (section A.3) and consider it as a function of η:
+
+s(η) := δL[ ˜f ∗; gη ] = E
+
+"
+
+2
+
+
+
+(u − t)( ∂t ˜f ∗) − ˜f ∗ + ( I + ( u − t)( ∂x ˜f ∗)) ˙ xt
+
+⊤
+
+(81) 
+
+
+
+(u − t)∂tgη − gη + ( u − t)( ∂xgη ) ˙ xt
+
+
+
+(82) 
+
+− 2
+
+h 
+
+I + ( u − t)∂x ˜f ∗
+
+( ˙ xt − v)
+
+i⊤
+
+(u − t)∂xgη ( ˙ xt − v)
+
+#
+
+(83) 
+
+Pointwise convergence of integrand in eta. Collect the variables ω = ( t, u, x 0, x 1) and recall that xt and ˙xt are functions of (x0, x 1). Define ϕη (ω) as shorthand for the expectand so that 
+
+s(η) = E[ϕη (ω)] . Under the boundedness assumptions and noting that ϕη only polynomially combines gη with (∂t ˜f ∗, ∂ u ˜f ∗, ∂ x ˜f ∗, v, ∂ xv, . . . ), similar reasoning used to show gη → g can also be used to establish that ϕη → ϕ pointwise. 
+
+Establish upper envelope. In addition to pointwise convergence of ϕη → ϕ as η → 0 from the right, we need an upper envelope G(ω). Beyond the assumptions, the only thing needed to show that an upper envelope exists is to control the term |(u − t)∂tIη (t, u )|. The derivative of the soft indicator appears since ∂tgη = ∂t(Iη g) = ( ∂tIη )g + Iη ∂tg. At η = 0 we have Iη (t, u ) = 1[ t = u],so (u − t) ∂tIη (t, u ) vanishes identically: it is 0 for t̸ = u because I0 is constant, and for t = u
+
+because of the (u − t) prefactor. For η > 0, define: 
+
+z := (t − u)2
+
+η2 , σ(z) := 11 + exp( −z) , σ′(z) := exp( −z)[1 + exp( −z)] 2 (84) Note that for η > 0,
+
+∂tIη (t, u ) = 2 2( t − u)
+
+η2 σ′( (t − u)2
+
+η2 ) (85) and so 
+
+|(u − t)∂tIη (t, u )| = 2( u − t) 2( u − t)
+
+η2 σ′( (t − u)2
+
+η2 ) = 4 zσ ′(z) ≤ sup 
+
+> z≥0
+
+4zσ ′(z) ≤ C0 < ∞ (86) Because r(z) := 4 zσ ′(z) is continuous and satisfies r(0) = 0 and r(z) → 0 as z → ∞ , it attains a finite maximum. This bound is independent of η. Thus every term containing (u − t)∂tgη is uniformly bounded in η by a product of a constant (from the bound and Iη ∈ [0 , 1) ). The other quantities in ϕ are bounded by assumption. Thus such a bounding envelope G(ω) exists. 
+
+Using dominated convergence. First, 
+
+lim  
+
+> η→0+
+
+s(η) = lim  
+
+> η→0+
+
+E[ϕη ] = lim  
+
+> η→0+
+
+p(t = u)E[ϕη | t = u] + p(t < u )E[ϕη | t < u ] (87) 17 Published as a conference paper at ICLR 2026 By the pointwise convergence of ϕη → ϕ as η → 0+ and by the envelope, we can compute the limit of the first and second terms separately. Expanding the first term (with p(t = u)): 
+
+lim 
+
+> η→0+
+
+p(t = u)E[ϕη | t = u] = lim 
+
+> η→0+
+
+p(t = u)E
+
+"
+
+2
+
+
+
+(u − t)( ∂t ˜f ∗) − ˜f ∗ + ( I + ( u − t)( ∂x ˜f ∗)) ˙ xt
+
+⊤
+
+
+
+(u − t)∂tgη − gη + ( u − t)( ∂xgη ) ˙ xt
+
+
+
+− 2
+
+h 
+
+I + ( u − t)∂x ˜f ∗
+
+( ˙ xt − v)
+
+i⊤
+
+(u − t)∂xgη ( ˙ xt − v) | t = u
+
+#
+
+= lim  
+
+> η→0+
+
+p(t = u)E
+
+"
+
+2
+
+
+
+− ˜f ∗ + ˙ xt
+
+⊤
+
+− gη
+
+
+
+| t = u
+
+#
+
+= lim 
+
+> η→0+
+
+p(t = u)E
+
+"
+
+2
+
+
+
+− ˜f ∗ + E[ ˙ xt | xt]
+
+⊤
+
+− gη
+
+
+
+| t = u
+
+#
+
+= lim 
+
+> η→0+
+
+p(t = u)E
+
+"
+
+2
+
+
+
+− ˜f ∗ + v
+
+⊤
+
+− gη
+
+
+
+| t = u
+
+#
+
+= p(t = u)E
+
+"
+
+lim  
+
+> η→0+
+
+2
+
+
+
+− ˜f ∗ + v
+
+⊤
+
+− gη
+
+
+
+| t = u
+
+#
+
+= p(t = u)E
+
+"
+
+lim  
+
+> η→0+
+
+2|| − ˜f ∗ + v|| 22 | t = u
+
+#
+
+This term is greater than zero by the assumption that the velocity does not match at the stationary point and the assumption of positive probability p(t = u) > 0.Expanding the second term (with p(t < u )): 
+
+lim 
+
+> η→0+
+
+p(t < u )E[ϕη | t < u ] = lim 
+
+> η→0+
+
+p(t < u )E
+
+"
+
+2
+
+
+
+(u − t)( ∂t ˜f ∗) − ˜f ∗ + ( I + ( u − t)( ∂x ˜f ∗)) ˙ xt
+
+⊤
+
+
+
+(u − t)∂tgη − gη + ( u − t)( ∂xgη ) ˙ xt
+
+
+
+− 2
+
+h 
+
+I + ( u − t)∂x ˜f ∗
+
+( ˙ xt − v)
+
+i⊤
+
+(u − t)∂xgη ( ˙ xt − v) | t < u 
+
+#
+
+= p(t < u )E
+
+"
+
+lim  
+
+> η→0+
+
+2
+
+
+
+(u − t)( ∂t ˜f ∗) − ˜f ∗ + ( I + ( u − t)( ∂x ˜f ∗)) ˙ xt
+
+⊤
+
+
+
+(u − t)∂tgη − gη + ( u − t)( ∂xgη ) ˙ xt
+
+
+
+− 2
+
+h 
+
+I + ( u − t)∂x ˜f ∗
+
+( ˙ xt − v)
+
+i⊤
+
+(u − t)∂xgη ( ˙ xt − v) | t < u 
+
+#
+
+There’s no η in the first term in each of the two dot products that make up the expectand, so we can focus on the second term in the dot products, where t < u For the second term in the first dot product: 
+
+lim 
+
+> η→0+
+
+
+
+(u − t)∂tgη − gη + ( u − t)( ∂xgη ) ˙ xt
+
+
+
+= lim 
+
+> η→0+
+
+
+
+(u − t)∂tgη − Iη (t, u )
+
+ ˜f ∗(t, t, x ) − v(t, x )
+
+
+
++ ( u − t)( Iη (t, u )∂x[
+
+ ˜f ∗(t, t, x ) − v(t, x )
+
+
+
+]) ˙ xt
+
+
+
+= lim 
+
+> η→0+
+
+(u − t)∂tgη
+
+= lim 
+
+> η→0+
+
+(u − t)∂t[Iη (t, u )
+
+ ˜f ∗(t, t, x ) − v(t, x )
+
+
+
+]= lim 
+
+> η→0+
+
+(u − t)( ∂tIη )g + Iη ∂tg
+
+18 Published as a conference paper at ICLR 2026 
+
+= lim 
+
+> η→0+
+
+(u − t)( ∂tIη )Iη (t, u )
+
+ ˜f ∗(t, t, x ) − v(t, x )
+
+
+
+=
+
+ ˜f ∗(t, t, x ) − v(t, x )
+
+
+
+(u − t) lim 
+
+> η→0+
+
+(∂tIη )Iη (t, u ) = 0 
+
+The last equality holds because the function and its time derivative both go to zero. This means the first product in the expectation goes to zero. By a similar argument the second term goes to zero as well. Putting it all together 
+
+L := lim  
+
+> η→0+
+
+s(η) = lim  
+
+> η→0+
+
+E[ϕη ] = lim  
+
+> η→0+
+
+p(t = u)E[ϕη | t = u] + p(t < u )E[ϕη | t < u ] > 0
+
+Resultingly, 
+
+∃η0 > 0 s.t. ∀η∗ s.t. 0 < η ∗ < η 0 =⇒ | s(η∗) − L| < ϵ (88) If we pick ϵ = 0 .5L then 
+
+|s(η∗) − L| < . 5L =⇒ s(η∗) > L − .5L = .5L > 0 (89) so s(η∗) > 0. But this contradicts being at a stationary point. It cannot be that ˜f ∗(t, t, ·)̸ = v(t, ·).Therefore the velocity must match. 19 Published as a conference paper at ICLR 2026 A.5 THEOREM 1We present a proof about the functional stationary points of the SGFlow functional. We use the definitions of first variation and stationary point from section A.1 and the definition of functional stopgrad from section A.2. 
+
+Theorem. Let q(t, u ) be a joint distribution over time pairs with support over t ≤ u and with positive probability on t = u. Let the family ˜F include functions ˜f that are continuously differentiable in all arguments. Let xt = αtx0 + σtx1 and ˙xt = ˙ αtx0 + ˙ σtx1. Define f (t, u, x ) := x + ( u − t) ˜f (t, u, x ).Let expectations be computed over q(X0)q(X1). Let sg stand for stop-gradient. Define: 
+
+L[ ˜f ] := E
+
+"
+
+∥(∂tf )|(t,u,x t) + ( ∂xf )|(t,u,x t) ˙xt∥2 − ∥ (∂xf )(t,u,x t)( ˙ xt − E[ ˙ xt|xt]) ∥2
+
+#
+
+Lsg [ ˜f ] := E
+
+"
+
+∥(∂tf )(t,u,x t) + ( ∂xf )(t,u,x t) ˙xt∥2 − ∥ (∂xf )(t,u,x t)( ˙ xt + sg [( ∂tf )] (t,t,x t))∥2
+
+#
+
+Then ˜f ∗ is a stationary point of Lsg with respect to ˜F if and only if ˜f ∗ is a stationary point of L with respect to ˜F.Proof. Case 1: If ˜f ∗ is a stationary point of L, then ˜f ∗ is a stationary point of Lsg .
+
+• Since ˜f ∗ is a stationary point, δL[ ˜f ∗; ·] = 0 
+
+• by section A.4, we have that ∂tf ∗(t, t, x ) = − ˜f ∗(t, t, x ) = −E[ ˙ xt|xt] where f ∗ = x +(u − t) ˜f ∗
+
+• Lsg = L
+
+• Since Lsg = L, then δLsg [ ˜f ∗; ·] = δL[ ˜f ∗; ·] = 0 
+
+Case 2: If ˜f ∗ is not a stationary point of L, then ˜f ∗ is not a stationary point of Lsg .
+
+Since ˜f ∗ is not a stationary point of L, then ∃h that is admissible (continuous) such that δL[ ˜f ∗; h]̸ = 0 .Then, 
+
+δL[ ˜f ∗; h]
+
+| {z }
+
+> LHS
+
+= E
+
+h
+
+1[ t = u] . . . 
+
+i| {z }
+
+> RHS-L
+
++ E
+
+h
+
+1[ t̸ = u] . . . 
+
+i| {z }
+
+> RHS-R
+
+(90) If the LHS is nonzero, then one of RHS-L or RHS-R is nonzero. Consider both cases. 
+
+Case 2a: The RHS-R is nonzero and RHS-L is zero. RHS-L being zero means that the velocity matches, which means that RHS-R has the same first variation between L and Lsg . So they must coincide regarding stationary points. 
+
+Case 2b: RHS-L is nonzero and RHS-R is either zero or nonzero. Case 2b-i. δLsg [ ˜f ∗; h]̸ = 0 directly holds. This is all we are trying to ensure anyway, so we are done in this case. 
+
+Case 2b-ii. Define the soft indicator, Iη :
+
+Iη (t, u ) = 1[ η > 0]2 
+
+
+
+1 − 11 + exp( − 1 
+
+> η2
+
+(t − u)2)
+
+
+
++ 1[ η = 0]1[ t = u]. (91) Define the direction, ˆhη :
+
+ˆhη (t, u, x ) = Iη (t, u )h(t, u, x ). (92) 
+
+ˆhη is continuously differentiable for any η > 0. This is true because it is a product of two functions that are each continuously differentiable ( h is assumed continuously differentiable). Recall the mapping s(η) from Section A.4, that maps η to δL[ ˜f ∗; ˆhη ]. Under the conditions of dominated 20 Published as a conference paper at ICLR 2026 convergence established in Section A.4, we know that ∃η∗ > 0 such that ˆhη∗ is a continuously differentiable function for which δL[ ˜f ∗; ˆhη∗ ]̸ = 0 . This must mean that the velocity is not matched. But we know that if the velocity does not match, we are not at a stationary point of Lsg either, since 
+
+Lsg and L coincide on penalizing velocity matching on t = u.
+
+## B OTHER USEFUL DERIVATIONS AND RESULTS 
+
+B.1 GRADIENT UPDATES ARE NOT OPTIMIZATION OF ONE SCALAR OBJECTIVE VIA GRADIENTS 
+
+We show here that there exists a data distribution and a model such that the SGFlow updates are not the gradient of any single scalar objective. We illustrate this by considering an simple 1D setting. The key point is that, even in this restricted case, the update field induced by the stopgrad operator has non-zero curl and therefore cannot be written as the gradient of any scalar objective J(θ). The form to be differentiated is: 
+
+Lsg (θ) = EXt
+
+h
+
+∂tfθ (t, u, X t) + ( ∂xfθ (t, u, X t)) ˙Xt
+
+> 2
+
+i
+
+− EXt
+
+h
+
+(∂xfθ (t, u, X t))   ˙Xt − stopgrad[ ˜fθ (t, t, X t)]  2i
+
+.
+
+(93) for fθ (t, u, x ) = x + ( u − t) ˜fθ (t, u, x ). Let us work in 1D and fix values of Xt = x and ˙Xt = d, a constant. To accomplish this, we can choose X1 freely and set X0 = X1 − d, so that the interpolation satisfies both Xt = x and ˙Xt = d. In this case the expectations in (93) collapse to evaluation at this point (equivalently, think of us approximating with 1 Monte Carlo sample). Now, consider the parameters θ = ( θ1, θ 2)⊤ and a single time pair (t, u ) such that at the position Xt = x,
+
+∂tfθ (t, u, x ) = 0 , ∂xfθ (t, u, x ) = θ1, ˜fθ (t, t, x ) = θ2. (94) (For a sufficiently expressive model, such local values can be realized; we only need existence of such a configuration.). Plugging these into (93) and dropping the expectation (single point), the SGFlow functional is: 
+
+Lsg = ( θ1d)2 −  θ1
+
+ d − stopgrad [θ2] 2. (95) Let ˜∇ denote differentiation with the stopgrad applied to θ2 in the second term. Differentiating (95) with respect to θ1 yields 
+
+˜∇θ1 Lsg = 2 θ1d2 − 2θ1
+
+ d − θ2
+
+2 (96) 
+
+= 2 θ1
+
+
+
+d2 − (d − θ2)2
+
+(97) 
+
+= 2 θ1
+
+
+
+d2 − (d2 − 2dθ 2 + θ22 )
+
+
+
+(98) 
+
+= 2 θ1
+
+ 2dθ 2 − θ22
+
+ (99) 
+
+= 2 θ1θ2(2 d − θ2). (100) Here the stopgrad on θ2 only affects the second term and does not change the first term. For θ2, all occurrences appear inside a stopgrad and the first term does not depend on θ2, hence 
+
+˜∇θ2 Lsg = 0 . (101) Thus the update field induced by SGFlow in this simple example is 
+
+g(θ1, θ 2) :=  g1(θ1, θ 2), g 2(θ1, θ 2) =  2θ1θ2(2 d − θ2), 0. (102) If this update were the gradient of some scalar objective J(θ1, θ 2), then the mixed partial derivatives would commute: 
+
+g1 = ∂θ1 J, g2 = ∂θ2 J ⇒ ∂θ2 g1 = ∂θ1 g2. (103) However, 
+
+∂g 1
+
+∂θ 2
+
+= ∂∂θ 2
+
+
+
+2θ1θ2(2 d − θ2)
+
+
+
+= 2 θ1
+
+ 2d − θ2 − θ2
+
+ = 4 θ1(d − θ2), (104) 21 Published as a conference paper at ICLR 2026 
+
+∂g 2
+
+∂θ 1
+
+= 0 , (105) and hence the curl of the update field is 
+
+∂g 1
+
+∂θ 2
+
+− ∂g 2
+
+∂θ 1
+
+= 4 θ1(d − θ2), (106) which is non-zero for generic θ (for example, whenever θ1̸ = 0 and θ2̸ = d). Therefore g is a smooth vector field with non-zero curl and cannot be written as the gradient of any scalar objective J(θ1, θ 2)
+
+in general. Put differently, a constraint on the relationship between the parameters of the model and the value of the chosen datapoint is necessary to ensure zero curl. This 1D example is a specific instantiation of SGFlow (93) with a simple model and a single training point. It shows that, once we introduce the stopgrad on ˜fθ (t, t, x ), the resulting optimization dynamics are in general non-conservative . The stopgrad structure breaks the symmetry required for the updates to be the gradient of a single scalar function. In this sense, SGFlow is formally a (two-player) game 
+
+rather than standard gradient descent on one potential function—or, if one prefers, a nongradient vector flow. B.2 GAUSSIAN COUNTEREXAMPLE : M EANFLOW WITHOUT STOPGRADS 
+
+We compute the first variation of the no-stopgrad Meanflow functional Lnosg at the true flow map for the 1D Gaussian case X0 ∼ N (0 , 1) , X1 ∼ N (μ, λ 2), Xt = (1 − t)X0 + tX 1, ˙Xt = X1 − X0.
+
+Closed-form Gaussian quantities. 
+
+• Marginal variance: σ2 
+
+> t
+
+= (1 − t)2 + t2λ2.• Velocity: v(t, x ) = α(t)( x − tμ ) + μ where α(t) = tλ 2−(1 −t)
+
+> σ2
+> t
+
+.• Flow map: f ∗(t, u, x ) = m(t, u )( x − tμ ) + uμ where m(t, u ) = σu/σ t.• Jacobian: ∂xf ∗(t, u, x ) = m(t, u ).
+
+Posterior variance. We compute V (t) := Var ( ˙Xt | Xt). Since ˙Xt = X1 − X0 and Xt =(1 − t)X0 + tX 1 with X0 ⊥ X1:
+
+Var ( ˙Xt) = 1 + λ2, (107) 
+
+Cov ( ˙Xt, X t) = tλ 2 − (1 − t), (108) 
+
+Var (Xt) = σ2 
+
+> t
+
+. (109) By the Gaussian conditional variance formula: 
+
+V (t) = Var ( ˙Xt) − Cov ( ˙Xt, X t)2
+
+Var (Xt) = (1 + λ2) − (tλ 2 − (1 − t)) 2
+
+σ2
+
+> t
+
+= λ2
+
+σ2
+
+> t
+
+. (110) (The last equality follows from expanding: (1 + λ2)σ2 
+
+> t
+
+− (tλ 2 − (1 − t)) 2 = λ2.) In particular, 
+
+V (t) > 0 for all t ∈ [0 , 1] when λ > 0.
+
+First variation of Lnosg at the true flow map. Let ˜f ϵ = ˜f + ϵh . The quantity inside the norm of 
+
+Lnosg is R(ϵ) = ˜f ϵ− ˙Xt−(u−t)( ∂t ˜f ϵ+∂x ˜f ϵ ˙Xt), with derivative R′(ϵ) = h−(u−t)( ∂th+∂xh ˙Xt).The first variation is δL = 2 E[R(0) · R′(0)] .Write ˙Xt = v + ξ where ξ = ˙Xt − v satisfies E[ξ | Xt] = 0 . At the true flow map, the transport equation kills the v-part of R(0) , leaving R(0) = −∂xf ∗ ξ where ∂xf ∗ = 1+( u−t)∂x ˜f ∗. Similarly, 
+
+R′(0) = ϕ − (u − t)∂xh ξ where ϕ = h − (u − t)( ∂th + ∂xh v ).Computing E[R(0) · R′(0)] : the cross-term E[∂xf ∗ ξ ϕ ] = 0 by the tower property (condition on 
+
+(t, u, X t); E[ξ | Xt] = 0 ). The remaining term gives 
+
+δLnosg [ ˜f ∗; h] = 2 E (u − t) ∂xf ∗ V (t, X t) ∂xh. (111) 22 Published as a conference paper at ICLR 2026 
+
+Evaluating in the Gaussian case. Substituting ∂xf ∗ = m(t, u ) and V (t) = λ2/σ 2 
+
+> t
+
+, and choosing 
+
+h(t, u, x ) = x (so ∂xh = 1 ): 
+
+δLnosg [ ˜f ∗; h = x] = 2 λ2 E
+
+> t,u
+
+ (u − t) m(t, u )
+
+σ2
+
+> t
+
+
+
+. (112) Since λ > 0, (u − t) > 0 for t < u , m(t, u ) = σu/σ t > 0, and σt > 0, every factor in the integrand is strictly positive. Therefore δLnosg [ ˜f ∗; h = x] > 0: the first variation is nonzero, so ˜f ∗ is not astationary point of Lnosg .B.3 DIFFERENTIATING W .R.T. t VERSUS u
+
+In this work, f (t, u, x ) maps forward in time from Xt = x to Xu along the flow dX s = v(s, X s). In Meanflow (Geng et al., 2025), the map is written in reverse time. The transport PDE can be obtained by differentiating the forward-time flow map with respect to t, or the reverse-time flow map with respect to u. In both cases, let t ≤ u:
+
+ffwd (t, u, x ) = x +
+
+Z ut
+
+v(s, X s)ds = x +
+
+Z ut
+
+v(s, f fwd (t, s, x )) ds (113) On the other hand, if moving in reverse time: 
+
+frev (t, u, x ) = x +
+
+Z tu
+
+v(s, X s)ds = x −
+
+Z ut
+
+v(s, f rev (s, u, x )) ds (114) Differentiating via the Leibniz rule yields: 
+
+∂tffwd (t, u, x ) + ( ∂xffwd )( t, u, x )v(t, x ) = 0 (115) 
+
+∂ufrev (t, u, x ) + ( ∂xfrev )( t, u, x )v(u, x ) = 0 (116) 23

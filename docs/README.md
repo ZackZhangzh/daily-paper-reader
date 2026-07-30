@@ -18,79 +18,58 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-29
-- 运行时间：2026-07-29 21:32:03 UTC
+- 最新运行日期：2026-07-30
+- 运行时间：2026-07-30 21:55:05 UTC
 - 运行状态：成功
-- 本次总论文数：19
+- 本次总论文数：12
 - 精读区：7
-- 速读区：12
+- 速读区：5
 
 ### 今日简报（AI）
-今日精读7篇，聚焦混合数据生成与生成器分类一致性两大高分突破（均9.0/10）。  
-最值得关注：连续-类别混合表格数据的对数坐标生成模型，以及联合流匹配实现生成器与分类器协同优化。  
-普通读者可优先看这两篇精读，其余速读涉及视频压缩、平均场博弈和对称性破缺，按兴趣选读即可。
-- 详情：[/202607/29/README](/202607/29/README)
+今日精读7篇，聚焦扩散模型下的HDR图像生成与真实视频去模糊两大高难任务，另有5篇速读覆盖概率场景表示与点云生成。  
+最值得关注：无需训练的分布塑形策略可显著提升HDR生成质量，而一步式扩散模型在视频去模糊上展现出强泛化能力，两者均为降低计算成本的同时保持视觉真实感提供了新思路。  
+普通读者可优先体验相关开源工具或在线演示，感受AI在图像/视频增强上的实时效果，并留意后续在手机摄影或短视频处理中的应用落地。
+- 详情：[/202607/30/README](/202607/30/README)
 
 ### 精读区论文标签
-1. [Logit-Coordinate Generative Models for Mixed Continuous-Categorical Tabular Data](/202607/29/2607.23348v1-logit-coordinate-generative-models-for-mixed-continuous-categorical-tabular-data)  
+1. [LumaGuide: Distribution Shaping for Training-Free HDR Generation in Diffusion Models](/202607/30/2607.26237v1-lumaguide-distribution-shaping-for-training-free-hdr-generation-in-diffusion-models)  
    标签：评分：9.0/10、query:fm
-   evidence：用于混合表格数据的流匹配和扩散
-2. [Joint Flow Matching for Generator-Consistent Classification](/202607/29/2607.23946v1-joint-flow-matching-for-generator-consistent-classification)  
-   标签：评分：9.0/10、query:fm
-   evidence：联合流匹配用于生成建模与分类
-3. [GrainGS: Gradient-Decoupled Gaussian Splatting for Efficient Dynamic Novel View Synthesis](/202607/29/2607.21448v1-graings-gradient-decoupled-gaussian-splatting-for-efficient-dynamic-novel-view-synthesis)  
-   标签：评分：8.0/10、query:dgs-physics
-   evidence：动态3D高斯溅射与逐高斯变形用于场景重建
-4. [Soft-Constrained Optimization of Latent Space in Variational Autoencoders](/202607/29/2607.23751v1-soft-constrained-optimization-of-latent-space-in-variational-autoencoders)  
+   evidence：通过塑形扩散采样分布实现无需训练的HDR生成
+2. [RealVDeblur: One-Step Diffusion for Generalizable Real-World Video Deblurring](/202607/30/2607.20628v1-realvdeblur-one-step-diffusion-for-generalizable-real-world-video-deblurring)  
    标签：评分：8.0/10、query:fm
-   evidence：潜在变量模型优化
-5. [Physics-Guided Generative AI for Property-Targeted 3D Porous Media Design](/202607/29/2607.24274v1-physics-guided-generative-ai-for-property-targeted-3d-porous-media-design)  
+   evidence：扩散概率模型用于视频去模糊
+3. [FMOPF: Latent Flow Matching with Constraint-Aware Interaction Priors for AC Optimal Power Flow](/202607/30/2607.22788v1-fmopf-latent-flow-matching-with-constraint-aware-interaction-priors-for-ac-optimal-power-flow)  
    标签：评分：8.0/10、query:fm
-   evidence：物理引导的扩散生成模型用于多孔介质
-6. [Rethinking the Generation Order of Block Diffusion Language Models](/202607/29/2607.24306v1-rethinking-the-generation-order-of-block-diffusion-language-models)  
+   evidence：潜在流匹配生成建模
+4. [Learning Sampling Parameters for Diffusion Models](/202607/30/2607.23488v1-learning-sampling-parameters-for-diffusion-models)  
    标签：评分：8.0/10、query:fm
-   evidence：扩散概率模型
-7. [Parallel Decoding Distillation for Fast Image and Video Generation](/202607/29/2607.26004v1-parallel-decoding-distillation-for-fast-image-and-video-generation)  
+   evidence：扩散概率模型采样参数学习
+5. [Can Deep Generative Models Reproduce Non-Stationary Gaussian Random Fields?](/202607/30/2607.25929v1-can-deep-generative-models-reproduce-non-stationary-gaussian-random-fields)  
    标签：评分：8.0/10、query:fm
-   evidence：流匹配模型的并行解码蒸馏加速
+   evidence：评估流匹配、扩散和VAE在高斯随机场上
+6. [Flow Map Learning via Nongradient Vector Flow](/202607/30/2607.26398v1-flow-map-learning-via-nongradient-vector-flow)  
+   标签：评分：8.0/10、query:fm
+   evidence：学习流生成模型中ODE轨迹的流图
+7. [Genie Sim PanoWorld: An Infinite Indoor 3D World Generation Pipeline via Panoramic Scene Modeling and Simulation](/202607/30/2607.26646v1-genie-sim-panoworld-an-infinite-indoor-3d-world-generation-pipeline-via-panoramic-scene-modeling-and-simulation)  
+   标签：评分：8.0/10、query:fm
+   evidence：用于3D世界生成的潜在视频扩散模型
 
 ### 速读区论文标签
-1. [Generative Video Compression with Adaptive Score Distillation](/202607/29/2607.22772v1-generative-video-compression-with-adaptive-score-distillation)  
+1. [Coherent Visualization of 2D Scalar Field Contour Ensembles With Probabilistic Latent Space Modeling](/202607/30/2607.24596v1-coherent-visualization-of-2d-scalar-field-contour-ensembles-with-probabilistic-latent-space-modeling)  
    标签：评分：7.0/10、query:fm
-   evidence：使用从头训练的扩散模型进行生成式视频压缩
-2. [All in One: Generative Modeling as Mean-Field Game Design](/202607/29/2607.23026v1-all-in-one-generative-modeling-as-mean-field-game-design)  
+   evidence：使用VAE进行概率潜空间建模
+2. [Schrödinger's Cat: Probabilistic Representation and Prediction of Potential Scene Kinematics](/202607/30/2607.25984v1-schrdingers-cat-probabilistic-representation-and-prediction-of-potential-scene-kinematics)  
    标签：评分：7.0/10、query:fm
-   evidence：生成模型作为平均场博弈设计
-3. [Beyond ICA: Identifiability by Symmetry Breaking](/202607/29/2607.23182v1-beyond-ica-identifiability-by-symmetry-breaking)  
+   evidence：具有结构化潜在表示的场景运动学概率生成模型
+3. [FPSGen: Flexible Point Cloud Scene Generation with BEV-Supported Transport Flows](/202607/30/2607.26645v1-fpsgen-flexible-point-cloud-scene-generation-with-bev-supported-transport-flows)  
    标签：评分：7.0/10、query:fm
-   evidence：深度生成模型可识别性
-4. [From Score Learning to Discretized Sampling: An End-to-End Generalization Analysis of Diffusion Models](/202607/29/2607.23226v1-from-score-learning-to-discretized-sampling-an-end-to-end-generalization-analysis-of-diffusion-models)  
+   evidence：基于BEV传输流的点云场景生成
+4. [Amortized Moment Matching for Visual Generation](/202607/30/2607.26860v1-amortized-moment-matching-for-visual-generation)  
    标签：评分：7.0/10、query:fm
-   evidence：基于分数的扩散模型泛化分析
-5. [VIPER: Visual In-Context Physics Reasoning for Physically Plausible Video Generation](/202607/29/2607.23472v1-viper-visual-in-context-physics-reasoning-for-physically-plausible-video-generation)  
-   标签：评分：7.0/10、query:fm
-   evidence：基于视觉上下文物理推理的视频生成，实现物理合理运动
-6. [Escaping the Euclidean Void: Manifold-Informed Flow Matching for Sequential Recommendation](/202607/29/2607.23762v1-escaping-the-euclidean-void-manifold-informed-flow-matching-for-sequential-recommendation)  
-   标签：评分：7.0/10、query:fm
-   evidence：流匹配生成建模
-7. [OmniCache: Multidimensional Hierarchical Feature Caching For Diffusion Models](/202607/29/2607.23844v1-omnicache-multidimensional-hierarchical-feature-caching-for-diffusion-models)  
-   标签：评分：7.0/10、query:fm
-   evidence：扩散概率模型推理加速
-8. [GenSplatCodec: Feed-Forward Gaussian Splatting Compression via One-Step Diffusion](/202607/29/2607.24403v1-gensplatcodec-feed-forward-gaussian-splatting-compression-via-one-step-diffusion)  
-   标签：评分：7.0/10、query:fm
-   evidence：用于3DGS压缩的生成模型
-9. [Physics-Grounded Fluid Video Generation with a Simulation Dataset and Dual-Stream Optical-Flow Supervision](/202607/29/2607.25321v1-physics-grounded-fluid-video-generation-with-a-simulation-dataset-and-dual-stream-optical-flow-supervision)  
-   标签：评分：7.0/10、query:fm
-   evidence：基于视频扩散模型的流体生成，加入物理监督
-10. [Nova3D: Code-Native Generation of Programmable 3D Assets](/202607/29/2607.22738v1-nova3d-code-native-generation-of-programmable-3d-assets)  
+   evidence：扩散去噪器和视觉生成模型
+5. [Fashion-3DLR: A Controllable 3D Garment Generation Using Pairwise Fashion Elements for Intelligent Design](/202607/30/2607.23189v1-fashion-3dlr-a-controllable-3d-garment-generation-using-pairwise-fashion-elements-for-intelligent-design)  
    标签：评分：6.0/10、query:fm
-   evidence：可编程3D资产的生成模型
-11. [Generative Distributionally Robust Optimization](/202607/29/2607.24983v1-generative-distributionally-robust-optimization)  
-   标签：评分：6.0/10、query:fm
-   evidence：分布鲁棒优化的生成模型
-12. [Normalizing Flows to Reconstruct Pseudo-PDFs](/202607/29/2607.25282v1-normalizing-flows-to-reconstruct-pseudo-pdfs)  
-   标签：评分：6.0/10、query:fm
-   evidence：正态流生成模型
+   evidence：3D服装生成模型
 
 
 <div class="dpr-home-promo-card dpr-home-panel">
