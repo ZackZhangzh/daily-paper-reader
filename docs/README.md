@@ -18,19 +18,35 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-31
-- 运行时间：2026-07-31 20:21:56 UTC
+- 最新运行日期：2026-08-01
+- 运行时间：2026-08-01 19:59:43 UTC
 - 运行状态：成功
-- 本次总论文数：0
-- 精读区：0
+- 本次总论文数：5
+- 精读区：5
 - 速读区：0
 
 ### 今日简报（AI）
-> 今日无新推荐，系统未产出可展示论文。
-- 详情：[/202607/31/README](/202607/31/README)
+今日精读5篇生成模型论文，重点攻克扩散模型的高效采样与偏差问题。  
+最值得关注：《Latent-Kernel》用离散流映射实现几步生成，速度提升显著；《Spectral Prior》从频域入手降低曝光偏差，生成质量更稳定。  
+普通读者可优先体验《Latent-Kernel》的快速生成效果，或关注《Spectral Prior》如何让图像细节更自然。
+- 详情：[/202608/01/README](/202608/01/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [Latent-Kernel Discrete Flow Maps for Few-Step Generation](/202608/01/2607.27529v1-latent-kernel-discrete-flow-maps-for-few-step-generation)  
+   标签：评分：9.0/10、query:fm
+   evidence：潜在核离散流映射用于少步生成
+2. [Spectral Prior for Reducing Exposure Bias in Diffusion Models](/202608/01/2607.22091v1-spectral-prior-for-reducing-exposure-bias-in-diffusion-models)  
+   标签：评分：8.0/10、query:fm
+   evidence：通过频谱对齐解决扩散模型的曝光偏差
+3. [SILICA: Repurposing Diffusion Priors for Joint Glass Segmentation and Depth Estimation](/202608/01/2607.24249v1-silica-repurposing-diffusion-priors-for-joint-glass-segmentation-and-depth-estimation)  
+   标签：评分：8.0/10、query:fm
+   evidence：利用扩散先验进行玻璃感知
+4. [4DHumanDiff: Direct Text-to-4DGS Generation for Consistent 360-Degree Dynamic Humans](/202608/01/2607.27634v1-4dhumandiff-direct-text-to-4dgs-generation-for-consistent-360-degree-dynamic-humans)  
+   标签：评分：8.0/10、query:fm
+   evidence：使用扩散框架直接文本生成4D高斯泼溅
+5. [The Geometric Nature and a Free Proxy for Flow-Matching Uncertainty](/202608/01/2607.27933v1-the-geometric-nature-and-a-free-proxy-for-flow-matching-uncertainty)  
+   标签：评分：8.0/10、query:fm
+   evidence：流匹配不确定性及几何解释
 
 ### 速读区论文标签
 - 本次无速读推荐。

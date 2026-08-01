@@ -1,0 +1,314 @@
+Title: 4DHumanDiff: Direct Text-to-4DGS Generation for Consistent 360-Degree Dynamic Humans
+
+URL Source: https://arxiv.org/pdf/2607.27634v1
+
+Published Time: Fri, 31 Jul 2026 00:31:02 GMT
+
+Number of Pages: 14
+
+Markdown Content:
+# SCIENCE CHINA 
+
+# Information Sciences 
+
+# . RESEARCH PAPER .4DHumanDiff: Direct Text-to-4DGS Generation for Consistent 360-Degree Dynamic Humans 
+
+## Renlong Wu, Haoran Chen, Yuxiang Wei, Xiaowei Jin *, Wangmeng Zuo & Hui Li      
+
+> School of Computer Science and Technology, Harbin Institute of Technology, Harbin 150001, China
+> Abstract Generating high-quality 360-degree dynamic human assets from text prompts is challenging. Existing methods usually synthesize monocular or multi-view videos first and then fit a 4D representation, which is expensive and often causes incomplete geometry or view-inconsistent renderings. We present 4DHumanDiff, a diffusion framework that directly generates dynamic humans represented by 4D Gaussian Splatting (4DGS) from text prompts. By modeling the structured 4D representation space end-to-end, 4DHumanDiff avoids video pre-generation and per-scene reconstruction, making it better suited for view-consistent and temporally coherent asset generation. The model uses a 3D U-Net backbone with temporal attention for motion-aware generation. We further construct a large-scale text-to-4DGS dataset with 60,000 high-quality pairs, and introduce 2D regularization and training-free 4D interpolation to improve rendering quality and motion smoothness. Experiments show that 4DHumanDiff generates consistent 360-degree dynamic humans within one minute, achieves better temporal and multi-view consistency, and reduces inference time by more than 10 ×.
+> Keywords 4D Generation, Dynamic Human Generation, 360-Degree Humans, Text-to-4DGS Generation, Diffusion Models
+> Citation Renlong WU, Haoran CHEN, Yuxiang WEI, Xiaowei JIN, Wangmeng ZUO, and Hui LI. 4DHumanDiff: Direct Text-to-4DGS Generation for Consistent 360-Degree Dynamic Humans. Sci China Inf Sci, for review
+
+## 1 Introduction 
+
+High-quality 360-degree dynamic human assets are important for applications such as virtual try-on [1–4] and immersive telepresence [5–8]. However, creating such assets with conventional pipelines is often time-consuming, as it usually requires careful modeling, rigging, and manual animation [9]. With the rapid progress of generative models [10–12], generating dynamic humans directly from text prompts has become increasingly attractive. Still, most existing generative approaches mainly aim at producing images or videos, rather than 360-degree dynamic human assets that can be rendered consistently from arbitrary viewpoints. Some methods [9, 13–16] address this problem with a two-stage pipeline. They first synthesize monocular or multi-view videos from text, and then reconstruct a 4D representation for each scene through a separate fitting process [9,17–21]. Although effective to some extent, this design has several limitations. First, both video synthesis and per-scene 4D fitting are computationally expensive, leading to high overall cost. Second, when only monocular videos are generated, the limited viewpoint coverage makes it difficult to recover complete 360-degree geometry. Third, even when multi-view videos are synthesized, inconsistencies across viewpoints often remain, which further degrade the quality of the reconstructed 4D assets. These limitations suggest that generating 360-degree dynamic humans through an intermediate video representation is not an ideal solution. In this work, we instead formulate dynamic human generation directly in the 4D representation space. Rather than generating videos first and reconstructing later, we directly generate dynamic humans represented by 4D Gaussian Splatting (4DGS) [22, 23] from text prompts, as shown in Fig. 1. This formulation is particularly suitable for human generation. Compared with general dynamic scenes, the human body has a clearer underlying structure, 
+
+i.e ., different body parts form an organized whole, and their motions are also strongly correlated over time. Such spatial organization and temporal regularity are difficult to preserve when generation is performed only in the video space, but can be modeled more naturally in a structured 4D representation. Meanwhile, directly using 4DGS as the generation target better aligns the generation process with the final goal of 360-degree dynamic human asset creation. It removes the need for video pre-generation and per-scene 4D fitting, reduces the overall computational burden, and provides a more suitable basis for generating view-consistent and temporally coherent results.    
+
+> * Corresponding author (email: xiaowei.jin@hit.edu.cn) arXiv:2607.27634v1 [cs.CV] 30 Jul 2026 Sci China Inf Sci 2Temporal Dimension
+> “A man wearing a
+> pink T -shirt is raising
+> his arms.”
+> “A man wearing a
+> yellow T -shirt is raising
+> his leg.”
+> Temporal Dimension Temporal Dimension
+> Temporal Dimension
+> 360 -degree 4DGS
+> 360 -degree 4DGS
+> Projection
+> Projection
+> < 1 minutes
+> 4DHumanDiff
+> Figure 1 4DHumanDiff directly generates 4DGS-based 360-degree dynamic humans within one minute from user-provided text prompts.
+
+Based on this idea, we propose 4DHumanDiff, a diffusion framework for direct text-to-4DGS human generation, as shown in Fig. 2. Our model is built on a 3D diffusion backbone [24–26] and incorporates temporal self-attention to model motion consistency over time. A key part of this work is the construction of a large-scale text-to-4DGS dataset for dynamic humans. Built upon MVHumanNet [27], the dataset contains 60,000 high-quality text–4DGS pairs and enables training 4DHumanDiff from scratch. In addition, we introduce a 2D regularization term and a training-free 4D interpolation strategy to improve rendering quality and motion smoothness. With these designs, 4DHumanDiff can generate high-quality 360-degree dynamic human assets within one minute. Experiments show that 4DHumanDiff achieves strong performance in both quality and efficiency. It produces more consistent results than existing methods in both temporal and view dimensions, while reducing the overall generation time by more than 10 ×. These results demonstrate the potential of direct text-to-4DGS generation as an effective alternative to existing video-first pipelines for dynamic human generation. The main contributions of this work are summarized as follows: 
+
+• We present 4DHumanDiff, a diffusion framework that directly generates 4DGS-based 360-degree dynamic humans from text prompts, avoiding the video-first and reconstruction-later pipeline used in previous methods. 
+
+• We construct a large-scale text-to-4DGS dataset for dynamic humans, containing 60,000 spatially and tempo-rally structured 4DGS human samples, which enable training the proposed 4DHumanDiff from scratch. 
+
+• We introduce simple and effective designs, including temporal self-attention, a 2D regularization term, and a training-free 4D interpolation strategy, to improve generation quality and motion smoothness. 
+
+• Extensive experiments show that 4DHumanDiff produces high-quality 360-degree dynamic human generation within one minute, achieving superior temporal and multi-view consistency while reducing inference time by more than 10 ×.
+
+## 2 Related Work 
+
+2.1 3D Representation 
+
+A 3D model can be represented in implicit or explicit manners. Early neural radiance field (NeRF) approaches [28– 33] adopt implicit formulations, encoding scenes without explicitly defined geometry. These methods rely on volu-metric ray marching to optimize a continuous scene representation, resulting in significant computational overhead. 3D Gaussian Splatting [34–41] models world with explicit Gaussian ellipsoids, achieving impressive reconstruction fidelity and real-time rendering performance. However, these methods typically require per-scene optimization, leading to substantial computational cost. Recent works [26, 42–48] explore generalizable 3D reconstruction that can recover 3D models within a few seconds. Sci China Inf Sci 33D ResBlock 
+
+> 3D Attention
+> Temporal Attention
+
+## ⊕ 
+
+> Text Encoder A squatting woman.
+
+⊕ Pixel -Wise Addition 
+
+…     
+
+> 𝐙 𝑡 ∈ℝ𝐽 ×𝐷 ×𝐷 ×𝐷 ×𝐶 𝐙 0∈ℝ𝐽 ×𝐷 ×𝐷 ×𝐷 ×𝐶 Multi -Step Denoising
+
+…  
+
+> 4D
+> Interpolation
+> 𝐙 0
+> ′∈ℝ𝑤𝐽 ×𝐷 ×𝐷 ×𝐷 ×𝐶
+
+…  
+
+> Figure 2 Overview of the proposed 4DHumanDiff. It takes user-provided text prompts as input and directly generates 4DGS-based 360-degree dynamic human assets. The 4D U-Net is built upon a 3D U-Net, where temporal attention layers are incorporated for better temporal consistency. Besides, 4D interpolation is applied to enhance motion smoothness.
+
+2.2 Video-to-4D Reconstruction 
+
+Most 4D reconstruction methods [23, 49–68] introduce an implicit or explicit deformation model for object motion representation to reconstruct 4D models from multi-view videos. However, for single-view video inputs, the problem becomes ill-posed and some studies introduce data-driven priors, such as depth maps [69, 70], optical flows [69, 71–76], tracks [77–80], and generative models [67, 81–83]. Recent generalizable feed-forward 4D reconstruction models [9,48,84–87] have been proposed to avoid per-scene optimization, accelerating the reconstruction. For human reconstruction, most works [17–21,88–105] introduce SMPL [106] prior for better recovering dynamic human assets, which parameterizes the human body as individual shape components and motion-related human poses through 3D mesh scanning and PCA. Despite the remarkable progress, they rely on user-captured high-quality videos for scene recovery, which limits their flexibility and application. 
+
+2.3 Text-to-4D Generation 
+
+Most text-to-4D methods [14–16, 107–111] heavily rely on pretrained video diffusion models. Based on score dis-tillation sampling [112–115], some approaches [109–111, 116] inject generative priors from video diffusion mod-els [12, 13, 117–121] to synthesize 4D assets through per-object optimization. Alternatively, multi-view video-based methods [14–16, 107, 108] first generate multi-view videos from text prompts and then perform 4D reconstruction. However, these methods generally perform unsatisfactorily when generating 360-degree dynamic human assets, due to insufficient multi-view consistency and high computation cost from video diffusion models or per-scene 4D op-timization. Our 4DHumanDiff exploits the diffusion model to directly generate 4DGS-based 360-degree dynamic human assets from user-provided text prompts, without the necessity for any pretrained diffusion model priors. 
+
+## 3 Proposed Method 
+
+3.1 Preliminaries: 4D Gaussian Splatting 
+
+Given a set of images with camera poses, 3D Gaussian Splatting (3DGS) [34] represents a scene as a collection of 3D Gaussian primitives, where an adaptive density control strategy is used to regulate the number of Gaussians. Each 3D Gaussian is parameterized by {x, r, s, α, c}, where x ∈ R3 denotes its center in world space, r ∈ R4 and s ∈ R3
+
+define its rotation and scale, α ∈ R denotes opacity, and c ∈ R3 represents the spherical harmonics coefficients for color. To model object motion in dynamic scenes, 4D Gaussian Splatting (4DGS) [22, 23] defines a set of canonical Gaussians at a reference timestamp and deforms them to other timestamps. Let C and Gj denote the canonical Gaussians and the dynamic Gaussians at the j-th timestamp, respectively. The deformation can be written as, 
+
+Gj = F(C, j ; Θ F ). (1) Here, F denotes the deformation function parameterized by Θ F . Considering the structural characteristics of the human body, human 4D reconstruction methods [17–21] typically incorporate SMPL priors [106] into the Sci China Inf Sci 4
+
+representation or optimization process. Collectively, a 4DGS G ∈ RJ×N ×C can be regarded as a sequence of 3DGSs, i.e ., G = {Gj }Jj=1 , where J is the number of timestamps, N is the number of Gaussians, and C is the number of feature channels. 
+
+3.2 Text-to-4DGS Human Dataset 
+
+To train 4DHumanDiff, we construct a text-to-4DGS dataset for 360-degree dynamic human generation based on publicly available multi-view dynamic human scans [27, 122–127]. Considering the number of scans, camera views, and motion diversity, we choose MVHumanNet [27] as the primary data source. For each human scan with 48 camera views, we first use Gemini 1.5 [128] to select clips with notable motion, and then generate paired text descriptions and 4DGS representations for each clip. For text annotation, we feed the front-view video of each clip into a vision-language model ( i.e ., Gemini 1.5 [128]) and ask it to describe the human subject. The prompt is: “Please provide a detailed description of the person’s appearance and body motions in this video, including clothing, pose, and action dynamics over time. Focus on the human subject and avoid unnecessary background details.” A straightforward way to obtain the corresponding 4DGS data is to fit each clip with existing 4D human recon-struction methods [17–21], such as GauHuman [17]. However, directly using these reconstructed results as diffusion targets is not ideal for three reasons. First, the number of Gaussians varies across clips due to adaptive density control. Second, the global scales of reconstructed 4DGSs are inconsistent. Third, the Gaussians lack a predefined spatial ordering, leading to a disorganized spatial layout [26]. These issues make it difficult to build a unified and structured representation for text-to-4DGS generation. To address them, we introduce three processing steps. First, we replace adaptive density control with the densification-constrained fitting strategy [26], so that all clips share a fixed number of Gaussians while maintaining fitting quality, i.e ., G ∈ RJ×Nmax ×C , where Nmax is a predefined hyperparameter. Second, we normalize G to a unit scale by jointly rescaling Gaussian centers and scales, yielding the normalized 4DGS ˆG. Let {xj,n | xj,n = ( xj,n , y j,n , z j,n ), j ∈ [1 , J ], n ∈ [1 , N ]} and {sj,n | j ∈ [1 , J ], n ∈ [1 , N ]} denote the Gaussian centers and scales of G, respectively. The normalized center ˆ xj,n and scale ˆ sj,n of ˆG are computed as, 
+
+
+
+x′ 
+
+> j,n
+
+= xj,n − 1
+
+J
+
+1
+
+N
+
+> J
+
+X
+
+> j=1
+> N
+
+X
+
+> n=1
+
+xj,n ,dmax = max 
+
+> j,n
+
+  max( |x′
+
+> j,n
+
+|, |y′
+
+> j,n
+
+|, |z′
+
+> j,n
+
+|),
+
+ˆxj,n = 12dmax 
+
+x′
+
+> j,n
+
+,
+
+ˆsj,n = 12dmax 
+
+sj,n .
+
+(2) This normalization maps all Gaussian centers into a unit cube and reduces scale variation across samples. Third, we reorganize ˆG into an explicit structured representation G′ that preserves both spatial layout and temporal correspondence. Specifically, we first arrange the Gaussians at the first timestamp, ˆG1, into a predefined voxel grid via Optimal Transport [26], thereby establishing a fixed spatial index for all Gaussians. Importantly, this voxelization is performed only once at the first timestamp, rather than independently for each timestamp. For the remaining timestamps, we do not re-voxelize the Gaussians. Instead, each Gaussian at timestamp j is assigned to the same grid position as its corresponding Gaussian at the first timestamp according to the temporal binding relationship. In this way, all timestamps share the same structural layout, while the Gaussian features at each grid location evolve over time to encode motion. This design explicitly preserves temporal correspondence. After these steps, the resulting structured 4DGS is represented as G′ ∈ RJ×D×D×D×C , where D = 3
+
+√Nmax . This structured representation provides a unified space for diffusion modeling and allows us to directly adopt a standard U-Net backbone without complicated architectural modifications. For simplicity, we denote the final structured 4DGS by G.
+
+3.3 Text-to-4DGS Diffusion Model 
+
+Our text-to-4DGS diffusion model aims to learn the distribution p(G) of the structured 4DGS representation G.The generation process is formulated as the reverse of a discrete-time Markov diffusion process. In the forward Sci China Inf Sci 5
+
+process, Gaussian noise is progressively added to a clean sample G0 ∼ p(G), yielding a sequence of noisy samples 
+
+{Gt | t ∈ [0 , T ]}. It can be written as, 
+
+Gt = αtG0 + σtϵ, (3) where ϵ ∼ N (0 , I) denotes Gaussian noise, and αt and σt are the noise schedule coefficients. After sufficient diffusion steps, GT approaches a standard Gaussian distribution. The generation process reverses this diffusion trajectory by iteratively denoising from GT ∼ N (0 , I) to G0.Given an intermediate sample Gt and the text feature Ytext ∈ RL×E , the diffusion network D predicts the clean representation ˆG0. It can be written as, ˆG0 = D(Gt, Ytext ; Θ D ), (4) where Θ D denotes the parameters of D. L and E are the length and channel dimension of Ytext , respectively. 
+
+Model Architecture. Benefiting from the structured organization of G, we adopt 3D convolutions [129, 130] to model spatial structure and temporal attention [9, 121] to capture motion dependency across timestamps, respec-tively. Specifically, following GaussianCube [26], we extend the asymmetric 2D U-Net [24, 25] into a 3D U-Net by replacing the original 2D convolution, attention, upsampling, and downsampling operations with their 3D counter-parts. On top of this backbone, we insert temporal attention layers after each block to explicitly model temporal coherence, resulting in our 4D U-Net, as shown in Fig. 2. Furthermore, under the widely adopted assumption in 4D reconstruction [53–55,62,63,131,132] that only Gaussian positions and shapes vary over time, we keep the color and opacity attributes temporally shared to further improve temporal consistency. 
+
+Model Optimization. Our model is optimized with a two-stage training strategy. We first train the 3D U-Net backbone to capture the spatial structure of the 4DGS representation, and then jointly optimize the whole network together with the temporal attention layers to model temporal coherence. This strategy stabilizes training and improves text-consistent 4D generation. Our training objective consists of a 4D reconstruction loss L4d and a 2D regularization term L2d, which can be written as, 
+
+L = L4d + λL2d. (5) 
+
+λ is the regularization weight. The 4D reconstruction loss L4d supervises the prediction of the clean target G0, i.e ., 
+
+L4d = D(Gt, Ytext ; Θ D ) − G0 
+
+> 1
+
+. (6) To further improve the visual quality of rendered multi-view videos, we introduce a 2D regularization term L2d. It can be written as, 
+
+L2d = L1 + Lvgg . (7) Here, L1 measures the pixel-wise difference between the rendered M -view videos Vpred and the ground-truth videos 
+
+Vgt , which can be written as, 
+
+L1 = ∥Vpred − Vgt ∥1. (8) The perceptual loss Lvgg is defined as, 
+
+Lvgg = ∥ϕ(E(Vpred )) − ϕ(E(Vgt )) ∥1, (9) where ϕ denotes the pre-trained VGG-19 [133] network, and E(·) denotes the patch selection operator that retains only patches containing human regions. This operation reduces background interference in perceptual supervision and provides more targeted supervision on human appearance and motion. 
+
+4D Interpolation. Users generally prefer temporally smooth dynamic results. A straightforward solution is to apply video interpolation [35, 134–137] to rendered videos, or to train an additional interpolation model in 4D space, such as L4GM [9]. However, the former does not explicitly guarantee multi-view consistency, while the latter introduces extra training and inference cost. In contrast, our structured 4DGS explicitly preserves temporal correspondence across timestamps, which allows us to directly interpolate neighboring Gaussian states for smoother motion in a training-free manner. It can be written as,                   
+
+> Gj,i =
+> 
+> 1−i−1
+> W−1
+> 
+> ⊙Gj−1+i−1
+> W−1⊙Gj.(10)
+
+Here, Gj,i denotes the i-th interpolated Gaussian representation between the ( j − 1)-th and j-th timestamps, and 
+
+W is the interpolation factor. Since the interpolation is performed on temporally aligned Gaussian representations, it naturally preserves view consistency while improving motion smoothness. Sci China Inf Sci 6                                                         
+
+> Table 1 Quantitative comparison results. Existing methods first synthesize monocular or multi-view videos from text prompts, followed by per-scene 4D reconstruction. Compared with the video-based two-stage manner, our 4D-based end-to-end 4DHumanDiff performs better while being over 10 ×faster. ↑denotes the higher metric the better, and ↓denotes the lower one the better. The best metric is boldfaced , and the second one is underlined.
+> Category Methods Image Quality ↑
+> Motion Smoothness ↑
+> Subject Consistency ↑
+> Multi-View Consistency ↑
+> Overall Consistency ↑
+> Inference Time (Minutes) ↓
+> Text-to-Video + Video-to-4DGS Wan 2.1 [13] 0.332 0.985 0.896 0.667 0.167 >25 L4GM [9] 0.390 0.994 0.929 0.702 0.177 >11 GenXD [14] 0.405 0.978 0.866 0.798 0.187 >42 SV4D 2.0 [15] 0.387 0.995 0.877 0.800 0.155 >45 4Diffusion [16] 0.473 0.989 0.909 0.740 0.180 >47 Text-to-4DGS 4DHumanDiff (Ours) 0.445 0.998 0.984 0.862 0.188 <1
+
+## 4 Experiments 
+
+4.1 Implementation Details 
+
+In constructing the text-to-4DGS dataset, we use GauHuman [17] to fit each clip for 10k iterations, where the original adaptive density control strategy is replaced by the densification-constrained fitting strategy [26]. We employ the Adam optimizer [138] and follow the learning rate setting of GauHuman [17]. Each fitting process takes about 15 minutes on a single Nvidia GeForce RTX 2080Ti GPU. We set Nmax = 13824, D = 24, and C = 14. To standardize the structured 4DGS representation, we compute the mean ¯ μ ∈ RD×D×D×C and standard deviation ¯σ ∈ RD×D×D×C over the text-to-4DGS dataset, and use them to normalize all training samples. Text features are extracted using a pretrained CLIP encoder [139]. We train 4DHumanDiff with the AdamW optimizer [140] on 8 Nvidia GeForce RTX A6000 GPUs for 300k iterations in total, where the 3D U-Net backbone is first trained for 200k iterations. The whole training process takes about two weeks. We adopt an exponential moving average strategy [141] with a decay rate of 0.9999 to stabilize training. The learning rate is decayed from 5 ×10 −5 to 1 ×10 −6
+
+using cosine annealing [142]. The batch size is set to 8, and the loss weight λ is set to 10. For 2D regularization and 4D interpolation, we set the number of rendered views M to 4 and the interpolation factor W to 8. 
+
+4.2 Evaluation Configurations 
+
+We extract 170 text prompts from real-world videos using Gemini 1.5 [128] for the evaluation. To assess the quality of rendered multi-view videos, we adopt several commonly used VBench [143] metrics, including Image Quality, Subject Consistency, Motion Smoothness, and Overall Consistency. Image Quality measures visual quality using the no-reference metric MUSIQ [144]. Subject Consistency evaluates appearance stability based on DINO [145] feature similarity. Motion Smoothness measures temporal coherence using motion priors from the video interpolation model AMT [146]. Overall Consistency reflects the semantic alignment between rendered videos and text prompts via ViCLIP [147]. In addition, to evaluate multi-view consistency, we measure the appearance stability of rendered multi-view videos at a fixed timestamp using DINO [145] feature similarity, following a protocol similar to Subject Consistency. 
+
+4.3 Compared with State-of-the-Art Methods 
+
+Existing methods generally follow a two-stage paradigm, where generative models first synthesize monocular or multi-view videos from text prompts, followed by per-scene 4D reconstruction. For comparison, we first adopt the recent state-of-the-art text-to-video model Wan 2.1 [13] to generate monocular videos from text prompts, and then reconstruct 4D representations for each scene using GauHuman [17]. We further compare with the feed-forward 4D reconstruction method L4GM [9], which takes the monocular videos generated by Wan 2.1 [13] as input and directly predicts the corresponding 4DGS representations. In addition, we consider three methods based on multi-view video diffusion models, including GenXD [14], SV4D2.0 [15], and 4Diffusion [16]. These methods first generate multi-view videos from the monocular videos synthesized by Wan 2.1 [13], and then perform 4D reconstruction. In our experiments, we observe that severe inconsistencies across the generated multi-view videos often lead to failed 4D reconstruction. Therefore, for these methods, the comparison is conducted directly on the generated multi-view videos themselves, rather than on videos rendered from reconstructed 4D assets. This protocol is more favorable to these compared methods, since it excludes the additional degradation caused by the subsequent 4D reconstruction. Sci China Inf Sci 7  
+
+> Figure 3 Qualitative comparisons. By directly generating human 4D representations from text prompts, our 4DHumanDiff achieves better consistency along temporal and camera-view dimensions. Please zoom in for better observation.
+
+Quantitative Comparison. The quantitative results are summarized in Tab. 1. Overall, 4DHumanDiff achieves strong performance across different evaluation metrics. In particular, our method obtains the best scores on Motion Smoothness, Subject Consistency, and Multi-View Consistency, indicating superior consistency in both temporal Sci China Inf Sci 8  
+
+> Figure 4 Visual effect of loss terms in 4DHumanDiff (see Eqn. (5)). Without L2d, the model produces results with poor perceptual quality.
+
+w/o Tem .
+
+Ours      
+
+> Figure 5 Visual effect of temporal attention. Noticeable appearance changes over time when it is removed ( i.e ., w/o Tem. ).
+> Figure 6 Effect of the view number of rendered videos ( i.e ., M).
+
+dynamics and cross-view appearance. Although our method does not achieve the highest Image Quality score, we attribute this partly to the tendency of video generation models to produce more vivid colors and sharper local patterns, which are often favored by no-reference quality metrics, as also illustrated in Fig. 3. By contrast, our method is designed to prioritize temporally coherent and view-consistent 4D human generation, and therefore shows clearer advantages in consistency-related metrics. In addition, video-based pipelines inevitably introduce substantial computational overhead due to video diffusion and per-scene 4D fitting, whereas our method directly generates 4D representations and avoids these expensive intermediate stages, resulting in over 10 × higher efficiency. Overall, these results demonstrate that 4DHumanDiff is effective and efficient for generating temporally smooth and view-consistent 4D human assets from text prompts. 
+
+Qualitative Comparison. The qualitative comparisons are shown in Fig. 3. First, 4DHumanDiff generates 4D human content that is well aligned with the input text prompts. Second, reconstructing from monocular videos generated by Wan 2.1 [13] often fails to recover complete 360-degree human representations due to limited view-point coverage. Third, the multi-view videos generated by existing multi-view diffusion models exhibit noticeable inconsistencies across large viewpoint changes, mainly because they lack explicit 3D or 4D structural modeling. Although some competing methods may appear sharper in individual frontal views, they often fail to maintain stable human structure and appearance under large viewpoint changes. In contrast, by directly generating 4D representations from text prompts, our method produces more temporally coherent results and significantly better consistency across viewpoints. 
+
+User Study. We further conduct a user study to evaluate the generated results. We randomly select 50 text prompts from the evaluation set and invite 50 participants to perform pairwise comparisons. The results of different methods are presented in random order, and the participants are asked to evaluate them from two aspects, i.e ., overall quality and multi-view consistency. The results show that 4DHumanDiff achieves an average preference rate of 64.8% on overall quality and 76.4% on multi-view consistency, both higher than those of competing methods. Notably, the advantage of our method is more significant on multi-view consistency, indicating that users prefer our results for their more stable human appearance across different viewpoints, even when some competing methods may produce sharper local details in individual views. This again verifies the effectiveness of directly generating structured 4D representations from text prompts. 
+
+## 5 Ablation Study 
+
+We conduct ablation experiments to validate the effectiveness of the main designs in 4DHumanDiff. Specifically, we first study the effect of the loss terms used for model optimization. We then analyze the role of temporal attention in modeling temporal coherence. After that, we evaluate the proposed 4D interpolation strategy for improving motion smoothness. Finally, we verify the effectiveness of temporal voxel binding in preserving temporal correspondence Sci China Inf Sci 94D Interpolation                                            
+
+> Figure 7Visual effects of 4D interpolation. Neighboring timestamps without interpolation are indicated by dashed lines. Notably, 4D interpolation increases the frame rate and produces smoother temporal results.
+> Table 2 Effect of loss terms. ‘NaN’ implies training collapse.
+> L4dL2d
+> Image Quality Subject Consistency Motion Smoothness Multi-View Consistency Overall Consistency
+> ×✓NaN NaN NaN NaN NaN
+> ✓×0.273 0.920 0.996 0.807 0.164
+> ✓✓0.445 0.984 0.998 0.862 0.188
+> Table 3 Effect of the view number of rendered videos ( i.e ., M).
+> MImage Quality Subject Consistency Motion Smoothness Multi-View Consistency Overall Consistency 10.434 0.980 0.998 0.860 0.188 40.445 0.984 0.998 0.862 0.188 80.445 0.983 0.998 0.862 0.188
+
+within the structured 4DGS representation. 
+
+5.1 Effect of Loss Terms 
+
+As shown in Eqn. (5), 4DHumanDiff is optimized with both 4D and 2D supervision terms, namely L4d and L2d. The quantitative effects of these two loss terms are summarized in Tab. 2. Without L4d, the model becomes unstable during optimization and fails to converge, resulting in invalid outputs. Without L2d, the model can still converge stably, but the perceptual quality of the rendered results is noticeably degraded. Combining the two terms yields the best performance across all metrics. The qualitative results in Fig. 4 further show that L2d significantly improves the visual quality of the rendered images. To compute L2d, we render videos from M viewpoints. The quantitative effect of different choices of M is reported in Tab. 3. In general, increasing M leads to better performance, since it implicitly imposes stronger constraints on multi-view consistency. As shown in Fig. 6, a smaller view number ( i.e ., M = 1) tends to produce flattened body shapes under twisting motions, while increasing M effectively alleviates this issue. We set M to 4 by default. Besides, we exclude patches that do not contain human regions when computing the perceptual features, so as to reduce the interference from background content. As shown in Tab. 4, restricting the perceptual loss to human-related regions leads to better performance, indicating that this design provides more targeted supervision for modeling fine-grained human appearance and motion. 
+
+5.2 Effect of Temporal Attention 
+
+Tab. 5 shows the effect of temporal attention layers. Without temporal attention ( i.e ., w/o Tem. ), the model yields noticeably lower Subject Consistency and Overall Consistency, indicating weaker temporal coherence. The qualitative results in Fig. 5 further show that removing temporal attention leads to appearance variations over time. We further study the effect of the two-stage training strategy for the 4D U-Net, where the 3D U-Net backbone is first trained and the temporal attention layers are then jointly optimized. As shown in Tab. 6, removing the pre-training stage for the 3D U-Net ( i.e ., w/o Pre. ) leads to a drop in Overall Consistency, indicating weaker semantic alignment between the rendered videos and the input text prompts. 
+
+5.3 Effect of 4D Interpolation 
+
+The effect of the proposed training-free 4D interpolation is illustrated in Fig. 7. The neighboring timestamps without interpolation are marked by dashed lines. By inserting intermediate 4DGS states between adjacent timestamps, this strategy effectively increases the frame rate and produces temporally smoother results without additional training. Moreover, the interpolation factor W can be flexibly adjusted according to the desired temporal resolution. Sci China Inf Sci 10                                                      
+
+> Table 4 Effect of excluding background patches in Lvgg .
+> Methods Image Quality Subject Consistency Motion Smoothness Multi-View Consistency Overall Consistency w/o Exc. 0.430 0.975 0.997 0.862 0.186 Ours 0.445 0.984 0.998 0.862 0.188
+> Table 5 Effect of temporal attention layers.
+> Methods Image Quality Subject Consistency Motion Smoothness Multi-View Consistency Overall Consistency w/o Tem. 0.429 0.961 0.996 0.862 0.183 Ours 0.445 0.984 0.998 0.862 0.188
+> Table 6 Effect of 3D U-Net pretraining.
+> Methods Image Quality Subject Consistency Motion Smoothness Multi-View Consistency Overall Consistency w/o Pre. 0.445 0.984 0.998 0.860 0.185 Ours 0.445 0.984 0.998 0.862 0.188
+> Table 7 Effect of temporal voxel binding.
+> Methods Image Quality Subject Consistency Motion Smoothness Multi-View Consistency Overall Consistency w/o Binding 0.443 0.973 0.996 0.861 0.186 Ours 0.445 0.984 0.998 0.862 0.188
+
+5.4 Effect of Temporal Voxel Binding 
+
+To validate the effectiveness of our temporal voxel binding strategy, we compare it with an alternative design that independently voxelizes the Gaussians at each timestamp ( i.e ., w/o Binding). In the baseline setting, each temporal slice is organized into the voxel grid separately, without explicitly preserving temporal correspondence across timestamps. By contrast, our method performs voxelization only once at the first timestamp and assigns Gaussians at the remaining timestamps to the same grid positions according to the temporal binding relationship. The quantitative results are shown in Tab. 7. Compared with independent voxelization, our method consistently improves all evaluation metrics, with more noticeable gains in Subject Consistency, Motion Smoothness, and Overall Consistency. These results indicate that explicitly preserving temporal correspondence in the structured 4DGS representation is beneficial for stable dynamic human generation. In particular, by enforcing all timestamps to share the same voxel layout, our method better maintains the structural identity of the human body over time, which leads to more coherent motion and more stable appearance across views. 
+
+## 6 Limitations 
+
+This work mainly focuses on direct text-to-4DGS generation of temporally coherent and view-consistent 360-degree dynamic humans. While the proposed framework already achieves strong overall 4D consistency, incorporating stronger fine-grained local detail enhancement, especially for challenging articulated regions, remains an important direction for future work. In particular, the current framework does not explicitly introduce dedicated local-detail refinement modules or fine-scale geometric priors. Exploring how to further improve local human geometry and appearance while preserving global temporal and cross-view consistency would be a valuable next step. 
+
+## 7 Conclusions 
+
+In this paper, we presented 4DHumanDiff, a diffusion framework that directly generates 360-degree dynamic hu-mans represented by 4D Gaussian Splatting (4DGS) from text prompts. Different from existing video-first and reconstruction-later pipelines, our method formulates dynamic human generation directly in the structured 4D rep-resentation space, which is better matched to the spatial organization and temporal regularity of human motion. Built on a 3D U-Net backbone with temporal self-attention, 4DHumanDiff enables motion-aware generation in a unified framework. To support this task, we further constructed a large-scale text-to-4DGS dataset with 60,000 high-quality pairs for training from scratch. We also introduced a 2D regularization term and a training-free 4D interpolation strategy to improve rendering quality and motion smoothness. Extensive experiments show that 4DHumanDiff achieves more consistent results across time and viewpoints while reducing the overall generation time by more than 10 × compared with existing two-stage pipelines. 
+
+## 8 Acknowledgements 
+
+This work was supported by the National Natural Science Foundation of China under Grant No. 62371164 and the National Key RD Program of China under Grant No. 2022YFA1004100. Sci China Inf Sci 11 
+
+References 
+
+1 Ju X, Zeng A, Zhao C, et al. HumanSD: A native skeleton-guided diffusion model for human image generation. In: Proceedings of IEEE/CVF International Conference on Computer Vision, 2023. 15988–15998 2 Santesteban I, Thuerey N, Otaduy M A, et al. Self-supervised collision handling via generative 3d garment models for virtual try-on. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2021. 11763–11773 3 Santesteban I, Otaduy M, Thuerey N, et al. Ulnef: Untangled layered neural fields for mix-and-match virtual try-on. Advances in Neural Information Processing Systems, 2022, 35: 12110–12125 4 Wang H, Zhang Z, Di D, et al. Mv-vton: Multi-view virtual try-on with diffusion models. In: Proceedings of AAAI Conference on Artificial Intelligence, 2025. 7682–7690 5 Ju X, Zeng A, Bian Y, et al. Direct inversion: Boosting diffusion-based editing with 3 lines of code. arXiv preprint arXiv:2310.01506, 2023 6 Ju X, Zeng A, Wang J, et al. Human-art: A versatile human-centric dataset bridging natural and artificial scenes. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2023. 618–629 7 Liu X, Wu Q, Zhou H, et al. Audio-driven co-speech gesture video generation. Advances in Neural Information Processing Systems, 2022, 35: 21386–21399 8 Zhu L, Liu X, Liu X, et al. Taming diffusion models for audio-driven co-speech gesture generation. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2023. 10544–10553 9 Ren J, Xie C, Mirzaei A, et al. L4GM: Large 4d gaussian reconstruction model. Advances in Neural Information Processing Systems, 2024, 37: 56828–56858 10 Huang T, Zheng W, Wang T, et al. Voyager: Long-range and world-consistent video diffusion for explorable 3D scene generation. arXiv preprint arXiv:2506.04225, 2025 11 Zhang L, Rao A, Agrawala M. Adding conditional control to text-to-image diffusion models. In: Proceedings of IEEE/CVF International Conference on Computer Vision, 2023. 3836–3847 12 Yang Z, Teng J, Zheng W, et al. CogVideoX: Text-to-video diffusion models with an expert transformer. arXiv preprint arXiv:2408.06072, 2024 13 Wan T, Wang A, Ai B, et al. Wan: Open and advanced large-scale video generative models. arXiv preprint arXiv:2503.20314, 2025 14 Zhao Y, Lin C C, Lin K, et al. GenXD: Generating any 3d and 4d scenes. arXiv preprint arXiv:2411.02319, 2024 15 Yao C H, Xie Y, Voleti V, et al. SV4D 2.0: Enhancing spatio-temporal consistency in multi-view video diffusion for high-quality 4d generation. arXiv preprint arXiv:2503.16396, 2025 16 Zhang H, Chen X, Wang Y, et al. 4Diffusion: Multi-view video diffusion model for 4d generation. Advances in Neural Information Processing Systems, 2024, 37: 15272–15295 17 Hu S, Hu T, Liu Z. GauHuman: Articulated gaussian splatting from monocular human videos. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2024. 20418–20431 18 Zhan Y, Shao T, Yang Y, et al. Real-time high-fidelity gaussian human avatars with position-based interpolation of spatially distributed mlps. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2025. 26297–26307 19 Qian Z, Wang S, Mihajlovic M, et al. 3DGS-avatar: Animatable avatars via deformable 3D gaussian splatting. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2024. 5020–5030 20 Li Z, Zheng Z, Wang L, et al. Animatable gaussians: Learning pose-dependent gaussian maps for high-fidelity human avatar modeling. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2024. 19711–19722 21 Zhan Y, Xu W, Zhu Q, et al. R3-avatar: Record and retrieve temporal codebook for reconstructing photorealistic human avatars. arXiv preprint arXiv:2503.12751, 2025 22 Wu G, Yi T, Fang J, et al. 4D gaussian splatting for real-time dynamic scene rendering. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2024. 20310–20320 23 Yang Z, Yang H, Pan Z, et al. Real-time photorealistic dynamic scene representation and rendering with 4D gaussian splatting. arXiv preprint arXiv:2310.10642, 2023 24 Nichol A Q, Dhariwal P. Improved denoising diffusion probabilistic models. In: Proceedings of International Conference on Machine Learning. PMLR, 2021. 8162–8171 25 Dhariwal P, Nichol A. Diffusion models beat gans on image synthesis. Advances in Neural Information Processing Systems, 2021, 34: 8780–8794 26 Zhang B, Cheng Y, Yang J, et al. GaussianCube: Structuring gaussian splatting using optimal transport for 3d generative modeling. CoRR, 2024 27 Xiong Z, Li C, Liu K, et al. MVHumanNet: A large-scale dataset of multi-view daily dressing human captures. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2024. 19801–19811 28 Mildenhall B, Srinivasan P P, Tancik M, et al. NeRF: Representing scenes as neural radiance fields for view synthesis. Commun. ACM, 2021, 65: 99–106 29 Barron J T, Mildenhall B, Tancik M, et al. Mip-NeRF: A multiscale representation for anti-aliasing neural radiance fields. In: Proceedings of IEEE/CVF International Conference on Computer Vision, 2021. 5855–5864 30 Martin-Brualla R, Radwan N, Sajjadi M S, et al. NeRF in the wild: Neural radiance fields for unconstrained photo collections. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2021. 7210–7219 31 Yang J, Pavone M, Wang Y. FreeNeRF: Improving few-shot neural rendering with free frequency regularization. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2023. 8254–8263 32 Pumarola A, Corona E, Pons-Moll G, et al. D-NeRF: Neural radiance fields for dynamic scenes. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2021. 10318–10327 33 M¨ uller T, Evans A, Schied C, et al. Instant neural graphics primitives with a multiresolution hash encoding. ACM Trans. Graph., 2022, 41: 1–15 34 Kerbl B, Kopanas G, Leimk¨ uhler T, et al. 3D gaussian splatting for real-time radiance field rendering. ACM, 2023, 42: 139–1 35 Wu R, Zhang Z, Yang Y, et al. Dual-camera smooth zoom on mobile phones. In: Proceedings of European Conference on Computer Vision. Springer, 2024. 250–269 36 Fu Y, Liu S, Kulkarni A, et al. Colmap-free 3D gaussian splatting. arXiv preprint arXiv:2312.07504, 2023 37 Chung J, Oh J, Lee K M. Depth-regularized optimization for 3D gaussian splatting in few-shot images. arXiv preprint arXiv:2311.13398, 2023 38 Dou B, Zhang T, Ma Y, et al. Cosseggaussians: Compact and swift scene segmenting 3D gaussians. arXiv preprint arXiv:2401.05925, 2024 39 Zhuang J, Kang D, Cao Y P, et al. Tip-editor: An accurate 3D editor following both text-prompts and image-prompts. arXiv preprint arXiv:2401.14828, 2024 40 Yu Z, Chen A, Huang B, et al. Mip-splatting: Alias-free 3D gaussian splatting. arXiv preprint arXiv:2311.16493, 2023 41 Morgenstern W, Barthel F, Hilsmann A, et al. Compact 3d scene representation via self-organizing gaussian grids. arXiv preprint arXiv:2312.13299, 2023 42 Lan Y, Hong F, Yang S, et al. Ln3Diff: Scalable latent neural fields diffusion for speedy 3d generation. In: Proceedings of European Sci China Inf Sci 12 Conference on Computer Vision. Springer, 2024. 112–130 43 Zhou J, Zhang W, Liu Y S. DiffGS: Functional gaussian splatting diffusion. Advances in Neural Information Processing Systems, 2024, 37: 37535–37560 44 Roessle B, M¨ uller N, Porzi L, et al. L3DG: Latent 3d gaussian diffusion. In: Proceedings of SIGGRAPH Asia 2024 Conference Papers, 2024. 1–11 45 Cai Y, Zhang H, Zhang K, et al. Baking gaussian splatting into diffusion denoiser for fast and scalable single-stage image-to-3d generation and reconstruction. In: Proceedings of IEEE/CVF International Conference on Computer Vision, 2025. 25062–25072 46 Liu J, Xu J, Cheng W, et al. Novelgs: Consistent novel-view denoising via large gaussian reconstruction model. arXiv preprint arXiv:2411.16779, 2024 47 Go H, Park B, Nam H, et al. VideoRFSplat: Direct scene-level text-to-3D gaussian splatting generation with flexible pose and multi-view joint modeling. arXiv preprint arXiv:2503.15855, 2025 48 Tang J, Chen Z, Chen X, et al. Lgm: Large multi-view gaussian model for high-resolution 3d content creation. In: Proceedings of European Conference on Computer Vision. Springer, 2024. 1–18 49 Fridovich-Keil S, Meanti G, Warburg F R, et al. K-planes: Explicit radiance fields in space, time, and appearance. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2023. 12479–12488 50 Guo X, Sun J, Dai Y, et al. Forward flow for novel view synthesis of dynamic scenes. In: Proceedings of IEEE/CVF International Conference on Computer Vision, 2023. 16022–16033 51 Feng B Y, Alzayer H, Rubinstein M, et al. 3d motion magnification: Visualizing subtle motions from time-varying radiance fields. In: Proceedings of IEEE/CVF International Conference on Computer Vision, 2023. 9837–9846 52 Somraj N, Choudhary K, Mupparaju S H, et al. Factorized motion fields for fast sparse input dynamic view synthesis. In: Proceedings of ACM SIGGRAPH 2024 Conference Papers, 2024. 1–12 53 Duan Y, Wei F, Dai Q, et al. 4D gaussian splatting: Towards efficient novel view synthesis for dynamic scenes. arXiv, 2024 54 Lu Z, Guo X, Hui L, et al. 3d geometry-aware deformable gaussian splatting for dynamic view synthesis. In: Proceedings of CVPR, 2024. 8900–8910 55 Luiten J, Kopanas G, Leibe B, et al. Dynamic 3d gaussians: Tracking by persistent dynamic view synthesis. arXiv, 2023 56 Kratimenos A, Lei J, Daniilidis K. Dynmf: Neural motion factorization for real-time dynamic view synthesis with 3D gaussian splatting. arXiv preprint arXiv:2312.00112, 2023 57 Huang Y H, Sun Y T, Yang Z, et al. Sc-gs: Sparse-controlled gaussian splatting for editable dynamic scenes. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2024. 4220–4230 58 Lin Y, Dai Z, Zhu S, et al. Gaussian-flow: 4d reconstruction with dynamic 3d gaussian particle. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2024. 21136–21145 59 Li Z, Chen Z, Li Z, et al. Spacetime gaussian feature splatting for real-time dynamic view synthesis. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2024. 8508–8520 60 Shaw R, Nazarczuk M, Song J, et al. Swings: Sliding windows for dynamic 3D gaussian splatting 61 Sun J, Jiao H, Li G, et al. 3dgstream: On-the-fly training of 3d gaussians for efficient streaming of photo-realistic free-viewpoint videos. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2024. 20675–20685 62 Wu G, Yi T, Fang J, et al. 4D gaussian splatting for real-time dynamic scene rendering. In: Proceedings of CVPR, 2024. 20310–20320 63 Yang Z, Gao X, Zhou W, et al. Deformable 3d gaussians for high-fidelity monocular dynamic scene reconstruction. In: Proceedings of CVPR, 2024. 20331–20341 64 Bae J, Kim S, Yun Y, et al. Per-gaussian embedding-based deformation for deformable 3D gaussian splatting. arXiv preprint arXiv:2404.03613, 2024 65 Mihajlovic M, Prokudin S, Tang S, et al. Splatfields: Neural gaussian splats for sparse 3D and 4D reconstruction. arXiv preprint arXiv:2409.11211, 2024 66 Duan Y, Wei F, Dai Q, et al. 4D-rotor gaussian splatting: towards efficient novel view synthesis for dynamic scenes. In: Proceedings of ACM SIGGRAPH 2024 Conference Papers, 2024. 1–11 67 Chu W H, Ke L, Fragkiadaki K. Dreamscene4d: Dynamic multi-object scene generation from monocular videos. arXiv preprint arXiv:2405.02280, 2024 68 Katsumata K, Vo D M, Nakayama H. A compact dynamic 3D gaussian representation for real-time dynamic view synthesis. In: Proceedings of ECCV, 2024 69 Lee Y C, Zhang Z, Blackburn-Matzen K, et al. Fast view synthesis of casual videos. arXiv preprint arXiv:2312.02135, 2023 70 Yang X, Xie W, Fu Y, et al. 4D gaussian splatting for high-fidelity dynamic reconstruction of single-view scenes. SSRN 4895336 71 Tian F, Du S, Duan Y. MonoNeRF: Learning a generalizable dynamic radiance field from monocular videos. In: Proceedings of IEEE/CVF International Conference on Computer Vision, 2023. 17903–17913 72 Gao Q, Xu Q, Cao Z, et al. Gaussianflow: Splatting gaussian dynamics for 4d content creation. arXiv preprint arXiv:2403.12365, 2024 73 Guo Z, Zhou W, Li L, et al. Motion-aware 3D gaussian splatting for efficient dynamic scene reconstruction. arXiv preprint arXiv:2403.11447, 2024 74 Liu Q, Liu Y, Wang J, et al. Modgs: Dynamic gaussian splatting from casually captured monocular videos. arXiv preprint arXiv:2406.00434, 2024 75 Zhu R, Liang Y, Chang H, et al. Motiongs: Exploring explicit motion guidance for deformable 3D gaussian splatting. arXiv preprint arXiv:2410.07707, 2024 76 Wang S, Yang X, Shen Q, et al. Gflow: Recovering 4D world from monocular video. arXiv preprint arXiv:2405.18426, 2024 77 Wang Q, Ye V, Gao H, et al. Shape of motion: 4d reconstruction from a single video. arXiv preprint arXiv:2407.13764, 2024 78 Seidenschwarz J, Zhou Q, Duisterhof B, et al. Dynomo: Online point tracking by dynamic online monocular gaussian reconstruction. arXiv preprint arXiv:2409.02104, 2024 79 Stearns C, Harley A, Uy M, et al. Dynamic gaussian marbles for novel view synthesis of casual monocular videos. arXiv preprint arXiv:2406.18717, 2024 80 Lei J, Weng Y, Harley A, et al. Mosca: Dynamic gaussian fusion from casual videos via 4D motion scaffolds. arXiv preprint arXiv:2405.17421, 2024 81 Wu Z, Yu C, Jiang Y, et al. Sc4d: Sparse-controlled video-to-4d generation and motion transfer. In: Proceedings of European Conference on Computer Vision. Springer, 2025. 361–379 82 Yu H, Wang C, Zhuang P, et al. 4real: Towards photorealistic 4D scene generation via video diffusion models. arXiv preprint arXiv:2406.07472, 2024 83 Zeng Y, Jiang Y, Zhu S, et al. Stag4d: Spatial-temporal anchored generative 4d gaussians. In: Proceedings of European Conference on Computer Vision. Springer, 2025. 163–179 84 Lv C, Chen Z, Di D, et al. Physgm: Large physical gaussian model for feed-forward 4D synthesis. arXiv preprint arXiv:2508.13911, 2025 85 Ma Z, Chen X, Yu S, et al. 4D-LRM: Large space-time reconstruction model from and to any view at any time. arXiv preprint arXiv:2506.18890, 2025 86 Liang H, Ren J, Mirzaei A, et al. Feed-forward bullet-time reconstruction of dynamic scenes from monocular videos. arXiv preprint arXiv:2412.03526, 2024 87 Sabathier R, Mitra N J, Novotny D. Lim: Large interpolator model for dynamic reconstruction. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2025. 6154–6164 Sci China Inf Sci 13 88 Hu L, Zhang H, Zhang Y, et al. Gaussianavatar: Towards realistic human avatar modeling from a single video via animatable 3d gaussians. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2024. 634–644 89 Hu T, Hong F, Liu Z. Surmo: surface-based 4D motion modeling for dynamic human rendering. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2024. 6550–6560 90 Jena R, Iyer G S, Choudhary S, et al. Splatarmor: Articulated gaussian splatting for animatable humans from monocular rgb videos. arXiv preprint arXiv:2311.10812, 2023 91 Jung H, Brasch N, Song J, et al. Deformable 3D gaussian splatting for animatable human avatars. arXiv preprint arXiv:2312.15059, 2023 92 Kocabas M, Chang J H R, Gabriel J, et al. Hugs: Human gaussian splats. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2024. 505–515 93 Lei J, Wang Y, Pavlakos G, et al. Gart: Gaussian articulated template models. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2024. 19876–19887 94 Li M, Tao J, Yang Z, et al. Human101: Training 100+ fps human gaussians in 100s from 1 view. arXiv preprint arXiv:2312.15258, 2023 95 Li M, Yao S, Xie Z, et al. Gaussianbody: Clothed human reconstruction via 3D gaussian splatting. arXiv preprint arXiv:2401.09720, 2024 96 Liu X, Wu C, Liu X, et al. Gea: Reconstructing expressive 3d gaussian avatar from monocular video. arXiv preprint arXiv:2402.16607, 2024, 3 97 Liu Y, Huang X, Qin M, et al. Animatable 3d gaussian: Fast and high-quality reconstruction of multiple human avatars. In: Proceedings of 32nd ACM International Conference on Multimedia, 2024. 1120–1129 98 Moreau A, Song J, Dhamo H, et al. Human gaussian splatting: Real-time rendering of animatable avatars. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2024. 788–798 99 Niu M, Cao M, Zhan Y, et al. Anicrafter: Customizing realistic human-centric animation via avatar-background conditioning in video diffusion models. arXiv preprint arXiv:2505.20255, 2025 100 Pang H, Zhu H, Kortylewski A, et al. Ash: Animatable gaussian splats for efficient and photoreal human rendering. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2024. 1165–1175 101 Zheng S, Zhou B, Shao R, et al. Gps-gaussian: Generalizable pixel-wise 3D gaussian splatting for real-time human novel view synthesis. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2024. 19680–19690 102 Zheng Y, Zhao Q, Yang G, et al. Physavatar: Learning the physics of dressed 3d avatars from visual observations. In: Proceedings of European Conference on Computer Vision. Springer, 2024. 262–284 103 Zielonka W, Bagautdinov T, Saito S, et al. Drivable 3d gaussian avatars. In: Proceedings of 2025 International Conference on 3D Vision (3DV). IEEE, 2025. 979–990 104 Masuda M, Park J, Iwase S, et al. Generalizable neural human renderer. arXiv preprint arXiv:2404.14199, 2024 105 Li C, Lin J, Lee G H. GhuNeRF: Generalizable human NeRF from a monocular video. In: Proceedings of 2024 International Conference on 3D Vision (3DV). IEEE, 2024. 923–932 106 Loper M, Mahmood N, Romero J, et al. SMPL: A skinned multi-person linear model. In: Proceedings of Seminal Graphics Papers: Pushing the Boundaries, Volume 2, pages 851–866. 2023 107 Liu T, Huang Z, Chen Z, et al. Free4d: Tuning-free 4D scene generation with spatial-temporal consistency. arXiv preprint arXiv:2503.20785, 2025 108 Sun W, Chen S, Liu F, et al. Dimensionx: Create any 3d and 4d scenes from a single image with controllable video diffusion. arXiv preprint arXiv:2411.04928, 2024 109 Jiang Y, Zhang L, Gao J, et al. Consistent4d: Consistent 360 {\ deg } dynamic object generation from monocular video. arXiv preprint arXiv:2311.02848, 2023 110 Zeng Y, Jiang Y, Zhu S, et al. Stag4d: Spatial-temporal anchored generative 4d gaussians. In: Proceedings of European Conference on Computer Vision. Springer, 2024. 163–179 111 Yin Y, Xu D, Wang Z, et al. 4dgen: Grounded 4d content generation with spatial-temporal consistency. arXiv preprint arXiv:2312.17225, 2023 112 Poole B, Jain A, Barron J T, et al. Dreamfusion: Text-to-3d using 2d diffusion. arXiv preprint arXiv:2209.14988, 2022 113 Lin C H, Gao J, Tang L, et al. Magic3d: High-resolution text-to-3d content creation. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2023. 300–309 114 Yu X, Guo Y C, Li Y, et al. Text-to-3d with classifier score distillation. arXiv preprint arXiv:2310.19415, 2023 115 Wang Z, Lu C, Wang Y, et al. Prolificdreamer: High-fidelity and diverse text-to-3d generation with variational score distillation. Advances in Neural Information Processing Systems, 2023, 36: 8406–8441 116 Ren J, Pan L, Tang J, et al. Dreamgaussian4d: Generative 4D gaussian splatting. arXiv preprint arXiv:2312.17142, 2023 117 Singer U, Polyak A, Hayes T, et al. Make-a-video: Text-to-video generation without text-video data. arXiv preprint arXiv:2209.14792, 2022 118 Luo Z, Chen D, Zhang Y, et al. Videofusion: Decomposed diffusion models for high-quality video generation. arXiv preprint arXiv:2303.08320, 2023 119 Hong W, Ding M, Zheng W, et al. Cogvideo: Large-scale pretraining for text-to-video generation via transformers. arXiv preprint arXiv:2205.15868, 2022 120 Shi Y, Wang P, Ye J, et al. Mvdream: Multi-view diffusion for 3d generation. arXiv preprint arXiv:2308.16512, 2023 121 Blattmann A, Dockhorn T, Kulal S, et al. Stable video diffusion: Scaling latent video diffusion models to large datasets. arXiv preprint arXiv:2311.15127, 2023 122 Li C, Liao H, Zhi Y, et al. MVHumanNet++: A large-scale dataset of multi-view daily dressing human captures with richer annotations for 3D human digitization. arXiv preprint arXiv:2505.01838, 2025 123 Wang W, Ho H I, Guo C, et al. 4D-dress: A 4d dataset of real-world human clothing with semantic annotations. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2024. 550–560 124 I¸ sık M, R¨ unz M, Georgopoulos M, et al. Humanrf: High-fidelity neural radiance fields for humans in motion. ACM Trans. Graph., 2023, 42: 1–12 125 Cheng W, Chen R, Fan S, et al. Dna-rendering: A diverse neural actor repository for high-fidelity human-centric rendering. In: Proceedings of IEEE/CVF International Conference on Computer Vision, 2023. 19982–19993 126 Cheng W, Xu S, Piao J, et al. Generalizable neural performer: Learning robust radiance fields for human novel view synthesis. arXiv preprint arXiv:2204.11798, 2022 127 Yu Z, Yoon J S, Lee I K, et al. Humbi: A large multiview dataset of human body expressions. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2020. 2990–3000 128 Team G, Georgiev P, Lei V I, et al. Gemini 1.5: Unlocking multimodal understanding across millions of tokens of context. arXiv preprint arXiv:2403.05530, 2024 129 Ji S, Xu W, Yang M, et al. 3D convolutional neural networks for human action recognition. IEEE Trans. Pattern Anal. Mach. Intell., 2012, 35: 221–231 130 Wu W, Qi Z, Fuxin L. Pointconv: Deep convolutional networks on 3d point clouds. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2019. 9621–9630 131 Wang Q, Ye V, Gao H, et al. Shape of motion: 4d reconstruction from a single video. In: Proceedings of IEEE/CVF International Sci China Inf Sci 14 Conference on Computer Vision, 2025. 9660–9672 132 Wu R, Zhang Z, Chen M, et al. Deblur4dgs: 4D gaussian splatting from blurry monocular video. arXiv preprint arXiv:2412.06424, 2024 133 Simonyan K, Zisserman A. Very deep convolutional networks for large-scale image recognition. arXiv preprint arXiv:1409.1556, 2014 134 Huang Z, Zhang T, Heng W, et al. Real-time intermediate flow estimation for video frame interpolation. In: Proceedings of European Conference on Computer Vision. Springer, 2022. 624–642 135 Zhang G, Zhu Y, Wang H, et al. Extracting motion and appearance via inter-frame attention for efficient video frame interpolation. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2023. 5682–5692 136 Jin X, Wu L, Chen J, et al. A unified pyramid recurrent network for video frame interpolation. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2023. 1578–1587 137 Park J, Kim J, Kim C S. Biformer: Learning bilateral motion estimation via bilateral transformer for 4k video frame interpolation. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2023. 1568–1577 138 Kingma D P. Adam: A method for stochastic optimization. arXiv preprint arXiv:1412.6980, 2014 139 Radford A, Kim J W, Hallacy C, et al. Learning transferable visual models from natural language supervision. In: Proceedings of International Conference on Machine Learning. PMLR, 2021. 8748–8763 140 Loshchilov I, Hutter F. Decoupled weight decay regularization. arXiv preprint arXiv:1711.05101, 2017 141 Tarvainen A, Valpola H. Mean teachers are better role models: Weight-averaged consistency targets improve semi-supervised deep learning results. Advances in Neural Information Processing Systems, 2017, 30 142 Loshchilov I, Hutter F. Sgdr: Stochastic gradient descent with warm restarts. arXiv preprint arXiv:1608.03983, 2016 143 Huang Z, He Y, Yu J, et al. VBench: Comprehensive benchmark suite for video generative models. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2024. 21807–21818 144 Ke J, Wang Q, Wang Y, et al. MUSIQ: Multi-scale image quality transformer. In: Proceedings of IEEE/CVF International Conference on Computer Vision, 2021. 5148–5157 145 Caron M, Touvron H, Misra I, et al. Emerging properties in self-supervised vision transformers. In: Proceedings of IEEE/CVF International Conference on Computer Vision, 2021. 9650–9660 146 Li Z, Zhu Z L, Han L H, et al. AMT: All-pairs multi-field transforms for efficient frame interpolation. In: Proceedings of IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2023. 9801–9810 147 Wang Y, He Y, Li Y, et al. Internvid: A large-scale video-text dataset for multimodal understanding and generation. arXiv preprint arXiv:2307.06942, 2023

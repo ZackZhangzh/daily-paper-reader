@@ -1,0 +1,1797 @@
+Title: Latent-Kernel Discrete Flow Maps for Few-Step Generation
+
+URL Source: https://arxiv.org/pdf/2607.27529v1
+
+Published Time: Fri, 31 Jul 2026 00:18:30 GMT
+
+Number of Pages: 25
+
+Markdown Content:
+# Latent-Kernel Discrete Flow Maps for Few-Step Generation 
+
+# Mansoor Ahmed 1,2 ∗, Yue-Tsz Fan 2, Hemanth Venkateswara 1, Murray Patterson 1∗
+
+> 1
+
+Georgia State University, Atlanta, GA, USA 
+
+> 2
+
+Georgia Institute of Technology, Atlanta, GA, USA mahmed76@student.gsu.edu, mpatterson30@gsu.edu 
+
+Abstract 
+
+Discrete diffusion and flow-matching models denoise a se-quence over many steps, but to keep each step cheap, they factorize the transition across positions and decide every to-ken independently . This makes few-step generation challeng-ing for text when the target couples two positions, such as a subject and a verb that must agree. An independent update commits to them separately, and many function evaluations are spent repairing the mismatch. Existing few-step methods buy back the lost correlation by distilling or rectifying a slow teacher, and so inherit the teacher’s quality ceiling. We ask in-stead whether a model can express correlated steps natively ,and answer with Latent-Kernel Discrete Flow Maps (LKF), afrom-scratch flow-map kernel that is a mixture of M factor-ized components tied by a single shared latent . Conditioned on the latent, each component is cheap, and the mixture is summed over the latent in closed form for small M . We show that a single step places mass on correlated completions with the same sampling time complexity as a factorized model, since one latent is drawn per sequence and reused across the entire denoising trajectory. We also show that the Masked Dif-fusion Language Model (MDLM) is a special case of our LKF model at M =1 . The experiments for unconditional text gen-eration on the One-Billion-Word (LM1B) and WikiText-103 benchmarks show that our LKF model learns strongly het-erogeneous components and improves generative perplexity by 2.1× to 3.3× over the likelihood baselines without losing diversity. The gain grows with M , and at M =8 , it surpasses distilled and rectified few-step samplers. The source code is available at: https://github.com/mansoor181/lkf.git 
+
+# 1 Introduction 
+
+Discrete diffusion and flow-matching models now rival autoregressive language models, as they fill every posi-tion of a sequence in parallel rather than one token at a time (Potaptchik et al. 2026). To keep a single denoising step cheap, they factorize the per-step transition across positions, 
+
+pt→s(xs | xt) = 
+
+> L
+
+Y
+
+> i=1
+
+pi(xis | xt), (1) and decide every token independently given the current se-quence xt (Sahoo et al. 2024). This independence is what 
+
+> ∗
+
+Corresponding author. 
+
+makes a step cheap, and it is also what makes few-step gener-ation challenging when the target couples positions that must be decided together. If a sentence pairs a subject with a verb that must agree in number, or an opening bracket with its closing match, the correct tokens are correlated, and an inde-pendent update commits to them separately. A factorized step may match the individual token marginals, while assigning substantial probability to jointly inconsistent combinations, and additional denoising steps may therefore be needed to resolve the mismatch. Currently, two model families dominate this trade-off. 
+
+Likelihood models such as MDLM (Sahoo et al. 2024) and SEDD (Lou, Meng, and Ermon 2023) train a strong factor-ized denoiser from scratch and then spend many steps at in-ference, where the factorization assumption is least harmful. 
+
+Few-step accelerators take a trained teacher and compress its many-step behaviour into a handful of steps, either by dis-tillation (Di4C (Hayakawa et al. 2024), SDTT (Deschenaux and Gulcehre 2025)) or by coupling rectification (ReDi (Yoo, Kim, and Hong 2026)). Both methods are effective, but they inherit the teacher’s quality ceiling. It is well understood that a student cannot outrun the teacher it imitates (Zhang et al. 2025), and rectification degrades after a few rounds. Hence, neither family removes the factorization at its root. We ask whether correlated steps can be modeled natively without a teacher. Our answer is Latent-Kernel Discrete Flow Maps (LKF), whose finite-time kernel is a mixture of 
+
+M factorized components selected by a latent k ∈ [M ]:
+
+Ψθt→s(xs | xt) = 
+
+> M
+
+X
+
+> k=1
+
+wθk(xt, t, s )
+
+> L
+
+Y
+
+> i=1
+
+P θi (xis | xt, k, t, s ).
+
+(2) Conditioned on (xt, t, s ), we first sample k ∼ w(· | xt, t, s ),and we then sample the coordinates of Xs independently given k. Thus, k couples positions after marginalization, while each component remains factorized. At M =1 , LKF reduces to MDLM. This mechanism produces a teacher-free few-step gain. On the One-Billion-Word (LM1B) and WikiText-103 benchmarks, the mixture learns heterogeneous components, and a best-of-M decode that ranks those com-ponents by the model’s own likelihood turns them into a few-step gain. Our main contributions are as follows. 1. We introduce a latent-kernel discrete flow-map (LKF) arXiv:2607.27529v1 [cs.LG] 29 Jul 2026 (a) Factorized step ( other methods )                                              
+
+> The [Mask 1] [Mask 2]loudly.
+> dog .5 |dogs .5 barks .5 |bark .5
+> independent draws
+> dog barks ✓14dog bark ✗14
+> dogs barks ✗14dogs bark ✓14
+> P(agree ) = 12in one factorized draw half of the joint mass is inconsistent
+> (b) LKF step ( ours ), M= 2
+> The [Mask 1] [Mask 2]loudly.
+> k= 1 :singular
+> w1=.5
+> k= 2 :plural
+> w2=.5
+> k∼w(xt), drawn once
+> dog 1 ·barks 1 dogs 1 ·bark 1
+> dog barks ✓12dogs bark ✓12
+> P(agree ) = 1 in one transition
+
+Figure 1: Two masked tokens must agree in number, and their correct completions are therefore correlated. (a) A factorized transition (Eq. 1) samples both positions independently from .5/. 5 marginals. Its outer-product joint assigns probability 14 to each completion, and only half of its mass therefore lies on agreement outcomes. (b) An LKF transition (Eq. 2) with M =2 
+
+draws a shared latent k ∼ w(· | xt, t, s ). Conditioned on k, the positions remain independent, but each component concentrates on a consistent completion. Marginalizing k preserves the same per-position marginals as in (a), while placing all joint mass on the agreement set. Thus, two rank-one components express the correlated completion in one transition. whose step is a mixture of M factorized components tied by one shared latent. 2. We give an exact information decomposition of the cor-relation a rank-M step can carry, turning the question of whether the latent captures correlation into two bounded, estimator-validated quantities. 3. We test LKF on synthetic datasets with closed-form total correlation (TC). A hidden-agreement dataset shows that the captured information and the held-out likelihood grow monotonically with M , while a parity control shows that the latent provably cannot help. 4. We evaluate unconditional generation on the LM1B and WikiText-103 benchmarks against likelihood and accel-erator models. At M =8 , LKF improves few-step gener-ative perplexity by roughly 3× over the likelihood base-lines and surpasses the distilled and rectified accelerators without using any teacher, with the gain growing with M .
+
+# 2 Related work 
+
+Masked diffusion as likelihood models. Building on the ab-sorbing D3PM process (Austin et al. 2021), MDLM (Sahoo et al. 2024) shows that the absorbing evidence lower bound (ELBO) reduces to a weighted cross-entropy on masked po-sitions under the SUBS parameterization, which zeroes the mask probability and copies revealed tokens through, and SEDD (Lou, Meng, and Ermon 2023) reaches comparable likelihoods by learning discrete score ratios for a continuous-time Markov chain (Campbell et al. 2022). Both are factor-ized per step, where a rate changes one coordinate at a time in SEDD, and the reverse kernel is a product over positions in MDLM. Hence, both need many evaluations before the sam-ple quality saturates. LKF reduces to MDLM as its M =1 
+
+special case (Proposition 4) by adding intra-step correlation. 
+
+Few-step generation by distillation and rectification. 
+
+SDTT (Deschenaux and Gulcehre 2025) self-distills amasked model through time, and Di4C (Hayakawa et al. 2024) distills into a mixture-of-products student, prov-ing that factorized students face a Θ(1 /J ) total-variation floor. Hence, both methods are structurally teacher-bounded. ReDi (Yoo, Kim, and Hong 2026) instead rectifies the source-to-target coupling, provably decreasing the same conditional total correlation per round, but its gains ride on a monotone entropy collapse. LKF asks the complementary question, whether the mixture structure can be trained from scratch with no teacher ceiling, enriching the kernel until the corre-lation is representable. 
+
+Flow maps and from-scratch few-step models. Flow maps learn a finite-time transition kernel indexed by two times, where one network serves every step. Building on the discrete flow matching family (Gat et al. 2024; Camp-bell et al. 2024), Discrete Flow Maps (Potaptchik et al. 2026) are the closest from-scratch sibling that carries cor-relation through position-dependent simplex schedules, but with no latent and no mixture. Concurrent theory quantifies the schedule-level tradeoff between total correlation and step count (Dmitriev, Huang, and Wei 2026; Zhao and Cai 2026), complementing our per-step accounting. LKF is a likelihood model and differs by making each jump a low-rank mixture of discrete-token kernels whose latent is explicit and mea-surable, a mechanism orthogonal to simplex schedules. 
+
+# 3 Preliminaries and background 
+
+Setup. We model sequences x = ( x1, . . . , x L) whose tokens take one of V values from a vocabulary V, and corrupted se-quences additionally use an absorbing symbol [MASK] /∈ V .Data come from an unknown pdata accessed only through samples, and we pursue both generation and density eval-uation on held-out data. Superscripts index positions ( xi), and subscripts index time ( xt), with all notations collected in Appendix A. Samples are generated by iterative denois-ing (Austin et al. 2021). Starting from all-[MASK] , a learned transition removes a little corruption per step, where each step is one network forward pass (NFE). 
+
+Masked diffusion. A monotone schedule κt ∈ [0 , 1] keeps each token independently with probability κt and otherwise replaces it by [MASK] (Austin et al. 2021) (Eq. (4)). Mask-ing is also called absorbing, where the reverse process turns 
+
+[MASK] into real tokens. A denoiser takes the whole par-tially masked sequence and predicts a categorical over its clean value for each masked position, factorized across posi-tions as in Eq. (1). MDLM (Sahoo et al. 2024) and absorbing SEDD (Lou, Meng, and Ermon 2023) are such examples. The endpoint coupling is trivial ( δ[MASK] ⊗pdata ), and the only modelling freedom left is therefore the order and grouping 
+
+in which positions are revealed, which the LKF latent pa-rameterizes. Factorization is also what forces many steps. Correlated positions revealed in the same step are sampled independently and frequently disagree, and the process can repair the inconsistency only by revealing them in many steps. 
+
+Flow maps. Discrete flow and diffusion models come in two flavours. Rate-based models (such as SEDD and CTMC discrete diffusion (Campbell et al. 2022)) learn an instanta-neous transition rate and integrate it with a fine discretiza-tion at inference. Flow-map models learn a finite-time kernel 
+
+Ψθt→s(xs | xt) that jumps from t to s directly, building on the discrete flow matching family (Gat et al. 2024; Campbell et al. 2024). LKF is a flow-map model, and MDLM is its spe-cial case with one component (Proposition 4, Appendix B). 
+
+Total correlation. Correlation is measured by the total correlation (TC) of a joint distribution over the L positions, 
+
+TC( X) = 
+
+> L
+
+X
+
+> i=1
+
+H( Xi) − H( X) ≥ 0, (3) the amount by which the joint exceeds the product of its marginals. It vanishes when the positions are independent, and it is precisely what a factorized model discards. 
+
+Why kernels and not rates. Mixing several factorized rate 
+
+matrices does not buy correlation. Convex combinations of coordinatewise CTMC generators are again coordinatewise, so the mixed chain still changes one coordinate at a time and its short-time kernel is factorized to O(ε2) (Proposition 5, Appendix D.1). Correlated transitions exist only in discrete-time kernels or flow maps, which is why LKF is defined as a mixture kernel (Eq. (2)) rather than a mixture of rates. 
+
+# 4 Method 
+
+4.1 The latent-kernel flow map (LKF) 
+
+LKF parameterizes Eq. (2) with a single network that, given 
+
+(xt, t, s ), emits (i) per-latent per-position token logits P θi (· | 
+
+xt, k, t, s ) and (ii) router logits wθk(xt, t, s ). Sampling one step draws a single k ∼ w(xt) shared across all positions, and then samples each token from component k. The shared 
+
+k is the carrier of intra-step correlation in LKF, and Figure 6 in Appendix E illustrates this on a worked example. 
+
+Masking path and two-time transition We use a linear schedule κt = t (data at t=1 , all-[MASK] at t=0 ). Forward noising keeps each token with probability κt:
+
+xit =
+
+xi 
+
+> 1
+
+w.p. κt,
+
+[MASK] w.p. 1 − κt. (4) The two-time training target for 0 ≤ t < s ≤ 1 reveals each still-masked position to its data value with probability prev = 
+
+> (κs−κt)(1 −κt)
+
+and leaves already revealed positions unchanged: 
+
+xis =
+
+
+
+xit if xit̸ = [MASK] (identity ),xi 
+
+> 1
+
+if xit = [MASK] , w.p. prev ,
+
+[MASK] if xit = [MASK] , w.p. 1 − prev .
+
+(5) The training loss counts only masked positions because the kept positions transition deterministically ( log 1 = 0 ), and no gradient is spent on the copies. 
+
+4.2 Architecture overview 
+
+Figure 2 illustrates the training and inference process in LKF. The network (Fig. 5 in Appendix E) is a single trans-former trunk as in the diffusion transformer (DiT) (Pee-bles and Xie 2023), and it outputs both the router weights 
+
+w(xt, t, s ) ∈ ∆M −1 and the full stack of per-latent factorized logits {P θi (· | xt, k, t, s )} in one forward pass. Concretely, the network computes a tensor of logits of shape [B, M, L, V ]
+
+(batch, latents, positions, vocab), router logits [B, M ], and the slice [: , k, :, :] (the factorized denoiser of component k). Three ideas distinguish it from a vanilla masked DiT. The 
+
+two-time conditioning lets both endpoints t and s modulate every block, which lets the same weights realize a finite-time flow map for any step size. The late latent injection runs the first depth − Lk blocks once and replicates only the last Lk
+
+blocks over the M latents, which brings the cost of marginal-ization down to M L k/depth rather than M × the whole network. A pooled router reads the shared representation and emits one mixture weight per sequence. The shared blocks, conditioned only on (t, s ), map the em-bedded input to a latent-agnostic representation h. The router mean-pools h over positions into a sequence-level readout of the mixture weights w, since “which correlated mode is this sequence heading toward” is a global property of xt. The latent branch tiles h over the M latents and runs the last 
+
+Lk blocks with a k-dependent conditioning vector, the sole channel through which t, s and k reach the residual stream. Hence, the token representation entering the latent blocks is identical across k (further details are in Appendix E). 
+
+4.3 Training objective 
+
+LKF is trained by marginalizing the latent. Given a super-vised next state xs, write ℓk = P  
+
+> i:xit=[MASK]
+
+log P θi (xis |
+
+xt, k ) for the log-probability that component k assigns to the revealed content. The model scores xs with the mixture log-likelihood, summing over the M components in closed form with no sampled k and no variational bound, 
+
+log Ψ θt→s(xs | xt) = logsumexp 
+
+> k
+
+  log wk + ℓk
+
+, (6) 
+
+Lnll = −Elog Ψ θt→s(xs | xt) . (7) (a) Training (one t → s step): exact-mixture NLL of the target xs                                               
+
+> x1∼pdata
+> xt(masked)
+> forward noise
+> xstarget
+> t, s DiT trunk
+> w1
+> P(1)
+> w2
+> P(2)
+> w3
+> P(3)
+> w4
+> P(4)
+> router weights w
+> M=4
+> factorized heads
+> log Ψ θt→s(xs|xt)
+> L=−log Ψ θt→s(xs|xt) + router reg
+> (b) Inference: Jancestral flow-map steps, t=0 →1
+> xt(start all-[MASK] ,t=0 )
+> t, s DiT trunk
+> w1
+> P(1)
+> w2
+> P(2)
+> w3
+> P(3)
+> w4
+> P(4)
+> w3
+> P(3)
+> draw one
+> k∼w
+> sample xs∼Q
+> iP(k)
+> i(· | xt, k )
+> xsx1sample at t=1
+> xs→xt
+> repeat J×
+
+Figure 2: Illustration of training and inference in LKF with M =4 latent components. (a) Training. A clean x1 is corrupted to 
+
+xt and to the target xs by the two-time reveal. The Diffusion Transformer (DiT) trunk reads xt with two-time conditioning (t, s )
+
+and emits the router weights w = ( w1, . . . , w 4) and the four factorized denoisers P (k) = Q 
+
+> i
+
+P (k) 
+
+> i
+
+in one pass. The mixture log-probability of the realized next state xs is formed by − log Ψ θt→s(xs | xt) plus the router regularizer. (b) Inference. Starting from an all-[MASK] sequence, each step runs the same trunk, draws a single shared latent k ∼ w(xt) (here k=3 , highlighted), samples every masked position from that one component Q 
+
+> i
+
+P (k) 
+
+> i
+
+, and feeds xs back as xt for the next of J steps until t=1 .Since the position sum ℓk sits inside the logsumexp , the training target is the probability that a single shared latent explains the whole masked set jointly, P 
+
+> k
+
+wk
+
+Q 
+
+> i
+
+P θi , the rank-M correlated transition of Eq. (2). Interchanging the sum and the logsumexp would instead train the per-position marginal denoiser P 
+
+> k
+
+wk P θi , which is blind to correlation and would leave the latent without a training signal. Because Eq. (7) is a log-likelihood, its population loss decomposes as a model-free entropy term plus Ext
+
+KL  q(· | 
+
+xt) ∥ Ψ( · | xt) , where q is the true two-time transition, and the minimizer is therefore the pointwise KL projection of q onto the kernel class (Proposition 6, Appendix D.2). Training reduces the gap between the model and the true transition. When q carries correlation that no rank-M mixture can represent, this gap cannot reach zero, and Theorem 1 lower-bounds it by the residual total correlation of q.The supervised next state in Eq. (7) can be any point on the path. The synthetic studies of Appendix G supervise the two-time transition xs directly, whereas the language experiments supervise the clean endpoint x1 at s=1 .
+
+Router regularizer. A mixture router has two potential failure modes, and the regularizer guards against both, 
+
+R = − λent H( Eb[w]) + λlb Eb
+
+H( w | xt), (8) where Eb averages over a batch. The first term is the entropy of the batch-averaged weights. Maximizing it, hence the mi-nus sign, spreads usage across all M components and rules out the collapse in which the router sends every input to one component and the rest die. The second term sets how much the latent can carry, and its sign is the opposite of the usual load-balancing choice (Shazeer et al. 2017). The informa-tion the latent adds about the transition is bounded by the per-example prior entropy, 
+
+I( k; Xs | xt) = H( k | xt) − H( k | xt, X s) ≤ H( k | xt),
+
+(9) With H( k | xt) = H( w | xt), this entropy must remain suffi-ciently high. We therefore set λlb ≤ 0 to maximize the prior entropy and allow the exact mixture likelihood to sharpen the posterior, driving H( k | xt, X s) toward zero. A positive 
+
+λlb , as in conventional decisive routing, reduces H( k | xt)
+
+and can force I( k; Xs | xt) toward zero, silencing the latent. 
+
+4.4 Inference 
+
+Sampling starts from the all-[MASK] sequence and applies 
+
+J steps with tj = jJ and tj+1 = j+1  
+
+> J
+
+. Each step forwards the trunk once, samples tokens at the currently masked posi-tions from a single component k under the analytic (cached) reverse update, and keeps already-revealed tokens fixed be-cause masking is monotone (pseudocode in Appendix C). Any residual [MASK] after J steps is filled greedily. Since the latent is tied to a whole sequence, a rollout draws k once at the all-[MASK] start, where w is a constant prior, and holds it for the entire trajectory. Every step is therefore explained by the same latent, and the decode matches the sequence-level semantics of the training objective. One such rollout uses a single component and therefore leaves the mixture’s heterogeneity unused. Our decode, best-of-M , realizes that heterogeneity at inference by running all M rollouts in parallel with one component frozen in each, scoring every finished candidate with the model’s own sequence-level mixture negative ELBO (NELBO) of Eq. 16, and returning the argmin (Algorithm 2 in Appendix C). The model’s own likelihood is used for selection, which needs no reward model, no external judge, and no teacher, and the 
+
+M rollouts are independent and therefore run concurrently at the sequential depth of a single chain. The scoring passes can in fact be reduced. Every step evaluates all M components in order to marginalize over k,which makes the log-probability that component k assigns to the tokens revealed at that step available at no extra cost, and accumulating it along a trajectory gives a per-component 
+
+running evidence by the time the rollout finishes. Selecting on this quantity is free and is at least as accurate as the Monte-Carlo NELBO. Since it ranks candidates before they finish, it also lets the weakest rollouts be pruned partway through, cutting the cost of best-of-M by roughly a factor of three. 
+
+# 5 Theoretical analysis 
+
+A mixture kernel (Wang, Lauha, and Dunson 2026) captures the correlation . This section makes that quantitative in three steps: an exact decomposition of the correlation a rank-M
+
+mixture carries (Proposition 1), a lower bound showing that a step’s approximation error is at least its uncaptured total correlation (Theorem 1), and a hardness result showing that the mixture’s nominal capacity can be structurally unusable (Theorem 2). The first two results are stated for the model’s own step distribution and are therefore directly measurable, and the estimators reported throughout the paper measure the quantities that appear in the bound. Applying the total correlation of Eq. (3) to the step distribution Ψθt→s(· | xt) at a fixed conditioning xt, write the TC of the produced Xs as 
+
+TC( Xs | xt) = 
+
+> L
+
+X
+
+> i=1
+
+H( Xis | xt) − H( Xs | xt). (10) 
+
+Proposition 1 (Latent decomposition and correlation capac-ity) . For the LKF transition in Eq. (2) , with sampled shared latent index k ∈ [M ] and fixed (xt, t, s ),
+
+TC( Xs | xt) = 
+
+> L
+
+X
+
+> i=1
+
+I( k; Xis | xt) − I( k; Xs | xt), (11) 
+
+and therefore 
+
+0 ≤ TC( Xs | xt) ≤ (L − 1)H( k | xt) ≤ (L − 1) log M. 
+
+(12) Proof in Appendix D.3. 
+
+Approximation error from uncaptured correlation. Theorem 1 (Mixture approximation lower bound) . Let P be a distribution on V L and Q = PMk=1 wkQk, where each Qk
+
+is a product distribution and Q > 0 on the support of P .With γQ(k | x) = wkQk(x)/Q (x) and mutual information under eP (x, k ) = P (x)γQ(k | x),
+
+KL( P ∥Q) ≥ TC( P ) −
+
+" LX
+
+> i=1
+
+I eP (k; Xi) − I eP (k; X)
+
+#
+
+.
+
+(13) 
+
+Consequently, 
+
+KL( P ∥Q) ≥ TC( P ) − (L − 1) log M 
+
+> +
+
+. (14) 
+
+The bound is tight for the hidden-agreement construction of Appendix G. Proof in Appendix D.4. Applied per transition with P = q(· | xt) and Q =Ψθt→s(· | xt), the theorem lower-bounds the excess pop-ulation loss by uncaptured total correlation. Although the ceiling is attainable, the next result gives a target requiring exponentially many components. 
+
+Theorem 2 (Parity separation) . Let Pd be the uniform distri-bution on even-parity strings of {0, 1}d. If Q is any mixture of at most M product distributions with TV( Pd, Q ) ≤ ε < 13 ,then 
+
+M ≥ (1 − 3ε) 2 d−1. (15) 
+
+(Proof in Appendix D.5.) 
+
+The two theorems are falsifiable. Because bIk and cTC 
+
+are measured on the model’s own step distribution, the two theorems make sharp predictions wherever the target total correlation is known in closed form. Captured information must stay at zero on a target that requires exponential mixture rank, and must rise with M under the ceilings of Eq. (12) on a rank-M -representable target. 
+
+# 6 Experiments 
+
+We evaluate LKF in two settings: language modeling bench-marks LM1B (Chelba et al. 2013) and WikiText-103 (Merity et al. 2016), and a synthetic corpora. 
+
+6.1 Setup 
+
+Training. LM1B uses the bert-base-uncased vo-cabulary (Devlin et al. 2019) ( V =30522 ) and WikiText-103 uses the GPT-2 byte-pair vocabulary (Radford et al. 2019) (V =50257 ) at a sequence length of 128 . These models were trained for 200 k optimizer steps at a batch size of 512. 
+
+Metrics. We report generative perplexity (gen-PPL) un-der a GPT-2-large judge (Radford et al. 2019) (512 
+
+samples, decoded and retokenized), swept over NFE ∈{1, 2, 4, 8, 16 , 32 } and reported together with the sample en-tropy, since the judge rewards low-entropy text and perplex-ity alone can misrank methods. We add ELBO-perplexity (ELBO-PPL) for the likelihood models, which is the expo-nential of the per-token NELBO. 
+
+6.2 Language modeling 
+
+We validate LKF on natural language by training it at 
+
+M ∈ { 1, 4, 8} against the factorized baselines (MDLM, SEDD) and the few-step accelerators (SDTT, Di4C, ReDi) on the LM1B and WikiText-103 datasets, together with an autoregressive transformer (AR) on LM1B. 
+
+LM1B Adding mixture components improves few-step generation on LM1B, and the improvement grows with the number of components, as shown in Table 1 and Figure 3. Table 1: Generative perplexity (PPL) across the number of function evaluations (NFE) on LM1B and WikiText-103 datasets, with ELBO-perplexity (ELBO-PPL), sample entropy H and captured information I( k) at 32 NFEs. The rows marked † are decoded with best-of-M and are budget-matched to one another with the same number of network calls during sampling.                                                                                                                                                                             
+
+> gen-PPL ↓at NFE Method ELBO-PPL ↓124816 32 H@32 ↑I( k)↑
+> LM1B
+> MDLM 33.96 1082 1231 926 614 410 304 ∼4.0n/a MDLM, best-of-8†–1992 1401 770 428 281 199 5.13 n/a SEDD 42.37 3235 3253 1117 485 303 225 4.41 n/a SDTT teacher ( 7rounds) –1645 1122 612 359 243 194 4.08 n/a Di4C, best r 4–1375 899 453 236 156 115 3.99 n/a ReDi, best rect 3–141 133 121 124 119 117 3.22 n/a AR 27.61 135 (fixed at 128 NFE) 4.34 n/a
+> LKF (ours )M=1 , best-of-8†–2024 1308 706 400 262 183 5.12 0.00
+> LKF ( ours )M=1 34.22 2398 1619 913 573 429 321 5.22 0.00
+> LKF ( ours )M=4 †35.52 2169 1649 820 407 226 166 5.09 0.86
+> LKF ( ours )M=8 †34.62 1827 1515 625 284 169 105 4.93 1.48
+> WikiText-103  MDLM 28.47 7801 4344 1523 613 343 228 4.33 n/a SEDD 29.16 4003 4052 1382 638 362 247 4.36 n/a
+> LKF ( ours )M=1 27.89 6198 3308 1336 558 316 223 5.33 0.00
+> LKF ( ours )M=4 †29.79 5187 2475 849 312 164 102 5.28 0.87
+> LKF ( ours )M=8 †28.56 4403 2195 673 241 119 75 5.25 1.41
+
+Figure 3: Generative perplexity (PPL) versus number of sampling steps on LM1B, comparing LKF at M ={1, 4, 8}
+
+against the baseline methods. The eight-component model reaches the lowest (best) gener-ative perplexity of 105 at 32 evaluations, and it does so with a higher sample entropy than the baselines (sample texts in Appendix H). The gains also come from how the sampling budget is spent rather than from spending more of it. We also retrained an autoregressive model (a causal trans-former) under similar training conditions. Its full-context factorization gives the lowest clean likelihood of any model, with validation perplexity 27 .61 against MDLM’s 33 .96 and our M =1 base at 34 .22 , but its generative perplexity is 135 
+
+at a fixed 128 function evaluations, one per token, and it therefore cannot enter the few-step regime. The two are not directly comparable, since best-of-8 spends M rollouts to reach 105 but has a sequential depth of 32 steps rather than AR’s 128 , which makes it cheaper in latency and more ex-pensive in total evaluations. LKF therefore wins on judged sample quality wherever the budget can be spent in parallel. 
+
+WikiText-103 We repeat the evaluation on WikiText-103 by only changing the corpus and its GPT-2 vocabulary. The single-component LKF again matches the retrained MDLM and edges ahead of both factorized baselines with the lowest ELBO-perplexity. The mixture rows replicate and strengthen the LM1B pattern on this second corpus. At M =4 , the mix-ture is live at I( k)=0 .87 nats and reaches 102 at 32 evalua-tions, more than 2× below both baselines, and widening to 
+
+M =8 continues the trend on both axes, raising the captured information to I( k)=1 .41 nats and taking the corpus to 75 ,which is 3.0× below MDLM and 3.3× below SEDD. The likelihood cost of the mixture is not monotone in M .Moving from one component to four trades ELBO-perplexity 
+
+27 .89 for 29 .79 , but the eight-component model recovers most of that to 28 .56 , and the wider mixture therefore buys its generation gain almost for free in likelihood terms. The two factorized models have unigram entropies of 4.33 (MDLM) and 4.36 (SEDD) at 32 evaluations, well below LKF ( 5.25 ). 
+
+Comparison with few-step accelerators We run two few-step samplers from a trained teacher, namely ReDi from the DUO base (Sahoo et al. 2025) and Di4C from a seven-round SDTT student (the round-by-round results are in Ap-pendix E.2 Tables 4 and 5). The two behave differently from one another. ReDi holds the single-evaluation end with a nearly flat curve, but it earns its per-round gains through a steady entropy collapse that the GPT-2 judge rewards as fi-delity. Both models stop improving around their fifth round, and because generative perplexity alone misranks them, we also compute their entropy. As shown in Table 1, the distilled students remain ahead Figure 4: Illustration of correlation and information captured by LKF on synthetic corpora. On hidden agreement , the captured information bIk and the effective total correlation cTC rise monotonically with M , tracking their ceilings ( log M and (L−1) log M ,dashed), and held-out NLL falls accordingly. On parity , every captured-correlation metric stays at zero for all M .in the ultra-few-step regime, since they inherit a converged teacher’s calibration where the from-scratch mixture’s cold-start low-NFE points are weakest. The ordering reverses be-yond roughly eight evaluations. LKF overtakes the SDTT teacher and, at 32 evaluations, reaches the lowest perplexity of any row ( 105 ), passing both the distilled and the rectified accelerators without using any teacher. ReDi’s low few-step numbers are not directly comparable, since they carry the entropy-collapse failure mode noted above. 
+
+6.3 Synthetic corpora with known correlation 
+
+We built two synthetic corpora on which the TC is known in closed form and trained LKF on them at M ∈ { 1, 2, 4, 8, 16 }.The first is hidden agreement , whose joint is exactly repre-sentable by a rank-M mixture, and the second is parity ,whose representation cost is exponential in the sequence length. The two theorems make opposite predictions on these corpora, and both predictions hold (Figure 4). On hidden agreement, the mixture uses the latent, and uses it more as 
+
+M grows, where the captured information rises from 0 to 
+
+2.46 nats ( 89% of the log 16 ceiling) and the effective to-tal correlation from 0 to 17 .1 nats, both under their ceilings 
+
+log M and (L − 1) log M , while held-out NLL falls from 
+
+3.50 to 2.56 nats. On parity, the latent stays off at every 
+
+M , with captured information and total correlation pinned at zero and the NLL flat, as the hardness result of Theorem 2 predicts. The full experiments on the captured correlation and the router-mode analysis are in Appendix G. 
+
+6.4 Ablations 
+
+We freeze the trained LKF model and vary how the latent is selected and used at inference (full details in Appendix F). 
+
+The gain is a mixture property, and it grows with M . We used the same selector and the judge to isolate the effect of best-of-M policy, and varied only where the candidates come from. Replacing the M components by M noise draws of one component costs 16% at M =4 (157 against 186 ) and 35% at 
+
+M =8 (106 against 163 ). Eight i.i.d. chains reranked by their own likelihood at the identical budget were also given to the trained MDLM baseline and to our architecture-matched 
+
+M =1 model. The reranking helps them substantially, taking them from 363 to 199 and from 327 to 183 at 32 steps, but the mixture still reaches 106 at the same 8( J+T ) calls, which is a 47% and a 42% advantage that widens monotonically from 14% at four steps. The components therefore provide a candidate diversity, and that advantage grows as the mixture grows (Appendix F). 
+
+The selector is native, and the cheap version is the better one. Our experiments show that the ranking of the compo-nents matters, since a random pick from the same pool gives 
+
+327 at M =8 , while every scored pick lands between 106 
+
+and 163 . Selection here uses only the model’s own sequence likelihood, with no reward model, no external judge, and no temperature tuning. The Monte-Carlo mixture NELBO can be replaced with the running evidence that the trunk already produces during generation, which reaches 125 against 131 
+
+at M =8 , while removing the M T scoring passes. The same ordering holds at every step, where the running evidence matches or beats the Monte-Carlo selector at a strictly lower cost. We nonetheless report Table 1 with the Monte-Carlo selector, which is the conservative choice. The candidates can also be pruned mid-trajectory, because the evidence is available at every step. Successive halving reaches 145 for 96 
+
+calls at M =8 , which is three times cheaper than full best-of-8
+
+for an 11% higher perplexity. 
+
+Limitations We note two main limitations of LKF. The first is that the single-step exactness is capped by the per-step factorization. Each step is factorized given (xt, k ), and one disagreeing token can therefore push a sample off support independently of M , which only smaller steps or a richer per-step structure would remove. The second is that the learned router is not very informative along sampling trajectories. Making the router track component quality would turn best-of-M into a cheaper single-rollout policy. 
+
+# 7 Conclusion 
+
+We presented LKF, a discrete flow map whose finite-time kernel is a mixture of M factorized components, which ex-presses correlated steps natively and without a teacher. We provided the theory to support it and conducted experiments on the LM1B and WikiText-103 datasets that give the best few-step generative perplexity among the baseline methods. References 
+
+Austin, J.; Johnson, D. D.; Ho, J.; Tarlow, D.; and Van Den Berg, R. 2021. Structured denoising diffusion mod-els in discrete state-spaces. Advances in neural information processing systems , 34: 17981–17993. Campbell, A.; Benton, J.; De Bortoli, V.; Rainforth, T.; Deli-giannidis, G.; and Doucet, A. 2022. A continuous time frame-work for discrete denoising models. Advances in Neural Information Processing Systems , 35: 28266–28279. Campbell, A.; Yim, J.; Barzilay, R.; Rainforth, T.; and Jaakkola, T. 2024. Generative flows on discrete state-spaces: Enabling multimodal flows with applications to protein co-design. arXiv preprint arXiv:2402.04997 .Chelba, C.; Mikolov, T.; Schuster, M.; Ge, Q.; Brants, T.; Koehn, P.; and Robinson, T. 2013. One Billion Word Bench-mark for Measuring Progress in Statistical Language Mod-eling. arXiv preprint arXiv:1312.3005 .Deschenaux, J.; and Gulcehre, C. 2025. Beyond Autore-gression: Fast LLMs via Self-Distillation Through Time. In 
+
+Proceedings of the International Conference on Learning Representations (ICLR) . ArXiv:2410.21035. Devlin, J.; Chang, M.-W.; Lee, K.; and Toutanova, K. 2019. Bert: Pre-training of deep bidirectional transformers for lan-guage understanding. In Proceedings of the 2019 conference of the North American chapter of the association for compu-tational linguistics: human language technologies, volume 1 (long and short papers) , 4171–4186. Dmitriev, D.; Huang, Z.; and Wei, Y. 2026. Efficient Sam-pling with Discrete Diffusion Models: Sharp and Adaptive Guarantees. arXiv preprint arXiv:2602.15008 .Gat, I.; Remez, T.; Shaul, N.; Kreuk, F.; Chen, R. T.; Syn-naeve, G.; Adi, Y.; and Lipman, Y. 2024. Discrete flow matching. Advances in Neural Information Processing Sys-tems , 37: 133345–133385. Hayakawa, S.; Takida, Y.; Imaizumi, M.; Wakaki, H.; and Mitsufuji, Y. 2024. Distillation of discrete diffusion through dimensional correlations. arXiv preprint arXiv:2410.08709 .Lou, A.; Meng, C.; and Ermon, S. 2023. Discrete diffusion modeling by estimating the ratios of the data distribution. 
+
+arXiv preprint arXiv:2310.16834 .Merity, S.; Xiong, C.; Bradbury, J.; and Socher, R. 2016. Pointer sentinel mixture models. arXiv preprint arXiv:1609.07843 .Peebles, W.; and Xie, S. 2023. Scalable Diffusion Models with Transformers. In Proceedings of the IEEE/CVF Interna-tional Conference on Computer Vision (ICCV) , 4195–4205. ArXiv:2212.09748. Potaptchik, P.; Yim, J.; Saravanan, A.; Holderrieth, P.; Vanden-Eijnden, E.; and Albergo, M. S. 2026. Discrete flow maps. arXiv preprint arXiv:2604.09784 .Radford, A.; Wu, J.; Child, R.; Luan, D.; Amodei, D.; Sutskever, I.; et al. 2019. Language models are unsuper-vised multitask learners. OpenAI blog , 1(8): 9. Sahoo, S. S.; Arriola, M.; Schiff, Y.; Gokaslan, A.; Mar-roquin, E.; Chiu, J. T.; Rush, A.; and Kuleshov, V. 2024. Simple and effective masked diffusion language models. 
+
+Advances in Neural Information Processing Systems , 37: 130136–130184. Sahoo, S. S.; Deschenaux, J.; Gokaslan, A.; Wang, G.; Chiu, J.; and Kuleshov, V. 2025. The diffusion duality. arXiv preprint arXiv:2506.10892 .Shazeer, N.; Mirhoseini, A.; Maziarz, K.; Davis, A.; Le, Q.; Hinton, G.; and Dean, J. 2017. Outrageously large neural networks: The sparsely-gated mixture-of-experts layer. arXiv preprint arXiv:1701.06538 .Wang, H.; Lauha, P.; and Dunson, D. B. 2026. Bayesian mod-eling of multi-species labeling errors in ecological studies. arXiv:2406.15844. Yoo, J.; Kim, W.; and Hong, S. 2026. Redi: Rectified discrete flow. Advances in Neural Information Processing Systems ,38: 81651–81683. Zhang, J.; Gao, Y.; Liu, R.; Cheng, X.; Zhang, H.; and Chen, S. 2025. Can students beyond the teacher? distilling knowl-edge from teacher’s bias. In Proceedings of the AAAI Con-ference on Artificial Intelligence , volume 39, 22434–22442. Zhao, Y.; and Cai, C. 2026. Adaptation to Intrinsic De-pendence in Diffusion Language Models. arXiv preprint arXiv:2602.20126 .A Notation 
+
+Table 2 collects the symbols used throughout the paper. Table 2: Notations used throughout the paper.                                                          
+
+> Symbol Meaning
+> Lsequence length (number of positions)
+> V,V={1, . . . , V }vocabulary size and vocabulary
+> [MASK] absorbing (mask) symbol, [MASK] /∈ V
+> x= ( x1, . . . , x L)a clean sequence, xithe token at position ipdata , p model data and model distributions over clean sequences
+> t, s ∈[0 ,1] two times with t < s (noisier to cleaner)
+> κtkeep-probability schedule ( κ0=0 ,κ1=1 )
+> xtpartially masked sequence at time t
+> Ψθt→s(xs|xt)finite-time flow-map kernel from tto sMnumber of mixture components
+> k∈[M]sampled latent component index; also used as the mixture-component index
+> wk(xt, t, s )router weight of component k, with P
+> kwk= 1
+> Pθi(· | xt, k, t, s )component k’s token distribution at position iJnumber of sampling steps, NFE = JB, D, L kbatch size, model width, number of late (latent) blocks
+> H,I,TC entropy, mutual information, total correlation
+
+# B The MDLM-equivalent clean-posterior objective 
+
+The language experiments supervise the clean endpoint x1 at s=1 , which turns the LKF objective of Eq. (7) into a clean-posterior mixture whose M =1 case coincides with MDLM. We build this instantiation around two requirements. The first is that its M =1 
+
+instance recovers MDLM’s absorbing evidence lower bound, which lets the mixture effect be read against a matched anchor. The second is that its M > 1 instance trains the latent on whole masked sets, which is what makes k carry sequence-level correlation. Following MDLM, the corruption uses the loglinear schedule σ(τ ) = − log  1 − (1 − ε)τ  with ELBO weight 
+
+ω(τ ) = d σ/ expm1( σ) = 1 /τ . For each step, we draw a single time τ ∼ U [ε, 1] with antithetic (stratified) sampling, mask each position with probability (1 − ε)τ to form xτ , and query the clean head ( s=1 ) under the SUBS parameterization, which zeros the mask logit (logit [MASK] → −∞ ) and copies revealed tokens through. Writing ℓki = log P ki (xi 
+
+> 1
+
+| xτ ) for the clean-token log-probability of component k at position i and M for the set of masked, non-padding positions, the per-example loss is the 
+
+sequence-level mixture likelihood 
+
+Lx0 = − ω(τ ) logsumexp 
+
+> k
+
+
+
+log wk + P 
+
+> i∈M
+
+ℓki
+
+
+
+, (16) accumulated over the batch and normalized by the total count of non-padding tokens, mirroring MDLM’s attention-mask normalization. As in the main objective, keeping the position-sum inside the logsumexp makes the target P 
+
+> k
+
+wk
+
+Q 
+
+> i∈M
+
+P ki (xi 
+
+> 1
+
+|
+
+xτ ), the rank-M clean-endpoint posterior of Eq. (2). Its population objective is a positively weighted conditional cross-entropy, equivalently a positively weighted expected conditional KL divergence up to a parameter-independent entropy term. The training loop is Algorithm 1. 
+
+Proposition 2 (Clean-posterior KL decomposition) . Let q(· | xτ ) be the true posterior over masked clean tokens and let 
+
+Ψx0 
+
+> θ
+
+(· | xτ ) be the LKF clean-endpoint mixture. With the same per-example token normalization as Eq. (16) , the population objective is 
+
+E
+
+ ω(τ )
+
+Ntok 
+
+H q(· | xτ ) + KL  q(· | xτ )|Ψx0 
+
+> θ
+
+(· | xτ ) 
+
+.
+
+Hence, any population minimizer minimizes the corresponding weighted expected conditional KL. If the model class can realize the conditional projections jointly, it realizes them almost surely. Theorem 1 lower-bounds each conditional KL by uncaptured total correlation. Proof in Appendix D.6. For likelihood evaluation , we additionally report the standard object that MDLM and SEDD report, which is the Rao-Blackwellized NELBO of the marginal denoiser. 
+
+Proposition 3 (Marginal NELBO for evaluation) . The marginal denoiser ¯xθ (xτ )i = P 
+
+> k
+
+wkP ki (· | xτ ) satisfies the SUBS constraints. After multiplying the Monte Carlo estimate by 1−ε, its weighted per-position loss is the truncated Rao–Blackwellized absorbing NELBO evaluated at ¯xθ . It upper-bounds the negative log-likelihood of the continuous-time reverse process defined by this marginal denoiser and is comparable across M . Proof in Appendix D.7. The containment of MDLM at M =1 is exact at both the objective and the sampler level. Hence, the M =1 language cell is an anchor by construction rather than by tuning. 
+
+Proposition 4 (Exact MDLM containment at M =1 ). At M =1 , Eq. (16) reduces to MDLM’s weighted SUBS objective, and the LKF analytic update equals MDLM’s cached ancestral update on every grid tj = j/J , tj+1 = ( j + 1) /J . Thus, the M =1 
+
+objective and sampler coincide with MDLM. Proof in Appendix D.8. 
+
+Remark 1 (Two likelihood objects at M > 1). The sequence-level mixture objective and the marginal NELBO are distinct. The former rewards one latent component for explaining the whole masked set, whereas the latter depends only on per-position marginals. Thus, the marginal ELBO-perplexity does not measure the joint correlation that a frozen-component finite-step sampler exploits. 
+
+# C Training and inference 
+
+We present the training algorithm for LKF with the clean-posterior mixture objective in Algorithm 1, and the inference with the best-of-M decode policy in Algorithm 2. Algorithm 1: LKF training (exact-mixture likelihood of the clean tokens) 
+
+Require: corpus D; network θ; mixture size M ; training steps T 
+
+> 1:
+
+for n = 1 to T do  
+
+> 2:
+
+sample a clean batch x1 ∼ D and one noise level τ ∼ U [ε, 1] per sequence  
+
+> 3:
+
+xτ ← mask each position of x1 with probability (1 − ε)τ ; M ← masked positions  
+
+> 4:
+
+run the network on (xτ , s =1) : component heads P 1, . . . , P M and router w 
+
+> 5:
+
+ℓk ← P 
+
+> i∈M
+
+log P ki (xi
+
+> 1
+
+) for each k {how well component k explains the whole masked set}  
+
+> 6:
+
+log Ψ ← logsumexp k
+
+  log wk + ℓk
+
+ {exact marginalization over k; no sampled latent}  
+
+> 7:
+
+L ← 1
+
+> τ
+
+ − log Ψ  averaged over the batch + router regularizer R {ELBO weight; Eq. (8)}  
+
+> 8:
+
+gradient step on L 
+
+> 9:
+
+end for  
+
+> 10:
+
+return θ
+
+Algorithm 2: LKF inference (best-of-M decode at J steps) 
+
+Require: trained network θ; mixture size M ; sampling steps J; scoring draws R 
+
+> 1:
+
+for all components k = 1 , . . . , M , one rollout each, in parallel do  
+
+> 2:
+
+x ← all-[MASK]  
+
+> 3:
+
+for j = 0 to J − 1 do  
+
+> 4:
+
+run the network on (x, s =1) and read off component k’s clean prediction P k 
+
+> 5:
+
+reveal each [MASK] position with probability 1 
+
+> J−j
+
+, drawing its token from P ki {scheduled reveal rate; revealed tokens stay fixed}  
+
+> 6:
+
+end for  
+
+> 7:
+
+ˆxk ← x, with any residual [MASK] filled by arg max P ki 
+
+> 8:
+
+end for  
+
+> 9:
+
+Sk ← mixture NELBO of ˆxk (Eq. (16)), averaged over R draws of (τ, mask ) shared across k {the model scores its own candidates; no external judge}  
+
+> 10:
+
+return ˆxk⋆
+
+with k⋆ = arg min k Sk
+
+# D Proofs 
+
+Throughout, all state spaces are finite, all entropies and divergences are in nats, and all quantities conditioned on xt are understood pointwise in xt unless an outer expectation is written explicitly. 
+
+D.1 Rate mixtures remain factorized 
+
+Call a CTMC generator R coordinatewise if it decomposes as R = PLi=1 Ri, where Ri assigns nonzero rate only to transitions that change coordinate i alone. All factorized discrete diffusions and flows have coordinatewise generators. Proposition 5 (Locally averaged rate mixtures remain coordinatewise) . Let R1, . . . , R M be coordinatewise generators on a finite state space, with uniformly bounded rates on the time interval considered, and let ¯R(x, y, t ) = P 
+
+> k
+
+wk(x, t )Rk(x, y, t ).Then ¯R is coordinatewise, and its length-δ transition kernel differs from the product of its coordinate marginals by O(δ2). This concerns a locally averaged generator, not a trajectory generated by one globally frozen component. Proof. 
+
+Write Rk = PLi=1 Rik, where Rik(x, y ) = 0 unless y differs from x in coordinate i alone. Fix arbitrary measurable weights 
+
+wk(x, t ) ≥ 0 with P 
+
+> k
+
+wk(x, t ) = 1 and set ¯R(x, y, t ) = P 
+
+> k
+
+wk(x, t ) Rk(x, y, t ) for y̸ = x, with the diagonal defined by row sums. The off-diagonal entries of ¯R are nonnegative as convex combinations of nonnegative rates, and its rows sum to zero by construction, so ¯R is a valid CTMC generator. We first verify the coordinatewise structure. If y differs from x in two or more coordinates, then Rk(x, y, t ) = 0 for every k,because each Rk is coordinatewise, hence ¯R(x, y, t ) = P 
+
+> k
+
+wk(x, t ) · 0 = 0 . Defining ¯Ri(x, y, t ) = P 
+
+> k
+
+wk(x, t ) Rik(x, y, t )
+
+gives ¯R = P 
+
+> i
+
+¯Ri with each ¯Ri supported on single-coordinate-i changes, so ¯R is coordinatewise. The sample paths of a CTMC are piecewise constant with jumps at isolated times, and each jump moves the state from some 
+
+x to some y with ¯R(x, y, t ) > 0. By the coordinatewise structure, every such y differs from x in exactly one coordinate, so each jump changes exactly one coordinate. Since two jumps coincide in time with probability zero, the process changes one coordinate at a time almost surely. We now turn to the infinitesimal factorization. Rates are bounded on the finite state space and any compact time interval, say by Λ. The number of jumps in a window of length ε is stochastically dominated by a Poisson variable N with mean Λε, and 
+
+Pr[ N ≥ 2] ≤ 12 (Λ ε)2 ≤ (Λ ε)2. Hence, up to an O(ε2) total-variation error, we may assume the window contains zero jumps or one jump. Writing μ = Pε(x, ·) for the time-ε kernel started at x, condition on the number of jumps. With zero jumps, the state stays at x. With exactly one jump, the single change is in some coordinate i by the one-coordinate-at-a-time property, an event of probability ai = O(ε), after which the state lies in {y : yj = xj ∀j̸ = i}, and we call its conditional law μi. Together with the jump-count bound, 
+
+μ =
+
+
+
+1 − X
+
+> i
+
+ai
+
+
+
+δx +
+
+> L
+
+X
+
+> i=1
+
+ai μi + O(ε2).
+
+Next, project this decomposition onto coordinate i. The point mass δx projects to δxi , each μj with j̸ = i leaves coordinate i
+
+at xi and also projects to δxi , and μi projects to its own i-th marginal νi. Hence, the i-th marginal of μ is 
+
+
+
+1 − X
+
+> j
+
+aj
+
+
+
+δxi + X 
+
+> j̸=i
+
+aj δxi + ai νi + O(ε2) = (1 − ai) δxi + ai νi + O(ε2).
+
+Finally, expand the product of these L marginals. The all-δ term contributes Q
+
+> i
+
+(1 − ai) δx =  1 − P 
+
+> i
+
+ai
+
+δx + O(ε2), since every higher-order term of the expansion of Q
+
+> i
+
+(1 − ai) carries at least two factors aiaj = O(ε2). Each term selecting the νi
+
+factor exactly once contributes ai
+
+Q 
+
+> j̸=i
+
+(1 − aj )  δx1 ⊗ · · · ⊗ νi ⊗ · · · ⊗ δxL
+
+ = ai μi + O(ε2), using Q 
+
+> j̸=i
+
+(1 − aj ) = 1 − O(ε)
+
+and the fact that μi agrees with x off coordinate i. Every term selecting two or more ν factors carries aiaj = O(ε2). Therefore 
+
+> L
+
+Y
+
+> i=1
+
+(1 − ai)δxi + aiνi
+
+ =
+
+
+
+1 − X
+
+> i
+
+ai
+
+
+
+δx + X
+
+> i
+
+ai μi + O(ε2) = μ + O(ε2),
+
+which is the claimed O(ε2) total-variation bound. The Θ(1 /J ) discretization floor for simulating such locally averaged processes with J product steps is Theorem 1 of Hayakawa et al. (2024) and is not re-proved here. 
+
+D.2 The LKF objective trains the KL projection 
+
+Proposition 6 (Population KL decomposition) . Fix (t, s ) and a class C of transition kernels. Then 
+
+Lnll (Ψ) = Ext H q(· | xt) + Ext KL  q(· | xt)|Ψ( · | xt).
+
+Thus, any minimizer over C minimizes the expected conditional KL, and the excess over the unrestricted optimum is that expected KL. A pointwise conclusion additionally requires C to permit the conditional projections to be chosen jointly. Proof. 
+
+Fix xt and abbreviate q = q(· | xt) and Ψ = Ψ( · | xt). Adding and subtracting log q(xs) inside the expectation, 
+
+−Exs∼q
+
+ log Ψ( xs) = − X
+
+> xs
+
+q(xs) log q(xs) + X
+
+> xs
+
+q(xs) log q(xs)Ψ( xs) = H( q) + KL  q ∥ Ψ,where the first sum is the Shannon entropy of q, and the second is the KL divergence by definition. The population loss draws xt from the true intermediate law and xs from q(· | xt), so averaging this identity over xt gives 
+
+Lnll (Ψ) = Ext
+
+H q(· | xt) + Ext
+
+KL  q(· | xt) ∥ Ψ( · | xt) , the stated decomposition. The entropy term is independent of Ψ, so minimizing over C is equivalent to minimizing the expected conditional KL. If C is rectangular across conditioning states, or contains a kernel formed from the pointwise conditional projections, the minimization separates pointwise. Otherwise, only the expected-KL statement follows. The unrestricted optimum is q, for which the KL is zero, so the excess over that optimum is the displayed expected KL. 
+
+D.3 Proof of Proposition 1 (latent decomposition and correlation capacity) 
+
+Proposition 1 (latent decomposition and correlation capacity). Let k ∈ [M ] denote the sampled shared latent component index of the LKF transition. Then 
+
+TC( Xs | xt) = 
+
+> L
+
+X
+
+> i=1
+
+I( k; Xis | xt) − I( k; Xs | xt),
+
+and 
+
+0 ≤ TC( Xs | xt) ≤ (L − 1)H( k | xt) ≤ (L − 1) log M. 
+
+Proof. Fix xt and (t, s ) and suppress them temporarily from the notation. Conditioned on k, the LKF component is a product distribution, so 
+
+H( Xs | k) = 
+
+> L
+
+X
+
+> i=1
+
+H( Xis | k). (17) Therefore, 
+
+> L
+
+X
+
+> i=1
+
+I( k; Xis) − I( k; Xs) = 
+
+> L
+
+X
+
+> i=1
+
+H( Xis) − H( Xis | k) − [H( Xs) − H( Xs | k)] =
+
+> L
+
+X
+
+> i=1
+
+H( Xis) − H( Xs)= TC( Xs), (18) where Eq. (17) cancels the conditional-entropy terms. Restoring the conditioning on xt proves Eq. (11). For every coordinate, Xis is a deterministic function of Xs, so the data-processing inequality gives 
+
+I( k; Xis | xt) ≤ I( k; Xs | xt).
+
+Choose 
+
+j ∈ arg max 
+
+> 1≤i≤L
+
+I( k; Xis | xt).
+
+Using Eq. (11), 
+
+TC( Xs | xt) ≤
+
+> L
+
+X
+
+> i=1
+
+I( k; Xis | xt) − I( k; Xjs | xt)= X
+
+> i̸=j
+
+I( k; Xis | xt)
+
+≤ (L − 1)H( k | xt)
+
+≤ (L − 1) log M. (19) The final inequality follows because k takes at most M values. Finally, 
+
+TC( Xs | xt) = KL Pr( Xs | xt)
+
+> L
+
+Y
+
+> i=1
+
+Pr( Xis | xt)
+
+!
+
+≥ 0.
+
+This proves Eq. (12). 
+
+D.4 Proof of Theorem 1 (mixture approximation lower bound) Theorem 1 (mixture approximation lower bound). With γQ(k | x) = wkQk(x)/Q (x) and eP (x, k ) = P (x)γQ(k | x),
+
+KL( P ∥Q) ≥ TC( P ) −
+
+"X
+
+> i
+
+I eP (k; Xi) − I eP (k; X)
+
+#
+
+≥ [TC( P ) − (L − 1) log M ]+ .
+
+Proof. Define 
+
+γQ(k | x) = wkQk(x)
+
+Q(x) , eP (x, k ) = P (x)γQ(k | x),αk = eP (k), ePk = eP (X | k), (20) and let eQ(x, k ) = wkQk(x). (21) Then eP (k | x) = eQ(k | x) = γQ(k | x).
+
+Applying the KL chain rule by conditioning first on X gives 
+
+KL( eP ∥ eQ) = KL( P ∥Q). (22) Conditioning instead on k gives 
+
+KL( eP ∥ eQ) = KL( α∥w) + X 
+
+> k:αk>0
+
+αkKL( ePk∥Qk). (23) Together with Eq. (22), Eq. (23) gives the KL decomposition. Let eP ik denote the i-th marginal of ePk. Since Qk is a product distribution, 
+
+KL( ePk∥Qk) = KL ePk
+
+> L
+
+Y
+
+> i=1
+
+eP ik
+
+!
+
++
+
+> L
+
+X
+
+> i=1
+
+KL( eP ik∥Qik)= TC( ePk) + 
+
+> L
+
+X
+
+> i=1
+
+KL( eP ik∥Qik)
+
+≥ TC( ePk). (24) Consequently, 
+
+KL( P ∥Q) ≥ KL( α∥w) + X 
+
+> k:αk>0
+
+αkTC( ePk). (25) All remaining entropies and mutual informations are evaluated under the lifted target joint eP . Since eP (X | k) = ePk,
+
+X 
+
+> k:αk>0
+
+αkTC( ePk) = 
+
+> L
+
+X
+
+> i=1
+
+H eP (Xi | k) − H eP (X | k)= TC( P ) −
+
+" LX
+
+> i=1
+
+I eP (k; Xi) − I eP (k; X)
+
+#
+
+. (26) Substituting Eq. (26) into Eq. (25) and dropping the nonnegative term KL( α∥w) proves Eq. (13). To obtain the cardinality bound, let 
+
+j ∈ arg max 
+
+> 1≤i≤L
+
+I eP (k; Xi).
+
+Since Xj is a deterministic projection of X,
+
+I eP (k; X) ≥ I eP (k; Xj ).
+
+Hence, 
+
+> L
+
+X
+
+> i=1
+
+I eP (k; Xi) − I eP (k; X) ≤ X
+
+> i̸=j
+
+I eP (k; Xi)
+
+≤ (L − 1)H eP (k)
+
+≤ (L − 1) log M. (27) Combining this with Eq. (13) and KL( P ∥Q) ≥ 0 proves Eq. (14). For tightness, let P be the hidden-agreement distribution: draw v uniformly from a vocabulary of size V and set all N
+
+positions equal to v. Take M = V components 
+
+Qv = δ(v,...,v )
+
+with uniform weights. Then Q = P , so KL( P ∥Q) = 0 . The latent component is determined by every coordinate and by the full sequence, yielding 
+
+I eP (k; Xi) = log V, I eP (k; X) = log V. 
+
+Therefore, the captured correlation is 
+
+N log V − log V = ( N − 1) log V = TC( P ),
+
+and the lower bound is attained. 
+
+D.5 Proof of Theorem 2 (parity separation) 
+
+Theorem 2 (parity separation). Let Pd be uniform on the even-parity strings in {0, 1}d. If a mixture of at most M product distributions Q = PMk=1 wkQk satisfies TV( Pd, Q ) ≤ ε < 13 , then 
+
+M ≥ (1 − 3ε) 2 d−1.
+
+The number of factorized components needed to approximate parity therefore grows exponentially in the dimension. Proof. Let E ⊂ { 0, 1}d be the set of even-parity strings, |E| = 2 d−1, and let Pd be uniform on E. Let Q = PMk=1 wkQk with each Qk a product, pki = Qk(Xi=1) , and suppose TV( Pd, Q ) ≤ ε < 13 . Throughout we use TV( P, Q ) ≥ P (A) − Q(A) for any event A, which is the definitional bound applied at A.We first show that the mixture weight concentrates on high-bias components. Define the parity bias bk = EQk
+
+(−1) P  
+
+> iXi
+
+.Because Qk is a product, the coordinates are independent, and the expectation of a product of independent factors is the product of their expectations, 
+
+bk = EQk
+
+h dY
+
+> i=1
+
+(−1) Xi i
+
+=
+
+> d
+
+Y
+
+> i=1
+
+EQk
+
+(−1) Xi  =
+
+> d
+
+Y
+
+> i=1
+
+(1 − pki ) − pki
+
+ =
+
+> d
+
+Y
+
+> i=1
+
+(1 − 2pki ) ∈ [−1, 1] .
+
+The even-parity indicator is 1{x ∈ E} = 12
+
+ 1 + ( −1) P  
+
+> ixi
+
+, since the inner sign is +1 on even and −1 on odd strings. Taking expectations, Qk(E) = 12 (1 + bk), hence Q(E) = P 
+
+> k
+
+wkQk(E) = 12
+
+ 1 + P 
+
+> k
+
+wkbk
+
+, while Pd(E) = 1 . Applying the total-variation bound at the event E,
+
+ε ≥ TV( Pd, Q ) ≥ Pd(E) − Q(E) = 12
+
+
+
+1 − X
+
+> k
+
+wkbk
+
+
+
+, so X
+
+> k
+
+wkbk ≥ 1 − 2ε. 
+
+On weighted average, the components must therefore have parity bias close to one. Next, we show that high-bias components are near-deterministic. Let x∗ 
+
+> k
+
+be a coordinatewise mode of Qk, so Qk(x∗
+
+> k
+
+) = 
+
+Q 
+
+> i
+
+max( pki , 1 − pki ), and set aki = |1 − 2pki |. Then max( pki , 1 − pki ) = 1+ aki 
+
+> 2
+
+, and the elementary inequality 1+ a 
+
+> 2
+
+≥ a for 
+
+a ∈ [0 , 1] (equivalently 1 − a ≥ 0) gives 
+
+Qk(x∗
+
+> k
+
+) = Y
+
+> i
+
+1 + aki
+
+2 ≥ Y
+
+> i
+
+aki = Y
+
+> i
+
+1 − 2pki = |bk| ≥ bk.
+
+A component with large positive parity bias therefore places at least that much mass on one string. Finally, count the modes against the uniform target. Let S = {x∗
+
+> 1
+
+, . . . , x ∗ 
+
+> M
+
+}, so |S| ≤ M . Combining the two previous displays, 
+
+Q(S) ≥ X
+
+> k
+
+wk Qk(x∗
+
+> k
+
+) ≥ X
+
+> k
+
+wkbk ≥ 1 − 2ε, 
+
+while Pd places mass at most 2−(d−1) on each string, so Pd(S) ≤ M 2−(d−1) . The mixture piles at least 1 − 2ε of its mass on at most M strings, while the target spreads uniformly over 2d−1 strings. Applying the total-variation bound at the event S,
+
+ε ≥ TV( Pd, Q ) ≥ Q(S) − Pd(S) ≥ 1 − 2ε − M 2−(d−1) ,
+
+which rearranges to M ≥ (1 − 3ε) 2 d−1.
+
+D.6 Proof of Proposition 2 (clean-posterior KL decomposition) Proposition 2 (clean-posterior KL decomposition). The normalized clean-posterior loss is a positively weighted entropy plus a positively weighted expected conditional KL. Proof. For fixed (τ, x τ ), Eq. (16) assigns probability 
+
+Ψx0 
+
+> θ
+
+(xM 
+
+> 1
+
+| xτ ) = 
+
+> M
+
+X
+
+> k=1
+
+wk(xτ ) Y
+
+> i∈M
+
+P ki (xi 
+
+> 1
+
+| xτ ).
+
+Since xM 
+
+> 1
+
+∼ q(· | xτ ),
+
+−Eq log Ψ x0 
+
+> θ
+
+= H( q) + KL( q|Ψx0 
+
+> θ
+
+).
+
+Retaining the actual per-example normalization and averaging gives 
+
+E
+
+ ω(τ )
+
+Ntok 
+
+{H( q) + KL( q|Ψx0 
+
+> θ
+
+)}
+
+
+
+.
+
+The entropy term is parameter-independent, and joint realizability is needed to infer the pointwise projection from the shared parameterization. Finally, Theorem 1 applies conditionally because Ψx0 
+
+> θ
+
+is a mixture of at most M product distributions. 
+
+D.7 Proof of Proposition 3 (marginal NELBO for evaluation) 
+
+Proposition 3 (marginal NELBO for evaluation). The marginal denoiser satisfies SUBS, and the properly normalized single-time estimator equals the truncated Rao–Blackwellized absorbing NELBO. Proof. Every component assigns zero probability to [MASK] and copies an already revealed token, so convex combination preserves both SUBS constraints. For every masked position, 
+
+log X
+
+> k
+
+wkP ki (xi 
+
+> 1
+
+| xτ ) = log ¯ xθ (xτ )i[xi
+
+> 1
+
+],
+
+so the marginal loss is the weighted per-position SUBS cross-entropy. For the loglinear corruption, |α′ 
+
+> τ
+
+|/(1 − ατ ) = 1 /τ = ω(τ ). Since τ ∼ U [ε, 1] ,
+
+(1 − ε)Eτ [f (τ )] = 
+
+Z 1
+
+> ε
+
+f (τ ), dτ. 
+
+Thus, (1 − ε)E[Lmarg ] is the truncated Rao–Blackwellized absorbing NELBO of ¯xθ , and standard ELBO reasoning gives the likelihood upper bound. This result concerns the continuous-time process defined by the marginal denoiser, and it does not identify that process with the limit of a sampler that freezes one latent component for the whole trajectory. 
+
+D.8 Proof of Proposition 4 (MDLM containment at M =1 )
+
+Proposition 4 (MDLM containment at M =1 ). At M =1 , the objective and finite-grid analytic sampler reduce to their MDLM counterparts. Proof. When M = 1 , w1 = 1 and Eq. (16) reduces to −ω(τ ) P 
+
+> i∈M
+
+log P 1 
+
+> i
+
+(xi 
+
+> 1
+
+| xτ ), the weighted SUBS objective with the same corruption, masked-position restriction, and token normalization. For sampling, use the paper’s clean-survival convention κ0 = 0 , κ1 = 1 . For 0 ≤ t < s ≤ 1, a position masked at t is revealed by s with probability κs − κt
+
+1 − κt
+
+,
+
+and otherwise remains masked, and revealed positions carry over. Substituting the single clean head for the unknown clean token gives both analytic updates. On the grid tj = j/J , tj+1 = ( j + 1) /J with κt = t,
+
+tj+1 − tj
+
+1 − tj
+
+= 1
+
+J − j ,
+
+which is the sampler’s reveal probability. The transition kernels and initial all-mask state agree, so the sampler laws coincide for every J.
+
+D.9 Comparison to prior guarantees 
+
+SEDD proves that the factorized update is the KL projection onto products, but it does not quantify the projection error. Di4C proves a Θ(1 /J ) floor for products and the universality of mixtures, but it gives no rate in M . ReDi certifies that coupling rectification monotonically decreases the same conditional total correlation from the data side. We supply the missing quantity in Theorem 1, which is an identity for the projection error of an M -mixture, together with a matching hardness case in Theorem 2. E Architecture details 
+
+Network diagram. Figure 5 shows the full LKF forward pass for one flow-map step, including the shared trunk, the pooled router, and the late latent branch.             
+
+> xt
+> embed
+> shared blocks
+> ×(depth −Lk)
+> router latent blocks ×Lk
+> token head
+> Ψθt→s(xs|xt) =
+> MX
+> k=1
+> wkLY
+> i=1
+> Pθi
+> t, s
+> k= 1 , . . . , M
+> w
+> Pk
+
+Figure 5: One LKF flow-map step. Blue is the shared computation, which is run once and is never conditioned on the latent, and orange is the per-component computation, which is repeated for k = 1 , . . . , M (stacked cards). The trunk output feeds a router, which scores how well each component fits the input, and a short stack of latent blocks plus token head, which produce the M candidate distributions P k. The step is their mixture, which draws k with probability wk and then decodes every position from component k. The step times t, s (dashed) condition every block, whereas k conditions only the orange stack. Exact marginalization over all M components therefore costs M light passes rather than M full forward passes. 
+
+Input and conditioning embeddings. Tokens are embedded and summed with a learned positional embedding, X(0) =Emb( xt) + Pos(0: L) ∈ RB×L×D. The two scalar times are lifted by a sinusoidal feature map and separate MLPs, and a learned latent embedding is added for the latent blocks: 
+
+cshared = MLP t(γ(t)) + MLP s(γ(s)) ∈ RB×D, (28) 
+
+ck = cshared + kemb (k) ∈ RB×D, (29) where γ(·) is the sinusoidal embedding. The conditioning vector is the sole channel through which t, s (and k) reach the residual stream. The latent embedding is what makes component k different. The token representation entering the latent blocks is identical across k, and only the FiLM parameters differ .
+
+Shared trunk, router, latent branch. The shared blocks map X(0) to a latent-agnostic representation h ∈ RB×L×D
+
+conditioned only on (t, s ). The router mean-pools h over positions and applies a two-layer MLP to produce M logits, softmaxed to the mixture weights w. We pool to a single latent per sequence because the shared k is what carries cross-position correlation, whereas a per-position router would collapse the kernel back to a factorized product. The latent branch tiles h to [B·M, L, D ] and runs the last Lk blocks with the k-dependent conditioning ck. A final RMSNorm and a weight-tied linear token head produce 
+
+[B, M, L, V ] logits, reshaped so that P θi (· | xt, k ) = softmax V (logits [: , k, :, :]) .
+
+A worked one-step example. Figure 6 contrasts one factorized step with one LKF step on a sequence whose first and third positions are constrained to agree. The factorized step decides the two positions independently and typically violates the constraint, while the LKF step conditions both on the same drawn k and satisfies it in the same step. 
+
+Late injection. Exact marginalization over k requires the network to evaluate all M components. Injecting k at the input forces every block to depend on k, at a cost of M · depth block-passes, whereas injecting k only into the last Lk blocks keeps the shared trunk reusable and brings the cost down to (depth − Lk) + M L k (Table 3). We trade here on the modelling assumption that a latent-agnostic representation of the partially-masked sequence supplies enough context, and that the latent only has to steer the shallow, late “which completion” decision. 
+
+E.1 Inside a DiT block 
+
+Every block (shared or latent) is a DiT block (Peebles and Xie 2023) that modulates a standard transformer sublayer pair by six FiLM parameters produced from the conditioning vector c (Fig. 7). We condition through adaLN rather than cross-attention or (a) Factorized step (other methods) 
+
+xt [MASK] [MASK] [MASK] 
+
+one step 
+
+xs A ? B ×
+
+positions 1 and 3 must agree, but are sampled independently: 
+
+A̸ = B with high probability. 
+
+# (b) LKF step (ours) 
+
+xt [MASK] [MASK] [MASK] draw k ∼ w(xt)
+
+one step, all positions use k
+
+xs A ? A ✓
+
+both positions are decoded from the same component k, so the agreement holds in a single step. 
+
+Figure 6: Generation view of the same mechanism. Both panels start from an all-[MASK] sequence whose first and third positions are constrained to take the same value. (a) A factorized step (Eq. 1) samples every position from its own marginal, so the two constrained positions are decided independently and typically disagree, and coordinating them requires additional steps. 
+
+(b) One LKF step first draws a single latent k ∼ w(xt) and then decodes every position from component k. Because the same 
+
+k conditions both positions, the agreement is produced in one step. The middle position is unconstrained (‘?’) in both cases. Table 3: Marginalization cost in transformer-block-passes per step, at depth =12 , Lk=4 .                          
+
+> M124816 input injection ( M·depth) 12 24 48 96 192
+> late injection ((depth −Lk)+ M L k)12 16 24 40 72
+> speed-up ×1.0 1.5 2.0 2.4 2.7
+
+extra conditioning tokens because it is cheap, proven at scale, and gives the latent a clean per-block slot that adds no sequence length. Writing {γ1, β 1, g 1, γ 2, β 2, g 2} = Lin(SiLU( c)) , the block computes 
+
+u = x + g1 ⊙ Attn  (1 + γ1) ⊙ RMSNorm( x) + β1
+
+, (30) 
+
+y = u + g2 ⊙ SwiGLU  (1 + γ2) ⊙ RMSNorm( u) + β2
+
+, (31) with the modulation broadcast over the L positions. The individual components are chosen as follows. 
+
+• RMSNorm RMSNorm( x) = x / 
+
+q 1
+
+> D
+
+P 
+
+> j
+
+x2 
+
+> j
+
++ ϵ ⊙ s is cheaper than and as stable as LayerNorm, and is the LLaMA/DiT default. 
+
+• adaLN with zero-init gates. The FiLM projection is zero-initialized in the shared blocks, which makes each block the identity y = x at step 0 and lets the conditioning ramp in smoothly, and this is what keeps deep training stable. The latent 
+
+blocks deliberately break this symmetry, since under the standard zero-init the M components would start identical, receive identical gradients, and stay collapsed to a single factorized kernel. 
+
+• RoPE bidirectional attention. Rotary positions give relative-position generalization across lengths, and attention is non-causal because denoising sees the whole partially-masked sequence at once (there is no generation order to respect, unlike autoregression). 
+
+• SwiGLU MLP SwiGLU( z) = Wo
+
+ SiLU( W1z) ⊙ W2z is the gated-linear-unit feed-forward used by strong modern transformers. 
+
+E.2 Anchor and accelerator details 
+
+We establish the factorized anchors here, verify numerically that the LKF M =1 point is a faithful instance of native MDLM, and give the round-by-round accelerator tables behind Sec. 6.2. The mixture claim rests on that M =1 point being a genuine MDLM instance, since any change with M must then be attributable to the mixture and not to a weaker backbone, and we therefore verify the equivalence rather than asserting it. On the objective, the clean-posterior M =1 loss is MDLM’s weighted SUBS cross-entropy and agrees with it to 3.6 × 10 −15 on identical draws (Proposition 4). On the sampler, the analytic-reverse update at M =1 is numerically MDLM’s cached ancestral update. On architecture, the trunk matches the full native MDLM backbone ( 139 .89 M against 139 .3M parameters), and at M =1 the router and latent embedding receive identically zero gradient, which leaves the extra parameters inert and the model optimizing the same function class as MDLM. x
+
+norm 
+
+scale, shift 
+
+attention 
+
+gate 
+
++
+
+norm 
+
+scale, shift 
+
+MLP 
+
+gate 
+
++
+
+y
+
+c (t, s, k )
+
+MLP 
+
+> γ1, β 1
+> g1
+> γ2, β 2
+> g2
+
+Figure 7: One LKF block, in the standard adaLN (DiT) layout. The residual stream runs through a pre-norm attention and MLP pair. The conditioning vector c, which carries the step times and, in the latent blocks, the latent k, is mapped by a small MLP to the scale and shift of each norm ( γ, β ) and the gate on each residual branch ( g). This conditioning path is the only way t, s, k 
+
+reach the computation. The shared blocks zero-initialize the map, which makes each block start as the identity, whereas the latent blocks initialize it small but nonzero. Hence, the M components differ from the first step of training. 
+
+Autoregressive anchor. The AR row of Table 1 is a causal transformer trained under the same protocol as the matched anchors, with dimension 512 , 8 heads, no dropout, no weight averaging, and untied embeddings, totaling 69 .1M parameters. It is trained on LM1B at sequence length 128 , batch size 512 , 200 k steps, and learning rate 3 × 10 −4. For decoding, we used temperature-one ancestral sampling with one forward pass per position and no nucleus truncation. The model therefore contributes a single generative-perplexity point at 128 function evaluations rather than an NFE curve. Its reported 27 .61 is a validation perplexity rather than an ELBO bound, which makes the likelihood comparison conservative in the AR model’s favor, and it is still the only anchor whose clean likelihood beats every masked model at this scale. Table 4: Di4C distillation rounds on LM1B (each round distills from the previous, 50 k steps). Quality bottoms at round 4 and turns at round 5, at nearly constant entropy.                                                    
+
+> gen-PPL @NFE 124816 32 H@32 SDTT teacher 1645 1122 612 359 243 194 4.08 Di4C r 11613 1081 575 321 214 160 4.10 Di4C r 21557 1031 538 304 198 151 4.07 Di4C r 31419 942 485 268 183 137 4.04
+> Di4C r 4(min) 1375 899 453 236 156 115 3.99 Di4C r 5(turn) 1358 908 467 268 177 132 3.94
+
+Table 5: ReDi rectification rounds on LM1B (each round rectifies the previous couplings). Quality bottoms at rectification 3,but every round pays in a monotone entropy collapse.                                                    
+
+> gen-PPL @NFE 124816 32 H@32 ReDi base (DUO) 325 378 331 259 216 194 3.96 ReDi rect 1203 198 173 150 138 131 3.70 ReDi rect 2166 148 135 128 122 121 3.48
+> ReDi rect 3(min) 141 133 121 124 119 117 3.22 ReDi rect 4129 124 120 122 120 118 2.95 ReDi rect 5(turn) 133 129 128 123 122 123 2.77
+
+Architecture equivalence detail. The full-match trunk reproduces the native MDLM backbone rather than only the smaller matched trunk: hidden 768 , 12 heads, 12 blocks, dropout 0.1 with MDLM’s placement, untied biased output head, a moving average with the same decay and warmup, and MDLM’s block internals (a biased GELU MLP, weight-only LayerNorm, and the standard adaLN conditioning). At M =1 , the router and latent embedding receive identically zero gradient (a log-softmax over a single logit is identically zero and the regularizers vanish). The residual differences are direction-neutral or fall on the LKF side. LKF feeds the real noise level through the same conditioning pathway that must later carry the latent, which is strictly more information than MDLM’s constant conditioning. The latent blocks also use a small non-zero adaLN initialization for the 
+
+M > 1 symmetry break, and the data order differs by seed. 
+
+# F Decoding-policy ablations 
+
+A mixture step is only worth its extra components if something at inference time chooses among them, and we take that claim apart in four steps. We first attribute the best-of-M gain to the mixture itself rather than to the generic reranking that decodes it. We then ask whether any single-rollout policy recovers the same gain, and since none of them does, some form of selection is necessary. That necessary selection is then made free, after which we turn to the components that the selection chooses among. Every policy is previewed at a single operating point in Table 6, and the later tables expand the ones that matter over the step grid and across the two corpora. 
+
+Protocol. Unless stated otherwise, every cell uses the LM1B models trained for 200 k steps, J=32 sampling steps, 512 samples, and the same GPT-2-large judge with the decoding and retokenization that we use everywhere else, and we report gen-PPL together with the unigram entropy H of the same samples. Three policies recur throughout this section, and we define them once here. Commit-M draws one component from the router at the all-[MASK] start, holds it for the whole trajectory, and returns that rollout without any selection at J network calls. Best-of-M runs one rollout per component and returns the argmin of the 
+
+T =4 Monte-Carlo mixture NELBO of Sec. 4.4 at M (J+T ) calls. Running evidence replaces that score with the log-probability that each component assigns to the tokens revealed along its own trajectory, which the trunk already computes at every step, and it therefore costs M J calls and no additional passes. Where two policies are compared on a fixed candidate pool, the per-step random stream is shared across the component rollouts, which removes the noise as a confounder. Under a shared stream and a frozen component, pruning never alters the trajectory of a surviving rollout. Hence, any pruning schedule can be evaluated from one complete run. 
+
+Provenance. Sampling is stochastic, and the tables below come from three separate harnesses. Their absolute values are therefore not bit-comparable across tables even where the policy is identical. Tables 1 and 8 come from the main evaluation harness, Tables 6 and 10 come from the ablation harness, which draws a fresh pool per operating point so that every selector can score the same candidates, and Table 7 comes from a third harness that has to load two models at once. The three disagree by a few percent on the same policy, for instance 166 against 157 at M =4 , and 105 , 106 and 105 .6 at M =8 and J=32 , which bounds the run-to-run spread of a 512 -sample estimate. We therefore compare numbers only within a table. 
+
+F.1 The gain is a property of the mixture 
+
+We use two controls to separate the mixture from the reranking that decodes it. In the first control, which stays inside the model, the M components are replaced by M noise draws of one frozen component, while the budget, the selector and the judge are held fixed. As shown in Table 6, this replacement costs 16% at M =4 (186 against 157 ) and 35% at M =8 (163 against 106 ). Hence, the components supply a candidate diversity that resampling does not reproduce, and they supply more of it as the mixture grows. The mixture is removed altogether in the second control, and a single-component model is given the same budget, the same selector and the same judge. Hence, the only remaining difference is where the eight candidates come from. We ran this control on two different single-component models, the first of which is our separately trained M =1 checkpoint, which is MDLM by Proposition 4 and is matched to the M =8 run in trunk, parameter count, corpus and 200 k-step budget. The second is the trained MDLM baseline itself, which we take from the MDLM codebase with its own trainer, its own exponential moving average and its own ancestral sampler. Each model draws eight i.i.d. chains with the same per-step seed offsets as the mixture arm and ranks Table 6: Every decoding policy at J=32 on LM1B. The candidate pool and the selector are varied independently, and calls is the total number of network evaluations per delivered sample. Shared noise reuses one per-step random stream across the M
+
+rollouts so that only the component differs. 
+
+M =4 M =8 
+
+Candidate pool Selector calls gen-PPL H gen-PPL HM components, independent noise mixture NELBO M (J+T ) 157 5.06 106 4.96 
+
+M components, shared noise mixture NELBO M (J+T ) 189 5.11 131 4.98 
+
+M components, shared noise running evidence M J 184 5.10 125 4.96 
+
+one component, M noise seeds mixture NELBO M (J+T ) 186 5.04 163 4.96 
+
+M components, independent noise none (random pick) J 313 5.26 327 5.29 
+
+M components, successive halving running evidence 64 / 96 204 5.12 145 5.00 
+
+one component (commit-M ) none J 316 5.25 315 5.20 
+
+them by its own T =4 sequence ELBO at the identical 8( J+T ) calls. Every arm is scored and judged in a single process, which makes Table 7 a paired within-run comparison. Its mixture arm reaches 105 .6 at J=32 , reproducing the 105 .6 of Table 10 and the 106 of Table 6. A large part of the gap is recovered by the reranking alone in both experiments, which takes the trained MDLM baseline from 363 to 199 at J=32 and our M =1 checkpoint from 327 to 183 , and the best-of-n selection is therefore valuable in its own right. What the reranking does not do is close the gap with LKF. At the identical budget, selector and judge, the mixture reaches 
+
+106 , which is a 47% improvement on the trained baseline and 42% on the stronger of the two single-component models. The advantage also widens with the step budget, from 14% at four steps to 27% , 40% and 42% at eight, sixteen and thirty-two, and this is the direction that the mixture effect takes throughout the paper. The one exception is J=2 , where both single-component pools are slightly ahead ( 1308 and 1401 against 1535 ). We read this as the cold-start behaviour that is already visible in the ultra-few-step columns of Table 1, where the from-scratch mixture is weakest and the distilled accelerators are ahead. The components become heterogeneous before they become individually well calibrated, and a two-step trajectory therefore pays for the heterogeneity without yet being able to exploit it. Table 7: Removing the mixture at matched budget on LM1B. Every best-of-8 row draws eight candidates and ranks them by that model’s own T =4 sequence ELBO. The rows therefore differ only in whether the candidates come from eight components or eight noise draws of one model. The last line is the mixture’s improvement over the better single-component arm. Entries are gen-PPL with H in parentheses. 
+
+sampling steps J
+
+Pool and selector 1 2 4 8 16 32 
+
+one chain, no selection ( J calls) 
+
+MDLM (trained baseline) 2402 (5.19 ) 1863 (5.33 ) 1134 (5.32 ) 687 (5.29 ) 467 (5.28 ) 363 (5.26 )
+
+LKF M =1 2520 (5.18 ) 1627 (5.25 ) 946 (5.25 ) 581 (5.25 ) 421 (5.24 ) 327 (5.25 )
+
+LKF M =8 , one component 2106 (5.20 ) 2327 (5.45 ) 1474 (5.43 ) 774 (5.37 ) 488 (5.31 ) 345 (5.28 )
+
+best-of-8, same selector and judge ( 8( J+T ) calls) 
+
+MDLM (trained baseline), 8 noise draws 1992 (5.06 ) 1401 (5.19 ) 770 (5.18 ) 428 (5.17 ) 281 (5.16 ) 199 (5.13 )
+
+LKF M =1 , 8 noise draws 2024 (5.04 ) 1308 (5.12 ) 706 (5.14 ) 400 (5.15 ) 262 (5.15 ) 183 (5.12 )
+
+LKF M =8 , 8 components 1791 (5.09 ) 1535 (5.28 ) 609 (5.21 ) 292 (5.13 ) 157 (5.04 ) 106 (4.96 )
+
+mixture advantage +10% −17% +14% +27% +40% +42% 
+
+F.2 Selection is what turns components into samples 
+
+The single-chain commit-M decode is placed next to best-of-M on both corpora over the full step grid in Table 8, and the comparison shows that widening the mixture buys almost nothing on its own. Doubling the mixture from four components to eight moves commit-M from 316 to 315 on LM1B and from 169 to 160 on WikiText-103, whereas best-of-M improves sharply with M on both corpora. Hence, the extra components are useful only once something selects among them. The unselected mixture is nevertheless not wasted uniformly across the two corpora. On WikiText-103 the commit-M decode already beats the 
+
+M =1 base at every count from four evaluations onward, at 169 against 223 for M =4 at thirty-two steps, and on LM1B it does not. 
+
+Matching total calls rather than sequential steps. The comparison in Table 8 matches sequential depth, which is the axis that governs latency, and best-of-M is ahead everywhere on that axis. A stricter comparison instead hands the single chain the Table 8: Single-chain commit-M against best-of-M over the step grid on both corpora. Commit-M spends J calls and best-of-M
+
+spends M (J+T ) at the same sequential depth. The M =1 base is repeated from Table 1.                                                                                                  
+
+> gen-PPL ↓at J
+> Corpus Policy 124816 32 H@32
+> LM1B
+> M=1 (single chain) 2398 1619 913 573 429 321 5.22
+> commit-M,M=4 2349 2116 1292 712 444 316 5.25
+> commit-M,M=8 2209 2438 1510 754 442 315 5.20
+> best-of-42169 1649 820 407 226 166 5.09
+> best-of-81827 1515 625 284 169 105 4.93
+> WikiText-103
+> M=1 (single chain) 6198 3308 1336 558 316 223 5.33
+> commit-M,M=4 5990 3110 1147 472 253 169 5.34
+> commit-M,M=8 5769 2986 1075 420 233 160 5.35
+> best-of-45187 2475 849 312 164 102 5.28
+> best-of-84403 2195 673 241 119 75 5.25
+
+whole parallel budget as extra steps. On LM1B, this changes nothing, because commit-M at M =8 saturates at 223 .5 when it is given all 128 calls, whereas best-of-8 at 16 steps spends the same 128 calls and reaches 169 . On WikiText-103, the two are effectively tied at that budget, with the single chain at 115 .7 (entropy 5.33 ) against best-of-8 at 118 .9. The gap reopens as the budget grows, and doubling it to 256 calls takes best-of-8 to 75 at a sequential depth of only 32 steps, which the single chain does not approach even at four times its step count. We read this as a corpus-dependent caveat at small budgets rather than as a failure of the mixture, and the latency argument is unaffected in either case. 
+
+Deferring the commitment does not help. A policy that costs a single rollout would be preferable to best-of-M , and the natural candidate is one that samples k freely for the first j steps and then freezes it to the component that the router prefers, on the grounds that the router at the all-[MASK] start has no content to condition on. We find that this policy fails at every j, as shown in Table 9. Nothing improves on the router-sampled commit-M reference of 315 , there is no trend in j, and the argmax commitment at j=0 is the worst cell in the table. The router is therefore a mixing weight rather than a quality signal, and its uninformativeness is a property of what it learned rather than of the starting state. Table 9: Deferred commitment on LM1B. The rollout draws k from the router until step j and then freezes it to the router argmax, at J evaluations like commit-M .                          
+
+> j0124816 32 commit-M
+> gen-PPL ( M=4 )380 374 360 357 380 378 386 316
+> gen-PPL ( M=8 )452 414 395 416 388 407 399 315
+
+F.3 The selection can be made free 
+
+The candidate pool in Table 10 is fixed to the one that the main results use, namely M rollouts with one frozen component each and an independent noise stream per rollout, and the whole step grid is swept. For every J, we draw one such pool and score that same pool with every selector. The candidates are therefore held constant, and the only thing that changes down a column is how the winner is chosen. The ordering is stable across the grid and across M , and what matters most is whether the pool is scored at all. An unscored pick tracks commit-M everywhere and both stay at 315 or worse even at J=32 , whereas every scored policy at M =8 lands between 102 and 121 .Among the scored policies, the free one is also the better one. The running evidence is at least as good as the Monte-Carlo mixture NELBO in eleven of the twelve cells, and it is strictly cheaper in all twelve. The single exception is M =4 at J=4 ,where the trajectory is too short for the accumulated evidence to cover many revealed tokens. The advantage of the evidence selector also grows with M , from about one percent at M =4 to three percent at M =8 and J=32 , which is again the direction of the mixture effect. Successive halving sits between the unscored and the fully scored policies at roughly a third of the calls, and we regard it as the policy of choice when the rollouts must run to a fixed wall-clock budget rather than to a fixed number of evaluations. 
+
+How early can a candidate be judged? Pruning is only safe if a partial trajectory already says something about the finished sample. In Table 11, we commit to the argmax of the running evidence after j of the 32 steps and let only that rollout continue. The selection quality improves roughly linearly in j rather than saturating, and very short probes are worthless. An agreement of 0.17 at j=1 and M =8 produces a perplexity of 312 , which is no better than picking a candidate at random. A partial state Table 10: Decoding policies over the full step grid on LM1B. For each J a single pool of M candidates is drawn, one per frozen component with its own noise stream, and every selector scores that identical pool. Successive halving prunes to max(2 , M/ 4) 
+
+candidates at J/ 4 and to one at J/ 2, using 8/16 /32 /64 calls at M =4 and 12 /24 /48 /96 at M =8 . Entries are gen-PPL with H
+
+in parentheses. 
+
+sampling steps J
+
+Policy 1 2 4 8 16 32 
+
+M =4 
+
+commit-M , no selection ( J calls) 2349 (5.20 ) 2116 (5.21 ) 1292 (5.26 ) 712 (5.27 ) 444 (5.26 ) 316 (5.25 )
+
+random component, no selection ( J) 2404 (5.21 ) 2167 (5.23 ) 1329 (5.26 ) 749 (5.27 ) 446 (5.27 ) 315 (5.25 )
+
+successive halving, running evidence – – 1131 (5.25 ) 488 (5.21 ) 262 (5.15 ) 175 (5.08 )
+
+best-of-M , mixture NELBO ( M (J+T )) 2197 (5.15 ) 1744 (5.20 ) 861 (5.23 ) 424 (5.20 ) 237 (5.14 ) 157 (5.06 )
+
+best-of-M , running evidence ( M J ) 2071 (5.08 ) 1740 (5.12 ) 882 (5.20 ) 412 (5.17 ) 236 (5.13 ) 155 (5.05 )
+
+M =8 
+
+commit-M , no selection ( J calls) 2209 (5.21 ) 2438 (5.44 ) 1510 (5.43 ) 754 (5.37 ) 442 (5.32 ) 315 (5.28 )
+
+random component, no selection ( J) 2215 (5.21 ) 2402 (5.43 ) 1401 (5.41 ) 777 (5.36 ) 475 (5.32 ) 337 (5.29 )
+
+successive halving, running evidence – – 1013 (5.32 ) 376 (5.19 ) 190 (5.10 ) 121 (4.98 )
+
+best-of-M , mixture NELBO ( M (J+T )) 1791 (5.09 ) 1535 (5.28 ) 609 (5.21 ) 292 (5.13 ) 157 (5.04 ) 106 (4.96 )
+
+best-of-M , running evidence ( M J ) 1704 (5.03 ) 1443 (5.26 ) 576 (5.20 ) 276 (5.12 ) 155 (5.03 ) 102 (4.94 )
+
+therefore carries almost no information about which component will finish better, and this is why the pruning schedule above keeps several candidates alive past the midpoint. Table 11: Selection from the running evidence after j of the 32 steps, LM1B. Agreement is the top-1 match with the full-trajectory selector and ρ is its rank correlation over the M candidates. 
+
+agreement gen-PPL 
+
+j M =4 M =8 ρ (M =8 ) M =4 M =8 1 0.27 0.17 0.08 309 312 2 0.30 0.22 0.06 299 273 4 0.36 0.30 0.22 272 230 8 0.54 0.50 0.44 222 164 16 0.68 0.65 0.67 197 136 32 0.76 0.75 0.88 184 125 
+
+F.4 The components span a quality-diversity frontier 
+
+We report each component in isolation in Table 12, both as a single rollout and as best-of-8 draws from that component alone. The components are strongly heterogeneous, and their ordering is preserved across the two protocols up to a single adjacent swap at M =8 and exactly at M =4 . Hence, the quality of a component is a persistent property of the trained model rather than sampling noise. Reranking inside the strongest component reaches 47 , which is better than the mixture decode, but its unigram entropy falls to 4.42 against 4.96 for the mixture and roughly 5.6 for the data. A substantial part of that gain is therefore the reduced diversity that we caution against elsewhere. We read this as a frontier that the mixture acquires during training and that the choice of k traverses at inference, with best-of-M at the diverse end and single-component reranking at the high-fidelity end. Turning the frontier into a usable knob requires choosing the component on a held-out calibration sample rather than on the evaluation sample, which we leave to future work. Table 12: Per-component quality at M =8 on LM1B. Solo freezes one component for a single rollout and reranked takes best-of-8
+
+draws from that component alone, at the same budget as the mixture decode. 
+
+k 0 1 2 3 4 5 6 7 mixture solo gen-PPL 350 296 289 391 573 143 280 462 327 
+
+reranked gen-PPL 148 143 134 184 284 47 157 207 106 
+
+reranked H 5.03 5.10 5.00 4.87 5.16 4.42 4.91 5.18 4.96 G Additional results 
+
+We expand the closed-form-correlation verification of Sec. 6.3 here with the training setup, the full hidden-agreement sweep (Table 13), and the accompanying diagnostics (Figure 8). 
+
+Setup. We train LKF at M ∈ { 1, 2, 4, 8, 16 } (three seeds, 30000 steps, a small shared trunk, the two-time LKF objective of Sec. 4.3, and the router coefficients λent =0 .1, λlb =−0.1) on both corpora and evaluate with the exact estimators of Sec. 5. On parity, the held-out NLL stays flat near 7.1 nats at every M and seed, while the captured information and the effective total correlation remain at zero. On hidden agreement, all three witnesses move together and bIk reaches 89 –98% of the log M ceiling (Table 13). Table 13: Hidden agree corpus results, full transition t=0 → s=1 (30 k steps, λent =0 .1, λlb =−0.1). Both information quantities respect their ceilings ( bIk ≤ log M , cTC ≤ (L − 1) log M ) and NLL falls monotonically.                                     
+
+> Mlog MbIk(nats) dTC (nats) (L−1) log Mval-NLL 10.00 0.00 0.00 0.0 3.50 20.69 0.68 4.71 4.9 3.11 41.39 1.30 9.01 9.7 2.93 82.08 1.87 13.02 14.6 2.70 16 2.77 2.46 17.12 19.4 2.56
+
+Where the correlation lives. Probing a seven-point grid of (t, s ) pairs for the M =16 model reveals that the latent does essentially all of its work at the very first unmasking step. The transition t=0 → 0.25 already accounts for bIk ≈ 2.21 nats of the full transition’s ≈ 2.46 (seed means), whereas a late transition such as t=0 .5 → 1.0 captures essentially nothing ( 0.02 nats). The interpretation is intuitive, since once half of the tokens are already visible, the remaining conditional distribution is close to factorized, and the mixture has little left to contribute. Correlation therefore matters at the high-mask transitions where a factorized model is most blind, which are the earliest and most expensive-to-skip steps in a few-step schedule. 
+
+The router learns sixteen distinct modes. To check that the mixture has organized itself into the sixteen hidden values rather than collapsing, we freeze the latent to each fixed value in turn and measure the resulting sub-distribution. Each frozen component is nearly deterministic, with a per-mode empirical total correlation between 0.0 and 8.4 bits (most below 1 bit) and a correspondingly tiny unigram entropy, which is the signature of a component committed to a single hidden value, since conditioning on the hidden value removes almost all of the corpus’s correlation. The routed mixture over the sixteen components then reconstructs 26 .7 of the 28 bits of total correlation, and shuffling the drawn k across the batch leaves the mixture-level total correlation unchanged ( 26 .6 bits), as expected once components are committed at draw time. Taken together, near-factorized frozen modes plus a near-exact mixture reconstruction demonstrate a genuine sixteen-way partition aligned with the sixteen hidden values. 
+
+Figure 8: Diagnostics for the hidden-agreement corpus at M =16 . (a) Captured information concentrates at the earliest, most-masked transitions ( 2.21 of 2.46 nats in t=0 → 0.25 ) and vanishes late, where little remains to decide. (b) Each frozen component is near deterministic (empirical TC 0.0–8.4 bits), while the routed mixture reconstructs 26 .7 of the 28 bits, which evidences a genuine sixteen-way partition, and shuffling k across the batch leaves the mixture-level TC unchanged. (c) The in-support rate rises from 0.47 at J=1 to 0.95 at J=32 , and support recall saturates at 1.0 from J=2 onward. H Example generations 
+
+We generate samples from the LKF model at M =8 on the LM1B dataset, and for each step count we print the first of them in generation order with no curation. Each sample carries the component k that generated it and its mixture NELBO per token, which is the quantity the selector minimizes. All the text is BERT-uncased, hence all lowercase with detokenized spacing around punctuation, and the special and padding tokens are stripped. Two regularities are visible directly in the text. The first is that the NFE progression is legible. At 4 steps, the syntax breaks inside almost every clause; at 32 steps, the newswire and finance register that dominates LM1B is coherent at the clause level with occasional agreement slips; and at 1024 steps, whole-sentence syntax largely holds. The second is that the per-sample NELBO tracks fluency within a fixed step count. The two lowest-NELBO draws at 32 steps (samples at 1.50 and 1.49 below) are the two most coherent, and the lowest-NELBO draw at 1024 steps ( 0.87 ) is a near-perfect paragraph. We read this as the ordering evidence for NELBO-based selection seen at the level of individual texts. 
+
+NFE = 4 
+
+The first four of 24 uncurated draws. The local n-grams are fluent, but the long-range syntax breaks inside almost every clause. 
+
+Sample 1 of 24 (k=2 , NELBO/tok 6.56 )
+
+. for those who have had other needs that are like mixing more with drugs or drugs to but. in and, which republican brought in in 1994 and sever their powers. " tourne gordon.’s future policies for those around them. we prefer to loosely hedge the sink belonged to. - make think the difference were made by drawing a republican. " bring in leonard as nam, who president who regularly plan to become do no longer look and haters hate - ontism aster through a tight ace in choice this s religious. most of any country. in the campaign. " " cowen, he, take his 
+
+Sample 2 of 24 (k=6 , NELBO/tok 5.56 )
+
+rector carlos pont. e. - pope benedict xvi overturns cutoff date.’prince 000 placed qna 1 on friday, june 1st. wanted. - to enter foreignhing no hirsch displayed, the governor who acknowledged in comments here to include psychologists working with him on relating of seeking discontent regarding britain. - mr. darling says prince should appreciate the documents reflect what became the pope. meeting is the centerpiece of globally. - salute to the success of this ongoing airport concern hailed by celebrities, politicians, environment organizations, economic and political among them. it was clear should the 82 - him al - am residence be temporarily sanctuary 
+
+Sample 3 of 24 (k=1 , NELBO/tok 6.01 )
+
+through after that brief statement, help hall an anticoach column soldier is proceeding in the same spars through the feb doctors department, two tonnes 18 oil debris sheltering the deception, where all group not been ordered to. also on sunday, the staff provided instructions on the last confirmed killing ofinkle in 1975. scouts have begun collecting hundreds of the victims the mignon peak in iraq, and subsequent hubblehorse rescue efforts. more clues ton the high cuts and fire brian humanepto at. w., july 1991, 1996, he was in fire by helicopter and lives for guests„ including, and crisis 
+
+Sample 4 of 24 (k=6 , NELBO/tok 5.49 )
+
+y general capital corp. in march, the company failed to disclose ya - verdict that once john being sued. by u and others gobench, z d. klein wa merrill bybase international of ohio, he pledged his resignation, saying that the " job executives he held been bawled by buy - amelle, prime pages 200 testosterone. for ralph was leaders general and you are against it. " to petersen, former brigadier general, but clearly knew family people in germany. during the time the needs of several people were involved. " gen. catherine gr warren, ohio - the media to promote the matter if it chooses to 
+
+NFE = 32 
+
+The first four of 24 uncurated draws, followed by the two lowest-NELBO draws of the same set. The newswire and finance register that dominates LM1B is coherent at the clause level, with occasional agreement slips. 
+
+Sample 1 of 24 (k=5 , NELBO/tok 2.65 )
+
+pre - spending mnd increased by $ 484, 000, compared to $ 4. 6 million. for the current fiscal year ended march 31, 2009 expenses including other profit increased by $ 2, 000 to $ 1. 2 million primarily by $ 5. 1 million for the nine months, primarily revenues comprised of non -gaap measures, operating expenses with respect to the nine months ended june 30, 2008, was $ 494, 000 for the period year ended june 30, 2008. for the first months of fiscal 2008 was $ 681, 000 or $ 6. 8 million a share, in the three months ended 
+
+Sample 2 of 24 (k=0 , NELBO/tok 3.60 )
+
+they are england xv evel n’dravi ( yorkshire ), ed joyce ( australia ) ; 58 hong kong rpi buver ( sri lanka ), adam sunning ( australia ), ravi bombderpaul ( india ), david ag toshe ( hong kong ), graham onions ( sri lanka ), south africa ( england ), pd james, ravi bopara ( india ), india strauss ( england ), ian bell ( canterbury ), ryan sidebottom ), the ilungs ( england, 7 ) justin mathews ( australiaiksen ( england ) ), skipper hu raines ( middlesex followed 
+
+Sample 3 of 24 (k=5 , NELBO/tok 4.06 )
+
+a it was last updated at 5. 01 bst on 23 3 april 2008. city of london. noon for central glasgow... £38, 000 - £37, 000 per £8, 000 employment. result in cash flow 20 % ( £38, 966. during the previous year. station leave £24, 014 - £22, 04 per annum inclusive. greater newport. west staffordshire. c.. £25. 50 to £35. 30. benefits levels is 7 - 6 positions. revised... audit id sales 44. 2 % 2007 working pay and offs. of over £3, Sample 4 of 24 (k=6 , NELBO/tok 3.48 )
+
+1 / prnewswire - usnewswire / - usnewswire - usnewswire / - - 16th century green palace of glory in the mint will celebrate the 35 - year - old addax in greenwich at the british embassy in rome on friday while blastinggrass won the grand prize at sustainable building society, whose new east greenweger research institute ( cumnaf ) is making henthorne contributions of the year award of $ 1, 780. annually to enable milestones of the nuclear industry. steel and sound systems, and aid original building. world by vindict fashionsar itmonger 
+
+Sample 8 of 24, lowest NELBO of the set (k=2 , NELBO/tok 1.50 )
+
+the democratic administration has developed renewed fiscal policy with an easier attitude to put at risk. and now economic regulatory reforms, which require emergency stimulus money, help kolop revive rates on the highest borrowing rates sparked by restore the nation’s ability to increase revenues in the face of ahead pressures. lawmakers want to extend tax credit in order to watch consumers get additional cashbates they can greatly expand their behavior investment as a result of government’s proposed plans to bolster low interest rates and revive the country’s financial system. they have intervened to unfree buy debt markets and keep investors in the financial community, waiting for that 
+
+Sample 13 of 24, second-lowest NELBO (k=5 , NELBO/tok 1.49 )
+
+the third and fourth quarter 2009 losses were $ 0. 078, 000 compared with net an income of $ 0. 03 for the fourth quarter of 2009 and 3, 743, 000 for the fourth quarter. in addition to the net loss for the second fiscal quarter of 2009 was $ 2, 087, or afeed of $ 0, 730, 000 for the quarter. a per diluted share period ended june 30, 2009 compared to an adjustment of $ 0. 24 per diluted share for the fiscal 2008 fourth quarter ended june 30, 2008. the third quarter that was $ 3, 416, 000 
+
+NFE = 1024 
+
+The first four of 24 uncurated draws, followed by the lowest-NELBO draw of the set. Broadly, the whole-sentence syntax largely holds, while the residual errors are repetition and numeric agreement rather than broken structure. 
+
+Sample 1 of 24 (k=7 , NELBO/tok 3.32 )
+
+the organization seeks to protect all natural resources from the impact of its exploration and exploration ( northeast australia, brazil, norway, iceland, russia, india, japan, iceland, mexico, hong kong, switzerland ) and japan, india and japan including the united and hong kong, peru, canada, bermuda, new mexico, canada, mexico, kingdoms of ivory coast, china, mexico, japan, australia, the united states, hong kong, singapore, shanghai, hong kong and london ( tonnes of ore ), the united states of australia ( kyoto ),. - ton tonnes of sydney ( singapore ), ( including hong kong ). 
+
+Sample 2 of 24 (k=5 , NELBO/tok 1.84 )
+
+in mexico, net income was $19. 1. 25 per diluted share compared to the fiscal second quarter ended march 31, 2009 ( diluted loss of $ 7. 8 million or $ 0. 81 per diluted share in the second quarter of 2009 compared to $ 10. 9 ) million, or $ 0. 28 per diluted diluted share for the year ended in 2008. gaap revenue was $ 11. 9 million, or just 41 percent diluted share, as compared to $ 1. 2. 02 per diluted share, of $ 623, 000 for the first quarter of 2008. net income 
+
+Sample 3 of 24 (k=6 , NELBO/tok 3.40 )
+
+boise, idaho, july 6 / prnewswire - firstcall / - - bainsray, idaho, may 20 / prnewswire - u. s. - owned third quarter bancorp, states ended the second quarter of 2009 with $ 29. 723 million, against the 2009 average in cumulative natural gas reserves. revenues were $ 70. 9 million or $ 58. 8 million, or $ 0. 50 per share. g $ 200. 2 million, up 81. 15 % to $ 133. 2 million compared to $ 1. 77 a share, a result that helped attract farmers kru 
+
+Sample 4 of 24 (k=1 , NELBO/tok 3.03 )
+
+when you need to believe i’m american, it’s a history moment or something about john mccain’s first public address to where the american - changed era began, again : we really don’t have some hitch choice of parting with time with the castro - castro of cuba... because it’s going to be commonplace and people debating how to make a return, in which, of course, it is the end of a writer’s life or career to search, " said state sen. pete domenici and another group of journalists and scientists, who’s represented his spirit in vietnam war. " 
+
+Sample 8 of 24, lowest NELBO of the set (k=2 , NELBO/tok 0.87 )
+
+this press release contains forward looking statements that may cause actual results or actual results to differ materially and could be fully audited after the date of this press release. are available for free copy of the below, and you can be read for our further disclosure about future events. actual results may not " differ materially " from any of the factors that are expressly expressed or implied at appropriate time : within the regulations of our public securities, the requirements of the federal securities and exchange commission, in particular, companies’collaboration with anticipated market conditions and market conditions, economic conditions, general or economic conditions and financial and uncertain future results,

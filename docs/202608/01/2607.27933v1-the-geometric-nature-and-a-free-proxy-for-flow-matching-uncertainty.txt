@@ -1,0 +1,903 @@
+Title: The Geometric Nature and a Free Proxy for Flow-Matching Uncertainty
+
+URL Source: https://arxiv.org/pdf/2607.27933v1
+
+Published Time: Fri, 31 Jul 2026 00:48:10 GMT
+
+Number of Pages: 17
+
+Markdown Content:
+# The Geometric Nature and a Free Proxy for Flow-Matching Uncertainty 
+
+# Ziyang Rao 1, Yiren Zhao 1, Weiyu Guo 1,4 , Ben Fei 3, Yandong Guo 4, Hui Xiong 1,2 ∗
+
+> 1
+
+HKUST(GZ) 2HKUST 3CUHK 4AI ² Roboticss 
+
+Abstract 
+
+Flow matching (FM) has become a popular action head paradigm for modern embodied models. However, as a con-ditional generative model, it does not explicitly expose its in-herent uncertainty , producing faulty action chunks even when it misinterprets the scene or encounters out-of-distribution (OOD) inputs. Therefore, determining when an FM-generated action can be trusted is essential for safe deployment, yet ex-isting uncertainty estimation methods on real-time control suffer from several issues: extra training budget, high com-putational overhead, and low generalization ability. In this work, we provide a geometric interpretation of FM uncer-tainty in the velocity field, showing that uncertainty manifests as deviation from an ideal affine-isotropic contraction field. Building on this observation, we introduce denoising acceler-ation (accel ), a highly-generalizable and cost-free uncertainty proxy that measures the bending of the denoising trajectory from a single forward pass, without additional model eval-uations, training, or resampling. We theoretically and em-pirically demonstrate that accel is a faithful proxy for FM uncertainty and further test its utility in online failure detec-tion. Results show that accel identifies failing rollouts well before termination, matching or even outperforming costly resampling- and training-based baselines across settings un-der realistic deployment budget. Code and demos available at: https://github.com/rrrrrrzy/fm-geometry. 
+
+# 1 Introduction 
+
+Flow matching (FM) (Lipman et al. 2023) has recently be-come a popular paradigm for the action heads of model em-bodied policies like vision language action models (VLA) or world action model (WA). It generates precise action trajecto-ries, capture complex multimodal action distributions (Black et al. 2024; Braun et al. 2024), and enable lower-latency sam-pling than diffusion policies (Chi et al. 2023). Besides power-ful capabilities, FM heads are compatible with a wide range of model architectures, e.g. mixture of experts structure of 
+
+π (Black et al. 2024; Intelligence et al. 2025), dual-system architecture of GR00T (Bjorck et al. 2025), or coupled with world model components (Zhu et al. 2025; Zhou et al. 2026). However, like many generative models, FM policies are susceptible to a hallucination-like failure mode: they can fail 
+
+silently , producing smooth and seemingly executable action chunks even when they misunderstand the task, encounter out-of-distribution (OOD) inputs, or predict physically in-
+
+> ∗
+
+Corresponding author. 𝒕   
+
+> (a) ideal confident FM (b) high uncertainty FM
+> depart from
+> ideal template
+> noise start
+> denoise endpoint
+
+Figure 1: The geometry of FM velocity field, schematic. 
+
+Schematic geometry of (a) an ideally confident and a (b) 
+
+highly uncertain FM. The fields are visualized as following the downhill directions of an illustrative landscape. Dark red curves are denoising trajectories from independent noise. feasible outcomes (Agia et al. 2024; Xu et al. 2025). Un-like classical controllers equipped with explicit constraints (Khatib 1986) and collision checks (Schulman et al. 2014), the black-box nature of FM models does not provide a trust-worthy signal of whether its generated actions is correct. Existing studies of uncertainty in flow-based VLAs ei-ther train additional parameters to estimate variance from the model state (Han, Beyer, and Karaman 2026), or com-prise Monte Carlo-style approaches that resample outputs and quantify their spread or consistency (Agia et al. 2024; Römer et al. 2025). However, these methods are either non-generalizable or computationally expensive, particularly con-sequential for real-time manipulation. Recent work like Free-Hunch (Rissanen, Heinonen, and Solin 2025) and the closed-form covariance in (Xing, Wang, and Wang 2026) reveal a new direction and imply the connection between FM field geometry and uncertainty, and yet require tens of forward-equivalent computations (Xing, Wang, and Wang 2026). This limitation motivate a central question: how to estimate FM model uncertainty with minimal overhead? 
+
+To address this question, we first investigate the nature of certainty in FM and ground it in the geometry of the flow field. We then introduce denoising acceleration , denoted by 
+
+accel , as a faithful, highly-generalizable and cost-free proxy arXiv:2607.27933v1 [cs.AI] 30 Jul 2026 for FM uncertainty and apply it to online failure detection. In summary, this paper makes the following contributions: 
+
+• A geometric definition of FM uncertainty. We charac-terize the velocity field of a high certainty FM as approx-imately radial and define FM uncertainty as its deviation from this ideal template, and visualize different uncer-tainty geometry with a toy and a real FM model. 
+
+• A cost-free online proxy for FM uncertainty. We pro-pose denoising acceleration (accel ) as a proxy for FM uncertainty. It reads off the bend from a single denois-ing pass without additional training, ensembling, or re-sampling. Through theoretical and empirical analyses, we demonstrate its agreement with computationally expen-sive resampling-based uncertainty reference. 
+
+• A free lunch for closed-loop failure detection. We use 
+
+accel as a zero-cost, real-time failure detector for FM-based VLAs that requires no extra training or labelled data. Under a realistic deployment budget, it achieves per-formance comparable or even better than state-of-the-art detectors with additional training or resampling, suggest-ing accel ’s utility in capturing rich uncertainty signals. 
+
+# 2 The Geometric Nature of FM Uncertainty 
+
+2.1 Preliminaries 
+
+Setup. Consider a conditional flow matching (CFM) model with independent Gaussian noise. With the flattened action chunk as a state x ∈ RD and a forward schedule s ∈ [0 , 1] ,the interpolant is 
+
+xs = s x 1 + (1 − s) x0, x0 ∼ N (0 , I ), (1) where s=0 is pure noise x0 and s=1 is a clean action 
+
+x1 ∼ p(x1 | o) drawn from the conditional target distri-bution given observation o. Conditioned on o, the network is trained toward the marginal velocity , i.e. the conditional-expectation field of the per-sample velocity x1 − x0,
+
+v(x, s ) = E[x1 − x0 | xs = x] . (2) Eliminating the noise via x0 = ( xs − s x 1)/(1 − s) gives 
+
+x1 − x0 = ( x1 − xs)/(1 − s) and thus 
+
+v(x, s ) = E[x1 | xs = x] − x
+
+1 − s , (3) which represents the FM velocity as a scaled vector from the current state toward the posterior mean E[x1 | xs = x].
+
+Defining certainty. Similar to the idea of entropy, we de-fine FM certainty by how concentrated the posterior is. De-note that the posterior target distribution p(x1 | o) has mean 
+
+a⋆ = E[x1 | o] and covariance Σ = Cov( x1 | o). The con-dition o is considered maximally certain when the posterior collapses to a point mass, Σ = 0 , and increasingly uncertain 
+
+as its dispersion grows. In other word, given fixed condition 
+
+o, an ideal certain FM head generates exactly the identical action a⋆ despite the input noise. 
+
+2.2 What Does a Certain FM Field Look Like? 
+
+We begin with the ideal certain FM field by taking the maxi-mal limit Σ → 0, the endpoint posterior collapses to a point mass P(x1 = a⋆ | o) = 1 . Hence E[x1 | xs = x] = a⋆ for 
+
+every x and s. Substituting into (3) gives 
+
+v(x, s ) = a⋆ − x
+
+1 − s = 1
+
+s − 1 (x − a⋆), J := ∂v ∂x = Is − 1 .
+
+(4) We call a field radial about a center c if v(x) = −g(x) ( x−c)
+
+with a scalar gain g(x) > 0, i.e. every field vector points along the ray toward c. Equation (4) shows that an ideal certain FM field is a special radial field with an isotropic gain 
+
+g = 1 /(1 −s), an affine isotropic contraction whose Jacobian is a negative multiple of the identity matrix. Integrating the denoising ODE x′ = v(x, s ) from x(0) = x0 gives the closed form solution 
+
+x(s) = a⋆ + (1 − s) ( x0 − a⋆), (5) a straight segment from x0 to a⋆ traversed with constant 
+
+velocity v = a⋆ − x0. And hence we have: 
+
+Theorem 1. (Qualitative) If the target posterior is maximally certain ( Σ = 0 ), then the FM field is an affine-isotropic sink toward a⋆ with J = −I/ (1 − s),and every denoising trajectory is a straight line into 
+
+a⋆ at constant with zero acceleration. (high certainty ⇒ affine-isotropic field) 
+
+This is the geometric anchor of our paper, as illustrated in Figure 1, it establishes the FM geometry induced by maximal certainty. Meanwhile its contrapositive suggests that any de-parture from this affine-isotropic template rules out maximal certainty, thereby motivating an exciting question: can we measure FM uncertainty by measuring the extent to which a field departs from this ideal geometry? 
+
+2.3 How Off-Template Geometry Reveals Uncertainty? 
+
+For any posterior distribution, differentiating (3) and apply-ing the second-order Tweedie identity for Gaussian channel 
+
+xs | x1 ∼ N (sx 1, (1 − s)2I)
+
+yields 
+
+∂∂x E[x1 | xs = x] = s
+
+(1 − s)2 Cov( x1 | xs = x). (6) Combining (6) with (3), we obtain an important equation 
+
+Cov( x1 | xs = x) = (1 − s)3
+
+s
+
+
+
+J + I
+
+1 − s
+
+
+
+, s ∈ (0 , 1) .
+
+(7) The bracketed term J+ I 
+
+> 1−s
+
+is exactly the excess of the field Jacobian over the affine-isotropic template −I/ (1 −s) of (4), a measure of how far the field departs from that template, it is exactly proportional to the conditional endpoint covariance, i.e. the uncertainty measure. We now enhance the qualitative Theorem 1 to a quantitative version by comparing v with the ideal affine field 
+
+vaff (x, s ) = a⋆ − x
+
+1 − s .unimodal    
+
+> observation 𝑜 !
+> single
+> target sink
+> straight
+> denoising path
+> gripper approaching
+> the mug
+> multimodal
+> observation 𝑜 "
+> multiple
+> modes
+> branching
+> paths
+> onset of grasping
+> the mug
+> or
+> training set unseen
+> observation 𝑜 ##$
+> high
+> curvature
+> scattered
+> endpoints
+> collision with
+> the mug
+> certainty
+> (ideal template)
+> aleatoric uncertainty
+> (multimodality)
+> epistemic uncertainty
+> (out of distribution)
+> toy model 𝝅 𝟎 .𝟓  @ LIBERO
+
+Figure 2: Field geometry of FM uncertainty in toy model (top) and π0.5 policy (bottom). Each column stands for: certainty 
+
+(unimodal), aleatoric uncertainty (multimodality) and epistemic uncertainty (OOD). Streamlines trace the velocity field. A highlighted denoising trajectory x0 → x1 runs from noise start • to clean-action target ⋆. The resampled endpoints are labeled in light pink. Left: a certain, unimodal field is an affine-isotropic sink with near-straight trajectories into a tight endpoint cloud. 
+
+Center: an aleatoric field displays significant endpoint clustering and trajectory bends. Right: an epistemic, OOD condition generates chaotic field sharply curved trajectories and widely scattered endpoints. From (3), 
+
+v(x, s ) − vaff (x, s ) = E[x1 | xs = x] − a⋆
+
+1 − s .
+
+Taking expectation over xs and using the law of total covari-ance, 
+
+Exs
+
+h
+
+∥v − vaff ∥2i
+
+= tr Cov ( E[x1 | xs]) (1 − s)2 ≤ tr Σ (1 − s)2 .
+
+(8) Equivalently, 
+
+tr Σ ≥ (1 − s)2Exs
+
+h
+
+∥v − vaff ∥2i
+
+. (9) 
+
+Theorem 2. (Quantitative) For s ∈ (0 , 1) , any local deviation J + I/ (1 − s)̸ = 0 implies nonzero target uncertainty. The mean-square field deviation from the affine template lower-bounds the posterior covariance. (off-template ⇒ non-zero uncertainty) 
+
+2.4 How FM Uncertainty Appears in Practice? 
+
+To visualize the geometry across uncertainty regimes, we compare a controllable toy model with a real FM policy. Both exhibit consistent geometric patterns of FM uncertainty despite their different scales. 
+
+Setup. For the toy model, we train a small conditional flow matching network vθ (x, s, o ) over 2-D action distributions 
+
+A(o) conditioned on an observation o. The training set con-tains two types of observations: unimodal observations ou
+
+paired with simple Gaussian action targets, and multimodal observations om paired with Gaussian-mixture targets, such that a single observation is compatible with multiple desired actions. This setup captures how an FM policy maps obser-vations like images, language instructions, and robot states to action distributions with varying degrees of ambiguity. For the real policy, we finetune π0.5 (Intelligence et al. 2025), a state-of-the-art FM model on LIBERO (Liu et al. 2023). Figure 2 shows the conditioned FM velocity fields of both the toy model and π0.5 and the fields of π0.5 are projected onto their first two principal components. The visualization reveals the geometry of a certain FM field and distinguishes two sources of uncertainty, i.e. aleatoric and epistemic. 
+
+Certainty. The left column provides a textbook illustra-tion of the certain geometry described by Theorem 1. The toy model receives an observation o with a unimodal target, while π0.5 receives a state in which the arm is approaching the mug to grasp it. In both cases, the next action is unam-biguous, and the models produce a nearly affine field, where the streamlines converge to a single sink like Figure 1(a), the sampled trajectories run almost straight from noise to action, and their endpoints form a tight cluster. 
+
+Aleatoric uncertainty. The middle panel illustrates aleatoric uncertainty which refers to irreducible ambiguity in the data where an observation is genuinely consistent with multiple actions, i.e. a multimodal target distribution. For 
+
+π0.5, multimodality mostly appears near physical contact ,e.g. at the onset of grasping the mug, when the model must decide if and when to close the gripper. The corresponding FM fields split into distinct basins associated with different action modes, and the trajectories bend as they commit to one branch rather than proceeding straight toward a target. 
+
+Epistemic uncertainty. The right panel showcases epis-temic uncertainty which stems from a lack of knowledge about the out-of-distribution (OOD) condition. The inputs o
+
+are unseen in training stage, for π0.5, such conditions often occur in failure cases involving unexpected collisions or jit-ter. The OOD FM fields turns chaotic and generate sharply curved trajectories. They depart from the ideal template not because the true posterior is multimodal but because the models must extrapolate beyond their training support. These visual patterns further confirms the geometric na-ture Theorems 1-2 predict. Notably, the trajectory curvature read off a single forward integration seems to carry rich in-formation about field uncertainty. In the next section, we turn this observation into a practical proxy for FM uncertainty. 
+
+# 3 Acceleration as an Uncertainty Proxy 
+
+Section 2 identified the geometric signature of FM uncer-tainty, i.e. the deviation from the ideal template encodes the posterior covariance. While this characterization makes the uncertainty operationally measurable, extracting field-level quantities requires many field evaluations or posterior resam-pling, incurring precisely the overhead we seek to avoid. This section closes the loop by estimating uncertainty from a single denoising trajectory, already available from the stan-dard forward pass. We call this cost-free proxy denoising acceleration (accel ) and establish its faithfulness with theo-retical and empirical evidence. 
+
+3.1 A Trajectory-level Acceleration-based Proxy 
+
+The ideal certain field produces a straight denoising path with constant velocity and zero acceleration. Any bend in the denoising path is a visible symptom of the field being off-template . Therefore, we build our proxy on the trajectory level geometric property. We call it the denoising accelera-tion accel : the normalized total variation of velocity along a 
+
+prefix [0 , τ ] of the denoise path, i.e. the accumulated magni-tude of velocity change (acceleration), 
+
+accel τ =
+
+Z τ
+
+> 0
+
+∥v′(s)∥ ds 
+
+Z τ
+
+> 0
+
+∥v(s)∥ ds , τ ∈ (0 , 1] , (10) whose discrete estimator over the first p Euler steps is 
+
+accel p = p Pp−1 
+
+> t=1
+
+vt − vt−1
+
+Pp−1 
+
+> t=0
+
+∥vt∥ , (11) where velocity vt is the FM denoising output at every step 
+
+t = 0 , 1, . . . , T − 1 and generate a trajectory x0, x 1, . . . , x T
+
+from noise to target action with Euler step xt+1 = xt + vt.The prefix length p ∈ { 1, . . . , T } (continuously τ = p/T )sets how many leading steps the read integrates over, and Algorithm 1: Denoising Acceleration accel p
+
+Input : observation o, FM model vθ , denoise steps n=T ,prefix length p ≤ n (default p = n)
+
+Output : scale-free proxy accel p 
+
+> 1:
+
+J ← 0, S ← 0, accel ← 0 
+
+> 2:
+
+sample noise x0 ∼ N (0 , I ) 
+
+> 3:
+
+for t = 0 to n − 1 do  
+
+> 4:
+
+vt ← vθ (xt, o, s t), st ← t/n # FM forward pass  
+
+> 5:
+
+xt+1 ← xt + vt/n # Euler step  
+
+> 6:
+
+if t ≤ p − 1 then  
+
+> 7:
+
+S ← S + ∥vt∥ 
+
+> 8:
+
+if t ≥ 1 then  
+
+> 9:
+
+J ← J + ∥vt − vt−1∥ 
+
+> 10:
+
+accel ← J /  S/ (t + 1)  # running accel t+1  
+
+> 11:
+
+end if  
+
+> 12:
+
+end if  
+
+> 13:
+
+end for  
+
+> 14:
+
+return accel p = accel ¯vp is the mean velocity over that prefix. The full-path proxy reads the entire trajectory accel := accel T (i.e. τ = 1 ). Given a forward denoising pass, the discrete accel p and its full-path accel can be easily retrieved with zero extra cost, as summarized in Algorithm 1. 
+
+3.2 Theoretical Faithfulness to FM Uncertainty 
+
+We now justify that this free geometric read is a faithful proxy for the field-level uncertainty characterized in Section 2. We present the main results and proof sketches here, with full proofs deferred to the Appendix. 
+
+The connection to postrior covariance. The proxy mea-sures how much the denoising path bends, so we first compute the path acceleration by differentiating (3), 
+
+v′(s) = m′
+
+> path
+
+(s)1 − s , mpath (s) := E[x1 | xs = x(s)] ,
+
+(12) where mpath is the posterior mean the denoiser is currently aiming at. This implies that motion toward a fixed target contributes no acceleration, so the path bends if and only if 
+
+the posterior mean it is chasing is itself moving. We further demonstrate its connection to the endpoint covariance read along the path, i.e. Section 2’s off-template excess, 
+
+v′(s) = ∂sm
+
+1 − s + s
+
+(1 − s)3 v(s) Cov  x1 | xs = x(s).
+
+(13) Where Section 2 measured the departure of the whole field 
+
+from the template, accel integrates that same departure along a denoising trajectory. This is why a single forward pass can proxy a field-level quantity. 
+
+Two critical properties of a faithful proxy. As a faithful proxy, accel should satisfy two key properties: zero baseline and (local) monotonicity. 
+
+Zero baseline. For a maximally certain FM field, i.e. one with zero uncertainty, accel should be 0. This follows directly from Theorem 1: when Σ = 0 , we have accel = 0 exactly. Figure 3: Visualization of accel score and resampled chunks on D3IL. The thick curve shows the closed-loop end-effector trajectory, colored by the chunk-level accel . At each point, thin gray curves show resampled action chunks from the same observation. 
+
+Local monotonicity. Within an operational regime, consider two FM fields with Σa = σ2
+
+> a
+
+Σ0 and Σb = σ2 
+
+> b
+
+Σ0, if σa >σb, then Eaccel (a) > Eaccel (b). We write the endpoint covariance as Σ = σ2Σ0 and expanding (12) at sufficiently small spread gives 
+
+Ex0
+
+accel  = κ σ 2 + O(σ4), κ > 0. (14) Thus, the expected proxy departs from zero strictly mono-tonically and, to leading order, linearly in the posterior vari-ance. On the small-spread branch relevant to trained policies, greater uncertainty therefore yields a larger expected accel ,providing the rank faithfulness required for detection. 
+
+Note: theoretical faithfulness of accel is local and holds in expectation, under an exact CFM field and a small-spread family with fixed covariance shape Σ0. Thus, we further empirically support the utility of accel as an uncertainty proxy in the following section. 
+
+3.3 Empirical Evidence Across Diverse Settings 
+
+We further empirically confirm that accel is highly correlated to FM uncertainty, i.e. the target divergence Σ.
+
+Setup. We define the uncertainty measure as the posterior divergence among Monte-Carlo resamples. At every closed-loop generation step we fix the observation o, resample K
+
+candidate action chunks from the FM head with different noise seeds, and compute the L2 divergence of the K can-didate chunks. We report the Spearman rank correlation ρ
+
+between the divergence reference and accel across various models and benchmarks. 
+
+Models. We evaluate 4 flow matching VLA models across different architectures. π0.5 (Intelligence et al. 2025) em-ploys a MoE style structure to connect the VLM backbone to a lightweight FM action expert. GR00T N1.7 (Bjorck et al. 2025) adopts a dual-system action cascade architecture to decouple high-level reasoning and real time action gen-eration. VLA-JEPA (Sun et al. 2026) is augmented with a Table 1: Pooled chunk-level Spearman ρ between accel 
+
+and resampled divergence of n total chunks. ρfull reports the correlation of the whole denoise path accel T and ρbest 
+
+the highest ρ of accel p⋆ from the first p⋆ of T denoise steps.                                                         
+
+> Model Benchmark nchunks ρfull ρbest p⋆/T π0.5
+> D3IL 712 0.826 0.844 9/10 LIBERO 32,647 0.541 0.792 5/10 RoboCasa 8,277 0.381 0.684 3/10 SmolVLA D3IL 576 0.725 0.834 7/10 LIBERO 16,157 0.523 0.638 6/10 RoboCasa 21,657 0.639 0.816 4/10 GR00T N1.7 D3IL 732 0.622 0.642 3/4 LIBERO 23,273 0.656 0.656 4/4 RoboCasa 14,613 0.565 0.592 3/4 VLA-JEPA LIBERO 26,980 0.679 0.679 4/4 RoboCasa 13,728 0.547 0.586 3/4 Toy D3IL 673 0.680 0.726 8/10
+
+V-JEPA2 (Assran et al. 2025) based latent world model that captures action-relevant state transitions. SmolVLA (Shukor et al. 2025) is a compact size model (0.24B) with comparable performance. And our toy model from 2.4. 
+
+Benchmarks. The models are finetuned and evaluated on 3 benchmarks varying in task complexity and action spaces. 
+
+D3IL (Jia et al. 2024) is a simple and controlled testbed for multimodal behavior learning. We focus on its Avoiding task, where a robot must avoid six obstacles and reach a finish line. 
+
+LIBERO (Liu et al. 2023; Fei et al. 2025) comprises 4 differ-ent tabletop manipulation suites and test understanding and manipulation capabilities. Robocasa (Nasiriany et al. 2024, 2026) features challenging and diverse kitchen environments. We use Atomic-Seen split containing 18 single-skill manip-ulation tasks evaluated in held-out target kitchens. 
+
+Accel rank-tracks the resample divergence. Table 1 shows the ρ between the resample divergence and both the full trajectory accel T and the best prefix accel p⋆ . Exactly as the local-monotonicity predicts, the rank correlation ρ and 
+
+ρp are positive across all 12 model ×benchmark cells, indi-cating that accel encodes common information about FM uncertainty agnostic to model architecture and data distri-bution. We also observe that the best prefix accel p⋆ usually carries higher correlation than full accel , more detail about this phenomenon deferred to Appendix. Remarkably, a cost-free geometric read from a single de-noising path largely recovers the ranking produced by ex-pensive resampling, and effectively generalizes to different FM models. Figure 3 intuitively demonstrates this correlation with a π0.5×D3IL run. We color the end-effector trajectory by accel and plot the resampled chunks in light gray at ev-ery chunk re-plan. At low accel chunks like 2 and 3 (light blue), the resampled branches stay bundled in a tight clus-ter, indicating near-deterministic action generation; at high 
+
+accel chunks like 0 and 5 (dark blue), they fan out widely across the space, revealing decision points at which the pol-icy must choose among multiple plausible behaviors, such Table 2: Online failure detection across four FM models and two benchmarks. Entries are TPR ±std / median detection lead : true positive rate at a target false-alarm rate α=0 .1 and the lead counting re-planning steps between the alarm and the end of the failing episode. *Note that GR00T-N1.7 is severely undertrained on LIBERO-all. 
+
+LIBERO-all RoboCasa Atomic-Seen Detector π0.5
+
+> Succ. 96.3%
+
+SmolVLA 
+
+> Succ. 80.6%
+
+GR00T-N1.7 
+
+> Succ. 68.1%*
+
+VLA-JEPA 
+
+> Succ. 94.1%
+
+π0.5
+
+> Succ. 77.1%
+
+SmolVLA 
+
+> Succ. 65.6%
+
+GR00T-N1.7 
+
+> Succ. 62.5%
+
+VLA-JEPA  
+
+> Succ. 68.1%
+
+Average 
+
+Geometry-based cost-free methods (Ours) 
+
+Accel 0.85 ±.02 /19 0.87 ±.01 /18 0.53 ±.02 /18 0.82 ±.02 /28 0.49 ±.02 /21 0.77 ±.03 /34 0.55 ±.03 /26 0.40 ±.02 /23 0.66 
+
+Straightness 0.78 ±.02 /18 0.87 ±.02 /17 0.58 ±.01 /18 0.64 ±.01 /24 0.43 ±.03 /17 0.83 ±.02 /32 0.60 ±.03 /26 0.42 ±.03 /22 0.65 
+
+Resampling-based methods 
+
+ACE 0.85 ±.01 /19 0.64 ±.02 /16 0.68 ±.01 /21 0.66 ±.02 /29 0.30 ±.02 /23 0.25 ±.02 /41 0.62 ±.03 /25 0.42 ±.04 /27 0.55 
+
+STAC 0.90 ±.02 /22 0.77 ±.01 /19 0.62 ±.02 /23 0.85 ±.01 /26 0.06 ±.01 /27 0.56 ±.03 /35 0.54 ±.04 /23 0.49 ±.03 /19 0.60 
+
+Diff-DAgger 0.67 ±.04 /20 0.65 ±.01 /17 0.51 ±.01 /18 0.86 ±.01 /29 0.31 ±.02 /25 0.51 ±.03 /37 0.50 ±.01 /28 0.16 ±.02 /30 0.52 
+
+Training-based methods 
+
+FIPER 0.81 ±.03 /19 0.59 ±.06 /13 0.67 ±.01 /21 0.73 ±.07 /29 0.33 ±.01 /21 0.25 ±.02 /42 0.60 ±.03 /26 0.42 ±.04 /27 0.55 
+
+RND-OE 0.38 ±.11 /18 0.31 ±.05 /26 0.63 ±.04 /18 0.53 ±.09 /21 0.30 ±.06 /18 0.44 ±.06 /33 0.20 ±.01 /28 0.39 ±.03 /21 0.40 
+
+LogpZO 0.38 ±.08 /20 0.31 ±.06 /27 0.65 ±.03 /17 0.46 ±.10 /20 0.36 ±.07 /20 0.48 ±.07 /34 0.21 ±.02 /30 0.42 ±.05 /22 0.41 
+
+SAFE 0.80 ±.09 /19 0.65 ±.08 /17 0.70 ±.05 /23 0.82 ±.06 /31 0.83 ±.07 /18 0.75 ±.07 /29 0.23 ±.08 /26 0.59 ±.07 /27 0.68 
+
+as alternative routes through the obstacle field. 
+
+# 4 A Free Lunch in Online Failure Detection 
+
+4.1 Problem Formulation and Baselines 
+
+Online failure detection aims to detect when a robot policy fails during task execution. At timestep t, a VLA receives an observation ot consisting of vision, a natural-language instruction and robot state. It then predicts a chunk of actions for the next H steps. At the same time, an online failure detector emits a score zt indicating the likelihood of failure at this time. If the score zt exceeds a certain threshold η, a failure flag would be raised. We consider two families of failure detection scores as baselines: resample-based consistency and training-based OOD detection. ACE (Römer et al. 2025) draws K resam-pled chunks, bin the end effector positions on an fitted adap-tive grid and report entropy. STAC (Agia et al. 2024) com-putes the RBF-MMD between future window of the previous chunk and current K chunk resamples. Diff-DAgger (Lee, Kang, and Kuo 2025) draws K (t, noise ) pairs at generation, re-noise the action chunks, and average the CFM loss. log-pZO (Xu et al. 2025) trains an FM model from observation embedding →noise on success rollouts and performs OOD detection. RND-OE (Römer et al. 2025) performs random network distillation on the observation embedding. It trains a predictor to regress a frozen random target on success em-beddings. FIPER (Römer et al. 2025), combination of the RND-OE and ACE legs, requires fitting . SAFE (Gu et al. 2025) trains a small MLP/LSTM probe on the hidden state of action expert, with labeled success and failure rollouts. 
+
+4.2 Method 
+
+Failure Score. All baselines above require additional data or computation, either through inference-time resampling or training on labeled data. In contrast, we directly utilize accel 
+
+as a free online failure score. At each action-chunk generation step, the policy produces a full T -step denoising trajectory, from which we compute zt = accel . The resulting stream ztt 
+
+serves as the online failure signal throughout the rollout. We additioanlly introduce straightness , defined as the chord-to-arc ratio of the denoising path, as a free comparator capturing a similar geometric property of accel .Both scores are computed only over the executed action window rather than the full action horizon, thereby aligning them with the actions actually applied. We use the second-to-last prefix accel −2 as truncated prefixes correlate stronger with posterior spread. 
+
+Calibrating threshold η. Most baseline including SAFE (Gu et al. 2025), logpZO (Xu et al. 2025) and FIPER (Römer et al. 2025) use functional conformal prediction (CP) to cal-ibrate a time-indexed threshold ηt for zt. However we argue that such time-indexed CP degenerates on long-horizon roll-outs, and instead we calibrate a time-invariant threshold η on the peak of episode-level cumulative sum (CUSUM) (Page 1954) max St from a calibration set C of M held-out suc-cessful rollouts. Detail discussed in Appendix. Specifically, we apply a one-sided CUSUM procedure to 
+
+zt, and estimate a reference level μ0, scale parameter σ, and slack k = cσ from C. The statistic evolves as 
+
+St = max  0, ; St−1 + zt − μ0 − k, S0 = 0 , (15) and an alarm is raised at the first timestep t such that St > η .
+
+4.3 Experiments 
+
+Setup. We evaluate all detectors on the eight model ×benchmark settings introduced in Section 3. Each detector is evaluated on the same episodes and coupled with the same CUSUM monitor, using c = 0.25 and conformal level α = 0 .1. Within each run, we randomly draw a calibration set of M =50 held-out successful rollouts and yields its μ0, k, η .We evaluate all baselines under a realistic deployment budget. Resample-based baselines use K=32 resamples per decision, while training-based baselines are fitted on 32 suc-cessful rollouts or a balanced split of 16 successful and 16 
+
+failed rollouts for SAFE(Gu et al. 2025). The experiment is repeated 5 times and we report the results in Table 2. 
+
+Geometry-based scores are strong detectors. Under our setting, accel and Straightness match or outperform the base-lines, ranking second and third in average TPR at a target FPR of 0.1, close to the top baseline SAFE, which requires the most costly probe training on both successful and failed samples. They raise alarms 17 to 34 action chunks before the failure timeout, 46% to 65% of max length. Their advantage lies not only in detection performance but also in stability across both settings and random runs. Across all model ×benchmark combinations, no baseline de-tector performs consistently well and every winning base-line degenerates on some specific settings. For example, STAC, a powerful baseline with 2 wins collapses to 0.06 
+
+on π0.5×Atomic-Seen, because the policy executes its en-tire predicted chunk before re-planning and leaves no future timestep which STAC depends on. Meanwhile, accel and Straightness never severely collapse, suggesting high gen-eralizability to different models and robustness to various failure modes with no specialized assumptions. Furthermore, with the resampling or fitting budgets a real deployment can afford, most baselines suffer from a high de-viation issue, especially training-based methods like SAFE. The free geometric scores are considerably more stable, with TPR standard deviations of only 0.01 –0.03 .
+
+Where a geometric read is blind. The accel and Straight-ness are complementary measurements of the same geomet-ric signature: curvature of the denoising trajectory. Both are most sensitive to failures preceded by posterior dispersion and may therefore miss cases in which their correlation with dispersion is weak or the policy commits confidently to an incorrect action generation. Geometry-based methods degrade for undertrained mod-els, as observed in GR00T-N1.7 ×LIBERO-all. We hypothe-size that insufficient training prevents the model from learn-ing a stable FM field, resulting in noisy, irregular geometry that weakens the signal captured by accel . More broadly, al-most all detectors degrade on RoboCasa, suggesting that the environment introduces more diverse and challenging fail-ure modes that are intrinsically harder to identify. We leave the systematic investigation of the underlying causes of these degrades to future work. 
+
+# 5 Related Work 
+
+Flow Matching Model. Flow matching (FM) policies (Lipman et al. 2023; Liu, Gong, and Liu 2023) have be-come the default action head for embodied policies. They can generate precise and smooth action trajectories, capture complex multimodal action distributions (Black et al. 2024; Braun et al. 2024), and enable lower-latency sampling than diffusion policies (Chi et al. 2023). FM heads are adopted in multiple different models: π family (Black et al. 2024; Intelligence et al. 2025) and GR00T family (Bjorck et al. 2025) attaches a FM action head to a VLM in a mixture of experts style or a dual-system compositional architecture. Recent works further couple FM head with world model components (Zhu et al. 2025; Zhou et al. 2026), or reshape the denoising path for real-time execution (Jiang et al. 2025). 
+
+Uncertainty Quantification. Uncertainty quantification (UQ) gains much attention since generative AI tends to fail silently (Farquhar et al. 2024; Kossen et al. 2024; Dai et al. 2025). For FM models, multiple resample-based methods estimate uncertainty from the dispersion of Monte-Carlo re-samples (Jazbec et al. 2025; Römer et al. 2026) or Bayesian inference (Kou et al. 2024). Other work exploits the internal structure of FM models to estimate the uncertainty (Han, Beyer, and Karaman 2026). Closely related to us, FreeHunch (Rissanen, Heinonen, and Solin 2025) and the concurrent work of Xing, Wang, and Wang (2026) share the intuition that uncertainty is intrinsically encoded in FM field geom-etry. Our work differs in both objective and realization, re-quiring no Jacobian estimation or additional probes, and is designed for FM-based embodied policies. 
+
+Online Failure Detection. Runtime failure detection for robot policies mainly fall into two categories. Resample-based methods like STAC (Agia et al. 2024) and ACE (Römer et al. 2025) measure the divergence of K resampled ac-tion chunks; FIPER (Römer et al. 2025) pairs that leg with an offline-fitted one and therefore pays both costs. Diff-DAgger (Lee, Kang, and Kuo 2025) reads the self-reconstruction loss under re-noised chunks, a similar met-ric as divergence. Training-based detectors train an auxiliary model on labeled data and flag OOD embeddings, either with a learned density (Xu et al. 2025) or random network distillation (Römer et al. 2025) from success rollouts. Some supervised methods (Gu et al. 2025; Park et al. 2026) train small classifiers on the hidden state or action embedding to predict whether the rollout succeeded or not. However, these detectors pays either an inference-time resampling or an of-fline training cost, while we provides a cost-free, real-time monitor that matches or exceeds these baselines. 
+
+# 6 Conclusions 
+
+We studied how uncertainty is expressed in the geometry of the flow field and grounded it to the deviation from an ideal template. This connection led to accel , a free proxy of uncertainty that reads the bending of an denoising path. As a downstream validation, we used it in failure detection and found that it provides stable and effective warning signals. 
+
+Limitations and Future Work. Our failure-detection study is not intended to pursue a new SOTA method but to prove the utility of accel as an uncertainty indicator. It re-mains a rather coarse statistic for failure detection that misses confidently wrong actions and degrades with under-fit mod-els. Future work can develop finer-grained reads from the geometry perspective by retaining when, where, and which dimensions the trajectory bends. We hope this work provides a simple geometric foundation to build more precise and capable uncertainty monitors. A Case Studies 
+
+This appendix examines individual rollouts in greater detail, showing that accel captures denser dynamics in episodes beyond a binary success/failure label. 
+
+A.1 How accel Works as a Failure Score? 
+
+We plot the time-series of accel and CUSUM of a success and failure rollout in Figure 4 and 5 (Video 1,2 in Media Supplement). During the failure rollout (Video 1), the robot first reached for and grasped the pitcher, making steady task progress while both accel and CUSUM remained inactive. Around the 21st chunk, the pitcher slipped from the gripper, causing 
+
+accel to rise sharply above its reference level and CUSUM crossed the threshold η several chunks later. They clearly partitioned the rollout into normal and failure stages. In the successful rollout (Video 2), CUSUM remained low throughout. Although accel occasionally exhibited transient spikes above the reference level, these were absorbed by the slack parameter k and did not trigger an alarm. 
+
+A.2 When accel Fails to Alarm? 
+
+We further investigate the false negative (task failed w/o alarm) and false positive (task succeeded w/ alarm) episodes and identify the limitations of both accel and the environ-ment’s success criterion. 
+
+False negative: accel -blind failure. Most FN cases fall into two categories: The first arises when the model confi-dently generates an incorrect action, as discussed in the main text. In Video 3, the model misinterprets the instruction and turns on the wrong burner instead of turning off the correct one. accel remains low, suggesting that the policy is confi-dent in this decision and that resampling from the FM head is unlikely to correct it. This error originates from high-level reasoning or instruction understanding in the VLM back-bone, rather than from uncertainty in the FM head, and is therefore not reflected in FM geometry. 
+
+The second arises in precision-sensitive manipulation, such as pressing a small microwave button (Video 4) or plac-ing a lid precisely on a blender (Video 5). In these tasks, even minor action errors or jitter can cause failure. However, the resulting geometric deviations may be too subtle for accel 
+
+to distinguish from the sea of background noise. 
+
+False positive: success-criterion-blind failure. We argue that many false positives reflect limitations of the simulator’s success criterion rather than failures of accel . These cases often involve self-correction (Video 6) or temporary stalls (Video 7). In complex tasks, the policy may require multiple attempts to grasp a fallen object or pause briefly to locate a target out of sight. We refer to such periods as non-lethal failures : the policy temporarily makes no task progress but eventually recovers. Because the simulator evaluates only the final environment state, these transient failures are not captured by its success label. In contrast, accel detects these intermediate disruptions, providing a denser characterization of rollout dynamics. 
+
+Environment mislabeling. We also observe a small num-ber of episodes in which the model completes the task but fails to trigger RoboCasa’s success criterion (Video 8). For some tasks, the criterion appears overly strict or misaligned with human judgment. 
+
+# B Time-Indexed Conformal Band Degenerates on Long-Horizon Tasks 
+
+This appendix expands the argument of Section 4 for confor-malizing a scalar CUSUM height instead of a time-indexed band. 
+
+B.1 Late Horizon Issue of a Time-Indexed Band 
+
+Functional CP calibrates a time-indexed band of the failure score on a set of successful rollouts. It forms a mean profile 
+
+mt and a per-step spread ϕt across the calibration episodes, then sets an upper band bt = mt + q1−α ϕt, where q1−α
+
+is the split-conformal quantile of the normalized calibration residuals. At test time an episode is flagged the first time 
+
+zt > b t. Because mt, ϕ t, b t are all functions of an absolute 
+
+timestep t, the calibration episodes must be aligned to a common clock despite their varying length . In practice this is done by right-padding every episode with its own terminal value up to the longest sequence in the evaluation set, a length set by the timed-out failures. This construction is harmless at short horizons but expen-sive at long ones, because the two classes have systematically different lengths. For embodied manipulation in either simu-lator or real world, a successful rollout terminates as soon as the task is solved, whereas a failing rollout stalls and keeps running until timeout. Let L⋆ be the length of the longest suc-cessful calibration rollout and Lmax > L ⋆ the timeout. The padded length is set by the timed-out failures, so the band is defined on [0 , L max ], yet on the interval (L⋆, L max ] no successful rollout contributes a single real observation , and every calibration entry there is a frozen copy of a terminal value. This issue leads to three consequences. First, for t > L ⋆
+
+both mt and ϕt are computed entirely from held-last con-stants, so the band collapses to a flat horizontal line that reflects none of the long-horizon dispersion. Second, the empirical coverage on that interval has no genuine support. Third, and most fundamentally, calibration and test are no longer exchangeable there, the calibration sample consists of synthetic constants while the test sample is a genuinely running episode, so the two are not draws from a common distribution. Therefore, calibration of a time-indexed band is least trustworthy precisely in the late-horizon regime, ex-actly where long-horizon failures manifest and a detector is needed most. 
+
+Experiment evidence. The length asymmetry is a property of most benchmarks. On our π0.5×LIBERO cell, successful rollouts last 15 .5 chunks on average, whereas the all failing rollouts run to the step limit of the environment: 28 , 30 or 52 
+
+chunks depending on the suite. Drawing M =50 calibration successes yields a longest calibration success of L⋆ ≈ 38 –39 
+
+chunks on average, against the 52 -chunk timeout of the long-horizon suite. Averaged over the calibration draws actually steady progress  
+
+> disruption :pitcher fallen
+
+Figure 4: accel and CUSUM time serties of a failed episode. accel and CUSUM remain silent until disruption occurs and raise alarm within several chunks. 
+
+Figure 5: accel and CUSUM time serties of a success episode. accel and CUSUM remain silent throughout. used in our experiments, 53% of the failing rollouts then outlive L⋆ and 16% of all failing decision steps fall in the unsupported region. The effect is present in every one of the eight cells of Table 2: between 26% and 55% of failing episodes outlive L⋆, and between 4% and 19% of failing decision steps land where the band would be pure padding. It is carried by the long-horizon tasks: on the short LIBERO suites, whose 28 - and 30 -chunk limits usually fall below the pooled L⋆, the unsupported interval is empty for most calibration draws. That is exactly the point, the cost is invisible at short horizons and grows with the horizon, which is the regime these policies are moving towards. 
+
+B.2 CUSUM Avoids Late-Horizon Issue 
+
+The calibration of Section 4 conformalizes the episode-level CUSUM peak P (i) = max t S(i) 
+
+> t
+
+, a single scalar summary of an episode of any length. No alignment, padding, trunca-tion or common-clock assumption is introduced anywhere, so the exchangeability the split-conformal bound needs is a statement about episodes rather than about timesteps, which is the assumption a deployment already makes. The accumu-lation additionally works with, rather than against the length asymmetry. A mild but persistent elevation over a long fail-ing rollout keeps integrating until it crosses η, which is the regime in which a flat late-horizon band is least informative. 
+
+Calibrating the threshold η. We change the object CP calibrates to the episode peak of CUSUM. For each calibra-tion episode i we reduce its whole stream to a single scalar ,the episode CUSUM peak P (i) = max t S(i) 
+
+> t
+
+, and set η to the ⌈(M + 1)(1 − α)⌉-th smallest of {P (1) , . . . , P (M )}, i.e. the 46 -th of 50 at our M =50 , α=0 .1. No common clock assumption is introduced, so the calibration above is defined on raw streams of any length and no padding. 
+
+# C Prefix accel Along the Denoising Path 
+
+We complement the best-prefix results in Table 1 by ex-amining how the agreement with resample-based uncer-tainty evolves over the denoising trajectory. For each model– benchmark cell, we retain the same pooled set of chunks and the same resample-divergence reference, but recompute the proxy using only the first p of the T Euler steps. We then report 
+
+ρp = Spearman(accel p, D resample ) , p = 2 , . . . , T, 
+
+(16) where p/T is the fraction of the noise-to-action denoising path included in the prefix. We plot each model separately in Figure 7 and observe a common phenomenon across almost all models and benchmarks: the prefix curve rises with p,peaks in the middle of the denoise schedule, and then decays. 
+
+Why a prefix accel wins: the terminal singularity. Astriking regularity in Table 1 is that the best correlation is never attained at the last step. The prefix curve rises with 
+
+p, peaks in the middle of the denoise schedule, and then decays. This is a direct consequence of the 1/(1 − s) factor in Eq. (13): as s → 1 (equivalently t → 0, the clean-action end) both terms in v′(s) are inflated by a factor that diverges. 
+
+Figure 6: Prefix accel ’s ρ vs prefix depth on π0.5.Theoretically, the linear-interpolant CFM becomes singu-lar near t = 0 . When the data lie close to a low-dimensional manifold, the score ∇ log pt grows rapidly, and the velocity field becomes highly sensitive to small changes in its input. As a result, with a fixed-step Euler solver, the velocity differ-ences in the last few steps contain not only useful posterior information, but also large discretization errors and numer-ical fluctuations. These changes can have large magnitudes without providing much additional information about Σ.Therefore, including the final steps in accel T can weaken the useful ranking information collected earlier. This is con-sistent with Table 1. The final step can be an order of magni-tude larger than the middle steps, while its correlation with 
+
+Σ is much weaker. The best correlation therefore appears before the endpoint. In practice, we avoid this issue by using a prefix score accel p. However, the singularity issue is not addressed but only avoided. Moreover, we observe a faint signal in Figure 7 that the prefix correlation curves tend to peak earlier on harder bench-mark (Robocasa) and later on easy tasks (D3IL). This is es-pecially obvious for ten-step models i.e. π0.5 and SmolVLA. We hypothesize that the difficulty of the task is also encoded in the FM field and hence revealed by accel p. We leave the questions discussed above to future work. 
+
+accel is robust against denoising resolution. We rerun 
+
+π0.5×LIBERO with different total denoising steps T (4−20 )and plot the prefix ρp curves in Figure 6. the x-axis is the relative prefix depth into the entire denoising path. Across all T , the curve demonstrates a common pattern to peak at around 40% of the whole trajectory, reaching a similar best 
+
+ρbest around 76% − 79% . This result indicates that accel 
+
+is relatively robust to the denoising resolution, consistently carrying information about posterior divergence especially Figure 7: Prefix accel ’s ρ of different models. at the best step. 
+
+# D A Complete Proof of accel Faithfulness 
+
+This appendix collects the proofs behind the proxy accel . We argue on the continuous normalized functional (10), which the discrete estimator (11) approaches as the step count T
+
+grows; every statement transfers to (11) up to a discretization error that vanishes with T . The whole argument rests on a single exact identity, from which the zero baseline, positivity, and local monotonicity follow in turn. 
+
+D.1 The Trajectory Identity 
+
+The proxy measures how much the denoising path bends, so we first compute the path acceleration v′(s) := dds v(x(s), s )
+
+along the generative ODE. Recall from (3) that the field points from the current state toward the posterior mean, 
+
+v(x, s ) = m(x, s ) − x
+
+1 − s , m(x, s ) := E[x1 | xs = x],
+
+(17) and that the denoising path solves x′(s) = v(x(s), s ),so the velocity along the path is the field v itself. Write 
+
+mpath (s) := m x(s), s  for the posterior mean evaluated along the trajectory —the moving point the denoiser is cur-rently aiming at—so that m′
+
+> path
+
+(s) = ( ∂sm) + ( ∂xm) v.
+
+Proposition A.1 (Trajectory identity). Along any generative denoising trajectory x′(s) = v(x(s), s ) of 
+
+(17) , the rate of change of the velocity is 
+
+v′(s) = m′
+
+> path
+
+(s)1 − s , (18) 
+
+for an arbitrary smooth posterior-mean field m(x, s ),with no Gaussianity assumed. Proof. Differentiate v(x(s), s ) = ( mpath (s) − x(s)) /(1 − s)
+
+in s, using x′ = v:
+
+v′ = m′ 
+
+> path
+
+− x′
+
+1 − s + mpath − x
+
+(1 − s)2 = m′ 
+
+> path
+
+− v
+
+1 − s + v
+
+1 − s = m′
+
+> path
+
+1 − s ,
+
+(19) where the middle step substitutes (mpath − x)/(1 − s) = v
+
+from (17) and x′ = v. □
+
+The identity is deceptively strong. Written naively the ve-locity’s rate of change has two pieces, v′ = ∂sv + J v (the explicit s-dependence plus the Jacobian J = ∂xv acting on the velocity), and both are individually nonzero even at perfect certainty. (19) shows they cancel to the single term 
+
+m′
+
+> path
+
+/(1 − s). Motion toward a fixed target contributes no acceleration, the path bends if and only if the posterior mean it is chasing is itself moving. 
+
+Handshake with the covariance of Section 2. The motion of mpath is not an unrelated quantity—it is Section 2’s co-variance, read along the path. Since v = ( m−x)/(1 −s), the field Jacobian J and the posterior-mean Jacobian M := ∂xm
+
+satisfy M = I + (1 − s)J = (1 − s) J + I
+
+> 1−s
+
+; the bracket is the off-template excess of (7), so 
+
+M = (1 − s)
+
+
+
+J + I
+
+> 1−s
+
+
+
+= s
+
+(1 − s)2 Cov( x1 | xs = x).
+
+(20) Substituting m′ 
+
+> path
+
+= ∂sm + M v and (20) into (18), 
+
+v′(s) = ∂sm
+
+1 − s + s
+
+(1 − s)3 Cov  x1 | xs = x(s) v(s).
+
+(21) The geometric part of the trajectory’s acceleration is the 
+
+same conditional covariance that Section 2 equated with the off-template excess, now contracted with the velocity along the states the path actually visits. Where Section 2 measured the departure of the whole field from the template, Proposition A.1 integrates that departure along one realized path . This is why a single free trajectory can proxy a quantity defined over the entire field. 
+
+D.2 Zero Baseline and Positivity 
+
+Proposition A.2 (Zero Baseline). If Σ = 0 , then 
+
+m′ 
+
+> path
+
+≡ 0 and, by (18) , v′(s) ≡ 0; hence the func-tional (10) is 0 and the discrete metric (11) is exactly 
+
+accel = 0 .Proof. A point-mass endpoint forces every posterior condi-tional to a point mass under the strictly positive Gaussian like-lihood (the point-mass bridge of Theorem 1): x1 = a⋆ almost surely, so m(x, s ) = a⋆ for all (x, s ). Then mpath (s) ≡ a⋆,
+
+m′ 
+
+> path
+
+≡ 0, and (18) gives v′ ≡ 0: the velocity along the path is constant. On the discrete path vt+1 = vt for all t, so every summand of accel vanishes. □
+
+This is the exact discrete counterpart of Theorem 1’s straight, zero-curvature trajectory (5): perfect certainty is a flat-line velocity, and accel reads it as a hard 0.
+
+Proposition A.3 (Positivity betrays uncertainty). If the path bends at any interior step, v′(s0)̸ = 0 for some s0 ∈ (0 , 1) , equivalently some vt+1 ̸ = vt so that accel > 0, then the posterior is non-degenerate, 
+
+Σ̸ = 0 .Proof. By (18), v′(s0)̸ = 0 with s0 ∈ (0 , 1) forces 
+
+m′
+
+> path
+
+(s0)̸ = 0 , so m is not the constant field a⋆. By the con-trapositive of the point-mass bridge (if Σ = 0 then m ≡ a⋆), 
+
+Σ̸ = 0 . □
+
+Propositions A.2 and A.3 give the qualitative equivalence the detector rests on, a certain condition produces a flat-velocity path, and a bending path betrays an uncertain one, using the same point-mass bridge as Section 2. Both are stated at 
+
+interior s, because at the boundary s=0 the schedule factor in (13) vanishes and the field matches the template regardless of Σ.
+
+D.3 Local Monotonicity 
+
+Zero-versus-positive is not enough: the amount of bending must track the amount of uncertainty. We establish this at leading order in the posterior spread, which is the regime a detector operates in. Scale the posterior by Σ = σ2Σ0 and let σ2 → 0.
+
+Proposition A.4 (Local monotonicity). In the small-spread regime the expected proxy leaves zero strictly monotonically and linearly in the posterior variance, 
+
+Ex0
+
+accel( v) = κ σ 2 + O(σ4), κ > 0. (22) 
+
+Proof. From the linear-Gaussian form of the posterior mean for the Gaussian channel xs | x1 ∼ N (sx 1, (1 − s)2I),
+
+m(x, s ) − a⋆ = sσ 2
+
+(1 − s)2 Σ0 (x − s a ⋆) + O(σ4),M = sσ 2
+
+(1 − s)2 Σ0 + O(σ4),
+
+(23) consistently with (20): the posterior mean is frozen at a⋆ to 
+
+O(σ2). Hence m′ 
+
+> path
+
+= ∂sm + M v = O(σ2) (the leading velocity v → vaff = O(1) is the affine-template speed), so by (18) ∥v′(s)∥ = O(σ2) for s bounded away from 1, while the denominator R ∥v∥ stays O(1) . Taking the expectation over the noise draw x0 gives (22); the slope κ is strictly positive because Σ0̸ = 0 makes m′ 
+
+> path
+
+generically nonzero at interior 
+
+s. □
+
+Thus accel leaves 0 linearly in the posterior variance with a strictly positive slope: on the small-spread branch that a trained policy occupies, larger uncertainty yields a strictly larger expected proxy, which is exactly the rank-faithfulness a detector consumes. The same “grows from zero” behavior holds for a multimodal (bimodal-endpoint) posterior as its mode separation increases from 0: separation is the epistemic face of the very same covariance object (Section 2), so accel 
+
+responds to multimodality and to underfit variance alike. 
+
+Honest limitation of the guarantee. Our theoretical result is local and holds in expectation: under an exact CFM field and a small-spread family with a fixed covariance shape, the expected accel increases with posterior variance to leading order. It does not establish pointwise or global monotonic-ity across arbitrary distributions, and acceleration in learned models may also contain approximation and discretization effects. 
+
+# E Toy Model Implementation Details 
+
+This section gives the complete specification of the toy ex-periment used in Figure 2. The toy is a learned conditional flow-matching (CFM) model rather than an analytic vec-tor field. A single velocity network vθ (xs, s, o ) is shared by all conditions, where the action state is xs ∈ R2, the continuous observation is o ∈ R8, and s ∈ [0 , 1] denotes denoising progress from noise to action. Thus, the unimodal, multimodal, and held-out panels are different observation-conditioned slices of the same learned field. 
+
+Observations and conditional targets. We first place six training observations at equally spaced angles θi = 2 πi/ 6 on the unit circle. To avoid encoding the condition as a discrete task identifier, the two-dimensional circle is lifted into an eight-dimensional observation space: 
+
+oi = Q [cos θi sin θi]⊤ , Q⊤Q = I2, (24) where Q ∈ R8×2 is obtained once from the QR decomposi-tion of a seeded Gaussian matrix. Consequently, observation norms and pairwise distances on the circle are preserved. Three of the six conditions are randomly assigned a uni-modal target and the other three a bimodal target. For every training condition, the clean-action distribution is a Gaussian mixture 
+
+p(x1 | oi) = 
+
+> Ki
+
+X
+
+> k=1
+
+wik N  x1; μik , σ 2
+
+> ik
+
+I2
+
+ , K i ∈ { 1, 2}.
+
+(25) For each condition, mode means are sampled in [−2.3, 2.3] 2
+
+by rejection sampling, with a minimum pairwise separa-tion of 2.0 for bimodal targets. Standard deviations are sam-pled independently and uniformly from [0 .06 , 0.13] . Mix-ture weights are generated as wi = softmax(0 .3zi) with 
+
+zi ∼ N (0 , I Ki ); the unimodal weight is therefore one. We draw 4,096 samples from each target once and freeze these finite sets, training only resamples from them with replace-ment, and never queries the GMMs for fresh training samples. To construct the epistemic condition, we additionally place three held-out observations at midpoints of gaps between the six training angles and apply the same lift Q. These conditions lie on the observation manifold but outside the discrete training support; we refer to them as OOD condi-tions in the main text. Crucially, they have no associated ac-tion target and contribute no training examples. Their fields and endpoint distributions are produced solely by the net-work’s continuous-condition generalization. With seed 0, the unimodal conditions are o1, o 2, o 5, the bimodal conditions are o0, o 3, o 4, and the three held-out conditions are denoted 
+
+oood ,0, o ood ,1, o ood ,2.
+
+Velocity-network architecture. The scalar s is mapped to a 64-dimensional sinusoidal embedding. Specifically, for 
+
+j = 0 , . . . , 31 , its sine and cosine features use frequency 
+
+exp[ −(log 10 4)j/ 32] and argument 2πs . The observation is encoded by an 8 → 32 → 32 MLP with a SiLU activation af-ter each linear layer. We concatenate the current action state, time embedding, and observation embedding, and pass the resulting 98-dimensional vector through four 256-wide fully connected hidden layers with SiLU activations, followed by a linear two-dimensional velocity output. The network con-tains 224,578 trainable parameters and uses neither normal-ization layers nor dropout. 
+
+CFM objective and optimization. Each minibatch row first samples one of the six training observations uniformly, then samples x1 from that condition’s frozen set. We draw 
+
+x0 ∼ N (0 , I 2) and s ∼ U [10 −3, 1 − 10 −3], and use the linear interpolant and its conditional velocity target 
+
+xs = sx 1 + (1 − s)x0, us = x1 − x0. (26) During training only, the nominal observation is perturbed as eo = o + 0 .01 ϵ, ϵ ∼ N (0 , I 8). The loss is 
+
+L(θ) = E
+
+h
+
+∥vθ (xs, s, eo) − (x1 − x0)∥22
+
+i
+
+. (27) We optimize it for 40,000 steps using Adam with batch size 1,024, learning rate 10 −3, and zero weight decay; no learning-rate schedule or EMA is used. Training uses float32, seed 0, and a CUDA device (with a CPU fallback). The train-ing loss is logged every 500 steps, and generation fidelity is evaluated every 5,000 steps using 2,000 generated and target samples per in-distribution condition. 
+
+Sampling and visualization. At test time we sample x0 ∼N (0 , I 2) and integrate dx/ ds = vθ (x, s, o ) from s = 0 to 1
+
+with 40 explicit Euler steps of size 1/40 . For the figure, each condition uses the same batch of 512 initial noise samples (seed 0 + 4242 ), so differences between panels cannot be attributed to different noise draws. The velocity streamplot is formed by averaging the sampled positions and velocities on a 26 × 26 grid and discarding cells with fewer than five samples. The endpoint posterior spread displayed in the fig-ure is the mean of the two coordinate-wise endpoint standard deviations. The three displayed conditions are selected reproducibly from the nine-condition pool: the unimodal condition with the smallest endpoint spread ( o1), the bimodal condition with the largest endpoint spread ( o3), and the held-out condition with the largest median trajectory-curvature score ( oood ,0). Their endpoint spreads are 0.0815, 0.7524, and 0.4421, re-spectively. 
+
+# F Failure-Detection Experimental Details 
+
+This section provides the implementation and data-splitting details for the online failure-detection results in Table 2. The purpose is to make the comparison reproducible rather than to introduce an additional evaluation. 
+
+Evaluation grid and labels. We evaluate four flow-matching policies: π0.5, GR00T N1.7, VLA-JEPA, and SmolVLA on LIBERO-all and RoboCasa Atomic-Seen, gen-eral result listed in Table 3. LIBERO-all pools the LIBERO-10, Goal, Object, and Spatial suites. Atomic-Seen contains 18 single-skill RoboCasa tasks evaluated in held-out target kitchens. A detector emits one scalar whenever the policy re-plans an action chunk; hence all alarm and lead-time quanti-ties below are measured in re-planning steps (action chunks), not simulator timesteps. We retain only the part of a pre-dicted chunk that is actually executed. The executed-window lengths on LIBERO/Atomic-Seen are respectively 10 /16 for 
+
+π0.5, 8/8 for GR00T N1.7, 7/8 for VLA-JEPA, and 10 /10 
+
+for SmolVLA. We use environment success as the episode-level ground-truth label. For LIBERO, the per-rollout termination label was checked against the success array saved by the evaluation loop. For RoboCasa, labels come directly from the simulator-client success records; rollout identity and the number of recorded chunks were cross-checked when the distributed shards were merged. Thus, no trajectory-length or detector-score proxy is used to assign success and failure labels. 
+
+Detector inputs and budgets. The cost-free geometric scores are accel , Straightness. ACE and STAC use Monte-Carlo action resamples, and the flow-matching loss (reported as Diff-DAgger in the main text) uses re-noised model evalu-ations. The observation-embedding OOD family comprises RND-OE and logpZO. FIPER combines its RND-OE and ACE legs, while SAFE is a supervised probe on the action expert’s last-layer hidden feature. All resampling-based scores consume the complete set of 
+
+K=32 candidates stored at each decision, no policy inference is repeated during detector scoring. Geometry and resample scores are computed on the executed window. For accel ,action dimensions are standardized with a fixed, run-pooled scale. Within each repeat, the unsupervised embedding-OOD family and FIPER are fitted on 32 randomly selected suc-cessful rollouts. SAFE uses an independently drawn, bal-anced set of 16 successful and 16 failed rollouts. We exclude the union of these two fit sets from the scored population for every detector, including methods that do not require fit-ting, so detector comparisons within a repeat remain paired. The five fit and learned model seeds are 3200 , . . . , 3204 .Candidate-subset seeds 6400 , . . . , 6404 are stored for prove-nance, although they do not change the result when all 32 saved candidates are used. 
+
+CUSUM calibration and metrics. For each detector and calibration draw, we pool the chunk scores from M =50 held-out successful episodes to estimate the reference mean μ0 and standard deviation σ. We use the one-sided statistic 
+
+St = max {0, S t−1+zt−μ0−cσ }, S0 = 0 , c = 0 .25 .
+
+(28) For every calibration episode i, we compute its peak P (i) =max t St and set the alarm height to the split-conformal order statistic 
+
+r = ⌈(M + 1)(1 − α)⌉ , η = P(r). (29) With M = 50 and α = 0 .1, this is the 46th smallest cali-bration peak. The identities of the calibration episodes are shared across all detectors within a draw, but each detector obtains its own μ0, σ, and η because score scales differ. Cal-ibration successes are excluded from the success episodes used to measure false alarms; all post-fit failed episodes are retained for measuring detection. Consequently, the reported FPR is an out-of-sample measurement and is expected to fluctuate around, rather than equal, α = 0 .1.An alarm is the first chunk with St > η . The true-positive rate (TPR) is the fraction of failed episodes that alarm. For detected failures, lead is the number of remaining chunks, 
+
+L = Tep − 1 − talarm ; we first take the median across de-tected failed episodes. Across all 112 cell, detector aggre-gates, the median realized FPR is 0.097 with interquartile range [0 .095 , 0.100] , confirming that the methods are com-pared near the intended operating point. 
+
+# G Ablation Study on Failure Detection 
+
+We sweep the total denoising step T of GR00T-N1.7 and report the success rate and accel failure detection perfor-mance in Figure 8. No significant change observed in TPR across different T .Table 3                                              
+
+> Model Benchmark Episodes Success Failure Realized FPR
+> π0.5LIBERO-all 1936 .01878 .058 .00.097
+> VLA-JEPA LIBERO-all 1936 .21833 .2103 .00.097
+> GR00T N1.7 LIBERO-all 737 .6506 .6231 .00.094
+> SmolVLA LIBERO-all 737 .0598 .0139 .00.101
+> π0.5Atomic-Seen 836 .0646 .0190 .00.097
+> GR00T N1.7 Atomic-Seen 298 .0179 .0119 .00.096
+> VLA-JEPA Atomic-Seen 298 .4199 .499 .00.100
+> SmolVLA Atomic-Seen 737 .0478 .0259 .00.098
+
+Figure 8: Prefix accel ’s ρ of different models. 
+
+# References 
+
+Agia, C.; Sinha, R.; Yang, J.; Cao, Z.; Antonova, R.; Pavone, M.; and Bohg, J. 2024. Unpacking Failure Modes of Gen-erative Policies: Runtime Monitoring of Consistency and Progress. In Agrawal, P.; Kroemer, O.; and Burgard, W., eds., Conference on Robot Learning, 6-9 November 2024, Munich, Germany , volume 270 of Proceedings of Machine Learning Research , 689–723. PMLR. Assran, M.; Bardes, A.; Fan, D.; Garrido, Q.; Howes, R.; Komeili, M.; Muckley, M. J.; Rizvi, A.; Roberts, C.; Sinha, K.; Zholus, A.; Arnaud, S.; Gejji, A.; Martin, A.; Hogan, F. R.; Dugas, D.; Bojanowski, P.; Khalidov, V.; Labatut, P.; Massa, F.; Szafraniec, M.; Krishnakumar, K.; Li, Y.; Ma, X.; Chandar, S.; Meier, F.; LeCun, Y.; Rabbat, M.; and Ballas, N. 2025. V-JEPA 2: Self-Supervised Video Mod-els Enable Understanding, Prediction and Planning. CoRR ,abs/2506.09985. Bjorck, J.; Castañeda, F.; Cherniadev, N.; Da, X.; Ding, R.; Fan, L.; Fang, Y.; Fox, D.; Hu, F.; Huang, S.; Jang, J.; Jiang, Z.; Kautz, J.; Kundalia, K.; Lao, L.; Li, Z.; Lin, Z.; Lin, K.; Liu, G.; LLontop, E.; Magne, L.; Mandlekar, A.; Narayan, A.; Nasiriany, S.; Reed, S.; Tan, Y. L.; Wang, G.; Wang, Z.; Wang, J.; Wang, Q.; Xiang, J.; Xie, Y.; Xu, Y.; Xu, Z.; Ye, S.; Yu, Z.; Zhang, A.; Zhang, H.; Zhao, Y.; Zheng, R.; and Zhu, Y. 2025. GR00T N1: An Open Foundation Model for Generalist Humanoid Robots. CoRR , abs/2503.14734. Black, K.; Brown, N.; Driess, D.; Esmail, A.; Equi, M.; Finn, C.; Fusai, N.; Groom, L.; Hausman, K.; Ichter, B.; Jakubczak, S.; Jones, T.; Ke, L.; Levine, S.; Li-Bell, A.; Mothukuri, M.; Nair, S.; Pertsch, K.; Shi, L. X.; Tanner, J.; Vuong, Q.; Walling, A.; Wang, H.; and Zhilinsky, U. 2024. π0: A Vision-Language-Action Flow Model for General Robot Control. 
+
+CoRR , abs/2410.24164. Braun, M.; Jaquier, N.; Rozo, L.; and Asfour, T. 2024. Rie-mannian Flow Matching Policy for Robot Motion Learning. In IEEE/RSJ International Conference on Intelligent Robots and Systems, IROS 2024, Abu Dhabi, United Arab Emirates, October 14-18, 2024 , 5144–5151. IEEE. Chi, C.; Feng, S.; Du, Y.; Xu, Z.; Cousineau, E.; Burchfiel, B.; and Song, S. 2023. Diffusion Policy: Visuomotor Policy Learning via Action Diffusion. In Bekris, K. E.; Hauser, K.; Herbert, S. L.; and Yu, J., eds., Robotics: Science and Systems XIX, Daegu, Republic of Korea, July 10-14, 2023 .Dai, L.; Xu, Y.; Ye, J.; Liu, H.; and Xiong, H. 2025. SePer: Measure Retrieval Utility Through The Lens Of Semantic Perplexity Reduction. In The Thirteenth International Con-ference on Learning Representations, ICLR 2025, Singapore, April 24-28, 2025 . OpenReview.net. Farquhar, S.; Kossen, J.; Kuhn, L.; and Gal, Y. 2024. Detect-ing hallucinations in large language models using semantic entropy. Nat. , 630(8017): 625–630. Fei, S.; Wang, S.; Shi, J.; Dai, Z.; Cai, J.; Qian, P.; Ji, L.; He, X.; Zhang, S.; Fei, Z.; Fu, J.; Gong, J.; and Qiu, X. 2025. LIBERO-Plus: In-depth Robustness Analysis of Vision-Language-Action Models. CoRR , abs/2510.13626. Gu, Q.; Ju, Y.; Sun, S.; Gilitschenski, I.; Nishimura, H.; Itkina, M.; and Shkurti, F. 2025. SAFE: Multitask Fail-ure Detection for Vision-Language-Action Models. CoRR ,abs/2506.09937. Accepted at the Conference on Neural In-formation Processing Systems (NeurIPS) 2025. Han, J.; Beyer, L. L.; and Karaman, S. 2026. Flow Match-ing with Uncertainty Quantification and Guidance. CoRR ,abs/2602.10326. Intelligence, P.; Black, K.; Brown, N.; Darpinian, J.; Dha-balia, K.; Driess, D.; Esmail, A.; Equi, M.; Finn, C.; Fusai, N.; Galliker, M. Y.; Ghosh, D.; Groom, L.; Hausman, K.; Ichter, B.; Jakubczak, S.; Jones, T.; Ke, L.; LeBlanc, D.; Levine, S.; Li-Bell, A.; Mothukuri, M.; Nair, S.; Pertsch, K.; Ren, A. Z.; Shi, L. X.; Smith, L.; Springenberg, J. T.; Sta-chowicz, K.; Tanner, J.; Vuong, Q.; Walke, H.; Walling, A.; Wang, H.; Yu, L.; and Zhilinsky, U. 2025. π0.5 : a Vision-Language-Action Model with Open-World Generalization. 
+
+CoRR , abs/2504.16054. Jazbec, M.; Wong-Toi, E.; Xia, G.; Zhang, D.; Nalisnick, E. T.; and Mandt, S. 2025. Generative Uncertainty in Diffu-sion Models. CoRR , abs/2502.20946. Jia, X.; Blessing, D.; Jiang, X.; Reuss, M.; Donat, A.; Li-outikov, R.; and Neumann, G. 2024. Towards Diverse Be-haviors: A Benchmark for Imitation Learning with Human Demonstrations. In The Twelfth International Conference on Learning Representations, ICLR 2024, Vienna, Austria, May 7-11, 2024 . OpenReview.net. Jiang, S.; Fang, X.; Roy, N.; Lozano-Pérez, T.; Kaelbling, L. P.; and Ancha, S. 2025. Streaming Flow Policy: Sim-plifying diffusion/flow-matching policies by treating action trajectories as flow trajectories. CoRR , abs/2505.21851. Ac-cepted at the Conference on Robot Learning (CoRL) 2025. Khatib, O. 1986. Real-time obstacle avoidance for manipula-tors and mobile robots. The international journal of robotics research , 5(1): 90–98. Kossen, J.; Han, J.; Razzak, M.; Schut, L.; Malik, S. A.; and Gal, Y. 2024. Semantic Entropy Probes: Robust and Cheap Hallucination Detection in LLMs. CoRR , abs/2406.15927. Kou, S.; Gan, L.; Wang, D.; Li, C.; and Deng, Z. 2024. BayesDiff: Estimating Pixel-wise Uncertainty in Diffusion via Bayesian Inference. In The Twelfth International Con-ference on Learning Representations, ICLR 2024, Vienna, Austria, May 7-11, 2024 . OpenReview.net. Lee, S.; Kang, X.; and Kuo, Y. 2025. Diff-Dagger: Un-certainty Estimation With Diffusion Policy for Robotic Ma-nipulation. In IEEE International Conference on Robotics and Automation, ICRA 2025, Atlanta, GA, USA, May 19-23, 2025 , 4845–4852. IEEE. Lipman, Y.; Chen, R. T. Q.; Ben-Hamu, H.; Nickel, M.; and Le, M. 2023. Flow Matching for Generative Modeling. In 
+
+The Eleventh International Conference on Learning Rep-resentations, ICLR 2023, Kigali, Rwanda, May 1-5, 2023 .OpenReview.net. Liu, B.; Zhu, Y.; Gao, C.; Feng, Y.; Liu, Q.; Zhu, Y.; and Stone, P. 2023. LIBERO: Benchmarking Knowledge Trans-fer for Lifelong Robot Learning. In Oh, A.; Naumann, T.; Globerson, A.; Saenko, K.; Hardt, M.; and Levine, S., eds., 
+
+Advances in Neural Information Processing Systems 36: An-nual Conference on Neural Information Processing Systems 2023, NeurIPS 2023, New Orleans, LA, USA, December 10 - 16, 2023 .Liu, X.; Gong, C.; and Liu, Q. 2023. Flow Straight and Fast: Learning to Generate and Transfer Data with Rectified Flow. In The Eleventh International Conference on Learning Rep-resentations, ICLR 2023, Kigali, Rwanda, May 1-5, 2023 .OpenReview.net. Nasiriany, S.; Maddukuri, A.; Zhang, L.; Parikh, A.; Lo, A.; Joshi, A.; Mandlekar, A.; and Zhu, Y. 2024. RoboCasa: Large-Scale Simulation of Household Tasks for Generalist Robots. In Kulic, D.; Venture, G.; Bekris, K. E.; and Coron-ado, E., eds., Robotics: Science and Systems XX, Delft, The Netherlands, July 15-19, 2024 .Nasiriany, S.; Nasiriany, S.; Maddukuri, A.; and Zhu, Y. 2026. RoboCasa365: A Large-Scale Simulation Framework for Training and Benchmarking Generalist Robots. CoRR ,abs/2603.04356. Accepted at the International Conference on Learning Representations (ICLR) 2026. Page, E. S. 1954. Continuous inspection schemes. 
+
+Biometrika , 41(1/2): 100–115. Park, S.; Li, W.; Oh, C.; Yeh, S.; Kira, Z.; Hagenow, M.; and Li, S. 2026. Hide-and-Seek in Trajectories: Discover-ing Failure Signals for VLA Runtime Monitoring. CoRR ,abs/2605.30834. Rissanen, S.; Heinonen, M.; and Solin, A. 2025. Free Hunch: Denoiser Covariance Estimation for Diffusion Models With-out Extra Costs. In The Thirteenth International Conference on Learning Representations, ICLR 2025, Singapore, April 24-28, 2025 . OpenReview.net. Römer, R.; Kobras, A.; Worbis, L.; and Schoellig, A. P. 2025. Failure Prediction at Runtime for Generative Robot Policies. 
+
+CoRR , abs/2510.09459. Accepted at the Conference on Neu-ral Information Processing Systems (NeurIPS) 2025. Römer, R.; Seeliger, M.; Liu, S.; Sturgis, B.; Bagatella, M.; Marta, D.; Krause, A.; and Schoellig, A. P. 2026. Un-certainty Quantification for Flow-Based Vision-Language-Action Models. CoRR , abs/2606.18043. Schulman, J.; Duan, Y.; Ho, J.; Lee, A.; Awwal, I.; Bradlow, H.; Pan, J.; Patil, S.; Goldberg, K.; and Abbeel, P. 2014. Mo-tion planning with sequential convex optimization and con-vex collision checking. The International Journal of Robotics Research , 33(9): 1251–1270. Shukor, M.; Aubakirova, D.; Capuano, F.; Kooijmans, P.; Palma, S.; Zouitine, A.; Aractingi, M.; Pascal, C.; Russi, M.; Marafioti, A.; Alibert, S.; Cord, M.; Wolf, T.; and Cadène, R. 2025. SmolVLA: A Vision-Language-Action Model for Affordable and Efficient Robotics. CoRR , abs/2506.01844. Sun, J.; Zhang, W.; Qi, Z.; Ren, S.; Liu, Z.; Zhu, H.; Sun, G.; Jin, X.; and Chen, Z. 2026. VLA-JEPA: Enhancing Vision-Language-Action Model with Latent World Model. CoRR ,abs/2602.10098. Xing, J.; Wang, S.; and Wang, J. 2026. Divergence is Uncer-tainty: A Closed-Form Posterior Covariance for Flow Match-ing. CoRR , abs/2605.00941. Xu, C.; Nguyen, T. K.; Dixon, E.; Rodriguez, C.; Miller, P. T.; Lee, R.; Shah, P.; Ambrus, R.; Nishimura, H.; and Itkina, M. 2025. Can We Detect Failures Without Failure Data? Uncertainty-Aware Runtime Failure Detection for Im-itation Learning Policies. CoRR , abs/2503.08558. Accepted at Robotics: Science and Systems (RSS) 2025. Zhou, P.; Chen, S.; Chen, D.; Wang, J.; Jin, R.; Zhu, B.; Pan, Y.; Gu, S.; Wang, K.; Nan, S.; Qiu, X.; Qiu, C.; Yang, P.; Cai, Y.; Gao, J.; Li, Y.; Fu, Y.; Yue, X.; Chen, Z.; and Luo, J. 2026. τ0-WM: A Unified Video-Action World Model for Robotic Manipulation. CoRR , abs/2606.01027. Zhu, C.; Yu, R.; Feng, S.; Burchfiel, B.; Shah, P.; and Gupta, A. 2025. Unified World Models: Coupling Video and Action Diffusion for Pretraining on Large Robotic Datasets. CoRR ,abs/2504.02792.
