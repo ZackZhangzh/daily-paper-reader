@@ -1,0 +1,275 @@
+Title: InstancePin: Instance-Addressable Layout-to-Image Diffusion via Coordinate Pinning
+
+URL Source: https://arxiv.org/pdf/2608.00588v1
+
+Published Time: Tue, 04 Aug 2026 00:36:22 GMT
+
+Number of Pages: 14
+
+Markdown Content:
+# InstancePin: Instance-Addressable Layout-to-Image Diffusion via Coordinate Pinning 
+
+Chaoyue Wu 1, Yunfei Zhang 2, and Si Wu 1⋆ 
+
+> 1
+
+School of Computer Science and Engineering, South China University of Technology, Guangzhou, Guangdong, P. R. China 
+
+w1094943231@gmail.com, cswusi@scut.edu.cn  
+
+> 2
+
+School of Future Technology, South China University of Technology, Guangzhou, Guangdong, P. R. China 
+
+csyfzhang@gmail.com 
+
+Abstract. Layout-to-image diffusion models have achieved impressive semantic controllability by conditioning generation on category-level seg-mentation maps. However, such category-aligned control is not necessar-ily instance-addressable: multiple nearby objects from the same cate-gory are often treated as a shared semantic region, leading to ambigu-ous boundaries, averaged appearances, and feature confusion among in-stances. This limitation is particularly evident in urban scene synthesis, where small and crowded pedestrians or vehicles require fine-grained in-stance separation while preserving global scene consistency. In this pa-per, we propose InstancePin, an instance-addressable layout-to-image diffusion framework that pins each object instance with an explicit co-ordinate anchor. Instead of directly injecting instance masks into the pretrained backbone, InstancePin introduces an independent instance-aware adapter to preserve the category-level generation prior while learn-ing instance-specific spatial control. For each instance, its center coor-dinate is encoded with Fourier features and projected into a coordinate token, which serves as a spatial anchor queried by latent image features through coordinate pinning attention. To make these anchors spatially meaningful, we further supervise the coordinate attention maps with instance regions, encouraging each coordinate token to activate its cor-responding object area. Finally, an instance-mask guided fusion module routes pretrained backbone features to non-instance regions and adapter features to instance regions, enabling local instance refinement without sacrificing global semantic fidelity. Extensive experiments on Cityscapes demonstrate that InstancePin mitigates instance entanglement in dense layouts and improves both image fidelity and semantic consistency. 
+
+Keywords: Layout-to-image generation · Instance-aware diffusion · Dif-fusion model.  
+
+> ⋆
+
+Corresponding author. arXiv:2608.00588v1 [cs.CV] 1 Aug 2026 2 C. Wu et al. 
+
+## 1 Introduction 
+
+Layout-to-image generation aims to synthesize realistic images from spatial lay-outs such as semantic segmentation maps. Recent diffusion-based methods have substantially improved the fidelity and controllability of this task by combining pretrained text-to-image diffusion models with additional spatial conditions [33]. In particular, category-level segmentation maps provide explicit semantic regions for different object classes, allowing the model to generate images that follow the global scene structure. Despite the progress, category-level layout control re-mains insufficient for scenes containing multiple nearby instances from the same class. A semantic segmentation map indicates where a category appears, but not how same-category instances should be separated during generation. As a result, several adjacent pedestrians or vehicles may be treated as a shared se-mantic region. The generated images often suffer from ambiguous boundaries, averaged local appearances, and feature confusion among neighboring instances. The problem becomes more pronounced in dense urban scenes, where pedestri-ans are usually small, crowded, and visually similar. Improving instance-level separation while preserving category-level semantic consistency is therefore a key challenge for layout-to-image diffusion. Existing controllable diffusion models mainly focus on injecting category-level spatial conditions into pretrained diffusion backbones. ControlNet [31] and Uni-ControlNet [34] introduce additional control branches to encode ex-ternal conditions such as semantic maps, enabling strong layout consistency. FreestyleNet [29] further rectifies cross-attention maps so that each text token affects its corresponding semantic region. Although these methods improve spa-tial alignment between layouts and generated images, the control signal is still primarily organized around semantic categories. Multiple instances from the same category share the same semantic token or mask region, making it dif-ficult to assign distinct generation behavior to each instance. As illustrated in Fig. 1, category-level control tends to produce entangled responses for nearby pedestrians, while InstancePin encourages instance-specific activation through coordinate anchors. To address this limitation, we propose InstancePin, an instance-addressable layout-to-image diffusion framework that improves instance-level spatial separa-tion through coordinate pinning. The central idea of InstancePin is to preserve the category-level generation ability of the pretrained diffusion backbone while introducing a separate pathway for fine-grained instance control. To this end, we design an Instance-Aware Adapter (IAA) that learns instance-aware adapter fea-tures independently from the pretrained backbone. The adapter allows instance-level information to be modeled without directly overwriting the semantic gen-eration prior of the original model. Within the adapter, we further introduce Coordinate Pinning Attention (CPA) to distinguish different instances from the same semantic category. Since mask labels alone are not compact queryable con-ditions, CPA encodes each instance center with Fourier features and projects it into a coordinate token. Latent image features query these coordinate tokens during denoising, allowing different same-class instances to be associated with InstancePin 3
+
+distinct spatial anchors. To make the learned anchors spatially meaningful, co-ordinate attention maps are supervised by the corresponding instance regions, encouraging each coordinate token to activate its own object area rather than nearby instances. Finally, we introduce Instance-Mask Guided Fusion (IMGF) to combine category-level and instance-level features according to their spatial responsibilities. The pretrained backbone features are preserved in non-instance regions to maintain global scene structure, while instance-aware adapter features are injected into instance regions to refine local object details. This fusion mod-ule enables InstancePin to improve instance-level generation without sacrificing the semantic consistency provided by the pretrained layout-to-image model. Ex-periments on Cityscapes show that InstancePin effectively reduces spatial en-tanglement in dense urban layouts and improves image fidelity and semantic consistency, especially in crowded pedestrian regions. The main contributions of this paper are summarized as follows: 
+
+– Distinct from existing category-level layout control methods, InstancePin targets instance-addressable layout-to-image diffusion by separating nearby same-class objects with coordinate-guided spatial anchors. 
+
+– Coordinate Pinning Attention is introduced to encode instance center co-ordinates into coordinate tokens and align coordinate attention maps with instance regions, enabling fine-grained association between latent image fea-tures and individual instances. 
+
+– We design an instance-mask guided fusion module to integrate pretrained backbone features and instance-aware adapter features, improving local in-stance generation while preserving global semantic consistency. InstancePin     
+
+> Semantic Layout Generated Image
+> Category-Level Control
+> Semantic Layout Generated Image
+> Instance
+> Regions
+> Attention
+> Maps
+> Fig. 1. Illustration of instance entanglement and disentanglement in layout-to-image diffusion. Given the same semantic layout, category-level control often produces over-lapping responses for adjacent pedestrians, while InstancePin utilizes coordinate an-chors to activate instance-specific regions and generate distinguishable local structures. 4C. Wu et al.
+
+## 2 Related work 
+
+2.1 Generic image-to-image translation 
+
+Generic image-to-image translation maps images from a source domain to a tar-get domain while preserving semantic consistency. Conditional GANs [7, 13, 32] enabled controllable synthesis by introducing conditional inputs into adversar-ial learning. Based on this paradigm, Pix2Pix [17] established supervised image translation with encoder-decoder architectures, and Pix2PixHD [26] improved high-resolution synthesis through coarse-to-fine generation and multi-scale dis-criminators. Later methods extended image translation to more flexible settings. StarGAN [3] and DiscoGAN [9] explored multi-domain translation, MUNIT [6] decoupled content and style for multimodal generation, and CycleGAN [35] in-troduced cycle consistency for unpaired translation. Recently, diffusion-based image translation has shown strong generation quality, with PITI [25] demon-strating that pretrained diffusion models can be adapted to various downstream translation tasks. 
+
+2.2 Semantic image synthesis 
+
+Semantic image synthesis generates realistic images from semantic masks and is closely related to layout-to-image generation. SPADE [16] introduced spatially-adaptive normalization to preserve semantic information in normalization layers, while GLADE [24] further improved class-wise control. Other works improved efficiency or spatial adaptivity through group convolutions and kernel prediction [28, 36]. In addition to category-level masks, INADE [23] introduced instance-level modulation to improve diversity. OASIS [22] improved semantic consistency by using a segmentation-based discriminator. More recently, diffusion models [5] have reshaped semantic image synthesis. DP-SIMS [8] leverages pretrained image backbones, and SDM [27] integrates spatially-adaptive normalization into diffusion models. Despite these advances, most semantic synthesis methods still rely primarily on category-level layouts or instance-level modulation, without explicitly associating diffusion features with individual same-category instances. 
+
+2.3 Controllable diffusion models 
+
+Controllable diffusion models introduce additional conditions to guide genera-tion. Early text-to-image generation models such as GLIDE [15], DALL-E [20], and DALL-E2 [19] used language or CLIP [18] embeddings to guide image syn-thesis. LDM [21] reduced computational cost by performing diffusion in the VAE latent space, and Stable Diffusion variants have been widely applied to image generation and editing tasks [2,10]. Beyond text prompts, spatial conditions have been introduced for finer control. Spatext [1] explored spatio-textual represen-tations, FreestyleNet [29] rectified cross-attention maps to associate text tokens with semantic regions, and PLACE [12] used layout control maps to improve semantic consistency. Efficient conditioning mechanisms have also been studied. InstancePin 5
+
+GLIGEN [11] adds learnable attention layers, T2I-Adapter [14] extracts spatial features for frozen diffusion backbones, ControlNet [31] uses a copied branch to encode external controls, and Uni-ControlNet [34] unifies local and global controls with feature denormalization. Overall, existing semantic image synthesis and controllable diffusion meth-ods have made substantial progress in category-level layout alignment. How-ever, same-category instances are often represented by shared semantic masks or shared text tokens, leaving instance-level spatial separation underexplored in diffusion-based layout-to-image generation. InstancePin differs from these meth-ods by assigning each instance a coordinate anchor and learning coordinate at-tention maps that associate latent image features with individual instance re-gions. The resulting instance-aware adapter features are further fused with pre-trained backbone features through instance-mask guided fusion, allowing local instance refinement while preserving category-level semantic consistency. Pretrained Layout -to -Image Backbone                 
+
+> Encoder
+> Block
+> Encoder
+> Block
+> Encoder
+> Block
+> Middle
+> Block
+> Decoder
+> Block
+> Decoder
+> Block
+> Decoder
+> Block
+> Encoder
+> Block
+> Encoder
+> Block
+> Encoder
+> Block
+> Middle
+> Block
+> C
+> P
+> A
+> C
+> P
+> A
+> C
+> P
+> A
+> IMGF
+> Zero
+> Conv
+> Zero
+> Conv
+> Zero
+> Conv
+> Zero
+> Conv
+> IMGF
+> IMGF
+> IMGF
+> Instance -Aware Adapter (IAA) Input
+> Coordinate Pinning Attention (CPA) Instance -Mask Guided Fusion (IMGF)
+> `road person car'
+> Text Prompt 𝒴
+> Instance Map M
+> Semantic Layout S
+> Extract
+> Centers Fourier
+> Adapter
+> Features 𝐹
+> V
+> K
+> Q
+> 𝐻 𝑓
+> Frozen
+> Coordinate
+> Token 𝑼
+> Coordinate -
+> aware Feature s෨𝐹
+> 𝐵
+> 1−𝐵
+> Coordinate Attention
+> Maps 𝐴 𝑐
+> Mapping
+> Network 𝑓 𝜓
+> Adapter
+> Feature 𝐻 𝑎
+> Backbone
+> Feature 𝐻 𝑏
+> Generated Image
+> Output
+
+Fig. 2. An overview of the proposed InstancePin. To enable instance-level spatial sepa-ration, InstancePin extracts instance centers P and a binary instance mask B from the instance map M . The instance-aware adapter learns multi-scale adapter features inde-pendently from the pretrained layout-to-image backbone. Within coordinate pinning attention, instance centers are encoded into coordinate tokens U to associate adapter features with individual instance regions. Furthermore, the instance-mask guided fu-sion module routes pretrained backbone features Hb and adapter features Ha according to B, producing fused features Hf for instance-aware generation. 6 C. Wu et al. 
+
+## 3 Proposed Method 
+
+3.1 Overview 
+
+Given a semantic layout S and a text prompt y, layout-to-image diffusion models synthesize an image by progressively denoising a latent variable under category-level spatial guidance. The semantic layout specifies where each category should appear, but adjacent instances from the same category are still represented by shared semantic control. InstancePin introduces instance-level spatial anchors to separate nearby same-class objects without changing the category-level genera-tion role of the pretrained denoising backbone. Let M denote the instance map, where pixels belonging to the k-th instance have the same instance index. From 
+
+M , we derive two forms of instance information: a coordinate set P = {pk}Kk=1 
+
+and a binary instance region mask B. Here pk = ( xk, y k) is the center coordi-nate of the k-th instance, K is the number of valid instances, and B marks all instance regions regardless of instance index. The coordinates P are used to con-struct compact instance anchors, while B is used for region-wise feature fusion. The overall architecture of InstancePin is illustrated in Fig. 2. 
+
+3.2 Instance-Aware Adapter 
+
+The pretrained denoising backbone has learned strong category-level layout pri-ors, and directly fine-tuning all its layers with instance annotations may weaken such priors. InstancePin therefore introduces an Instance-Aware Adapter as an independent branch for instance-level spatial control. The adapter mirrors the encoder and middle-block structure of the denoising U-Net and can be initialized from the corresponding pretrained weights. Its multi-scale outputs are projected by zero-initialized convolutional layers (ZeroConv), which stabilize fine-tuning by keeping the initial adapter contribution close to zero. For a noisy latent zt at timestep t, the Instance-Aware Adapter takes the text prompt y, semantic layout S, and coordinate set P as conditions, and produces multi-scale adapter features: 
+
+{Hla}Ll=1 = Aϕ(zt, t, y, S, P ), (1) where Aϕ denotes the adapter, ϕ represents its learnable parameters, and l
+
+indexes the feature scale. The adapter features are designed to provide instance-aware refinements rather than replace the pretrained denoising process globally. 
+
+3.3 Coordinate Pinning Attention 
+
+Instance regions provide accurate object extents, but raw instance indices are not suitable as queryable conditions for diffusion features. Coordinate Pinning Attention represents each instance with a coordinate token derived from its center coordinate. The token acts as a spatial anchor that can be queried by latent image features during denoising. InstancePin 7
+
+For each center coordinate pk, Fourier features are computed as follows: 
+
+γ(pk) = [sin( ω1pk), cos( ω1pk), . . . , sin( ωF pk), cos( ωF pk)] , (2) where {ωf }Ff =1 are predefined frequency bands. A learnable coordinate map-ping network then projects the Fourier feature into a coordinate token: uk =
+
+fψ (γ(pk)), where uk ∈ Rdc and fψ denotes the mapping network. The coordi-nate tokens of all valid instances are collected as: U = [ u1, u 2, . . . , u K ]. Given an adapter feature F l ∈ RNl×dl at scale l, where Nl = HlWl, latent positions query the coordinate tokens through cross-attention. The coordinate attention map is computed as follows: 
+
+Alc = Softmax (F lW lQ)( U W lK )⊤
+
+√d
+
+!
+
+, (3) where W lQ and W lK are learnable projections, d is the attention dimension, and Alc ∈ RNl×K describes the association between latent spatial locations and instance coordinate tokens. The coordinate-aware feature is obtained as: ˜F l = Alc(U W lV ), where W lV is the value projection. Invalid padded coordinates are masked before the softmax operation, so attention is computed only over valid instances. To prevent coordinate tokens from becoming weak or ambiguous conditions, InstancePin explicitly aligns coordinate attention maps with instance regions. The instance map is resized to the attention resolution and converted into an instance-region target Rl ∈ { 0, 1}Nl×K , where Rli,k = 1 indicates that latent po-sition i belongs to the k-th instance. The coordinate alignment loss is computed as follows: 
+
+Lcoord = Ez0,t,M 
+
+"
+
+1
+
+|Ω|
+
+X
+
+> l∈Ω
+
+Alc(zt, t, P ) − Rl 22
+
+#
+
+, (4) where Ω denotes the set of scales supervised by instance regions. The target Rl is obtained from the instance map paired with z0 and resized to the resolution of Alc.This supervision encourages each coordinate token to activate its corresponding object area and suppress responses from neighboring instances. 
+
+3.4 Instance-Mask Guided Fusion Module 
+
+After Coordinate Pinning Attention produces instance-aware adapter features, Instance-Mask Guided Fusion Module combines them with features from the pretrained denoising backbone according to spatial responsibility. The pretrained features are more reliable for global category-level structure and non-instance regions, whereas the adapter features are used to refine regions where instance separation is required. At scale l, let Hlb be the feature from the pretrained denoising backbone and 
+
+Hla be the corresponding adapter feature. The binary instance mask B is resized 8 C. Wu et al. 
+
+to the same spatial resolution and denoted as Bl. Feature fusion is performed as follows: 
+
+Hlf = (1 − Bl) ⊙ Hlb + Bl ⊙ Hla, (5) where Hlf is the fused feature and ⊙ denotes element-wise multiplication with channel-wise broadcasting. Non-instance regions therefore keep the pretrained backbone features, while instance regions receive adapter features. This region-wise fusion avoids globally perturbing the pretrained denoising process and con-centrates instance-aware generation capacity on crowded object regions. 
+
+3.5 Model Optimization 
+
+InstancePin is optimized with diffusion denoising supervision and coordinate attention alignment. Given a clean latent z0, Gaussian noise ϵ, and timestep t,the forward diffusion process produces zt = √¯αtz0 + √1 − ¯αtϵ. The complete denoising model, denoted as ϵθ , predicts the noise under text, semantic layout, coordinate anchors, and instance-region fusion: 
+
+Ldiff = Ez0,ϵ,t 
+
+h
+
+∥ϵ − ϵθ (zt, t, y, S, P, B )∥22
+
+i
+
+, (6) where θ includes all trainable parameters of InstancePin. The optimization ob-jective combines the denoising loss with coordinate alignment: 
+
+L = Ldiff + λcoord Lcoord , (7) where λcoord balances the two terms. Through this objective, InstancePin learns coordinate-aware instance control while retaining the semantic layout generation ability of the pretrained diffusion model. 
+
+## 4 Experiments 
+
+4.1 Experimental Settings Datasets and Implementation Details. We conduct experiments on the Cityscapes dataset, which contains 3,475 urban street scene images with a res-olution of 2048 ×1024. Following the standard split, 2,975 images are used for training and 500 images are used for testing. All images and layouts are resized to 512 ×512 for training and inference. Cityscapes provides both category-level se-mantic layouts and instance-level annotations. In addition to the full validation set, we report results on a pedestrian-focused subset, denoted as Cityscapes-pedestrian, to examine generation quality in crowded same-category instance regions where spatial entanglement is more likely to occur. InstancePin is built upon the pretrained FreestyleNet. The Instance-Aware Adapter and coordi-nate mapping network are optimized with AdamW. The learning rate is set to 1 × 10 −5, the batch size is set to 2, and the weight λcoord in Eq. (7) is set to 10. All experiments are conducted on an NVIDIA RTX 3090 GPU. InstancePin 9
+
+Evaluation Metrics. We evaluate generated images from two aspects. For image fidelity, we use FID (Frechet Inception Distance) [4], which measures the distribution distance between generated images and real images in the Inception feature space. For semantic consistency, we use a pretrained DRN-D-105 [30] segmentation model to parse generated images and compute mIoU (Mean Inter-section over Union) between the predicted segmentation maps and the ground-truth semantic layouts. Lower FID indicates better image fidelity, while higher mIoU indicates stronger semantic consistency. 
+
+4.2 Comparison with Existing Methods 
+
+We compare InstancePin with representative semantic image synthesis and con-trollable diffusion methods, including OASIS, SDM, ControlNet, Uni-ControlNet, and FreestyleNet. The comparison is conducted on both the full Cityscapes val-idation set and the pedestrian-focused subset. The full validation set evaluates overall layout-to-image generation quality, while the pedestrian-focused subset emphasizes dense same-category regions that are central to our problem setting. As shown in Table 1, InstancePin achieves the best performance on both FID and mIoU across the two evaluation settings. On the full Cityscapes validation set, InstancePin improves FID from 40.3 to 37.6 and mIoU from 73.3 to 75.1 compared with FreestyleNet, the strongest baseline in the table. On Cityscapes-pedestrian, InstancePin further improves FID from 46.6 to 43.5 and mIoU from 74.1 to 75.8 over FreestyleNet. The consistent gains on both the full set and the pedestrian-focused subset indicate that instance-level control improves crowded object regions while maintaining global image fidelity and semantic consistency. Furthermore, Fig. 3 presents qualitative comparisons under the same seman-tic layouts. Existing methods are generally able to follow the coarse category-level layout, but adjacent pedestrians may still be rendered with blurred bound-aries, merged local structures, or similar appearances. InstancePin produces clearer separations between nearby pedestrians and preserves more distinguish-able local details in the zoomed regions. This visual trend is consistent with the quantitative improvements on the pedestrian-focused subset.                                   
+
+> Table 1. Comparison of InstancePin with competing models in terms of image quality and semantic consistency. Cityscapes Cityscapes-pedestrian Method FID ↓mIoU ↑FID ↓mIoU ↑
+> OASIS 47.7 68.5 52.8 68.7 SDM 42.1 69.2 49.5 69.6 FreestyleNet 40.3 73.3 46.6 74.1 ControlNet 41.1 72.1 47.3 72.7 Uni-ControlNet 44.3 71.5 51.2 72.3
+> InstancePin 37.6 75.1 43.5 75.8
+
+10 C. Wu et al. Semantic Layout OASIS SDM FreestyleNet ControlNet Uni-ControlNet InstancePin 
+
+Fig. 3. Qualitative comparison with competing methods on Cityscapes. Each group shows the generated image and the zoomed pedestrian region. Semantic Layout Generated Image Coordinate Attention Maps 
+
+Fig. 4. Visualization of coordinate pinning attention. Each row shows the coordinate attention maps associated with different coordinate tokens and the corresponding gen-erated result. 
+
+4.3 Analysis of Coordinate Pinning Attention 
+
+To examine whether coordinate tokens learn meaningful spatial correspondence with individual instances, we visualize the coordinate attention maps during inference. Each coordinate token is generated from the center coordinate of one instance, and its attention map reflects the spatial locations that query this token during denoising. As shown in Fig. 4, the attention response of each coordinate token is concentrated around the corresponding instance region. Responses to neighboring instances or background regions are suppressed, even when multiple instances belong to the same semantic category and appear close to one another. This observation suggests that coordinate pinning attention provides a spatially InstancePin 11 
+
+interpretable mechanism for associating latent image features with individual instances, which helps reduce same-category instance entanglement.                        
+
+> Table 2. Quantitative comparison of InstancePin and different variants. Cityscapes Cityscapes-pedestrian Method FID ↓mIoU ↑FID ↓mIoU ↑
+> w/o Lcoord 43.2 71.9 49.6 72.3 w/o IMGF 39.3 73.8 45.1 74.3 InstancePin 37.6 75.1 43.5 75.8
+
+4.4 Ablation Study 
+
+We conduct ablation studies to evaluate the contribution of the main components in InstancePin. The variants are compared on both the full Cityscapes validation set and the pedestrian-focused subset, as shown in Table 2. Qualitative results are provided in Fig. 5. Removing the coordinate alignment loss weakens the supervision between coordinate attention maps and instance regions. The variant ‘w/o Lcoord ’ shows clear degradation in both image fidelity and semantic consistency, indicating that coordinate tokens need explicit spatial alignment to serve as reliable instance anchors. The degradation on the pedestrian-focused subset further confirms the importance of coordinate alignment for crowded same-category instances. The variant ‘w/o IMGF’ removes the instance-mask guided fusion mod-ule and combines pretrained backbone features with adapter features with-out instance-region routing. This variant increases FID from 37.6 to 39.3 and decreases mIoU from 75.1 to 73.8 on the full validation set. On Cityscapes-pedestrian, FID increases from 43.5 to 45.1 and mIoU decreases from 75.8 to 74.3. The performance drop shows that explicit instance-mask guided fusion helps preserve non-instance regions with pretrained backbone features while con-centrating adapter features on instance regions. 
+
+## 5 Conclusion 
+
+We presented InstancePin for instance-addressable layout-to-image diffusion in dense urban scenes. By introducing coordinate anchors for individual instances, InstancePin enables the denoising process to associate latent image regions with nearby same-category objects more explicitly. The instance-aware adapter pro-vides local instance refinements while preserving the category-level generation ability of the pretrained diffusion model, and the instance-mask guided fusion module keeps this refinement concentrated on instance regions. As a result, In-stancePin reduces spatial entanglement among adjacent objects and produces 12 C. Wu et al. Semantic Layout  w/o  ℒ𝑐𝑜𝑜𝑟𝑑  w/o  IMGF  InstancePin 
+
+Fig. 5. Qualitative ablation study of the main components in InstancePin. 
+
+clearer local structures without sacrificing global semantic consistency. Experi-ments on Cityscapes show consistent improvements over existing semantic-layout controlled methods, especially on the pedestrian-focused subset where crowded same-category instances are common. We believe InstancePin provides a prac-tical step toward fine-grained and instance-aware controllable image synthesis under complex spatial layouts. 
+
+## References 
+
+1. Avrahami, O., Hayes, T., Gafni, O., Gupta, S., Taigman, Y., Parikh, D., Lischinski, D., Fried, O., Yin, X.: Spatext: Spatio-textual representation for controllable image generation. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 18370–18380 (2023) 2. Cai, Y., Wei, Y., Ji, Z., Bai, J., Han, H., Zuo, W.: Decoupled textual embeddings for customized image generation. In: Proceedings of the AAAI Conference on Artificial Intelligence. vol. 38, pp. 909–917 (2024) 3. Choi, Y., Choi, M., Kim, M., Ha, J.W., Kim, S., Choo, J.: Stargan: Unified gener-ative adversarial networks for multi-domain image-to-image translation. In: Pro-ceedings of the IEEE conference on computer vision and pattern recognition. pp. 8789–8797 (2018) 4. Heusel, M., Ramsauer, H., Unterthiner, T., Nessler, B.: GANs trained by a two time-scale update rule converge to a local Nash equilibrium. In: Proc. Neural In-formation Processing Systems (2017) 5. Ho, J., Jain, A., Abbeel, P.: Denoising diffusion probabilistic models. Advances in neural information processing systems 33 , 6840–6851 (2020) 6. Huang, X., Liu, M.Y., Belongie, S., Kautz, J.: Multimodal unsupervised image-to-image translation. In: Proceedings of the European conference on computer vision (ECCV). pp. 172–189 (2018) InstancePin 13 7. Ian, G., Jean, P.A., Mehdi, M., Bing, X., David, W.F., Sherjil, O., Aaron, C., Yoshua, B.: Generative adversarial nets. Advances in neural information processing systems 27 (2014) 8. Ifriqi, T.B., Verbeek, J., Couprie, C., Alahari, K.: Unlocking pre-trained image backbones for semantic image synthesis. In: Proceedings of the IEEE/CVF Con-ference on Computer Vision and Pattern Recognition. pp. 7840–7849 (2024) 9. Kim, T., Cha, M., Kim, H., Lee, J.K., Kim, J.: Learning to discover cross-domain relations with generative adversarial networks. In: International conference on ma-chine learning. pp. 1857–1865. Pmlr (2017) 10. Li, X., Hou, X., Loy, C.C.: When stylegan meets stable diffusion: a w+ adapter for personalized image generation. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 2187–2196 (2024) 11. Li, Y., Liu, H., Wu, Q., Mu, F., Yang, J., Gao, J., Li, C., Lee, Y.J.: Gligen: Open-set grounded text-to-image generation. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 22511–22521 (2023) 12. Lv, Z., Wei, Y., Zuo, W., Wong, K.Y.K.: Place: Adaptive layout-semantic fusion for semantic image synthesis. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 9264–9274 (2024) 13. Mirza, M., Osindero, S.: Conditional generative adversarial nets. CoRR 
+
+abs/1411.1784 (2014) 14. Mou, C., Wang, X., Xie, L., Wu, Y., Zhang, J., Qi, Z., Shan, Y.: T2i-adapter: Learning adapters to dig out more controllable ability for text-to-image diffusion models. In: Proceedings of the AAAI conference on artificial intelligence. vol. 38, pp. 4296–4304 (2024) 15. Nichol, A., Dhariwal, P., Ramesh, A., Shyam, P., Mishkin, P., McGrew, B., Sutskever, I., Chen, M.: Glide: Towards photorealistic image generation and editing with text-guided diffusion models. arXiv preprint arXiv:2112.10741 (2021) 16. Park, T., Liu, M.Y., Wang, T.C., Zhu, J.Y.: Semantic image synthesis with spatially-adaptive normalization. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 2337–2346 (2019) 17. Phillip, I., Jun-Yan, Z., ZhoubTinghui, A, E.A.: Image-to-image translation with conditional adversarial networks. In: Proceedings of the IEEE conference on com-puter vision and pattern recognition. pp. 1125–1134 (2017) 18. Radford, A., Kim, J.W., Hallacy, C., Ramesh, A., Goh, G., Agarwal, S., Sastry, G., Askell, A., Mishkin, P., Clark, J., et al.: Learning transferable visual models from natural language supervision. In: International conference on machine learning. pp. 8748–8763. PmLR (2021) 19. Ramesh, A., Dhariwal, P., Nichol, A., Chu, C., Chen, M.: Hierarchical text-conditional image generation with clip latents. arXiv preprint arXiv:2204.06125 
+
+1(2), 3 (2022) 20. Ramesh, A., Pavlov, M., Goh, G., Gray, S., Voss, C., Radford, A., Chen, M., Sutskever, I.: Zero-shot text-to-image generation. In: International conference on machine learning. pp. 8821–8831. Pmlr (2021) 21. Rombach, R., Blattmann, A., Lorenz, D., Esser, P., Ommer, B.: High-resolution image synthesis with latent diffusion models. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 10684–10695 (2022) 22. Sushko, V., Sch¨ onfeld, E., Zhang, D., Gall, J., Schiele, B., Khoreva, A.: You only need adversarial supervision for semantic image synthesis. arXiv preprint arXiv:2012.04781 (2020) 14 C. Wu et al. 23. Tan, Z., Chai, M., Chen, D., Liao, J., Chu, Q., Liu, B., Hua, G., Yu, N.: Diverse semantic image synthesis via probability distribution modeling. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 7962– 7971 (2021) 24. Tan, Z., Chen, D., Chu, Q., Chai, M., Liao, J., He, M., Yuan, L., Hua, G., Yu, N.: Efficient semantic image synthesis via class-adaptive normalization. IEEE Trans-actions on Pattern Analysis and Machine Intelligence 44 (9), 4852–4866 (2021) 25. Wang, T., Zhang, T., Zhang, B., Ouyang, H., Chen, D., Chen, Q., Wen, F.: Pretraining is all you need for image-to-image translation. arXiv preprint arXiv:2205.12952 (2022) 26. Wang, T.C., Liu, M.Y., Zhu, J.Y., Tao, A., Kautz, J., Catanzaro, B.: High-resolution image synthesis and semantic manipulation with conditional gans. In: Proceedings of the IEEE conference on computer vision and pattern recognition. pp. 8798–8807 (2018) 27. Wang, W., Bao, J., Zhou, W., Chen, D., Chen, D., Yuan, L., Li, H.: Semantic image synthesis via diffusion models. arXiv preprint arXiv:2207.00050 (2022) 28. Wang, Y., Qi, L., Chen, Y.C., Zhang, X., Jia, J.: Image synthesis via semantic com-position. In: Proceedings of the IEEE/CVF International Conference on Computer Vision. pp. 13749–13758 (2021) 29. Xue, H., Huang, Z., Sun, Q., Song, L., Zhang, W.: Freestyle layout-to-image synthe-sis. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recognition. pp. 14256–14266 (2023) 30. Yu, F., Koltun, V., Funkhouser, T.: Dilated residual networks. In: Proceedings of the IEEE conference on computer vision and pattern recognition. pp. 472–480 (2017) 31. Zhang, L., Rao, A., Agrawala, M.: Adding conditional control to text-to-image diffusion models. In: Proceedings of the IEEE/CVF international conference on computer vision. pp. 3836–3847 (2023) 32. Zhang, Y., Huo, X., Chen, T., Wu, S., Wong, H.S.: Class-conditional image syn-thesis with intra-class relation preservation. Knowledge-Based Systems p. 114487 (2025) 33. Zhang, Y., Wang, J., Huang, Y., Chen, T., Wong, H.S., Wu, S.: Classbooth: Boost class semantics with bidirectional feature fusion in text-to-image diffusion models. IEEE Transactions on Multimedia (2026) 34. Zhao, S., Chen, D., Chen, Y.C., Bao, J., Hao, S., Yuan, L., Wong, K.Y.K.: Uni-controlnet: All-in-one control to text-to-image diffusion models. Advances in Neural Information Processing Systems 36 , 11127–11150 (2023) 35. Zhu, J.Y., Park, T., Isola, P., Efros, A.A.: Unpaired image-to-image translation using cycle-consistent adversarial networks. In: Proceedings of the IEEE interna-tional conference on computer vision. pp. 2223–2232 (2017) 36. Zhu, Z., Xu, Z., You, A., Bai, X.: Semantically multi-modal image synthesis. In: Proceedings of the IEEE/CVF conference on computer vision and pattern recog-nition. pp. 5467–5476 (2020)

@@ -1,0 +1,1125 @@
+Title: StraightDP: Geometry-Aware Differential Privacy for Rectified-Flow Transformers
+
+URL Source: https://arxiv.org/pdf/2607.29100v1
+
+Published Time: Mon, 03 Aug 2026 00:31:50 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+# StraightDP: Geometry-Aware Differential Privacy for Rectified-Flow Transformers 
+
+## Xujun Che 1, Depeng Xu 1∗, Xintao Wu 2
+
+> 1
+
+Department of Cybersecurity, University of North Carolina at Charlotte, Charlotte, NC, USA 
+
+> 2
+
+Department of Electrical Engineering and Computer Science, University of Arkansas, Fayetteville, AR, USA xche@charlotte.edu, dxu7@charlotte.edu, xintaowu@uark.edu 
+
+Abstract 
+
+Differentially private (DP) training of text-conditioned gener-ative models suffers a utility cliff at strong privacy. We revisit this problem through the geometry of rectified flows: along the straight interpolation between noise and data, the Bayes-optimal velocity is governed to leading order at the noise end by a few class-conditional moments , and increasingly sample-specific structure matters toward the data end. StraightDP ex-ploits this heterogeneity end to end. A small budget share releases whitened class-conditional moments once, to be dis-tilled into the weights or injected at sampling time. The rest is spent by pre-declared DP-SGD toward the data end, beyond the moments’ reach. At ε=1 on MNIST, the released mo-ments alone already attain 0.76 downstream accuracy with prototype-like samples and an FID of 237 , and uniform DP-SGD attains 0.21 . The pipeline built on the release reaches 
+
+0.81 accuracy at FID 56 in a public latent space. Constraining per-token stream norms of the multimodal backbone leaves the pretraining loss unchanged yet improves downstream ac-curacy in the extreme-noise pixel-space regime, and its ac-curacy effect becomes monotonically more favorable as pri-vacy strengthens. The released moments also port to frozen SD3-medium, where sampling-time injection beats DP-LoRA training at a fraction of the budget. 
+
+## 1 Introduction 
+
+Text-conditioned generative models are increasingly trained on sensitive paired data: medical images with reports, per-sonal photographs with descriptions. Such models can mem-orize, and attacks recover individual training records from weights or samples (Shokri et al. 2017; Carlini et al. 2019). Differential privacy (DP) (Dwork and Roth 2014) is the stan-dard remedy: it bounds, in the worst case, how much any single record can influence the released model, and because the guarantee survives arbitrary post-processing, everything a DP model generates can be shared without further privacy loss. The guarantee comes at the cost of noise, and training generative models under DP is dominated by a single ten-sion: the noise that provides it also erases the signal. The usual recipe pretrains on public data, by now standard prac-tice for DP learning (De et al. 2022; Yu et al. 2022; Ganesh et al. 2023), and fine-tunes with DP-SGD (Abadi et al. 2016), which clips each example’s gradient and noises the aggre-gate. The per-step mechanisms compose under a numerical 
+
+> ∗
+
+Corresponding author. 
+
+privacy-loss-distribution (PLD) accountant (Mironov, Tal-war, and Zhang 2019; Koskela, Jälkö, and Honkela 2020; Gopi, Lee, and Wutschitz 2021). Across DP generative fam-ilies (GANs (Jordon, Yoon, and van der Schaar 2019; Chen, Orekondy, and Fritz 2020), one-shot kernel-embedding re-leases (Harder, Adamczewski, and Park 2021; Cao et al. 2021; Vinaroz et al. 2022; Yang et al. 2023), and DP dif-fusion (Dockhorn et al. 2023; Ghalebikesabi et al. 2023; Lyu et al. 2024)), the private mechanism is largely model-agnostic: each training step is clipped and noised the same way regardless of what is being learned at that step. Adaptive-clipping and dynamic-allocation variants (Andrew et al. 2021; Bu et al. 2023; Du et al. 2021) adjust the mecha-nism, but they adapt during training on private signal. These pipelines do not explicitly exploit structure knowable be-fore any private data is touched (Appendix A surveys related work). Rectified flows (Liu, Gong, and Liu 2023; Lipman et al. 2023), the generative family behind current text-to-image systems (Esser et al. 2024), learn a velocity field that trans-ports Gaussian noise to data along straight interpolation paths. Sampling integrates the learned field from noise to image. This family makes the uniformity above appear waste-ful. At each flow time the regression target is a conditional expectation of the noise-to-data displacement given the cur-rent point on the straight path. To leading order near the noise end this field depends only on a few low-order mo-ments of the data distribution; toward the data end it de-pends on increasingly sample-specific structure. The infor-mation the model must extract from private data is therefore 
+
+time-heterogeneous , and so, we argue, should be the pri-vacy budget, the supervision signal, and even the architec-ture. StraightDP turns that argument into design decisions on three surfaces that standard DP fine-tuning leaves un-touched: what is released, when the budget is spent, and on what architecture (Figure 1). 
+
+(i) Moments first, gradients second. A small budget share releases whitened class-conditional moments once. They define the analytic noise-end field in closed form and route each class’s generation path before any per-example gradient is consumed. The rest is spent by DP-SGD under a pre-declared, time-bucketed allocation verified by exact PLD accounting. This planning layer is risk-free but contributes within seed noise: the release carries the utility. arXiv:2607.29100v1 [cs.LG] 31 Jul 2026 (ii) A backbone built for noise. Clamping per-token stream norms of a multimodal diffusion transformer (MM-DiT) (Esser et al. 2024) during pretraining leaves the noise-less pretraining loss unchanged, yet its private accuracy gain grows monotonically as the noise strengthens in pixel space (Table 2). The already well-conditioned latent variant does not need it. Bounded activations empirically concentrate per-sample gradient norms (Appendix D.3): an architec-tural control for the regime where DP noise is most dam-aging (Béthune et al. 2024). 
+
+(iii) One release, two injection ports. The same released moments serve two regimes: distilled into the weights of a model trained end-to-end, or injected at sampling time into a frozen prior whose weights never move. Which port works is a property of the injected model, and the experiments answer it at both scales: on MNIST the routes are interchangeable, while on frozen SD3-medium only the sampling port sur-vives, beating budget-matched DP-LoRA fine-tuning. 
+
+## 2 Preliminaries 
+
+Setting. A private dataset D = {ri}Ni=1 contains records 
+
+r = ( z, c ): an image (or frozen-autoencoder latent) z ∈ Rd
+
+with ∥z∥2 ≤ R, and a caption c encoded by a frozen public text encoder; captions carry a class label y ∈ [Y ] (possibly further attributes). An out-of-domain public dataset Dpub is available for pretraining and for every calibration. 
+
+Differential privacy. Datasets are adjacent if they differ by adding or removing one record, the native semantics of Poisson-subsampled DP-SGD accounting. A mechanism M
+
+is (ε, δ )-DP if Pr[ M (D) ∈ A] ≤ eε Pr[ M (D′) ∈ A] + δ
+
+for all adjacent pairs and events. Every mechanism is com-posed in these semantics by one numerical PLD accountant, and every run writes a replayable transcript from which the reported ε is recomputed. 
+
+DP-SGD. DP-SGD (Abadi et al. 2016) makes one training step private by clipping each example’s gradient, clip C (g) = 
+
+g · min(1 , C/ ∥g∥), and noising the sum over the Poisson-sampled batch: ˜g = P 
+
+> i∈B
+
+clip C (gi) + N (0 , σ 2C2I). The clip norm C bounds one record’s influence, the noise mul-tiplier σ and the sampling rate set the per-step privacy loss, and the accountant composes the steps. 
+
+Rectified flow. With flow noise ξ ∼ N (0 , I d) and inter-polation xt = (1 − t)ξ + tz (t ∈ [0 , 1] , t=0 the noise end), the model vθ (x, t, c ) regresses the target v = z − ξ:
+
+L(θ) = Er,ξ,t vθ (xt, t, c ) − (z − ξ) 22. (1) Sampling integrates ˙x = vθ from t=0 to 1 with classifier-free guidance. The Bayes-optimal field, conditionally on the cap-tion, is v⋆(x, t, c ) = E[z − ξ | xt = x, c ] (the classifier-free null branch regresses its unconditional counterpart); sub-stituting ξ = ( x − tz )/(1 − t) gives the identity we use repeatedly, conditionally or not, 
+
+v⋆(x, t ) = E[z | xt = x] − x
+
+1 − t . (2) The adversary sees final parameters. Every quantity the pipeline tunes comes from Dpub or released statistics, so the only private interactions are the declared mechanisms. 
+
+## 3 The StraightDP Pipeline 
+
+This section takes the intro’s three surfaces in turn: Stage 1 re-leases the moments ( what ), Stage 2 spends the declared main budget ( when ), and the backbone constrains the architecture both stages run on. Figure 1(a) traces the two stages. 
+
+3.1 Moments first: the analytic low-t field and its release 
+
+Proposition 3.1 (Analytic field of a moment approximation) .
+
+Approximate the class-conditional law of z by N (μy , Σ) with class priors πy , and let At = (1 − t)2I + t2Σ. Conditionally on the class, 
+
+E[z | xt=x, y ] = μy + tΣA−1 
+
+> t
+
+(x − tμ y ), (3) 
+
+while the unconditional field of the classifier-free null branch averages equation 3 with responsibilities wy (x, t ) ∝
+
+πy N (x; tμ y , A t):
+
+E[z | xt=x] = X
+
+> y
+
+wy (x, t )
+
+
+
+μy + tΣA−1 
+
+> t
+
+(x − tμ y )
+
+
+
+. (4) 
+
+By equation 2, as t → 0 the conditional field tends to μy − x
+
+and the unconditional one to P 
+
+> y
+
+πy μy − x: each class’s noise-end target is its released mean, and the data enter only through (πy , μ y , Σ) .
+
+Proof in Appendix B. In outline, joint Gaussianity of 
+
+(z, x t) gives equation 3 by Gaussian conditioning, and Bayes’ rule over the class label turns the class posteriors into the responsibilities of equation 4. The leading order itself is distribution-free: 
+
+Corollary 3.2 (Distribution-free leading order) . For any 
+
+class-conditional law supported in the R-ball, with mean 
+
+μy and covariance Σy , uniformly over ∥x∥ bounded, 
+
+E[z | xt=x, y ] = μy + t Σy x + O(t2),v⋆(x, t, y ) = ( μy − x) + t (μy − x + Σ y x) + O(t2).
+
+Proof in Appendix B. In outline, the posterior of z given 
+
+xt=x reweights the prior by exp( t⟨x, z ⟩ + O(t2)) on the bounded support, and a first-order expansion of the ratio of expectations leaves exactly the covariance term. Appendix B also closes the loop to sampling: a Grönwall bound propa-gates any field discrepancy on t ≤ τ into a Wasserstein bound on the generated marginal, which is the quantity the public 
+
+τ calibration controls, and a Gaussian-tail argument covers the sampler’s unbounded inputs. Moment dominance at the noise end is therefore a property of the interpolation, and the Gaussian model is first-order exact whenever class covari-ances match the shared Σ. Beyond first order the proposition is a working model whose reach is not assumed but measured on public data via the horizon τ below. Figure 2a shows the two fields nearly collinear for t ≲ 0.2. Privacy never depends on this adequacy: a poor moment model wastes budget, it does not leak. Releasing the moments once is substantially cheaper than relearning the same information through per-step noisy gradients. 
+
+Mechanism (class-conditional moment release). The re-leased statistics are deliberately primitive: per-class counts (a) Spend the budget where the target is private (b) A backbone built for gradient noise              
+
+> t=0 noise t=1
+> time buckets: clip Ck, noise σkdeclared up front
+> target is moment-determined
+> ¯v(x, t )from (πy, μ y,Σ)
+> target depends on individual samples
+
+Stage 1   
+
+> release whitened class moments once (ρmom ε)
+
+Stage 2                         
+
+> declared DP-SGD main budget ( ρsgd ε), exact PLD
+> then
+> distill into weights guide sampling from t0
+> declared workload, exact PLD
+> released field ¯v
+> model trained end-to-end frozen pretrained prior pretrained on public data inside the constraints
+> (noiseless utility unchanged)
+> image block ℓimage block ℓ+1 ‖h‖ ≤ B0
+> text block ℓtext block ℓ+1 ‖e‖ ≤ B0
+> no inflow (exact 0)≤γtxt ‖hi‖≤γimg ‖ei‖
+> cross-modal inflow only in the last ℓ0block, clamped inside it bounded tokens: empirically concentrated per-sample gradients
+> εledger (exact PLD)
+> attack audits +replayable transcripts
+> trains
+
+Figure 1: StraightDP overview. (a) The noise-end velocity target is a closed-form functional of a few class-conditional moments: Stage 1 releases them once , and the field enters either the weights (model trained end-to-end) or the sampler (frozen prior). Stage 2 spends the main budget with declared DP-SGD, optionally under a public time-heterogeneous plan. (b) The backbone is pretrained on public data inside stream-norm clamps, with cross-modal inflow an architectural zero outside a designated final block and clamped inside it. Bounded tokens empirically concentrate per-sample gradients exactly where DP noise is strongest, and every run logs audits and a replayable accounting transcript. 0.2 0.4 0.6 0.8               
+
+> flow time t(t= 0: noise end)
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> cos( ̄ v, v⋆
+> emp )
+> moment-determined
+> (a)
+> unconditional
+> worst-class cond.
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> flow time t
+> 10 0
+> 10 1
+> clip prior  Cβ(t)
+> β= 0 (uniform)
+> β= 0.25
+> β= 0.5
+> β= 0.75
+> β= 1
+> (b)
+
+Figure 2: The geometry that StraightDP exploits (computed on public data). (a) Cosine between released and exact em-pirical fields vs. t: the unconditional (null-branch) pair equa-tion 4 and the worst class of the conditional pair equation 3. Both are moment-dominated over the same low-t horizon. (b) The clip-prior family Cβ (t) (β=0 uniform, log scale). 
+
+ny and sums Sy = P 
+
+> i:yi=y
+
+zi, plus one shared second mo-ment. (i) The pair {(ny , S y )}y∈[Y ], all classes stacked, is released through one Gaussian mechanism. Replacing one record moves two counts by at most 1 and two sums by at most R, so whitening each coordinate by the type-sensitivity vector (1 , 2R), its type’s worst-case move, gives joint ℓ2
+
+sensitivity ∆ = 2 across every block a record can touch (Proposition B.9). The class means μy = Sy /n y are then free post-processing. (ii) The shared second moment is a second, independent Gaussian mechanism, released in av-erage form: one record is a 1/N fraction of a mean, so its sensitivity decays as 1/N , and at N =6 × 10 4 the calibrated noise on the covariance is negligible (Proposition B.9). (iii) All remaining geometry is public. Class-mean offsets are re-leased only inside a p-dimensional PCA basis P ∈ Rp×d
+
+fit on Dpub , which shrinks the noise norm by ≈ pd/p at the price of a feature clip Rfeat , and the shared covariance is kept at a low rank r. These sensitivity bounds are proved for single-record replacement . For these additive statistics, normalized by the declared public constant N (held fixed across adjacent datasets), an add/remove change replaces one bounded contribution with zero while every other term keeps its normalization, so the bounds cover the adjacency of Section 2 a fortiori (formalized on padded databases in Ap-pendix B.3). Noisy counts are clamped at 1, small classes fall back to the released global mean, the noised second moment is symmetrized and PSD-projected, and the rank-r trunca-tion happens after noising, so all of it is post-processing; both mechanisms enter the same PLD accountant. Plugging the release into equation 3 yields the private analytic field 
+
+¯v(x, t, y ): the noise-end target of every class. 
+
+Beyond classes: the text-conditional release. The finite partition is not essential. For general captions, Stage 1 instead releases the whitened cross moments 
+
+Mzc = 1
+
+N
+
+X
+
+> i
+
+zi e(ci)⊤, Mcc = 1
+
+N
+
+X
+
+> i
+
+e(ci)e(ci)⊤,
+
+(5) with e(c) a caption featurization clipped to a public radius 
+
+Rtxt , both blocks coordinate-whitened by the type radii and released through one joint Gaussian mechanism. In this average form one replacement moves each whitened block by at most 2/N , so the concatenated release has joint sensitivity 2√2/N , the constant the accountant uses. Ridge post-processing gives the linear conditional mean 
+
+μ(c) = μ0 + Mzc (Mcc + λI )−1e(c), and Proposition 3.1 holds verbatim with μy replaced by μ(c): conditioning only moves the mean. One-hot features recover the class release exactly , so the class-conditional pipeline is the special case (Appendix C). The noise geometry governs utility: caption features are centered at their public mean, whose shared component carries no conditional signal yet would dominate the whitened budget, with the removed part absorbed into the already-released μ0. The image side reuses the class release’s public PCA projection and clip, and templated captions parse into per-slot one-hot blocks. 
+
+Conditional distillation. Stage 1 distills vθ toward ¯v on model-generated inputs for t ≤ τ , conditionally (captions supply y, or the embedding e(c) in the text-conditional case, with distillation captions sampled from public data). The horizon τ is calibrated publicly : we sweep the time-weighted cosine between ¯v and an empirical field on Dpub and pick the knee, a public-to-private transfer heuristic whose fail-ure costs utility, never privacy (its cross-domain stability is checked in Appendix B). Under domain transfer this stage is decisive: without it the model emits public-domain glyphs. 
+
+Sampling-time guidance. The same release can instead be spent at generation, with the weights untouched. Under the moment model the flow’s marginal at time t0 is Gaus-sian, xt0 ∼ N  t0μy , t 20Σ + (1 − t0)2I (with μ(c) in the text-conditional case), so sampling draws its initial state from this tilted marginal and integrates the model from t0 to 1.Distillation and guidance thus inject one release through two ports, the weights and the sampler. Section 4.4 decides be-tween them empirically at both scales. 
+
+3.2 Gradients second: time-heterogeneous allocation (THA) for DP-SGD 
+
+The remaining budget goes to what the release cannot cover: the sample-specific target toward the data end. Stage 2 spends the main budget with DP-SGD under a fully pre-declared workload: steps are partitioned into K time buckets cover-ing [τ, 1] , so no private gradient targets the distilled interval 
+
+[0 , τ ), bucket k training on t ∈ [tk, t k+1 ) with its own clip 
+
+Ck and noise multiplier σk, and the exact composition is verified before training. A public geometry prior can shape 
+
+(Ck, σ k) across buckets (shape family in Figure 2b; planner in Appendix B.5). The reader may take Stage 2 to be uniform DP-SGD with declared accounting. 
+
+Remark 3.3 (Proxy dominance over uniform) . The uniform plan is in the candidate family and all candidates are verified with the same exact accountant at the same budget. Hence the selected plan’s accounted ε meets the budget and its proxy score is ≥ that of uniform. This is a selection-consistency statement about the public proxy, not a utility guarantee. Its role is to make the geometry prior available at zero risk. The experiments find the plan’s contribution within seed noise: the utility comes from the release. 
+
+3.3 A backbone built for noise 
+
+The third surface is the architecture itself. Our model is a dual-stream MM-DiT: image tokens h and caption tokens e
+
+interact through joint attention in every block (Esser et al. 2024). We impose three structural constraints during public pretraining and keep them at fine-tuning and generation: 1. Stream-norm clamp. Between blocks, every token of both streams is projected onto the ball of radius B0: h 7 →
+
+h · min(1 , B 0/∥h∥).2. Late injection. Cross-modal attention inflow is exactly zero outside the last ℓ0 blocks: an architectural zero. 3. Decoupled attention. Self- and cross-attention use inde-pendent softmax normalizers, so the image-stream update decomposes exactly as h 7 → Fℓ(h) + Gℓ(h, e ) with Fℓ
+
+caption-independent; the exact decomposition lets each cross-stream contribution be bounded and ablated sepa-rately. The stream clamp does the utility work: it improves plain DP training with a gain that scales with the noise, while the other two constraints localize and bound cross-modal inter-action. The constraints must be active throughout public pretraining : optimized inside the constraint set from the start, the model matches its unconstrained twin’s pretraining loss, while imposing the same targets post hoc on a model pretrained without them collapses it. The experiments take the three surfaces in order: the release and its allocation, the backbone under noise, and the two injection ports at scale. 
+
+## 4 Experiments 
+
+4.1 Experimental setup 
+
+The controlled experiments run on KMNIST →MNIST trans-fer, with Kuzushiji-MNIST (Clanuwat et al. 2018) as the public domain Dpub and MNIST (LeCun et al. 1998) as the private set D (the domains share no glyphs), at δ=10 −5, in a pixel-space and a latent-space variant (MM-DiT with 6
+
+blocks, width 192 ). The latent variant works in the d=32 
+
+code of a frozen public convolutional autoencoder. Every main-text result except Table 3 reports this setting, each configuration under a single ε budget; configurations with the release spend 0.235 ε on Stage 1 and the rest on DP-SGD (a declared release weight of 0.2, renormalized over the active stages; the accounting transcripts report the ex-act split). Three further studies answer targeted questions: a Fashion-MNIST →MNIST replication (Xiao, Rasul, and Vollgraf 2017) checks the gains are not public-domain spe-cific (reported inline below); composed-MNIST extends the release beyond class labels to multi-attribute captions; and DP-LoRA fine-tuning of the frozen 2B-parameter SD3-medium on Flowers-102 tests which components survive at scale (Table 3). Utility is downstream accuracy of a classifier trained on generated (image, label) pairs and tested on real data. Quality uses Fréchet inception distance (FID), com-puted conventionally for comparability (Inception-V3 pool-3 features of grayscale samples replicated to three channels and resized to 299 2; 10 4 samples against the full test set) and corroborated by precision/recall in the appendix. All results are mean ±std over 3 seeds unless noted, and lower-is-better metrics are marked ↓ throughout. The two metrics are read jointly: where a configuration trades one axis for the other, both movements are reported and described as a trade, not an improvement. Published DP diffusion results (Dockhorn et al. 2023; Ghalebikesabi et al. 2023) are not quoted as base-lines: they arise from orders-of-magnitude larger batches, 0.3 1 3 10     
+
+> privacy budget ε(δ= 10 −5)
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> downstream accuracy
+> 3.5 ×
+> StraightDP (latent)
+> uniform DP-SGD (latent)
+> StraightDP (pixel)
+> uniform DP-SGD (pixel)
+> pixel, low-B0backbone
+
+Figure 3: MNIST downstream accuracy vs. privacy budget 
+
+ε (δ=10 −5; bands ±1 std over 3 seeds), each representation with its baseline. The low-B0 variant (dashed, open squares) lifts the strong-privacy end. The bracket marks the 3.5× pixel gap over uniform DP-SGD at ε=1 .schedules, and evaluation sets, so quoting them would com-pare compute classes, not mechanisms. Their techniques run inside the protocol instead: noise multiplicity (Dockhorn et al. 2023) in every DP-SGD configuration and the from-scratch baseline, DP-LDM-style adapter fine-tuning (Lyu et al. 2024) as the SD3 uniform baseline. One command reproduces each run (hyperparameters: Appendix E). 
+
+4.2 Main results: the release drives utility 
+
+Does the released low-t target beat spending the whole budget on gradients, and does the flow model add anything beyond the release? Three observations (Table 1, Figure 3). (1) The released-moments-only block isolates the release, spending each column’s whole budget on it. Sampling it di-rectly, which is equivalent to integrating the analytic field of the released Gaussian moment model to t=1 , already carries strong probe accuracy ( 0.74 –0.80 ) with extremely poor label-blind FID ( 237 –301 ) and visibly prototype-like samples (Figure 5), the class-prototype effect the embed-ding family also exhibits. Guiding the public prior with the release but no private gradient remains ineffective on this wrong-domain prior ( 0.22 –0.25 ). Private flow training converts those prototype-like samples into far higher-quality conditional generation while keeping most of the class sig-nal: in pixel space it turns the domain-transfer failure into 
+
+0.724 at ε=1 (FID 66 .7), and in latent space it improves 
+
+both axes over the release alone, 0.762 → 0.811 accuracy and 236 .6 → 56 .5 FID. The THA plan alone moves utility within seed noise, and the uniform + moments rows match THA + moments at every budget in both representations: the release does not depend on the plan. (2) The advantage grows as privacy strengthens ( 8× at ε=0 .3 in pixel space; in latent space the representation alone reaches 0.434 and the release lifts it to 0.682 , a 1.57 × gain that shrinks to 1.04 × at ε=3 )and persists at weak privacy: pixel at ε=3 already beats the baseline at ε=10 (0.848 vs. 0.826 ). (3) A Fashion-MNIST public domain replicates the gain ( 3.0–3.2×), and utility is insensitive to the Stage-1 share ( 0.700 /0.724 /0.735 over declared weights ρmom ∈ { 0.1, 0.2, 0.3}, effective shares 
+
+0.12 –0.35 ). The prior-method block frames these numbers, and no method in the table dominates: the comparison is a Pareto front over accuracy and FID, and every compari-son below reports both axes, with improvements named by metric unless both move. The embedding family attains the highest probe accuracies while its FID never enters a usable regime, and neither successor improves on DP-MERF under this uniform protocol. Private Evolution (Lin et al. 2024) fails in the opposite direction: its Inception-space votes drive FID to 35 .4 at ε=10 , below every training route, yet accuracy never exceeds chance, since votes only reweight what the frozen prior generates and cannot rebind its class condition-ing. The sample grids of Figure 5 make the disagreement vis-ible, and precision/recall in the same feature space explains it structurally (Appendix D.2). Uniform DP-SGD holds the best label-blind scores at every budget precisely because its transfer fails, leaving clean wrong-domain glyphs whose low-level statistics flatter any label-blind metric: a cleanly wrong marginal beats a noisily right one. Label-aware met-rics confirm it: at ε=1 label consistency is 0.17 vs. our 0.44 ,and per-class FID reverses it (Table 5). The latent variant’s low precision is a decoder-smoothing artifact, flat in ε and invisible to the stroke-topology features the downstream classifier reads. The stream clamp trades recall for gradient signal-to-noise (the +27% at ε=0 .3). The release also generalizes beyond class labels: re-placing the partition by the cross-moment release equa-tion 5 preserves the mechanism and accounting, and the more discrete the featurization, the closer it comes to the class-conditional ceiling: at ε=1 , per-slot indicators reach 
+
+0.632 ± 0.067 and the pooled embedding of the frozen text encoder 0.464 ± 0.049 , against the one-hot reference 
+
+0.724 ± 0.033 . The gap is noise in the released Mcc , not a mechanism change: it narrows monotonically with budget (0.345 vs. 0.443 at ε=0 .3, 0.829 vs. 0.848 at ε=3 for in-dicators), converging to the one-hot special case exactly as the inversion of Mcc + λI sharpens. On composed captions the discrete featurizations condition the non-class attributes essentially perfectly (quadrant 1.00 , stroke 0.84 –1.00 ; Ap-pendix C). Both geometric corrections of the release are es-sential: removing the image-side projection drops accuracy to 0.32 , and removing the centering and released intercept to 
+
+0.12 , below the pipeline with no release. 
+
+4.3 The stream-norm constraint under noise 
+
+When does constraining the backbone help, and what does it cost when it does not? The right panel of Table 2 shows the effect grows monotonically with noise , −7% , −4% , +4% ,
+
++27% as ε falls from 3 to 0.3, lifting strong-privacy accu-racy at a FID concession ( 94 .1 → 100 .3) and costing both axes at weak privacy. The left panel ablates the three con-straints at ε=0 .3: the stream clamp carries most of the gain (0.443 → 0.535 of the full 0.561 ), late injection alone is a small net cost ( 0.402 ), and the full set adds the remainder. The gain does not transfer to the latent variant, where the constraint is a small net cost at every budget ( 0.682 → 0.633 
+
+at ε=0 .3 with FID unchanged; Table 1), consistent with the mechanism below: the 32 -dimensional latent model’s per-sample gradients are already well concentrated, so the clamp only removes capacity. Mechanistically, bounding activations empirically concentrates per-sample gradient norms, narrow-ing the upper tail that clipping hits hardest (the p90 /p 50 ratio Table 1: Main results (MNIST, δ=10 −5, 3 seeds, mean ±std). Acc = downstream accuracy, ↓ marks lower-is-better, and bold is the best per column within each pipeline block. The first block runs prior methods under the same protocol and accounting (Harder, Adamczewski, and Park 2021; Vinaroz et al. 2022; Yang et al. 2023; Lin et al. 2024). The released-moments-only rows spend the entire column budget on the Stage-1 mechanism and take no gradient step, a deliberately favorable full-budget control for the release alone; the moments rows spend 0.235 ε on it. The pixel and latent blocks share the same public (KMNIST) pretraining.                                                                                                                                                                                                                                                                                                                  
+
+> ε=0 .3ε=1 ε=3
+> Method Acc FID ↓Acc FID ↓Acc FID ↓
+> Prior methods
+> DP-MERF (kernel embedding) 0.823 ±0.004 280 .6±0.80.856 ±0.005 182 .8±5.00.842 ±0.011 109 .1±2.4
+> DP-HP (Hermite embedding) 0.762 ±0.010 284 .3±5.00.751 ±0.008 219 .8±4.50.780 ±0.006 167 .3±5.6
+> DP-NTK (NTK embedding) 0.737 ±0.019 333 .8±3.00.786 ±0.012 292 .7±3.40.811 ±0.012 249 .1±5.7
+> Private Evolution (frozen prior) 0.044 ±0.026 122 .4±2.10.059 ±0.025 81 .4±0.80.082 ±0.022 52 .8±2.0
+> Released moments only (no private gradient)
+> Sampled from the release N(˜ μy,˜Σ) 0.741 ±0.020 301 .0±5.20.762 ±0.015 236 .6±1.60.797 ±0.020 241 .9±0.7
+> Public prior +guidance 0.246 ±0.018 97 .1±1.40.236 ±0.026 89 .3±0.80.222 ±0.008 87 .0±0.4
+> Pixel space
+> Uniform DP-SGD 0.055 ±0.005 72 .5±0.30.207 ±0.011 62 .7±0.10.620 ±0.003 51 .6±0.1
+> THA-planned DP-SGD 0.056 ±0.002 74 .5±0.50.226 ±0.050 63 .5±1.10.641 ±0.086 51 .8±2.1
+> Uniform + moments 0.484 ±0.024 88 .4±2.00.706 ±0.005 63 .6±0.70.859 ±0.005 49 .3±0.5
+> THA + moments 0.443 ±0.047 94 .1±2.70.724 ±0.033 66 .7±0.60.848 ±0.004 51 .5±0.3
+> + Low-B0backbone 0.561 ±0.038 100 .3±2.60.697 ±0.003 75 .1±1.10.788 ±0.004 69 .5±0.7
+> Latent space (frozen public autoencoder, d=32 )
+> Uniform DP-SGD 0.434 ±0.027 63 .3±0.60.709 ±0.016 58 .4±0.40.808 ±0.010 51 .7±0.5
+> THA-planned DP-SGD 0.408 ±0.016 63 .3±0.30.695 ±0.024 59 .2±0.60.798 ±0.013 53 .1±0.5
+> Uniform + moments 0.695 ±0.015 63 .8±1.70.814 ±0.002 55 .7±0.60.843 ±0.006 49 .6±0.3
+> THA + moments 0.682 ±0.010 64 .1±1.30.811 ±0.002 56 .5±0.80.839 ±0.007 50 .2±0.1
+> + Low-B0backbone 0.633 ±0.012 64 .7±1.60.792 ±0.006 57 .6±0.20.835 ±0.006 51 .5±0.2
+
+Table 2: The low-B0 backbone, with arrows as in Table 1 and the bold row the full backbone. Left : single-factor ablation at 
+
+ε=0 .3 (3 seeds, mean ±std). The unconstrained and full rows are the pixel moments and low-B0 rows of Table 1. Right : the noise-regime sweep on pixels, whose signed gain compares the backbones.                                                                                     
+
+> Backbone Acc FID ↓
+> Unconstrained 0.443 ±0.047 94 .1±2.7
+> + Late injection only 0.402 ±0.014 103 .0±1.2
+> + Stream clamp only 0.535 ±0.014 98 .7±1.5
+> Full backbone 0.561 ±0.038 100 .3±2.6
+> Standard Low-B0
+> εAcc FID ↓Acc FID ↓Acc gain
+> 3.00.848 ±0.004 51 .5±0.30.788 ±0.004 69 .5±0.7−7% 1.00.724 ±0.033 66 .7±0.60.697 ±0.003 75 .1±1.1−4% 0.50.584 ±0.032 81 .2±5.00.606 ±0.014 85 .7±3.9+4% 0.30.443 ±0.047 94 .1±2.70.561 ±0.038 100 .3±2.6+27%
+
+falls from 1.61 to 1.46 at ε=0 .3; Appendix D.3), so DP clipping distorts less exactly when σ is large. Unlike glob-ally Lipschitz networks, whose expressivity cost is docu-mented (Anil, Lucas, and Grosse 2019), the clamp carries no detectable pretraining-loss penalty, necessary if not sufficient evidence of preserved capacity, while post-hoc clamping of an unconstrained model collapses it to 0.02 . The recommen-dation: moments with uniform DP-SGD, in the latent repre-sentation when available, with the clamp for extreme-noise pixels. 
+
+4.4 Scaling: the injection route decides 
+
+Which components survive on frozen SD3-medium? We DP-LoRA fine-tune SD3-medium on Flowers-102 (Nilsback and Zisserman 2008) as the private set ( N =2040 , ε=10 ,
+
+δ=1 /2N ), with the base model itself as the public prior: its samples calibrate all clips and projections. DP-SGD and the accounting port unchanged. Stage 2 uses a single uniform 
+
+(C, σ ) so Table 3 isolates the injection route. The guidance route trains no weights, so there is nothing to plan. The bounded backbone does not port: its constraints are imposed during pretraining, which a frozen checkpoint forecloses. The base model generates flowers, a strong-prior domain: zero-shot reaches 0.588 ± 0.009 , and uniform DP-SGD does not beat it ( 0.580 ± 0.004 ). 
+
+On frozen SD3, the released moments belong in sam-pling, not in the weights. The global first-moment release scales (at N =2040 per-class signal-to-noise is too low, so Stage 1 falls back to a global mean tilt). What fails is dis-tilling it into weights. Distilling the analytic field into LoRA is catastrophic ( 0.088 ) even though the field is released ac-curately and the loss converges: the Gaussian is cruder than the frozen prior it overwrites, and the damage leaks across all noise levels through the shared adapter. SD3 parame-Table 3: SD3-medium on Flowers-102 (3 seeds, mean ±std). Acc = downstream accuracy (CLIP probe), the ε column is each row’s total accounted budget, and bold is the best private configuration. Private Evolution (Lin et al. 2024) uses the frozen base model. The distillation row writes the moments into LoRA and spends the remainder on DP-SGD (2+8 ), while guidance injects the same moments at sampling time. 
+
+Method ε Acc FID ↓
+
+Zero-shot (no tuning) 0 0.588 ± 0.009 40 .2 ± 0.6
+
+Uniform DP-SGD 10 0.580 ± 0.004 37 .9 ± 0.6
+
+Uniform DP-SGD 2 0.603 ± 0.007 38 .6 ± 0.6
+
+Private Evolution 10 0.593 ± 0.015 43 .5 ± 0.6
+
+Distillation + DP-SGD 10 0.088 ± 0.018 105 .7 ± 1.4
+
+Moment guidance 2 0.625 ± 0.005 37 .8 ± 0.5
+
+DP-SGD + guidance 10 .4 0.614 ± 0.013 38 .0 ± 1.0
+
+Non-private LoRA ∞ 0.657 ± 0.019 35 .8 ± 1.0+ guidance ∞ 0.678 ± 0.013 35 .4 ± 0.6
+
+terizes the flow by the noise level σ = 1 − t (σ=1 the noise end; not the DP noise multiplier). Guidance is pure post-processing of the same release: sampling starts at its tilted marginal at level σ0 and the base model integrates the rest. This reaches 0.625 ± 0.005 while consuming only 
+
+ε=2 in total. The start level is selection-insensitive, stable across σ0 ∈ [0 .90 , 0.98] , and the σ0=0 .95 we use is the grid midpoint, so no private tuning is implied. The budget-matched control confirms the advantage is not a budget arti-fact: uniform DP-SGD at ε=2 reaches 0.603 ± 0.007 , above its ε=10 counterpart ( 0.580 ) because the lighter fine-tuning damages the prior less, yet below guidance at the same bud-get: the ranking 0.580 , 0.588 , 0.603 , 0.625 tracks how little the weights move. Specificity controls isolate the released di-rection as the payload: starting at the same σ0 and covariance with a zero mean or a norm-matched random tilt falls below zero-shot ( 0.548 ± 0.016 and 0.555 ± 0.021 , FID ≈ 64 ), the public-prior mean recovers part ( 0.606 ± 0.007 ), and the re-leased direction reaches 0.625 –0.632 across ε ∈ { 0.5, 1, 4},matched by exact non-private moments ( 0.624 ± 0.006 ): the payload is the direction, not its precision. Private Evolution, the other training-free route, evolves a per-class population by noisy nearest-neighbor votes. With the full ε=10 it moves the frozen prior only within seed noise ( 0.593 ± 0.015 vs. zero-shot 0.588 ) and trails guidance on both metrics at 5×
+
+the budget (FID 43 .5, degraded by small-population resam-pling). Votes only reweight what the prior generates (hence PE’s collapse on weak-prior MNIST, Table 1). The moments supply the geometry it lacks. The embedding family (Harder, Adamczewski, and Park 2021) has no published variant at this resolution (its comparison is Table 1). Adding guidance to training yields little more ( 0.614 at joint ε=10 .4; 0.678 at 
+
+ε=∞): both approach the same ceiling, and the tilt already captures the recoverable signal. The tilt helps the non-private model by a similar margin, so its DP-specific value is not the shift itself but that it captures most of the private signal without any private training : at 0.4     
+
+> 0.5
+> 0.6
+> 0.7
+> 0.8
+> downstream acc.
+> moment distillation
+> (a)
+> 0.05 0.10 0.20 0.35
+> guidance start t0
+> 60
+> 90
+> 120
+> FID  ( ↓ )
+> operating point
+> (b)
+
+Figure 4: The sampling port on MNIST: a DP-SGD model trained without moment distillation, guided at sampling time by the Stage-1 release alone. The sweep is a post-hoc diag-nostic at total budget 1.2 (ε=1 training + 0 .2 release, single seed). The t0=0 .2 we use is the public plateau-edge choice, and the budget-matched 0.8+0 .2 control gives 0.696 ±0.005 .(a) Accuracy crosses moment distillation’s level (dotted) at 
+
+t0=0 .2. (b) FID is flat there and degrades beyond it. 
+
+ε=2 it beats every trained configuration at 5× the budget. 
+
+The two injection ports carry the same release at two scales (class-conditional on MNIST, the global tilt on SD3). The start time is calibrated publicly: on the public domain, guidance accuracy is flat for t0 ≤ 0.2 and public FID de-grades sharply beyond it, so we use the plateau edge t0=0 .2.On MNIST, guiding a DP-SGD model with no distillation reaches 0.696 ± 0.005 at matched ε=1 , near distillation’s 
+
+0.724 (Figure 4). On frozen SD3-medium, distillation col-lapses ( 0.088 ) and only guidance works ( 0.625 ). The suggested split: distill into a model trained end-to-end, guide a strong frozen prior. 
+
+4.5 Attack audits 
+
+Accounted budgets are worst-case statements. Three attacks probe the final models (attack failure bounds nothing from above; protocols in Appendix D.4). Membership inference on the flow-matching residual is chance-level (AUC 0.482 ). None of 50 canaries is preferentially generated, and a one-run audit is vacuous. Transcript replay reproduces every declared 
+
+ε, and attack advantages are consistent with the accounted guarantees. 
+
+## 5 Conclusion 
+
+StraightDP starts from one observation: what a rectified flow learns from private data is not uniform in flow time. From it, the pipeline releases class-conditional moments once, spends the rest through declared DP-SGD, and pretrains a stream-bounded backbone for the strongest-noise regime. One re-lease enters an end-to-end model’s weights and a frozen prior’s sampler. The training-free baselines we test land on one axis, the latent variant moves both, and per-caption re-lease at scale is the open frontier. References 
+
+Abadi, M.; Chu, A.; Goodfellow, I.; McMahan, H. B.; Mironov, I.; Talwar, K.; and Zhang, L. 2016. Deep Learning with Differential Privacy. In Proceedings of the 2016 ACM SIGSAC Conference on Computer and Communications Se-curity (CCS) .Albergo, M. S.; and Vanden-Eijnden, E. 2023. Building Nor-malizing Flows with Stochastic Interpolants. In International Conference on Learning Representations (ICLR) .Andrew, G.; Thakkar, O.; McMahan, H. B.; and Ramaswamy, S. 2021. Differentially Private Learning with Adaptive Clip-ping. In Advances in Neural Information Processing Systems 34 .Anil, C.; Lucas, J.; and Grosse, R. 2019. Sorting out Lip-schitz function approximation. In Proceedings of the 36th International Conference on Machine Learning (ICML) .Balle, B.; Barthe, G.; and Gaboardi, M. 2018. Privacy Ampli-fication by Subsampling: Tight Analyses via Couplings and Divergences. In Advances in Neural Information Processing Systems 31 .Bie, A.; Kamath, G.; and Zhang, G. 2023. Private GANs, Revisited. Transactions on Machine Learning Research .Bu, Z.; Wang, Y.-X.; Zha, S.; and Karypis, G. 2023. Auto-matic Clipping: Differentially Private Deep Learning Made Easier and Stronger. In Advances in Neural Information Pro-cessing Systems 36 .Bun, M.; and Steinke, T. 2016. Concentrated Differential Privacy: Simplifications, Extensions, and Lower Bounds. In 
+
+Theory of Cryptography Conference (TCC) .Béthune, L.; Massena, T.; Boissin, T.; Prudent, Y.; Friedrich, C.; Mamalet, F.; Bellet, A.; Serrurier, M.; and Vigouroux, D. 2024. DP-SGD Without Clipping: The Lipschitz Neu-ral Network Way. In International Conference on Learning Representations (ICLR) .Cao, T.; Bie, A.; Vahdat, A.; Fidler, S.; and Kreis, K. 2021. Don’t Generate Me: Training Differentially Private Gener-ative Models with Sinkhorn Divergence. In Advances in Neural Information Processing Systems 34 .Carlini, N.; Chien, S.; Nasr, M.; Song, S.; Terzis, A.; and Tramer, F. 2022. Membership Inference Attacks From First Principles. In 2022 IEEE Symposium on Security and Privacy (S&P) .Carlini, N.; Liu, C.; Úlfar Erlingsson; Kos, J.; and Song, D. 2019. The Secret Sharer: Evaluating and Testing Unintended Memorization in Neural Networks. In 28th USENIX Security Symposium .Chen, D.; Orekondy, T.; and Fritz, M. 2020. GS-WGAN: A Gradient-Sanitized Approach for Learning Differentially Private Generators. In Advances in Neural Information Pro-cessing Systems 33 .Clanuwat, T.; Bober-Irizar, M.; Kitamoto, A.; Lamb, A.; Ya-mamoto, K.; and Ha, D. 2018. Deep Learning for Classical Japanese Literature. arXiv preprint arXiv:1812.01718 .De, S.; Berrada, L.; Hayes, J.; Smith, S. L.; and Balle, B. 2022. Unlocking High-Accuracy Differentially Pri-vate Image Classification through Scale. arXiv preprint arXiv:2204.13650 .Dockhorn, T.; Cao, T.; Vahdat, A.; and Kreis, K. 2023. Differ-entially Private Diffusion Models. Transactions on Machine Learning Research .Dong, J.; Roth, A.; and Su, W. J. 2022. Gaussian Differential Privacy. Journal of the Royal Statistical Society Series B ,84(1): 3–37. Doroshenko, V.; Ghazi, B.; Kamath, P.; Kumar, R.; and Ma-nurangsi, P. 2022. Connect the Dots: Tighter Discrete Ap-proximations of Privacy Loss Distributions. arXiv preprint arXiv:2207.04380 .Du, J.; Li, S.; Chen, X.; Chen, S.; and Hong, M. 2021. Dy-namic Differential-Privacy Preserving SGD. arXiv preprint arXiv:2111.00173 .Dwork, C.; and Roth, A. 2014. The Algorithmic Foundations of Differential Privacy. Foundations and Trends in Theoret-ical Computer Science , 9(3–4): 211–407. Esser, P.; Kulal, S.; Blattmann, A.; Entezari, R.; Müller, J.; Saini, H.; Levi, Y.; Lorenz, D.; Sauer, A.; Boesel, F.; Podell, D.; Dockhorn, T.; English, Z.; Lacey, K.; Goodwin, A.; Marek, Y.; and Rombach, R. 2024. Scaling Rectified Flow Transformers for High-Resolution Image Synthesis. In Pro-ceedings of the 41st International Conference on Machine Learning (ICML) .Ganesh, A.; Haghifam, M.; Nasr, M.; Oh, S.; Steinke, T.; Thakkar, O.; Thakurta, A.; and Wang, L. 2023. Why Is Pub-lic Pretraining Necessary for Private Model Training? In 
+
+Proceedings of the 40th International Conference on Ma-chine Learning (ICML) .Ghalebikesabi, S.; Berrada, L.; Gowal, S.; Ktena, I.; Stan-forth, R.; Hayes, J.; De, S.; Smith, S. L.; Wiles, O.; and Balle, B. 2023. Differentially Private Diffusion Models Generate Useful Synthetic Images. arXiv preprint arXiv:2302.13861 .Gopi, S.; Lee, Y. T.; and Wutschitz, L. 2021. Numerical Composition of Differential Privacy. In Advances in Neural Information Processing Systems 34 .Harder, F.; Adamczewski, K.; and Park, M. 2021. DP-MERF: Differentially Private Mean Embeddings with Random Fea-tures for Practical Privacy-Preserving Data Generation. In 
+
+Proceedings of the 24th International Conference on Artifi-cial Intelligence and Statistics (AISTATS) .Heusel, M.; Ramsauer, H.; Unterthiner, T.; Nessler, B.; and Hochreiter, S. 2017. GANs Trained by a Two Time-Scale Update Rule Converge to a Local Nash Equilibrium. In 
+
+Advances in Neural Information Processing Systems 30 .Jagielski, M.; Ullman, J.; and Oprea, A. 2020. Auditing Differentially Private Machine Learning: How Private is Pri-vate SGD? In Advances in Neural Information Processing Systems 33 .Jordon, J.; Yoon, J.; and van der Schaar, M. 2019. PATE-GAN: Generating Synthetic Data with Differential Privacy Guarantees. In International Conference on Learning Rep-resentations (ICLR) .Kairouz, P.; Oh, S.; and Viswanath, P. 2015. The Com-position Theorem for Differential Privacy. In Proceedings of the 32nd International Conference on Machine Learning (ICML) .Kim, H.; Papamakarios, G.; and Mnih, A. 2021. The Lips-chitz Constant of Self-Attention. In Proceedings of the 38th International Conference on Machine Learning (ICML) .Koskela, A.; Jälkö, J.; and Honkela, A. 2020. Computing Tight Differential Privacy Guarantees Using FFT. In Pro-ceedings of the 23rd International Conference on Artificial Intelligence and Statistics (AISTATS) .Kurakin, A.; Song, S.; Chien, S.; Geambasu, R.; Terzis, A.; and Thakurta, A. 2022. Toward Training at ImageNet Scale with Differential Privacy. arXiv preprint arXiv:2201.12328 .Kynkäänniemi, T.; Karras, T.; Laine, S.; Lehtinen, J.; and Aila, T. 2019. Improved Precision and Recall Metric for Assessing Generative Models. In Advances in Neural Infor-mation Processing Systems 32 .LeCun, Y.; Bottou, L.; Bengio, Y.; and Haffner, P. 1998. Gradient-Based Learning Applied to Document Recognition. 
+
+Proceedings of the IEEE , 86(11): 2278–2324. Lee, S.; Lin, Z.; and Fanti, G. 2024. Improving the Train-ing of Rectified Flows. In Advances in Neural Information Processing Systems 37 .Lin, Z.; Gopi, S.; Kulkarni, J.; Nori, H.; and Yekhanin, S. 2024. Differentially Private Synthetic Data via Founda-tion Model APIs 1: Images. In International Conference on Learning Representations (ICLR) .Lipman, Y.; Chen, R. T. Q.; Ben-Hamu, H.; Nickel, M.; and Le, M. 2023. Flow Matching for Generative Modeling. In International Conference on Learning Representations (ICLR) .Liu, Q. 2022. Rectified Flow: A Marginal Preserv-ing Approach to Optimal Transport. arXiv preprint arXiv:2209.14577 .Liu, X.; Gong, C.; and Liu, Q. 2023. Flow Straight and Fast: Learning to Generate and Transfer Data with Rectified Flow. In International Conference on Learning Representations (ICLR) .Long, Y.; Wang, B.; Yang, Z.; Kailkhura, B.; Zhang, A.; Gunter, C. A.; and Li, B. 2021. G-PATE: Scalable Differ-entially Private Data Generator via Private Aggregation of Teacher Discriminators. In Advances in Neural Information Processing Systems 34 .Lyu, S.; Liu, M. F.; Vinaroz, M.; and Park, M. 2024. DP-LDMs: Differentially Private Latent Diffusion Models. 
+
+Transactions on Machine Learning Research .McMahan, H. B.; Ramage, D.; Talwar, K.; and Zhang, L. 2018. Learning Differentially Private Recurrent Language Models. In International Conference on Learning Represen-tations (ICLR) .Mehta, H.; Thakurta, A.; Kurakin, A.; and Cutkosky, A. 2022. Large Scale Transfer Learning for Differentially Pri-vate Image Classification. arXiv preprint arXiv:2205.02973 .Mironov, I. 2017. Rényi Differential Privacy. In 2017 IEEE 30th Computer Security Foundations Symposium (CSF) .Mironov, I.; Talwar, K.; and Zhang, L. 2019. Rényi Differ-ential Privacy of the Sampled Gaussian Mechanism. arXiv preprint arXiv:1908.10530 .Miyato, T.; Kataoka, T.; Koyama, M.; and Yoshida, Y. 2018. Spectral Normalization for Generative Adversarial Networks. In International Conference on Learning Repre-sentations (ICLR) .Naeem, M. F.; Oh, S. J.; Uh, Y.; Choi, Y.; and Yoo, J. 2020. Reliable Fidelity and Diversity Metrics for Generative Mod-els. In Proceedings of the 37th International Conference on Machine Learning (ICML) .Nasr, M.; Song, S.; Thakurta, A.; Papernot, N.; and Carlini, N. 2021. Adversary Instantiation: Lower Bounds for Differ-entially Private Machine Learning. In 2021 IEEE Symposium on Security and Privacy (S&P) .Nilsback, M.-E.; and Zisserman, A. 2008. Automated Flower Classification over a Large Number of Classes. In Indian Conference on Computer Vision, Graphics and Image Pro-cessing .Parmar, G.; Zhang, R.; and Zhu, J.-Y. 2022. On Aliased Resizing and Surprising Subtleties in GAN Evaluation. In 
+
+Proceedings of the IEEE/CVF Conference on Computer Vi-sion and Pattern Recognition (CVPR) .Peebles, W.; and Xie, S. 2023. Scalable Diffusion Models with Transformers. In Proceedings of the IEEE/CVF Inter-national Conference on Computer Vision (ICCV) .Pichapati, V.; Suresh, A. T.; Yu, F. X.; Reddi, S. J.; and Kumar, S. 2019. AdaCliP: Adaptive Clipping for Private SGD. arXiv preprint arXiv:1908.07643 .Sajjadi, M. S. M.; Bachem, O.; Lucic, M.; Bousquet, O.; and Gelly, S. 2018. Assessing Generative Models via Precision and Recall. In Advances in Neural Information Processing Systems 31 .Shokri, R.; Stronati, M.; Song, C.; and Shmatikov, V. 2017. Membership Inference Attacks against Machine Learning Models. In 2017 IEEE Symposium on Security and Privacy (S&P) .Sommer, D. M.; Meiser, S.; and Mohammadi, E. 2019. Pri-vacy Loss Classes: The Central Limit Theorem in Differential Privacy. Proceedings on Privacy Enhancing Technologies ,2019(2): 245–269. Steinke, T.; Nasr, M.; and Jagielski, M. 2023. Privacy Au-diting with One (1) Training Run. In Advances in Neural Information Processing Systems 36 .Tan, Q.; Che, X.; Wu, S.; Qian, Y.; and Tao, Y. 2023. Privacy Amplification for Wireless Federated Learning with Rényi Differential Privacy and Subsampling. Electronic Research Archive , 31(11): 7021. Tramèr, F.; and Boneh, D. 2021. Differentially Private Learn-ing Needs Better Features (or Much More Data). In Interna-tional Conference on Learning Representations (ICLR) .Vinaroz, M.; Charusaie, M.-A.; Harder, F.; Adamczewski, K.; and Park, M. J. 2022. Hermite Polynomial Features for Private Data Generation. In Proceedings of the 39th International Conference on Machine Learning (ICML) .Wang, Y.-X.; Balle, B.; and Kasiviswanathan, S. P. 2019. Subsampled Rényi Differential Privacy and Analytical Mo-ments Accountant. In Proceedings of the 22nd Interna-tional Conference on Artificial Intelligence and Statistics (AISTATS) .Xiao, H.; Rasul, K.; and Vollgraf, R. 2017. Fashion-MNIST: a Novel Image Dataset for Benchmarking Machine Learning Algorithms. arXiv preprint arXiv:1708.07747 .Xie, L.; Lin, K.; Wang, S.; Wang, F.; and Zhou, J. 2018. Differentially Private Generative Adversarial Network. arXiv preprint arXiv:1802.06739 .Yang, Y.; Adamczewski, K.; Sutherland, D. J.; Li, X.; and Park, M. 2023. Differentially Private Neural Tangent Ker-nels for Privacy-Preserving Data Generation. arXiv preprint arXiv:2303.01687 .Yeom, S.; Giacomelli, I.; Fredrikson, M.; and Jha, S. 2018. Privacy Risk in Machine Learning: Analyzing the Connec-tion to Overfitting. In 2018 IEEE 31st Computer Security Foundations Symposium (CSF) .Yu, D.; Naik, S.; Backurs, A.; Gopi, S.; Inan, H. A.; Ka-math, G.; Kulkarni, J.; Lee, Y. T.; Manoel, A.; Wutschitz, L.; Yekhanin, S.; and Zhang, H. 2022. Differentially Private Fine-tuning of Language Models. In International Confer-ence on Learning Representations (ICLR) .
+
+## A Extended Related Work 
+
+DP accounting and DP-SGD. DP-SGD (Abadi et al. 2016) clips each example’s gradient to a norm bound C,adds Gaussian noise calibrated to C, and tracks the pri-vacy loss of the resulting subsampled Gaussian mech-anism across steps. Its analysis has been refined along two axes. The per-step mechanism is understood through privacy amplification by subsampling (Balle, Barthe, and Gaboardi 2018; Tan et al. 2023) and tight Rényi bounds for the sampled Gaussian (Mironov, Talwar, and Zhang 2019; Wang, Balle, and Kasiviswanathan 2019), within the Rényi-DP framework (Mironov 2017) and its relatives zCDP (Bun and Steinke 2016) and f -DP/GDP (Dong, Roth, and Su 2022). Composition across steps moved from generic bounds (Kairouz, Oh, and Viswanath 2015) to numerically exact ones: privacy-loss distributions (Sommer, Meiser, and Mohammadi 2019) composed by FFT (Koskela, Jälkö, and Honkela 2020; Gopi, Lee, and Wutschitz 2021), with opti-mal discretizations in Doroshenko et al. (2022). We use this numerical machinery as a verification layer: every candidate plan, homogeneous or not, is composed exactly before it runs. The line of work closest in motivation is adaptive clipping, which tunes the clip norm during training, per layer (McMa-han et al. 2018), by privately tracked quantiles (Andrew et al. 2021), per coordinate (Pichapati et al. 2019), or by normal-ization that removes the clip threshold altogether (Bu et al. 2023); Du et al. (2021) schedule the mechanism dynami-cally across steps. All of these react to private signal, so the adaptation itself either consumes budget or complicates the accounting. Our time-heterogeneous allocation makes the opposite choice: the entire plan (Ck, σ k, T k) is computed from a public geometry prior and declared before training, so the accountant verifies a fixed workload and the plan costs nothing beyond it. 
+
+DP generative models. The GAN generation attacked the problem through the discriminator: DP-GAN (Xie et al. 2018) noises discriminator gradients, PATE-GAN (Jordon, Yoon, and van der Schaar 2019) replaces the discrimina-tor with a private teacher ensemble, G-PATE (Long et al. 2021) aggregates gradients from teacher discriminators, GS-WGAN (Chen, Orekondy, and Fritz 2020) sanitizes only the gradients that reach the generator, and Bie, Kamath, and Zhang (2023) show that careful training recipes re-cover much of the lost utility. A second family avoids it-erative training altogether and releases a statistic once: DP-MERF (Harder, Adamczewski, and Park 2021) a random-feature kernel mean embedding, DP-Sinkhorn (Cao et al. 2021) a debiased optimal-transport divergence; later mem-bers replace the random Fourier features by deterministic Hermite polynomial features (DP-HP (Vinaroz et al. 2022)) or by the empirical neural-tangent-kernel features of a ran-dom network (DP-NTK (Yang et al. 2023)). A third line trains nothing at all: Private Evolution (Lin et al. 2024) evolves a synthetic population from a frozen foundation model; pri-vate data acts only through noisy nearest-neighbor vote his-tograms, and the entire budget is spent at sampling time. We run DP-MERF, DP-HP, DP-NTK, and Private Evolution under the paper’s protocol (Tables 1 and 3); Section D.1 analyzes why the embedding family and the evolution mech-anism fail on opposite metrics. Stage 1 of StraightDP shares the one-shot-release form of the embedding family; what dif-fers is which statistic is released, the class-conditional mo-ments that determine the analytic noise-end field of a recti-fied flow rather than a generator-agnostic kernel embedding, and where it enters, as a distillation target inside a privately trained flow or as a sampling-time initialization of a frozen prior, so the same release also composes with gradient train-ing instead of replacing it. Our Stage 1 belongs to this family in mechanism, with one difference we consider decisive: the released statistic is not a generic embedding but the exact sufficient statistics of the flow’s low-t Bayes target, so ev-ery released coordinate is one the training objective provably consumes. The diffusion generation trains score or velocity models under DP-SGD: DPDM (Dockhorn et al. 2023) in-troduces noise multiplicity, averaging the loss over several diffusion times per example to cut gradient variance at no privacy cost, which we adopt in Stage 2; Ghalebikesabi et al. (2023) scale public-pretrain-then-DP-fine-tune to strong im-age quality; DP-LDM (Lyu et al. 2024) fine-tunes only the conditioning modules of a frozen latent diffusion model, which motivates our latent variant with a frozen public au-toencoder. Across all three families the privacy mechanism is uniform in diffusion time; the structural lever StraightDP turns, when the budget is spent and on what supervision, is unused. 
+
+Rectified flows and multimodal DiTs. Rectified flow (Liu, Gong, and Liu 2023) and flow matching (Lipman et al. 2023) train continuous-time generative models by re-gressing a velocity field on straight (or affine Gaussian) inter-polation paths, simulation-free; stochastic interpolants (Al-bergo and Vanden-Eijnden 2023) give the general frame-work, Liu (2022) the optimal-transport reading, and Lee, Lin, and Fanti (2024) training refinements. Straightness matters to us beyond sampling speed: on the straight path the poste-rior of the clean sample given xt is available in closed form under a moment model, which is what makes the low-t target an explicit functional of (πy , μ y , Σ) and hence releasable at 
+
+1/N sensitivity. On the architecture side, DiT (Peebles and Xie 2023) established transformer backbones for diffusion, and SD3’s MM-DiT (Esser et al. 2024) runs separate image and text token streams coupled by joint attention. That sepa-ration is essential for us: per-stream norms and per-interface inflows are well defined objects to clamp. 
+
+Constrained networks for privacy. Spectral normaliza-tion (Miyato et al. 2018) constrains per-layer operator norms for GAN stability; Lipschitz architectures (Anil, Lucas, and Grosse 2019) make the global constant exact at a docu-mented expressivity cost; and standard dot-product attention is not Lipschitz at all, which Kim, Papamakarios, and Mnih (2021) repair with an L2 variant. Béthune et al. (2024) con-nect this line to privacy: a globally Lipschitz network has bounded per-sample gradients, so DP-SGD can run without clipping. We take the same lever, enforced norms, to a dif-ferent place. Instead of a global Lipschitz constant we bound 
+
+activations (per-token stream norms) everywhere, sidestep-ping the global expressivity cost; attention never needs a Lipschitz constant because the clamps bound its inputs and its inflow directly. The empirical finding that the activation bound alone improves plain DP training, with a gain that grows with the noise, has no counterpart in that line. 
+
+Public data and audits. That private learning at tight budgets needs public structure was argued early through fea-tures (Tramèr and Boneh 2021) and is now standard practice at scale (De et al. 2022; Yu et al. 2022; Mehta et al. 2022; Kurakin et al. 2022), with Ganesh et al. (2023) giving a theo-retical account of why pretraining is hard to avoid. StraightDP follows this practice and pushes it one step further: beyond the weights, every calibration (clip references, bucket shapes, the distillation horizon, enforcement targets) comes from pub-lic data, so no private budget is spent on tuning. Our audit battery instantiates the standard attack hierarchy: member-ship inference by shadow statistics (Shokri et al. 2017) and by loss thresholds (Yeom et al. 2018), refined to likelihood-ratio form in Carlini et al. (2022); canary extraction (Carlini et al. 2019); and quantitative audits that turn attack success into empirical ε lower bounds (Jagielski, Ullman, and Oprea 2020; Nasr et al. 2021), in the one-run form of Steinke, Nasr, and Jagielski (2023). Generation quality uses FID (Heusel et al. 2017) with the implementation cautions of Parmar, Zhang, and Zhu (2022), and precision/recall in the improved form of Kynkäänniemi et al. (2019), descended from Sajjadi et al. (2018) and paralleled by density/coverage (Naeem et al. 2020); Sections D.1 and D.2 analyze why these marginal met-rics and conditional utility can move in opposite directions. 
+
+## B Proofs 
+
+B.1 Conventions and standing facts 
+
+Notation. ∥·∥ denotes the Euclidean norm on vectors; for ma-trices, ∥M ∥ := σmax (M ) = sup ∥v∥=1 ∥M v ∥ is the operator (spectral) norm and ∥M ∥F the Frobenius norm. A “token” is one row of a stream tensor; per-token statements are uniform over tokens. Primed quantities ( z′, e′, g′, . . . ) always refer to the neighboring dataset under the adjacency being analyzed; every input not explicitly primed is held fixed, including all shared randomness of the training step (minibatch selection, flow noise ξ, time t); sensitivity bounds must hold condi-tionally on this randomness, and all of ours do. Adjacency. 
+
+The paper accounts under add/remove adjacency (the native semantics of the subsampled-Gaussian PLD). All sensitivity bounds in this appendix are proved for single-record replace-ment , which dominates: a removal (or addition) is the special case of replacing a record by an empty contribution, so every replacement bound is also an add/remove bound; released averages use the public constant N as denominator, so the neighboring dataset’s size never enters a mechanism. Every step uses enforced quantities or exact identities. We isolate four elementary facts that the proofs use re-peatedly, so that each later argument can cite them by name rather than re-deriving them inline. 
+
+Fact B.1 (Gaussian conditioning) . Let (a, b ) be jointly Gaussian with means (μa, μ b), Cov( b) = Σ bb ≻ 0 and 
+
+Cov( a, b ) = Σ ab . Then E[a | b] = μa + Σ ab Σ−1 
+
+> bb
+
+(b − μb).
+
+Fact B.2 (Projections are nonexpansive) . Let Ω ⊂ Rd be closed and convex and ΠΩ the Euclidean projection onto Ω.Then ∥ΠΩ(u) − ΠΩ(v)∥ ≤ ∥ u − v∥ for all u, v . In particular the per-token stream clamp ΠB0 (v) = v · min(1 , B 0/∥v∥),which is the projection onto the centered ball of radius B0,is 1-Lipschitz. 
+
+Proof. The projection onto a closed convex set satisfies the variational inequality ⟨u − ΠΩ(u), w − ΠΩ(u)⟩ ≤ 0 for all 
+
+w ∈ Ω. Applying it with w = Π Ω(v), and symmetrically with the roles of u, v exchanged, and adding the two inequal-ities gives ∥ΠΩ(u) − ΠΩ(v)∥2 ≤ ⟨ u − v, ΠΩ(u) − ΠΩ(v)⟩,and Cauchy–Schwarz finishes. That ΠB0 is this projection is immediate: for ∥v∥ ≤ B0 it is the identity, and for ∥v∥ > B 0
+
+the closest point of the ball lies on the segment from the origin to v at radius B0.
+
+Fact B.3 (Operator-norm toolbox) . For matrices of com-patible shapes: (i) ∥M v ∥ ≤ ∥M ∥ ∥ v∥ and ∥M N ∥ ≤∥M ∥ ∥ N ∥; (ii) σmax is 1-Lipschitz with respect to the spec-tral norm: |σmax (M ) − σmax (N )| ≤ ∥ M − N ∥ (Weyl); (iii) σmax (cM ) = |c| σmax (M ) for c ≥ 0 (positive homo-geneity); (iv) σmax is convex: σmax (λM + (1 − λ)N ) ≤
+
+λ σ max (M ) + (1 − λ) σmax (N ) for λ ∈ [0 , 1] .
+
+Proof. (i) and (iii) are immediate from the defini-tion as a supremum. For (iv), write σmax (M ) =sup ∥u∥=∥v∥=1 u⊤M v : a pointwise supremum of functions that are linear in M , hence convex. (ii) follows from (iv) and homogeneity via the triangle inequality σmax (M ) ≤
+
+σmax (N ) + σmax (M − N ) applied in both directions. 
+
+Fact B.4 (Row-stochastic averaging does not amplify norms) .
+
+Let A ∈ Rn×m have nonnegative entries with P 
+
+> j
+
+Aij =1 for every row i, and let v1, . . . , v m be vectors. Then P 
+
+> j
+
+Aij vj ≤ max j ∥vj ∥ for every i.
+
+Proof. P 
+
+> j
+
+Aij vj is a convex combination of the vj , hence lies in their convex hull; the norm, being convex, attains its maximum over a convex hull at an extreme point, i.e., at one of the vj . (Directly: ∥ P 
+
+> j
+
+Aij vj ∥ ≤ P 
+
+> j
+
+Aij ∥vj ∥ ≤ 
+
+max j ∥vj ∥ P 
+
+> j
+
+Aij = max j ∥vj ∥.) Softmax attention rows are exactly of this form. 
+
+B.2 Proof of Proposition 3.1 (analytic field) 
+
+We prove the assertions in turn: the conditional closed form equation 3, its mixture average equation 4, the velocity iden-tity equation 2, and the noise-end limits. 
+
+Step 1 (single Gaussian: the joint law of (z, x t)). Fix the class y and let z ∼ N (μy , Σ) and ξ ∼ N (0 , I d) be indepen-dent, xt = (1 − t)ξ + tz . The pair (z, x t) is the image of the jointly Gaussian vector (z, ξ ) under a fixed linear map, hence itself jointly Gaussian; it therefore suffices to com-pute first and second moments. By linearity of expectation, 
+
+E[xt] = (1 − t)E[ξ] + tE[z] = tμ y . By bilinearity of covari-ance and independence of z and ξ (so that every cross term 
+
+Cov( z, ξ ) vanishes), 
+
+Cov( xt) = Cov  (1 − t)ξ + Cov  tz 
+
++ (1 − t)t Cov( ξ, z ) + Cov( z, ξ )| {z }
+
+> = 0
+
+= (1 − t)2I + t2Σ =: At,
+
+Cov( z, x t) = Cov  z, (1 − t)ξ + Cov  z, tz 
+
+= 0 + t Σ = tΣ.
+
+For every t ∈ [0 , 1) we have (1 − t)2 > 0, so At ⪰ (1 −
+
+t)2I ≻ 0: At is invertible wherever the formula below uses it. 
+
+Step 2 (single Gaussian: conditional mean). Fact B.1 applied to (a, b ) = ( z, x t) gives 
+
+E[z | xt = x, y ] = μy + tΣA−1 
+
+> t
+
+(x − tμ y ), (6) which is equation 3. 
+
+Step 3 (mixture: posterior responsibilities). Now let 
+
+y ∼ π and z | y ∼ N (μy , Σ) . Conditionally on y, Step 1 shows xt | y ∼ N (tμ y , A t) (note that At does not depend on y because Σ is shared; this is the benefit of the shared co-variance). Bayes’ rule for densities gives the posterior class weights 
+
+wy (x, t ) := Pr[ y | xt = x] = πy N (x; tμ y , A t)
+
+P 
+
+> y′
+
+πy′ N (x; tμ y′ , A t) ,
+
+and the tower property of conditional expectation combines them with equation 6: 
+
+E[z | xt = x] = X
+
+> y
+
+Pr[ y | xt = x] E[z | xt = x, y ]= X
+
+> y
+
+wy (x, t )
+
+
+
+μy + tΣA−1 
+
+> t
+
+(x − tμ y )
+
+
+
+,
+
+which is exactly equation 4. 
+
+Step 4 (from conditional mean to velocity). On the event 
+
+{xt = x}, the interpolation identity can be solved for the noise: ξ = ( x−tz )/(1 −t) holds pointwise (deterministically given z and x). Substituting, 
+
+z − ξ = z − x − tz 
+
+1 − t = (1 − t)z − x + tz 
+
+1 − t = z − x
+
+1 − t .
+
+Both sides are integrable, so taking E[ · | xt = x] and using linearity yields 
+
+v⋆(x, t ) = E[z − ξ | xt = x] = E[z | xt = x] − x
+
+1 − t ,
+
+which is equation 2; conditioning on y throughout gives the same identity for the conditional field. 
+
+Step 5 (noise-end limit). Fix a compact set of x and let 
+
+t → 0. First, At − I = ( t2 − 2t)I + t2Σ, so ∥At − I∥ ≤ 
+
+2t+t2(1+ ∥Σ∥); hence At → I and, by the Neumann series, 
+
+A−1 
+
+> t
+
+= I + O(t) uniformly. Hence the correction term in equation 6 satisfies ∥tΣA−1 
+
+> t
+
+(x−tμ y )∥ = O(t) uniformly on compacts. Second, the exponent of N (x; tμ y , A t) depends on y only through the term tμ y , so the ratio of any two class densities is 1 + O(t), and therefore wy (x, t ) = πy + O(t).Substituting both expansions, 
+
+E[z | xt = x] = X
+
+> y
+
+πy μy + O(t),v⋆(x, t ) = X
+
+> y
+
+πy μy − x + O(t) : 
+
+to leading order the target depends on the data only through 
+
+(πy , μ y , Σ) , and the class structure enters at order t through the responsibilities. 
+
+Remark B.5 (Relation to the empirical kernel field) . Taking the degenerate limit Σ → h2I with one mixture compo-nent per training point ( μi = zi, πi = 1 /N ) turns equa-tion 4 into the empirical kernel field with Gaussian weights 
+
+∝ exp   − ∥ x − tz i∥2/(2((1 − t)2 + t2h2))  at bandwidth h:Proposition 3.1 and the exact empirical target are two points on one family, which is why Figure 2 (left) can compare them directly. 
+
+Lemma B.6 (Noise-end expansion for a general law) . Let the class-conditional law of z given y be any distribution supported in {∥ z∥ ≤ R} with mean μy and covariance Σy .Then, uniformly over ∥x∥ bounded and t ≤ 12 ,
+
+E[z | xt=x, y ] = μy + t Σy x + O(t2),v⋆(x, t, y ) = ( μy − x) + t (μy − x + Σ y x) + O(t2).
+
+Proof. By Bayes’ rule the posterior of z given xt = x
+
+reweights the prior by the interpolation kernel: dropping z-free factors of N (x; tz, (1 − t)2I),
+
+wt(z) = exp 
+
+ 2t⟨x, z ⟩ − t2∥z∥2
+
+2(1 − t)2
+
+
+
+= exp  t⟨x, z ⟩ + rt(z),
+
+where, on ∥z∥ ≤ R, ∥x∥ ≤ X, t ≤ 12 , the remainder obeys |rt(z)| ≤ C(R, X ) t2 (the (1 − t)−2 expansion and the t2∥z∥2 term are both O(t2) with bounded coefficients). Hence wt(z) = 1 + t⟨x, z ⟩ + O(t2) uniformly, and with E
+
+the class-conditional expectation, 
+
+E[z | xt=x, y ] = E[z w t(z)] 
+
+E[wt(z)] =  μy + t E[z⟨x, z ⟩]  1 − t⟨x, μ y ⟩ + O(t2)= μy + t E[zz ⊤] − μy μ⊤
+
+> y
+
+x + O(t2),
+
+which is μy + tΣy x + O(t2). The field form follows from equation 2: with (1 − t)−1 = 1 + t + O(t2),
+
+v⋆(x, t, y ) =  μy − x + tΣy x + O(t2)  1 + t + O(t2)
+
+= ( μy − x) + t (μy − x + Σ y x) + O(t2).
+
+The Gaussian working model equation 3 expands to μy +
+
+tΣx + O(t2), so it is first-order exact for every law whose class covariance equals the shared Σ; class-dependent co-variances enter first at order t through Σy − Σ. Moment dominance at the noise end is therefore a property of the interpolation, not of the Gaussian approximation. 
+
+Proposition B.7 (Field-error propagation over the horizon) .
+
+Let x solve ˙x = ¯v(x, t ) and x⋆ solve ˙x⋆ = v⋆(x⋆, t )
+
+from the same initial point on [0 , τ ], where v⋆(·, t ) is 
+
+L-Lipschitz on a region containing both trajectories and 
+
+∥¯v(x, t ) − v⋆(x, t )∥ ≤ δ(t) there. Then 
+
+∥x(τ )−x⋆(τ )∥ ≤ 
+
+Z τ
+
+> 0
+
+eL(τ −s) δ(s) ds ≤ eLτ − 1
+
+L sup 
+
+> s≤τ
+
+δ(s),
+
+and coupling the two flows by a shared initial draw bounds the Wasserstein-2 distance of the time-τ marginals by the same quantity. Proof. With e(s) = ∥x(s) − x⋆(s)∥, ˙e ≤ ∥¯v(x, s ) −
+
+v⋆(x, s )∥ + ∥v⋆(x, s ) − v⋆(x⋆, s )∥ ≤ δ(s) + L e (s), and Grönwall’s inequality gives the integral bound; the supre-mum form follows by monotonicity. For the marginals, the shared-draw coupling realizes a transport plan whose cost is bounded by the pathwise bound. This is the quantity the public τ calibration controls: the knee criterion keeps the measured field discrepancy δ(t)
+
+small on t ≤ τ , and at the calibrated τ ≤ 0.35 the ex-ponential factor is benign, so a small measured δ certi-fies a small sampling-error contribution from the moment segment. One gap is stated explicitly: the calibration mea-sures δ on Dpub , whereas the bound needs the discrep-ancy on the private domain, so carrying it over requires a transfer assumption of the form sup t≤τ ∥v⋆ 
+
+> priv
+
+− ¯vpriv ∥ ≤ 
+
+sup t≤τ ∥v⋆ 
+
+> pub
+
+− ¯vpub ∥ + ∆ shift . We do not bound ∆shift ; we support it empirically, by the stability of the selected knee across two disjoint public domains (KMNIST and Fashion-MNIST select the same τ in the latent variant; Section E), and structurally, by the fact that a mis-transferred τ wastes budget but never leaks: privacy is independent of every calibration. 
+
+Remark B.8 (Unbounded sampler inputs) . Lemma B.6 is uniform over ∥x∥ ≤ X, while the sampler’s input xt =(1 − t)ξ + tz has unbounded Gaussian ξ. Since ∥xt∥ ≤ 
+
+(1 −t)∥ξ∥+tR and Pr[ ∥ξ∥ > √d+u] ≤ e−u2/2, the lemma applies along the sampling path with X = √d+tR +u except on an event of probability e−u2/2; the constant C(R, X )
+
+grows only linearly in X, so the expansion holds with high probability over the sampler’s own randomness. 
+
+B.3 Sensitivity of the moment release 
+
+We first recall the adjacency and the exact object being re-leased, then prove the two sensitivity bounds separately. 
+
+Setup. Datasets D = {(zi, y i)}Ni=1 and D′ are replace-adjacent if they agree except that one record (z, y ) ∈ D is replaced by (z′, y ′) ∈ D ′; in particular |D| = |D ′| = N ,and all records satisfy ∥zi∥ ≤ R. The Stage-1 mechanism releases (a) the whitened count/sum vector u(D) defined below with isotropic Gaussian noise, and (b) the average-form second moment with its own Gaussian noise; class-mean offsets are post-processed from (a) inside the public PCA basis. 
+
+Add/remove adjacency on padded databases. The add/remove semantics of the main text reduces to the replace-ment semantics above. Extend the record domain by a null record ⊥ contributing ϕ(⊥) = 0 to every released statistic of the form 1
+
+> N
+
+P 
+
+> i
+
+ϕ(ri), and represent a dataset as a capacity-N
+
+tuple over the extended domain, where N is the declared pub-lic constant, identical for all adjacent pairs. Adding a record is the replacement ⊥ → r and removal is r → ⊥ ; either changes exactly one summand, by at most sup r ∥ϕ(r)∥/N ,and leaves the normalization of every other term unchanged (the accountant never uses the realized dataset size). The re-placement bounds proved below allow arbitrary pairs r → r′,so they dominate both directions, and the Stage-1 transcripts compose with the Poisson-subsampled DP-SGD transcript in this same add/remove semantics under one PLD accountant. 
+
+Proposition B.9 (Release sensitivities) . Define the whitened statistic vector 
+
+u(D) = 
+
+
+
+ny , 12R Sy
+
+ 
+
+> y∈[Y]
+
+∈ RY (1+ d),ny = |{ i : yi = y}| , Sy = P 
+
+> i:yi=y
+
+zi.
+
+Under replace adjacency, sup D∼D ′ ∥u(D) − u(D′)∥2 =p5/2 ≤ 2, where 2 is the value declared to the accoun-tant. Moreover the second moment M2(D) = 1
+
+> N
+
+P 
+
+> i
+
+ziz⊤
+
+> i
+
+satisfies sup D∼D ′ ∥M2(D) − M2(D′)∥F ≤ 2R2/N .Proof. Write u = u(D), u′ = u(D′); only the blocks of the affected classes can differ. 
+
+Case 1: label unchanged ( y′ = y). Then n-coordinates are all unchanged, and only class y’s whitened-sum block moves: 
+
+∥u−u′∥2 = 12R ∥z′ −z∥ ≤ ∥z′∥ + ∥z∥
+
+2R ≤ R + R
+
+2R = 1 .
+
+Case 2: label changed ( y′̸ = y). Exactly the four sub-blocks (ny , S y /2R, n y′ , S y′ /2R) move, and they occupy 
+
+disjoint coordinates of u, so their squared changes add: 
+
+ny : ny 7 → ny − 1, change 1; 
+
+ny′ : ny′ 7 → ny′ + 1 , change 1; 
+
+Sy /2R : loses z/ 2R, change ≤ ∥ z∥/2R ≤ 12 ;
+
+Sy′ /2R : gains z′/2R, change ≤ ∥ z′∥/2R ≤ 12 .
+
+Therefore 
+
+∥u − u′∥22 ≤ 12 + 1 2 +   12
+
+2 +   12
+
+2 = 52 ,
+
+with equality attained by ∥z∥ = ∥z′∥ = R and orthogonal directions, so the exact worst case over both cases is p5/2 ≈
+
+1.58 . Declaring ∆ = 2 to the accountant is therefore sound (and mildly conservative; we keep the round constant for robustness to implementation drift). 
+
+Second moment. The shared terms cancel: 
+
+M2(D) − M2(D′) = 1
+
+N
+
+ zz ⊤ − z′z′⊤ ,
+
+∥zz ⊤ − z′z′⊤ ∥F ≤ ∥ z∥2 + ∥z′∥2 ≤ 2R2,
+
+using ∥vv ⊤∥F = ∥v∥2 for rank-one matrices. Dividing by N
+
+gives the claim; this is the ∝ 1/N decay the Stage-1 release exploits. 
+
+Post-processing steps. Two later operations act on the re-leased statistics and cannot increase sensitivity: projecting mean offsets onto the public PCA basis P ∈ Rp×d satisfies 
+
+∥P v ∥ ≤ ∥ v∥ because P has orthonormal rows ( P P ⊤ = Ip,so ∥P v ∥2 = v⊤P ⊤P v ≤ ∥ v∥2 since P ⊤P is an orthogonal projector); and the feature clip ∥ · ∥ ≤ Rfeat is a projection onto a ball, nonexpansive by Fact B.2. Both are functions of released (already-noised) quantities and public matrices, hence pure post-processing for the accountant. 
+
+B.4 Cross-moment release: sensitivity and class equivalence 
+
+Proposition B.10. Let u(D) =   1 
+
+> RR txt
+
+Mzc , 1
+
+> R2txt
+
+Mcc 
+
+ with 
+
+Mzc = 1
+
+> N
+
+P 
+
+> i
+
+zie⊤ 
+
+> i
+
+, Mcc = 1
+
+> N
+
+P 
+
+> i
+
+eie⊤ 
+
+> i
+
+, ∥zi∥ ≤ R, ∥ei∥ ≤ 
+
+Rtxt . Then, under replace adjacency (and a fortiori under image-only and caption-only adjacency), sup D∼D ′ ∥u(D) −
+
+u(D′)∥2 ≤ 2√2/N . Moreover, with one-hot embeddings 
+
+ei = onehot( yi) and ridge λ → 0, the regression map 
+
+W = Mzc (Mcc + λI )−1 satisfies W:,y = ¯ zy , the empirical mean of class y.Proof. Sensitivity. Replacing (z, e ) by (z′, e ′) changes the first block by 
+
+∥ze ⊤ − z′e′⊤ ∥F
+
+N RR txt 
+
+≤ ∥z∥∥ e∥ + ∥z′∥∥ e′∥
+
+N RR txt 
+
+≤ 2
+
+N ,
+
+using ∥ab ⊤∥F = ∥a∥ ∥ b∥ for rank-one matrices and the triangle inequality; the second block is bounded by 2/N 
+
+identically with z replaced by e. The two blocks oc-cupy disjoint coordinates, so the joint change is at most p(2 /N )2 + (2 /N )2 = 2 √2/N . Image-only ( e′ = e) and caption-only ( z′ = z) replacements are special cases of the pair replacement, so the same bound holds under either single-field replacement. 
+
+Class equivalence. With one-hot embeddings, Mcc =diag(ˆ π) with ˆπy = ny /N and Mzc = [ˆ π1 ¯z1, . . . , ˆπY ¯zY ]
+
+(column y sums the class-y images divided by N ). Hence 
+
+W:,y = ˆ πy ¯zy /(ˆ πy + λ) → ¯zy as λ → 0: the text-conditional release reduces exactly to the per-class means, and Propo-sition 3.1 applies with μ(c) in place of μy because the Gaussian-conditioning argument of Section B.2 never uses more than the conditional mean. 
+
+B.5 The THA planner and Remark 3.3 
+
+This section specifies the allocation planner referenced in the main text: the shape family Cβ (t) ∝  w(t)p ¯V (t)/(1 − t)β
+
+built from the loss weighting w(t) and the posterior-variance trace ¯V (t) = tr Cov[ z | xt] of the released analytic field, with β ∈ { 0, 14 , 12 , 34 , 1} and β=0 the uniform plan. We first formalize the planner, then verify its two guaran-tees; both are immediate once stated precisely: the guarantee holds by construction rather than by any property of the prior. 
+
+The planner as an algorithm. Fix the budget (εbudget , δ ),the bucket structure, and the public prior functions 
+
+w(·), ¯V (·). For each β in the finite family B =
+
+{0, 14 , 12 , 34 , 1}:1. form the clip profile Cβ (t) ∝  w(t)p ¯V (t)/(1 − t)β ,discretized to the buckets (note β = 0 gives the constant profile: the uniform plan); 2. calibrate a single noise scale by bisection so that the ex-act PLD accountant, run on the fully declared workload (bucket counts, sampling rate, per-bucket Ck, σ k), certi-fies ε(Pβ ) ≤ εbudget ; discard β if calibration fails in the search range; 3. score the calibrated candidate with a public utility proxy 
+
+U (Pβ ).Let B′ ⊆ B be the calibrated subset and return P ⋆ =arg max β∈B ′ U (Pβ ).
+
+Guarantee (i): budget. P ⋆ ∈ B ′, and membership in B′ is 
+
+the accountant’s certificate ε(P ⋆) ≤ εbudget ; nothing further is needed. 
+
+Guarantee (ii): never worse than uniform. The uniform plan P0 always calibrates (bisection over a single scale for a fixed workload always terminates in the standard range), so 
+
+P0 ∈ B ′; since P ⋆ maximizes U over a set containing P0, we get U (P ⋆) ≥ U (P0). This holds for every choice of proxy 
+
+U : the guarantee does not depend on the prior being right, only on uniform being in the family. 
+
+Privacy cost of planning: zero. w, ¯V and U are computed on public data; the accountant is a deterministic function of declared parameters. The private data is touched only by the single plan that is eventually executed, whose privacy is exactly the certificate from step 2. 
+
+## C Text-conditional moment release 
+
+The finite partition is not essential. For general captions, re-lease the whitened cross moments   1 
+
+> RR txt
+
+Mzc , 1
+
+> R2txt
+
+Mcc 
+
+
+
+with Mzc = 1
+
+> N
+
+P 
+
+> i
+
+zie(ci)⊤ and Mcc = 1
+
+> N
+
+P 
+
+> i
+
+e(ci)e(ci)⊤,where e(c) is a caption featurization clipped to Rtxt (publicly calibrated). One replacement moves each whitened block by at most 2/N (rank-one differences), so the joint replace sen-sitivity is 2√2/N , the same 1/N decay as the covariance. The bound is moreover unchanged when only the image or only the caption of a record is replaced (Proposition B.10). Ridge post-processing yields the linear conditional mean 
+
+μ(c) = μ0 + Mzc (Mcc + λI )−1e(c), and Proposition 3.1 holds verbatim with μy replaced by μ(c): conditioning only moves the mean. With one-hot embeddings this exactly re-covers the per-class means (Proposition B.10), so the class-conditional release is the special case. The mechanism is fixed; what governs utility is the noise geometry of the fea-turization, and three choices matter. (i) Centering and in-tercept : caption embeddings share a large common compo-nent that carries no conditional information but dominates the whitened budget, so we center e(c) at its public mean and absorb the shared part into the released unconditional mean μ0 (the global release of Stage 1, already paid for). (ii) 
+
+Image-side projection : as in the class-conditional release, the cross moment is formed against features P (z − μ0)
+
+clipped to Rfeat in the public PCA basis, and W is lifted back through P ⊤. (iii) Featurization : for templated captions we parse against the public template and use per-slot indi-cator vectors (one one-hot block per attribute); for free-form captions, the pooled embedding of a frozen public text en-coder. The three featurizations span discrete to free-form conditioning: one-hot vectors (classes), per-slot indicators (attribute compositions), and pooled encoder embeddings (unrestricted captions). Table 4 compares them. 
+
+C.1 Experiments across featurizations 
+
+How much of the Stage-1 gain survives when the finite class partition is replaced by the cross-moment release, as the conditioning signal moves from discrete labels to-ward free-form captions (Table 4)? Per-slot indicator fea-tures reach 0.632 ± 0.067 against the class-conditional ref-erence 0.724 ± 0.033 , whose release they generalize (the reference is the exact one-hot special case); the residual gap is attributable to inverting the noised Mcc . Pooled frozen-encoder features reach 0.464 ± 0.049 , and both geometric corrections of the Stage-1 release are essential: removing the image-side projection drops accuracy to 0.32 , and removing the centering and the released intercept to 0.12 , below the pipeline without any moment release. On composed-MNIST the text-conditional release preserves multi-attribute control-lability: indicator features match the class-conditional con-trol on quadrant accuracy and approach it on stroke thickness, while class accuracy is at chance for all variants including the control , so the shortfall on that attribute is a property of the task at this scale and budget, not of the release. Both settings give the same ordering: the more discrete the cap-tion featurization, the closer the release comes to its class-conditional ceiling, with the mechanism, sensitivity bound, and accounting unchanged throughout. The residual gap is also budget-dependent in the direction the noise explanation predicts: for indicator features it narrows from 0.345 ± 0.025 
+
+vs. 0.443 ± 0.047 at ε=0 .3 through 0.632 vs. 0.724 at ε=1 to 
+
+0.829 ±0.032 vs. 0.848 ±0.004 at ε=3 . As the budget grows, the noised Mcc inversion sharpens and the text-conditional release converges to its class-conditional special case. 
+
+## D Generation quality and empirical audits 
+
+D.1 Generation quality: marginals vs. conditionals 
+
+FID measures the marginal sample distribution and is nearly blind to class mismatch: the baseline’s FID ( 62 .7) is close to ours ( 66 .7) while its conditional utility is 3.5× worse. We therefore report FID/P/R alongside downstream accu-racy rather than in place of it. Figure 5 shows the samples be-hind these numbers: the baseline retains public-domain glyph structure at all budgets, the pixel-space models sharpen with budget, and the latent variant produces the most digit-like samples at every budget at the price of decoder smoothing (the precision artifact analyzed below). Three label-aware metrics quantify the divergence directly at ε=1 (Table 5, 10 4 samples per run, 3 seeds): per-class FID ,the mean over classes of FID between generated and real test samples of the same class; label consistency , the agreement of a classifier trained on real MNIST with the conditioning label of each generated sample; and domain rate , the fraction of samples a real MNIST-vs-KMNIST classifier assigns to the private domain. Conditioning FID on the class reverses Table 4: Text-conditional moment release at ε=1 : MNIST downstream accuracy and per-attribute conditioning accuracy on composed-MNIST (captions specify class, quadrant marker, and stroke thickness), across caption featurizations; 3 seeds throughout. The class-conditional release is the exact one-hot special case (Proposition B.10). The last two rows ablate the Stage-1 release geometry (single seed, MNIST only).                                
+
+> MNIST composed-MNIST Caption featurization Acc Class Quadrant Stroke One-hot class (reference) 0.724 ±0.033 0.106 1.000 1.000
+> Per-slot indicators 0.632 ±0.067 0.114 1.000 0.843
+> Pooled text encoder 0.464 ±0.049 0.111 0.886 0.748
+> without image-side projection 0.32 ———without centering or intercept 0.12 ———
+
+Table 5: Label-aware metrics at ε=1 (MNIST, 3 seeds, mean ±std; bold: best per column). pcFID = per-class FID; cons. = label consistency (chance 0.1); domain = fraction as-signed to the private domain by a real MNIST-vs-KMNIST classifier.               
+
+> pcFID ↓Label cons. Domain Moments only (GMM) 264 .4±2.90.621 ±0.005 0 .944 ±0.059
+> Uniform DP-SGD 107 .1±0.20.170 ±0.006 0.649 ±0.072
+> StraightDP (pixel) 101 .4±2.40.444 ±0.049 0.689 ±0.049
+> + Low-B0backbone 112 .6±0.30.348 ±0.017 0.795 ±0.069
+
+the pixel-space ordering at this budget: uniform DP-SGD wins on label-blind FID ( 62 .7 vs. 66 .7) but loses on per-class FID ( 107 .1 vs. 101 .4), and its label consistency sits near the chance level of 0.1, so its samples carry almost no information about the label they were conditioned on. The released-moments sampler shows the mirror image, label consistency 0.62 and the highest domain rate in the table at a per-class FID of 264 : the prototype signature of the main text in label-aware form. Table 6 gives FID across the budget for all three training configurations (3 seeds). Two patterns reinforce the caveat. First, FID improves monotonically with the budget and the three methods converge by ε=3 : at weak privacy, quality is no longer a discriminator, even though downstream ac-curacy still separates the methods by 0.1–0.2. Second, at 
+
+ε=0 .3 the pixel model has the worst FID ( 94 .1) yet a higher 
+
+downstream accuracy than the baseline ( 0.443 vs. 0.055 ): the two metrics move in opposite directions exactly where the distinction matters most. The point is sharpest against the prior methods, all run under our protocol (same (ε, δ ),replace-adjacency PLD accounting, public-only calibration, identical evaluation). The one-shot embedding family at-tains strong downstream accuracy precisely because a la-beled mean embedding is what a classifier probe needs, DP-MERF (Harder, Adamczewski, and Park 2021) at 0.823 –
+
+0.856 across ε ∈ [0 .3, 10] and essentially flat in the budget, while its FID never approaches a sample-quality regime; neither the Hermite-feature successor DP-HP (Vinaroz et al. 2022) nor the NTK-feature successor DP-NTK (Yang et al. 2023) improves on it once protocol, calibration, and gen-erator are held fixed (their reported orderings come from per-dataset tuning). Private Evolution (Lin et al. 2024), run from the same frozen KMNIST prior as every pipeline row, fails in the opposite direction: its selection objective is the Inception feature space, so with enough votes FID drops monotonically to 35 .4 ± 0.4 at ε=10 , below every training route, while downstream accuracy never leaves the vicinity of chance ( 0.044 –0.111 ); the evolved populations stay on the prior’s Kuzushiji manifold, whose conditioning keeps re-generating glyph c for caption c, so nearest-neighbor votes cannot rebind the class semantics. An aggressive variation schedule (renoising to tv ∈ [0 .1, 0.5] instead of [0 .45 , 0.85] )lifts accuracy only to 0.134 at ε=1 : the failure is structural, not an artifact of variation strength. Each training-free mech-anism saturates exactly the metric it optimizes and no other; we report both throughout. 
+
+D.2 Precision/recall: three structural signatures 
+
+Table 7 completes the marginal picture with improved pre-cision/recall ( k=3 ) (Kynkäänniemi et al. 2019), computed in the same Inception feature space as FID: precision is the fraction of generated samples inside the real data’s k-NN manifold (per-sample fidelity), recall the fraction of real sam-ples inside the generated manifold (mode coverage). Neither sees labels, and three patterns that look anomalous at first sight are in fact structural, each corroborated by a metric that moves the opposite way. 
+
+(i) The baseline wins the label-blind metrics while losing the labeled one. Uniform DP-SGD holds the best or tied-best P/R at every budget, with the worst downstream accu-racy. Its domain transfer fails: at strong privacy the weights barely leave the public pretraining, so it emits clean, diverse Kuzushiji-style glyphs (Figure 5, main text) whose low-level stroke statistics sit close to the MNIST feature manifold. A cleanly wrong marginal beats a noisily right one on any label-blind metric; the accuracy column inverts the ordering by up to 8×. Our pixel model at ε=0 .3 incurs the mirror-image cost (P/R 0.15 /0.38 , FID 94 .1): it genuinely moves toward the private domain and absorbs DP noise on the way. 
+
+(ii) The latent variant’s precision collapses and is flat in the budget. Precision falls to 0.03 –0.05 while the same sam-ples give the best accuracy at ε ≤ 1. The frozen decoder smooths high-frequency structure and displaces every sam-ple by a similar offset in feature space, to just outside the tight 
+
+k-NN balls of the nearly binary real digits, so the “inside the Table 6: FID vs. budget (MNIST, 3 seeds, mean ±std; bold: best among the training configurations). The prior methods below the rule run under our protocol. The embedding family’s probe accuracy is nearly flat in ε (0.82 –0.86 for DP-MERF, 0.74 –0.81 
+
+for its successors) while its FID never approaches a usable regime; Private Evolution inverts the failure, optimizing Inception statistics directly, so its FID reaches 35 .4 while its accuracy stays at or below chance.                                                                                         
+
+> FID ↓ε=0 .3ε=1 ε=3 ε=10
+> Uniform DP-SGD 72 .5±0.362 .7±0.151 .6±0.141 .4±0.2
+> StraightDP (pixel) 94 .1±2.766 .7±0.651 .5±0.341 .3±0.6
+> StraightDP (latent) 64 .1±1.356 .5±0.850 .2±0.144 .9±0.4
+> DP-MERF 280 .6±0.8182 .8±5.0109 .1±2.497 .4±1.9
+> DP-HP 284 .3±5.0219 .8±4.5167 .3±5.6158 .5±3.7
+> DP-NTK 333 .8±3.0292 .7±3.4249 .1±5.7229 .8±11 .1
+> Private Evolution 122 .4±2.181 .4±0.852 .8±2.035 .4±0.4
+
+ball” count collapses wholesale. The flatness in ε identifies the mechanism: the bottleneck is a decoder property, not a privacy-noise property. The downstream classifier reads stroke topology rather than texture, so conditional informa-tion passes through the smoothing intact; recall survives at 
+
+≈0.33 because the generated manifold, with its own radii, still reaches a third of the real points. 
+
+(iii) The stream clamp contracts diversity. The low-B0
+
+backbone has the lowest recall at strong privacy ( 0.314 at 
+
+ε=0 .3): bounding activations trades expressive diversity for per-sample gradient signal-to-noise and concentrates genera-tions on prototypical forms, the same trade that yields +27% 
+
+accuracy (Table 2). Absolute levels are depressed throughout (the best preci-sion in the table is 0.26 ): 28 ×28 grayscale digits upsampled to Inception’s input resolution are a coarse instrument, a known artifact of feature-space P/R at MNIST scale, so the table should be read comparatively rather than absolutely. Outside these three signatures, P and R rise monotonically with the budget, as expected. 
+
+D.3 Gradient concentration under the stream clamp 
+
+Every run logs per-step quantiles of the per-sample gradient norms and the clip fraction; these logs quantify the mecha-nism claimed for the low-B0 gain. At ε=0 .3 (pixel, 3 seeds, medians over steps): the unconstrained backbone has per-sample norm quantiles p50 =1337 , p90 =2156 (upper-tail ra-tio p90 /p 50 = 1 .61 ) at clip fraction 0.14 ; the clamped back-bone has p50 =1450 , p90 =2116 (ratio 1.46 ) at clip fraction 
+
+0.13 . The clamp narrows the upper tail rather than shrinking the median: fewer samples are far above the clip, which is exactly the regime where clipping bias interacts worst with large σ. These are training-trajectory statistics, not worst-case bounds; the claim in the main text is empirical. 
+
+D.4 Attack audits 
+
+Accounted budgets are worst-case statements; we comple-ment them with empirical attacks against the recommended configurations (Table 8). A membership-inference attack thresholds the flow-matching residual ∥vθ (tz + (1 − t)ξ, t ) −
+
+(z − ξ)∥ of train versus held-out records, the statistic our training most directly optimizes; its AUC is indistinguishable from chance. Canary extraction plants out-of-distribution se-crets in the training set and ranks them by model likelihood after training; none of the 50 canaries is preferentially gen-erated. The one-run audit inserts 200 canaries in a single training run and derives a lower bound on ε from guess-ing accuracy; at accuracy 0.49 the bound is vacuous, again consistent with the ledger. Finally, every reported run’s ac-counting transcript is replayed offline, and the recomputed totals never exceed the declared budgets. Across all attacks the measured leakage lies far below the accounted ε, as ex-pected when the analyzed worst case is not attained by natural data. 
+
+Reproducibility statement All experiments run from a single repository with one command per run; every mech-anism execution writes an auditable accounting transcript (JSONL) from which reported ε is recomputed; all calibra-tions use public data only; seeds and hyperparameters are enumerated in Section E. 
+
+Ethics statement This work strengthens privacy protec-tions for generative training and provides accounted guaran-tees plus empirical audits; we do not foresee direct negative applications beyond generic generative-model concerns. 
+
+## E Hyperparameters 
+
+Compute infrastructure. Every run uses a single GPU on a Slurm cluster: NVIDIA L40S (48 GB) or A100 (40 GB) for training and evaluation, with the conditional metrics of Table 5 computed on 32-core CPU nodes. Software: Python 3.11, PyTorch 2.12 (CUDA 12.6), diffusers 0.39 and peft 0.19 (SD3 only), and the dp-accounting 0.6 PLD ac-countant; per-sample gradients use torch.func directly. A pixel-space MNIST pipeline run completes in under two GPU-hours, a latent run in minutes, and one SD3 guidance evaluation in about twenty GPU-minutes. All values in Table 9 (final page) are read from the archived per-run configurations; none was tuned on private data (clip references, bucket shapes, τ , and enforcement targets are public-data calibrations). 
+
+Guidance start. The one guidance-specific hyperparam-eter is the start time t0; Figure 4 sweeps it and locates the operating point. Table 7: Improved precision/recall ( k=3 ) vs. budget (MNIST, 3 seeds, mean ±std); methods as in Table 1. The three structural signatures analyzed in the text: the label-blind metrics prefer the baseline’s clean wrong-domain glyphs; the latent variant’s precision collapse is decoder smoothing (flat in ε); the low-B0 clamp contracts recall. 
+
+ε=0 .3 ε=1 ε=3 
+
+Method P R P R P RUniform DP-SGD (baseline) 0.164 ± 0.002 0.443 ± 0.016 0.219 ± 0.002 0.510 ± 0.015 0.246 ± 0.001 0.543 ± 0.004 
+
+THA-planned DP-SGD 0.167 ± 0.013 0.443 ± 0.022 0.219 ± 0.002 0.506 ± 0.012 0.248 ± 0.008 0.548 ± 0.011 
+
+THA + moments (pixel) 0.149 ± 0.017 0.381 ± 0.038 0.207 ± 0.013 0.471 ± 0.012 0.258 ± 0.003 0.519 ± 0.013 
+
++ Low-B0 backbone (pixel) 0.138 ± 0.014 0.314 ± 0.027 0.228 ± 0.013 0.405 ± 0.020 0.233 ± 0.005 0.459 ± 0.013 
+
+THA + moments (latent) 0.032 ± 0.001 0.331 ± 0.013 0.039 ± 0.003 0.337 ± 0.007 0.046 ± 0.002 0.320 ± 0.009 
+
+Table 8: Attack audits on recommended configurations; all empirical leakage is consistent with (far below) the accounted budgets. Canary extraction follows Carlini et al. (2019); the one-run audit follows Steinke, Nasr, and Jagielski (2023) (200 canaries, 100 guesses). 
+
+Audit Result Criterion Velocity-residual membership inference AUC 0.482 ≈ 0.5
+
+Canary extraction ( 50 canaries) 0/50 extracted indistinguishable from null One-run auditing guess accuracy 0.49 , εlb = 0 εlb ≤ ε
+
+Transcript replay achieved ≤ declared, all runs exact 
+
+End-to-end control. A two-dimensional Gaussian-mixture instance of the full pipeline runs in minutes and served as an end-to-end check during development; Figure 6 sweeps the budget on it. Table 9: Hyperparameters. One column per pipeline component; shared values stated once. λ0: covariance floor eigenvalue; q:Poisson sampling rate; Cref : reference clip before the public rescaling. 
+
+Backbone dual-stream DiT: width 192 , depth 6, 6 heads, patch 4 (28 ×28 input) caption stream: frozen public encoder, width 64 , length 8, vocabulary 256 
+
+constrained variants: B0=16 , ℓ0=1 (decoupled attention), spectral cap s=1 
+
+Public pretraining KMNIST (Fashion-MNIST in the transfer replication); 20 ,000 steps, batch 256 , AdamW lr 10 −4, EMA 0.999 , puncond =0 .1
+
+latent variant: frozen public autoencoder; 12 ,000 steps on latents 
+
+Stage 1 (moments) release weight ρmom =0 .2 (effective share 0.235 ε after renormalization over active stages); covariance rank r=32 , λ0=10 −2
+
+class release: public PCA offsets, feature clip Rfeat (public quantile) text release: image-side projection p=64 , ridge λ=10 −3,
+
+Rtxt at 1.1× the public embedding-norm quantile distillation: 3,000 steps, batch 256 , lr 10 −4, public replay; 
+
+τ =0 .35 , capped by the public cosine-knee calibration (the knee is public-domain stable: KMNIST and Fashion-MNIST publics both select τ =0 .25 in the latent variant) 
+
+Stage 2 (THA) DP-SGD weight ρsgd =0 .65 (effective share 0.765 ε); 2,000 steps, rate q=0 .02 (E[batch ]=1200 ), noise multiplicity 4, lr 5×10 −5, EMA 0.999 , puncond =0 .1
+
+K=4 buckets, shapes β ∈ { 0, 14 , 12 , 34 , 1}, Cref =1 publicly rescaled accounting: exact PLD, δ=10 −5; RDP bisection inside the planner 
+
+Prior methods DP-MERF: 10 ,000 RFF, public median-heuristic bandwidth; generator 
+
+2×512 MLP, 6,000 matching steps, Adam lr 10 −3 (shared by all three) DP-HP: sum kernel order 20 + product kernel over 1,500 public-variance pixel pairs (order 3, weight α=0 .5); DP-NTK: ReLU NTK, width 300 
+
+Private Evolution: T =10 vote rounds (PLD-composed), pop. 1,000 /class, 
+
+2 variations, tv ∈ [0 .45 , 0.85] ; SD3: T =8 , 20 /class, σv ∈ [0 .35 , 0.8] 
+
+Evaluation 10 ,000 samples, 25 Euler steps, guidance 1.5; LeNet probe for down-stream accuracy (train on synthetic, test on real); FID and precision/ recall ( k=3 ) in Inception-V3 features; seeds 0–2 throughout moments only (GMM)      
+
+> ε= 0.3 ε= 1 ε= 3
+> uniform DP-SGD StraightDP (pixel) + low-B0 backbone StraightDP (latent)
+
+Figure 5: Samples across budgets (rows: moments only, uniform DP-SGD, StraightDP pixel, + low-B0 backbone, StraightDP latent; columns ε ∈ { 0.3, 1, 3}). Direct samples of the release are prototype-like; at strong privacy the DP-SGD baseline still emits public-domain glyphs; the release routes generation toward digits, and the latent variant is leg-ible already at ε=0 .3.0.1 0.3 1.0 
+
+privacy budget ε
+
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> 1.2
+> 1.4
+> 1.6
+> 1.8
+> empirical  W2 ( ↓ )
+> StraightDP
+> uniform DP-SGD
+
+Figure 6: Two-dimensional mixture control: Wasserstein-2 distance to the true distribution vs. budget (mean ± s.d. over up to 3 seeds; shaded bands). Both plans improve with budget and remain within seed noise of each other at this scale: the toy control verifies the pipeline end-to-end, but the problem is too small to separate the training plans; the separation emerges at MNIST scale (Table 1).

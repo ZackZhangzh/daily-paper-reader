@@ -1,0 +1,2679 @@
+Title: Flow Matching with Missing Data
+
+URL Source: https://arxiv.org/pdf/2607.28698v1
+
+Published Time: Mon, 03 Aug 2026 00:02:49 GMT
+
+Number of Pages: 34
+
+Markdown Content:
+# Flow Matching with Missing Data 
+
+Fairoz Nower Khan, Nabuat Zaman Nahim, and Peizhong Ju Department of Computer Science, University of Kentucky 
+
+Abstract 
+
+Flow matching assumes fully observed training data, which many real-world applications rarely provide. We propose Missing-Data Flow Matching, which treats the missing coordinates of training samples as latent variables and averages the flow matching loss over the values they could take. We first prove the correction is exact rather than approximate. Under missing completely at random with true completions, the incomplete-data objective equals the complete-data objective, so missingness changes nothing about what flow matching learns and the entire difficulty relocates to the completion model. Our finite-sample analysis then answers design questions that the algorithm leaves open, and the answers are not the ones intuition suggests. Missingness transfers estimator variance rather than adding it, one completion per example already matches complete-data variance exactly, and under a fixed evaluation budget one com-pletion is optimal. A learned completion model contributes a single irreducible bias, which we bound by its expected conditional Wasserstein distance to the true completion law. Experiments numerically validate the theoretical predictions, show that deterministic rather than frozen im-putation is what collapses the generated distribution, and place our method alongside strong classical and deep imputation baselines on real tabular data. 
+
+# 1 Introduction 
+
+Flow matching has become an effective approach to generative modeling. It learns a time-dependent vector field that transports a base distribution to the data distribution and trains it through a stable regression objective without simulating the generative dynamics during training [Lipman et al., 2023, Tong et al., 2024]. Standard flow matching, however, assumes that every training endpoint is fully observed. However, real-world data are often incomplete. Medical records omit tests that were not per-formed, sensors drop readings, and surveys leave questions unanswered. Since the training loss needs a complete data point as the endpoint of its interpolation path, missingness prevents standard flow matching from constructing the endpoint, its interpolation path, and the corresponding regression target. A standard solution is point imputation, which fills each missing value with a single estimate such as its conditional mean [Little and Rubin, 2019]. This can be adequate for predictive tasks that depend mainly on the mean, but it is poorly suited to generative learning. Flow matching learns to reproduce the distribution of the endpoints it trains on, so filling each missing part with one value collapses a whole range of plausible values into a single point that the model then learns to generate. The very reason multiple imputation was introduced, that a single fill understates variability [Rubin, 1976], is the reason it breaks a generative model. The left subfigure of Figure 1 shows this collapse. 1arXiv:2607.28698v1 [cs.LG] 30 Jul 2026 Point imputation     
+
+> true spread
+> point mass at μ
+> x−Λ
+> generated Var( x−Λ|xΛ) = 0
+
+Resample (ours)       
+
+> target =truth
+> x−Λ
+> generated Var( x−Λ|xΛ) = s2
+
+Figure 1: Point imputation collapses the conditional distribution of a missing coordinate. Flow matching learns from the distribution of its training endpoints. Left, deterministic imputation sets every endpoint to the conditional mean μ, so the generated coordinate has conditional variance 
+
+0 and loses the true spread (dashed). Right, resampling from the true conditional preserves that spread. Both preserve the mean, but only resampling preserves conditional variability. To solve that problem, we treat the missing coordinates as latent variables. Instead of commit-ting to one value, we draw fresh completions of the missing part from its conditional distribution given the observed part and average the flow matching loss over them. We name our method Missing-Data Flow Matching (MDFM). An important result we prove is that this correction is exact, not approximate. When data are missing completely at random (MCAR) [Rubin, 1976], and the completions come from the true conditional distribution, training flow matching from incomplete data is exactly equivalent to training it from complete data. The two objectives are the same function of the model, so wherever they are differentiable their gradients agree. Missingness does not change what flow matching is trying to learn. It relocates the difficulty to estimating the conditional completion distribution. Although the theory we prove shows that the algorithm does not need a huge modification from vanilla flow matching, we find that some key design choices will greatly affect the performance and thus needs a more careful investigation. How many completions should each example receive, and does heavier missingness demand more? How should a fixed evaluation budget be split between completions and examples? How much does an imperfect completion model cost? Our finite-sample analysis answers these at a fixed parameter setting, and our trained-model experiments answer the separate question of whether completions should be drawn fresh every epoch or drawn once and frozen. Missing data does not make the loss estimate noisier. It moves the fluctuation into a place that averaging over completions can remove, and our bound on the total estimator variance does not depend on how much data is missing. One completion per example turns out to be enough, and under a fixed evaluation budget drawing more is worse than collecting more incomplete examples. What matters once the sample is reasonably large is the quality of the completion model alone, and we identify the distance between that model and the truth that controls the remaining bias. Our work sits between two recent lines. Score matching with missing data corrects the training objective for incomplete data [Givens et al., 2025], while methods like conditional flow matching for imputation (CFMI) use flow matching to impute missing values well [Simkus and Gutmann, 2025]. We use a completion model as the engine, but our target is the full generative flow, and our theory says exactly when and why plugging completions into flow matching recovers the complete data model. 
+
+Contributions. We summarize our contributions as follows. 2• We introduce Missing-Data Flow Matching, which trains flow matching from partially observed data by treating missing coordinates as resampled latent variables. With oracle completions, its population objective equals complete-data flow matching under MCAR, and we extend the analysis to MAR and MNAR. • We derive a finite-sample variance decomposition showing that one oracle completion matches complete-data variance and is optimal under a fixed evaluation budget. For learned comple-tions, we bound the population-objective bias by their conditional Wasserstein distance to the truth. • We validate the theoretical predictions on synthetic data and show that stochastic completion preserves generated conditional variability. On real tabular data, MDFM is competitive with strong imputation pipelines and performs best on covariance preservation. 
+
+# 2 Related Work 
+
+Generative modeling from incomplete data. Flow matching and related continuous generative models assume fully observed training endpoints [Lipman et al., 2023, Tong et al., 2024, Chen et al., 2018, Liu et al., 2023, Albergo and Vanden-Eijnden, 2023]. Deep latent variable models learn from incomplete data directly through importance weighted or arbitrary conditioning autoencoders, ad-versarial models, and conditional normalizing flows [Mattei and Frellsen, 2019, Ivanov et al., 2019, Li et al., 2019, 2020], and a parallel line learns from lossy measurements without ever seeing a clean sample [Bora et al., 2018, Daras et al., 2023]. Those works change the generative training signal to account for the corruption operator. We leave the flow matching loss untouched and repair only the endpoint. 
+
+Imputation and objective correction. Classical methods such as MICE and MissForest remain strong on tabular data [Van Buuren and Groothuis-Oudshoorn, 2011, Stekhoven and Bühlmann, 2012], deep imputers scale further [Yoon et al., 2018, Tashiro et al., 2021, Jolicoeur-Martineau et al., 2024], and flow based imputers such as CFMI report state of the art results [Simkus and Gutmann, 2025]. These produce completions rather than a joint model, so in our framework they are candidates for qφ rather than competitors. A separate line changes the training objective itself. MissDiff masks the denoising score matching loss on the missing coordinates and proves consistency of the learned score [Ouyang et al., 2023], and missing data score matching marginalizes the unobserved coordinates through a marginal score identity [Hyvärinen and Dayan, 2005, Givens et al., 2025], both within the classical framework of Rubin [Rubin, 1976, Little and Rubin, 2019]. MDFM changes neither the loss nor the target. It supplies the endpoint the ordinary loss already needs, which is why its correction is an exact equality rather than a consistency statement. 
+
+# 3 Preliminaries and Problem Setup 
+
+We write the full data vector as X = ( X1, . . . , X d) ∈ Rd, where [d] = {1, . . . , d } indexes the coordinates. Throughout the paper, superscripts index coordinates and subscripts index flow time, which keeps a coordinate Xj separate from the flow endpoints defined below. The data follow an unknown distribution p⋆ on Rd, and ‖ · ‖ is the Euclidean norm. We write a set of observed coordinates as Λ ⊆ [d] and its complement, the missing coordinates, as −Λ := [ d] \ Λ. For a vector 
+
+x ∈ Rd, the observed part xΛ ∈ R|Λ| and the missing part x−Λ ∈ Rd−| Λ| are sub-vectors that do not record where those coordinates sit inside x, so we always carry Λ alongside xΛ, and (xΛ, x −Λ)
+
+denotes the full vector reassembled in its original coordinates. Appendix A collects the notation, 3together with an explicit statement of which variables each expectation and variance in the analysis averages over and which it holds fixed. 
+
+3.1 Flow Matching 
+
+Flow matching learns a vector field that transports a base distribution to the data distribution. It draws a base sample X0 ∼ p0 and a data sample X1 ∼ p⋆, then connects them with the straight line path Xt = (1 − t)X0 + tX 1 for t ∈ [0 , 1] . A neural vector field vθ(x, t ) with parameters θ is trained to predict the constant velocity X1 − X0 of this path. Writing the per-sample loss as 
+
+ℓθ(x0, x 1, t ) := ∥∥vθ(xt, t ) − (x1 − x0)∥∥2,xt = (1 − t)x0 + tx 1,
+
+the complete-data flow matching objective is 
+
+LFM (θ) := EX0∼p0, X 1∼p⋆, T ∼Unif[0 ,1] 
+
+[ℓθ(X0, X 1, T )],
+
+where the three variables are drawn independently. It will be useful to average out the base point and the time while holding the endpoint fixed. We write 
+
+gθ(x1) := EX0∼p0, T ∼Unif[0 ,1] 
+
+[ℓθ(X0, x 1, T )],
+
+which is a deterministic function of x1, so that LFM (θ) = EX1∼p⋆ [gθ (X1)] . Every expectation and variance in this paper is taken at a fixed parameter θ, and carries a subscript naming the variables it averages over. Appendix A states these for each quantity in the analysis. Minimizing LFM gives a field whose flow map pushes p0 toward p⋆ [Lipman et al., 2023, Tong et al., 2024]. We use T for the random time and t for a fixed value. 
+
+3.2 Missing Data and the MCAR Mechanism 
+
+With missing data we never see the full vector X, only a partially observed version of it. A binary mask M ∈ { 0, 1}d records which coordinates are present, and the observed set is Λ = {j ∈ [d] : 
+
+M j = 1 }. Each training example is therefore an incomplete observation 
+
+O = (Λ , X Λ),
+
+which reveals the observed coordinates XΛ and hides the rest. The endpoint that flow matching needs is X1 = ( XΛ, X −Λ), but only XΛ is available, so the missing part X−Λ must be supplied before the path Xt and the target X1 − X0 can be formed. This gap is what our method fills. We work in the missing completely at random regime, the simplest mechanism in the framework of Rubin [Rubin, 1976, Little and Rubin, 2019]. Under MCAR the mask is independent of the data, 
+
+M ⊥ X, so whether a coordinate is observed carries no information about its value. Writing p⋆Xλ for the marginal of p⋆ on a coordinate set λ, MCAR gives the property we use throughout. For every λ with P(Λ = λ) > 0, the observed part follows exactly that marginal, 
+
+XΛ | { Λ = λ} ∼ p⋆Xλ , so conditioning on which coordinates are seen does not distort the distribution of what is seen. Two quantities describe how much is missing and how we handle it. For an observed set Λ, the number of missing coordinates is m(Λ) = | − Λ|, and the average missing fraction across the data is 
+
+ρ = E[m(Λ)] 
+
+d ∈ [0 , 1] , so E[m(Λ)] = ρd. 
+
+4To fill the missing part we use a completion model that samples plausible values of X−Λ from the observed part. The ideal completion is the true posterior of the missing coordinates given everything observed, including the pattern. Under MCAR the mask is independent of the data, so this posterior reduces to the conditional law p⋆X−Λ|XΛ (x−Λ | xΛ), which we call the oracle and abbreviate to p⋆(x−Λ | xΛ). Proposition 4.5 treats the general case. In practice we use a learned model qφ(x−Λ | xΛ, Λ) , which retains Λ not for statistical reasons but because one network serving many patterns must be told which coordinates it is looking at. Our analysis studies the oracle first and then studies the realistic situation using qφ.
+
+# 4 Missing-Data Flow Matching 
+
+We now build an objective that trains flow matching from incomplete data. We keep the flow matching loss ℓθ untouched and change only how we supply the endpoint it needs. 
+
+4.1 The Oracle Objective 
+
+The problem is a missing endpoint, so we treat it as a latent variable. For an incomplete observation 
+
+O = (Λ , X Λ), the observed part XΛ is fixed and the missing part X−Λ is unknown. A single guess for 
+
+X−Λ pretends there is only one plausible value when there are usually many. Instead we average over the plausible values, weighting each one by how likely it is under the true conditional p⋆(x−Λ | XΛ).This turns one incomplete example into an expectation over completions. Given XΛ, we draw 
+
+X−Λ ∼ p⋆(· | XΛ), form the completed endpoint X1 = ( XΛ, X −Λ), and evaluate the usual flow matching loss on it. The completed endpoint is constructed, not observed. The training procedure never requires an example to arrive fully observed, although Section 5.3 notes a separate identifiabil-ity condition. Averaging over the missing part, the base point, the time, and the observed pattern gives the oracle missing-data flow matching objective 
+
+LMDFM (θ) = EΛEXΛ EX−Λ∼p⋆(·| XΛ)EX0,T 
+
+[ℓθ(X0, X 1, T )], (1) with X1 = ( XΛ, X −Λ).We call this the oracle objective because it assumes the true conditional. The word oracle marks the one thing we do not have in practice, which is access to p⋆(x−Λ | xΛ). We study it first because it isolates the effect of missingness cleanly, and we bring in a learned model afterward. 
+
+4.2 Exact Correction at the Population Level 
+
+Our central result is that the oracle objective equals the complete-data objective. Averaging over true completions does not merely approximate complete-data flow matching, it reproduces it exactly. We state this after one regularity condition, since MCAR was already fixed in the setup. 
+
+Assumption 4.1 (Regularity) . For every λ with P(Λ = λ) > 0, the conditional p⋆(x−λ | xλ) exists as a regular conditional distribution, p0 and p⋆ have finite second moment, and vθ is measurable and square integrable under the induced path distribution. Appendix B.6 gives simple sufficient conditions, including linear growth of vθ, under which Assumption 4.1 holds. 
+
+Theorem 4.2 (Oracle equivalence) . Under MCAR and Assumption 4.1, for every θ,
+
+LMDFM (θ) = LFM (θ).
+
+5Proof sketch. Fix an observed pattern λ. Under MCAR the observed part follows the true marginal 
+
+p⋆λ, so marginalizing the completion recovers EX∼p⋆ [gθ(X)] = LFM (θ) for that pattern by the tower property (Lemma B.1). The result is a constant free of λ, so averaging over Λ leaves it unchanged. Full proof in Appendix C.1. 
+
+Corollary 4.3 (Gradient agreement) . Under the conditions of Theorem 4.2, at every θ where both objectives are differentiable, ∇θLMDFM (θ) = ∇θLFM (θ). If in addition ∇θℓθ is integrable and differentiation and expectation may be exchanged, the expected stochastic gradients of the two objectives coincide. Proof. Immediate from Theorem 4.2, since equal functions have equal derivatives wherever both exist. 
+
+1) No approximation is required, unlike the score matching analogue. Score matching with missing data must introduce a marginal score identity and then approximate an intractable integral over the missing coordinates [Givens et al., 2025]. Flow matching needs neither, because its regression target X1 − X0 becomes explicit the moment an endpoint is completed. 
+
+2) The difficulty relocates rather than disappears. Corollary 4.3 transfers the equality to gradients, but it does not follow that finite-sample optimization trajectories or the resulting trained fields coincide. Exactness also holds only for completions drawn from the correct conditional, so everything that was hard about missing data now sits in the completion model, and the next section charts what that costs. 
+
+Remark 4.4 (Why point imputation generally fails) . Deterministic imputation replaces the missing part of each endpoint by a fixed value ˆx−Λ(xΛ), so its objective averages gθ over the point mass 
+
+δˆx−Λ(xΛ) rather than over p⋆(· | xΛ). When the rule is the conditional mean and gθ is affine in the missing coordinates, the two agree for every conditional. For flow matching gθ is generally nonlinear in the endpoint, so the imputed objective generally differs and trains the model to reproduce a point mass in place of the true conditional spread. Appendix D.8 makes the gap explicit. 
+
+Proposition 4.5 (Equivalence beyond MCAR) . Let P ⋆ be the joint law of (X, Λ) , let O = (Λ , X Λ),and let r⋆λ(· | xλ) = P ⋆(X−λ ∈ · | Xλ = xλ, Λ = λ) be the true posterior of the missing part. If completions are drawn from r⋆
+
+> Λ
+
+(· | XΛ), then for every integrable gθ,
+
+EO EX−Λ∼r⋆
+
+> Λ(·| XΛ)
+
+[gθ(X)] = EX∼p⋆
+
+[gθ(X)],
+
+regardless of the missingness mechanism. When data are missing at random (MAR), r⋆λ(· | xλ) = 
+
+p⋆(x−λ | xλ) almost everywhere, so Theorem 4.2 holds with the same objective. When data are missing not at random (MNAR), the posterior depends on Λ and is generally not identifiable from observed data without further structure [Ipsen et al., 2020]. Appendix D develops all three mecha-nisms in full and shows exactly how each one acts on the flow matching objective. Proof sketch. The inner expectation is E[gθ(X) | O] by definition of the posterior, and the tower property (Lemma B.1) gives the claim. The MAR specialization follows from cancellation of the mask factors in Bayes’ rule. Appendix D gives the full argument together with the exact form of the objective under each mechanism. 
+
+4.3 Learning with a Completion Model 
+
+In practice we replace the oracle with a learned completion model. We train a mask-conditioned model qφ(x−Λ | xΛ, Λ) to sample plausible missing parts from the observed part and the observed set, 6since one model must handle many missingness patterns and needs to know which coordinates are present. So that the later analysis can treat qφ as fixed and independent of the evaluation sample, we fit it on an independent auxiliary sample and freeze φ before training the flow matching objective. Our analysis does not fix the form of qφ, since Lemma 5.7 charges only its Wasserstein distance to the true conditional. Flow matching is a natural choice, and conditional flow matching imputers already exist for this task [Simkus and Gutmann, 2025]. We train qφ by self supervised masking, hiding a further subset of the observed entries and predicting them from the rest. Under MCAR the retained entries are a random subset, so this supervises qφ with genuine draws from conditionals of p⋆. Using qφ on the patterns training actually needs extrapolates across patterns, which is why Section 5.3 states an identifiability condition. Appendix E.1 gives the details. Substituting qφ for the oracle in (1) gives the objective we can actually optimize, 
+
+Lφ(θ) = EO E ˜X−Λ∼qφ(·| O) EX0,T 
+
+[ℓθ
+
+(X0, ˜X1, T )] ,
+
+with ˜X1 = ( XΛ, ˜X−Λ).We estimate this objective with a finite sample and a finite number of completions. Suppose we have n incomplete examples Oi = (Λ i, X (i)Λi ). For each one we draw K completions ˜X(i,k ) 
+
+> −Λi
+
+∼
+
+qφ(· | X(i)Λi , Λi), together with independent X(i,k )0 ∼ p0 and T (i,k ) ∼ Unif[0 , 1] . Each completion yields an endpoint ˜X(i,k )1 = ( X(i)Λi , ˜X(i,k ) 
+
+> −Λi
+
+) and a loss Y φ, (i,k ) 
+
+> θ
+
+= ℓθ(X(i,k )0 , ˜X(i,k )1 , T (i,k )). The learned missing-data flow matching estimator averages these, ̂
+
+Lφn,K (θ) = 1
+
+n
+
+> n
+
+∑
+
+> i=1
+
+1
+
+K
+
+> K
+
+∑
+
+> k=1
+
+Y φ, (i,k ) 
+
+> θ
+
+.
+
+This estimator is unbiased for Lφ, not in general for LFM . Replacing qφ by the true conditional gives the oracle estimator ̂ L⋆n,K , which we analyze first in the next section, before charging the extra cost of a learned model. Algorithm 1 in Appendix E.1 states the full procedure. We resample X0 and T for every completion so the losses stay conditionally independent given the observation, which is the property the variance analysis relies on. 
+
+# 5 Finite-Sample Analysis 
+
+Theorem 4.2 is a population statement, and real training uses finitely many examples and comple-tions. This section measures the gap. Proofs are sketched here and given in full in Appendix C, which relies on the standard tools collected in Appendix B. We analyze the oracle estimator ̂
+
+L⋆n,K (θ) = 1
+
+n
+
+> n
+
+∑
+
+> i=1
+
+1
+
+K
+
+> K
+
+∑
+
+> k=1
+
+ℓθ
+
+(X(i,k )0 , X ⋆, (i,k )1 , T (i,k )),
+
+whose completed endpoint uses oracle draws X⋆, (i,k )1 = ( X(i)Λi , X ⋆, (i,k ) 
+
+> −Λi
+
+) with X⋆, (i,k ) 
+
+> −Λi
+
+∼ p⋆(· | X(i)Λi ),and X(i,k )0 ∼ p0, T (i,k ) ∼ Unif[0 , 1] . For one observation O = (Λ , X Λ) we write the per-completion loss as Yθ and its conditional mean as μθ(O) = E[Yθ | O].75.1 Unbiasedness and Variance Decomposition 
+
+Three quantities describe the fluctuation of the estimator. Recall gθ(x1) from the preliminaries. We define the between observation variance, the base Monte Carlo variance, and the conditional completion variance as 
+
+τ 2 
+
+> θ
+
+= Var O
+
+(μθ(O)),σ2 
+
+> θ, base
+
+= EX1∼p⋆
+
+[ Var X0∼p0, T 
+
+(ℓθ(X0, X 1, T ) ∣∣ X1
+
+)] ,σ2 
+
+> θ, miss
+
+= EO
+
+[ Var X−Λ∼p⋆(·| XΛ)
+
+(gθ (XΛ, X −Λ) ∣∣ O)] .
+
+Only the third is introduced by missingness. Note that μθ(O) is an expectation but not a constant, since it averages out the completion, the base point, and the time and leaves a function of the random observation O, so τ 2 
+
+> θ
+
+is the variance of that remaining randomness. Appendix A tabulates which variables each quantity averages over. 
+
+Theorem 5.1 (Unbiasedness and variance decomposition) . Let O1, . . . , O n be i.i.d. incomplete ob-servations. Assume MCAR, Assumption 4.1, and that ℓθ(X0, X 1, T ) is square integrable under the complete-data path distribution. Then for every θ and every K ≥ 1,
+
+E[̂ L⋆n,K (θ)] = LFM (θ),
+
+Var S
+
+(̂ L⋆n,K (θ)) = 1
+
+n
+
+[
+
+τ 2 
+
+> θ
+
++ σ2 
+
+> θ, base
+
++ σ2
+
+> θ, miss
+
+K
+
+]
+
+,
+
+where Var S is taken over the n observations, the nK completions, and the nK base points and times, at fixed θ, n, and K. Moreover τ 2 
+
+> θ
+
++ σ2 
+
+> θ, miss
+
+= Var( gθ (X1)) .Proof sketch. Conditional on Oi the K inner losses are i.i.d. with mean μθ(Oi), and Theorem 4.2 gives E[μθ(Oi)] = LFM (θ). Independence across observations reduces the variance to that of a single per-observation average, and two applications of the law of total variance (Lemma B.2), first conditioning on Oi and then on the sampled completion, split it into the three quantities above. The transfer identity is the same law applied to gθ(X1) given O. Full proofs in Appendices C.2 to C.4. 
+
+Corollary 5.2 (Variance consequences) . Under the conditions of Theorem 5.1, for every K ≥ 1,
+
+Var (̂ L⋆n,K (θ)) = 1
+
+n
+
+[
+
+Var( gθ(X1)) − (1 − 1
+
+> K
+
+)σ2 
+
+> θ, miss
+
++ σ2
+
+> θ, base
+
+K
+
+]
+
+, (2) 
+
+and consequently 
+
+Var (̂ L⋆n,K (θ)) ≤ 1
+
+n
+
+[
+
+Var( gθ (X1)) + σ2
+
+> θ, base
+
+K
+
+]
+
+, (3) 
+
+with equality at K = 1 . Under a fixed evaluation budget N = nK ,
+
+Var (̂ L⋆n,K (θ)) = Kτ 2 
+
+> θ
+
++ σ2 
+
+> θ, base
+
++ σ2
+
+> θ, miss
+
+N , (4) 
+
+which is nondecreasing in K and strictly increasing when τ 2 
+
+> θ
+
+> 0.
+
+8Proofs are in Appendix C.6. Three consequences follow, and they are the practical content of the theorem. 
+
+1) Missingness transfers variance rather than adding it. The right side of (3) carries no dependence on the missing fraction. By the transfer identity, missingness moves variance out of τ 2
+
+> θ
+
+and into σ2
+
+> θ, miss
+
+, which averaging over completions reduces, and (2) shows that term entering with a nonpositive coefficient. Larger conditional uncertainty therefore creates more reducible variance, not more total variance. 
+
+2) One oracle completion costs nothing relative to complete data. At K = 1 the variance equals 1 
+
+> n
+
+[Var( gθ (X1)) + σ2
+
+> θ, base
+
+], which is exactly that of one-sample complete data flow matching, because a single fresh completion is marginally a complete data draw. For general K the right side of (3) is the variance of a complete data estimator using the same n endpoints with K base point and time draws each, not that of nK independent endpoints. Figure 2 in Appendix E.4 confirms both to within four percent, with the two quantities estimated by independent routes so the agreement is a check and not a tautology. 
+
+3) Extra completions help only when the number of examples is fixed. By (4), if the budget is measured in loss evaluations and more incomplete observations are available, spending it on observations is always at least as good. Multiple completions are a tool for the regime where data is scarce and compute is not, which is a practical rule for setting K. Figure 6 in Appendix E.8 is consistent with this. 
+
+5.2 Bounding the Conditional Completion Variance 
+
+We bound the one quantity missingness introduces in terms of how much is missing. 
+
+Assumption 5.3 (Bounded data) . Every coordinate lies in [−R, R ], so |Xj | ≤ R for all j.
+
+Assumption 5.4 (Lipschitz endpoint loss) . Fix θ and let X ⊆ Rd be a convex set containing the support of p⋆ and the support of every completed endpoint distribution we consider. The endpoint loss gθ is Lg-Lipschitz on X .Because ℓθ is a squared error, gθ may grow quadratically in the endpoint and need not be globally Lipschitz on Rd. It suffices that p0 is compactly supported and that vθ(·, t ) is Lipschitz uniformly in 
+
+t, since the regression residual is then Lipschitz in the endpoint and bounded on the compact path domain, and the square of a bounded Lipschitz function is Lipschitz. Theorem 5.5 and Lemma 5.7 use gθ only on X .
+
+Theorem 5.5 (Completion variance bound) . Under Assumptions 5.3–5.4, σ2 
+
+> θ, miss
+
+≤ R2L2 
+
+> g
+
+ρd .Proof sketch. Conditional on O, two completions differ only in the m missing coordinates, so gθ
+
+spans a range of at most 2RL g
+
+√m. Popoviciu’s inequality (Lemma B.3) converts the range into a variance bound, and averaging over O uses E[m(Λ)] = ρd . Full proof in Appendix C.5. 
+
+The missing fraction controls the completion-only error, not the total error. Let ¯μ =
+
+> 1
+> n
+
+∑ 
+
+> i
+
+μθ(Oi) and ̂ Gn,K = 1
+
+> nK
+
+∑ 
+
+> i,k
+
+gθ (X⋆, (i,k )1 ), the endpoint-loss average with the base point and time noise removed. Then ES [( ̂Gn,K − ¯μ)2] = σ2
+
+> θ, miss
+
+/(nK ) ≤ R2L2
+
+> g
+
+ρd/ (nK ) (Appendix C.6), while the total estimator variance remains capped by (3) for any missing fraction. For fixed n, R, Lg, and a fixed tolerance on this completion-only error, K ∝ ρd is therefore a sufficient worst-case scaling and not a requirement. The bound uses the full coordinate range and is loose in practice. Figure 3 in Appendix E.5 measures the ratio σ2
+
+> θ, miss
+
+/(R2L2
+
+> g
+
+ρd ) at the order of 10 −4, while the measured variance still grows close to linearly in ρd , so the shape the theorem predicts is right even though the constant is far too large. 9Theorem 5.6 (Oracle Bernstein bound) . Fix θ and assume i.i.d. observations, oracle completions under MCAR, Assumptions 4.1, 5.3, 5.4, and 0 ≤ ℓθ ≤ B almost surely. Writing Vρ,K = min 
+
+{
+
+τ 2 
+
+> θ
+
++  
+
+> σ2
+> θ, base +R2L2
+> gρd
+> K
+
+, Var (gθ(X1)) + σ2
+
+> θ, base
+> K
+
+}
+
+, with probability at least 1 − δ,
+
+∣∣̂ L⋆n,K (θ) − L FM (θ)∣∣ ≤
+
+√ 2Vρ,K log(2 /δ )
+
+n + 2B log(2 /δ )
+
+3n .
+
+Proof sketch. The per-observation averages are i.i.d. in [0 , B ] with mean LFM (θ) and variance at most Vρ,K by Theorems 5.1 and 5.5, the boundedness assumption supplying the square integrability that Theorem 5.1 requires. Apply Bernstein’s inequality (Lemma B.4) and invert. Full proof in Appendix C.7. 
+
+The boundedness condition fails for a Gaussian base, but flow matching does not require one, and a compactly supported p0 together with Assumption 5.3 confines the path and the target to a compact set. Our experiments include such a configuration. Appendix C.7 gives the details and the sub-exponential alternative. The deviation is OP(√Vρ,K /n ), so the estimate converges at the usual parametric rate, and the second branch of Vρ,K carries no dependence on the missing fraction at all. 
+
+5.3 The Learned Completion Estimator 
+
+The estimator we actually run draws completions from qφ, and its error splits into estimation and bias, ̂
+
+Lφn,K (θ) − L FM (θ) = ̂ Lφn,K (θ) − L φ(θ)
+
+︸ ︷︷ ︸
+
+> estimation
+
++ Lφ(θ) − L FM (θ)
+
+︸ ︷︷ ︸
+
+> bias
+
+.
+
+We condition throughout on the completion model fitted on the independent auxiliary sample, so the evaluation observations and their completion draws are i.i.d. given qφ. The variance decomposition of Theorem 5.1 then applies verbatim with qφ-specific constants, written Vθ,φ,K and defined in Appendix C.7, since its proof uses only conditional independence and the tower property rather than the particular completion law. The bias is controlled by a transport distance. 
+
+Lemma 5.7 (Completion-bias bound) . Let r⋆
+
+> Λ
+
+(· | XΛ) = P ⋆(X−Λ ∈ · | XΛ, Λ) be the true posterior of the missing part. Suppose Assumption 5.4 holds, that the completed endpoints under qφ and under r⋆ 
+
+> Λ
+
+lie in X almost surely, that both have finite first moments, and that EO W1(qφ(· | O), r ⋆
+
+> Λ
+
+(· | 
+
+XΛ)) < ∞. Then for every θ,
+
+∣∣Lφ(θ) − L FM (θ)∣∣ ≤ Lg EO
+
+[W1
+
+(qφ(· | XΛ, Λ) , r ⋆
+
+> Λ
+
+(· | XΛ))] .
+
+Under MCAR or MAR, r⋆
+
+> Λ
+
+(· | XΛ) = p⋆(· | XΛ), so the bound reduces to the ordinary data condi-tional. Proof sketch. At fixed O the two objectives differ only in the law used to average gθ , and Kantorovich– Rubinstein duality (Lemma B.5) bounds that difference by LgW1. Full proof in Appendix C.8. 
+
+Under the bounded-loss conditions stated in Appendix C.7, Bernstein’s inequality makes the estimation term OP(√Vθ,φ,K /n ), so combining it with Lemma 5.7 gives 
+
+∣∣̂ Lφn,K − L FM 
+
+∣∣ ≤ ∣∣̂ Lφn,K − L φ
+
+∣∣ + bφ = OP
+
+(√ 
+
+Vθ,φ,K /n 
+
+)
+
++ bφ,
+
+10 where bφ := |L φ(θ) − L FM (θ)| ≤ Lg EOW1(qφ, r ⋆
+
+> Λ
+
+) by Lemma 5.7. Corollary C.3 states the corre-sponding explicit high-probability inequality. 
+
+1) Completion quality sets the error floor. The estimation term vanishes as n grows, leaving the population bias bφ = |L φ(θ) − L FM (θ)|, which Lemma 5.7 bounds by Lg EOW1(qφ, r ⋆
+
+> Λ
+
+). Beyond a moderate sample size, further data does not improve the objective and only a better completion model does. This turns the common objection, that we have merely relocated the problem into 
+
+qφ, into a quantitative statement. Figure 4 in Appendix E.6 confirms Lemma 5.7 across twelve completion models of deliberately varying quality, with every measured bias below the bound and climbing along it as the completion distance grows. 
+
+2) The two error sources respond to different resources. The estimation term shrinks with evaluation data and completions, while the bias term shrinks only with auxiliary data and modelling effort spent on qφ. While √Vθ,φ,K /n dominates, collect more incomplete examples. Once it falls below Lg EOW1, improve the completion model instead. Note that qφ also determines the variance constants, so an overdispersed completion model raises the finite-sample error even when its bias is small, which argues for calibrated rather than merely accurate completions. A guarantee that the bias vanishes additionally requires the observed-pattern marginals to iden-tify the joint law within the chosen model class. This constrains the patterns rather than the algorithm. One sufficient condition under MCAR is P(Λ = [ d]) > 0, and restricted model classes admit weaker ones. Appendix D.7 discusses this. 
+
+5.4 Scope of the Guarantees 
+
+All results here concern the scalar loss estimators at a fixed θ, not the quality of the trained field. The population objectives coincide for every θ, so their gradients agree wherever both are differentiable and, given integrability, so do the expected stochastic gradients. This does not imply that finite-sample optimization trajectories or generated distributions match. We investigate that relationship empirically, but a theoretical guarantee connecting loss estimation to the generated distribution remains open. 
+
+# 6 Experiments 
+
+Our experiments validate each theoretical claim and then test the method on real data. Figures 2 and 4 in the appendix confirm the variance decomposition, the K = 1 identity, and the completion-bias bound. This section reports how a trained field behaves and how the method performs on real tabular data. Appendix E gives the full protocol, the remaining figures, and per-dataset results. 
+
+Setup. Synthetic runs use a zero-mean Gaussian with an AR(1) correlation, whose true conditional is available in closed form, at d ∈ { 10 , 50 , 100 } and ρ from 0.1 to 0.9 under MCAR. Real runs use seven numeric UCI datasets [Asuncion et al., 2007] from 178 to 1797 rows and 9 to 61 features. Every number averages five seeds. 
+
+The oracle correction is exact and the worst-case bound is loose. The relative gap 
+
+|L MDFM − L FM |/LFM stays below half a percent and shrinks with dimension, from 0.48% at d = 10 
+
+to 0.10% at d = 100 , while the MDFM-to-FM gradient cosine matches the complete-data same-noise baseline, 0.967 against 0.966 at d = 100 . The measured σ2 
+
+> θ, miss
+
+stays below the cap R2L2
+
+> g
+
+ρd by three to four orders of magnitude while still growing close to linearly in ρd , which is why K ∝ ρd is a sufficient worst-case rule and not a requirement. 11 distributional rank ↓ imputation 
+
+# method sW 2 energy MMD cov RMSE CRPS 
+
+# Complete-FM (skyline) 1.93 1.69 1.57 1.72 – –Mean + FM 5.05 5.17 5.55 5.60 1.008 –MICE + FM 2.74 2.49 2.21 3.13 1.038 –MissForest + FM 3.26 3.47 3.53 3.27 0.808 –GAIN + FM 5.18 5.42 5.17 4.44 1.115 –MDFM (ours) 2.84 2.76 2.97 2.85 0.895 0.434 
+
+Table 1: Real data, seven UCI datasets at five missing rates, mean over five seeds. The first four columns are the average rank on distributional distance to held-out data, lower is better, with the skyline ranked. The last two are imputation error on the hidden entries. Best incomplete-data method in bold , second underlined .
+
+Deterministic imputation collapses the generated spread. We train fields under seven com-pletion strategies that share one pool of incomplete observations and differ only in how the missing part is supplied. Deterministic conditional-mean imputation recovers 64% of the true conditional standard deviation and triples the distributional error, while every stochastic strategy, resampled or frozen and oracle or fitted, recovers 97% or more and matches complete-data flow matching. The dividing line is therefore deterministic against stochastic rather than frozen against resampled, since a frozen stochastic draw still gives each endpoint a genuine sample from the conditional and loses only the per-observation averaging. This sharpens Remark 4.4. What breaks a generative model is committing to one value. 
+
+MDFM is competitive on real data and best on covariance preservation. Table 1 reports the average rank of each method across seven datasets and five missing rates. MICE and MDFM take the top two average ranks on all four distributional metrics. MICE leads sliced W2, energy distance, and MMD, while MDFM achieves the best covariance error of any method trained on incomplete data. On imputation error MissForest attains the best RMSE and MDFM is second. Both leaders perform substantially better than mean imputation and GAIN. A learned resampled completion therefore matches the best classical imputer on the marginals and does better on the second-moment structure that a joint generative model is meant to capture. The gap widens as data go missing. Figure 7 in Appendix E.10 plots distance against the missing rate. Every method is close to the skyline at ρ = 0 .1, mean imputation and GAIN climb steeply, and MDFM stays lowest of all incomplete-data methods on covariance error across the whole high-missingness range. This is the regime where the method matters most, since a single deterministic fill destroys the dependence structure exactly when there is the most structure to lose. Stochastic completion also gives a calibrated imputation that point methods cannot. On RMSE MDFM is second to MissForest, which is expected, since RMSE rewards the conditional mean and a stochastic method does not aim for it. The continuous ranked probability score is the honest measure for a distributional completion [Gneiting and Raftery, 2007]. We report it only for MDFM, because the baseline pipelines were instantiated with a single completed dataset while MDFM retains 12 multiple conditional completion samples at evaluation time. Our baselines share one backbone and differ only in how the missing coordinates are supplied, which isolates the contribution of the method. Appendix E.11 explains why CFMI Simkus and Gutmann [2025], CSDI [Tashiro et al., 2021], and HyperImpute [Jarrett et al., 2022] are natural choices for qφ rather than baselines for the joint task. 
+
+# 7 Conclusion and Future Work 
+
+We introduced Missing-Data Flow Matching, which trains flow matching directly from partially observed data by treating the missing coordinates as resampled latent variables. The correction is exact rather than approximate, since under MCAR with true completions the incomplete-data objective equals the complete-data objective, so the difficulty relocates entirely to the completion model. Our finite-sample analysis shows that missingness transfers estimator variance rather than adding it, that one completion per example already matches complete-data variance and is optimal under a fixed budget, and that a learned completion model contributes a single irreducible bias, which its expected conditional Wasserstein distance to the truth bounds. The open case is missing not at random, where the required posterior conditions on the mask and is generally not identifiable without extra structure [Ipsen et al., 2020]. It also remains to connect estimator variance to the quality of the trained field rather than the loss alone. A further limitation is our concentration result for the learned estimator conditions on a completion model fitted to data independent of the evaluation sample and relaxing that, so same incomplete data can serve both purposes, is left to future work. 
+
+# References 
+
+Michael Samuel Albergo and Eric Vanden-Eijnden. Building normalizing flows with stochastic interpolants. In The Eleventh International Conference on Learning Representations , 2023. Arthur Asuncion, David Newman, et al. Uci machine learning repository, 2007. Ashish Bora, Eric Price, and Alexandros G Dimakis. Ambientgan: Generative models from lossy measure-ments. In International conference on learning representations , 2018. Stéphane Boucheron, Gábor Lugosi, and Pascal Massart. Concentration Inequalities: A Nonasymptotic Theory of Independence . Oxford University Press, 2013. ISBN 9780199535255. Ricky TQ Chen, Yulia Rubanova, Jesse Bettencourt, and David K Duvenaud. Neural ordinary differential equations. Advances in neural information processing systems , 31, 2018. Giannis Daras, Kulin Shah, Yuval Dagan, Aravind Gollakota, Alex Dimakis, and Adam Klivans. Ambient diffusion: Learning clean distributions from corrupted data. Advances in Neural Information Processing Systems , 36:288–313, 2023. Josh Givens, Song Liu, and Henry Reeve. Score matching with missing data. In International Conference on Machine Learning , pages 19523–19561. PMLR, 2025. Tilmann Gneiting and Adrian E Raftery. Strictly proper scoring rules, prediction, and estimation. Journal of the American statistical Association , 102(477):359–378, 2007. Aapo Hyvärinen and Peter Dayan. Estimation of non-normalized statistical models by score matching. 
+
+Journal of Machine Learning Research , 6(4), 2005. Niels Bruun Ipsen, Pierre-Alexandre Mattei, and Jes Frellsen. not-miwae: Deep generative modelling with missing not at random data. arXiv preprint arXiv:2006.12871 , 2020. 
+
+13 O Ivanov, M Figurnov, and D Vetrov. Variational autoencoder with arbitrary conditioning. In 7th Interna-tional Conference on Learning Representations, ICLR 2019 , 2019. Daniel Jarrett, Bogdan C Cebere, Tennison Liu, Alicia Curth, and Mihaela van der Schaar. Hyperimpute: Generalized iterative imputation with automatic model selection. In International Conference on Machine Learning , pages 9916–9937. PMLR, 2022. Alexia Jolicoeur-Martineau, Kilian Fatras, and Tal Kachman. Generating and imputing tabular data via diffusion and flow-based gradient-boosted trees. In International conference on artificial intelligence and statistics , pages 1288–1296. PMLR, 2024. Diederik P Kingma and Jimmy Ba. Adam: A method for stochastic optimization. arXiv preprint arXiv:1412.6980 , 2014. Steven Cheng-Xian Li, Bo Jiang, and Benjamin Marlin. Misgan: Learning from incomplete data with generative adversarial networks. In International Conference on Learning Representations , 2019. Yang Li, Shoaib Akbar, and Junier Oliva. Acflow: Flow models for arbitrary conditional likelihoods. In 
+
+International Conference on Machine Learning , pages 5831–5841. PMLR, 2020. Yaron Lipman, Ricky TQ Chen, Heli Ben-Hamu, Maximilian Nickel, and Matthew Le. Flow matching for generative modeling. In The Eleventh International Conference on Learning Representations , 2023. Roderick JA Little and Donald B Rubin. Statistical analysis with missing data . John Wiley & Sons, 2019. Xingchao Liu, Chengyue Gong, et al. Flow straight and fast: Learning to generate and transfer data with rectified flow. In The Eleventh International Conference on Learning Representations , 2023. Pierre-Alexandre Mattei and Jes Frellsen. Miwae: Deep generative modelling and imputation of incomplete data sets. In International conference on machine learning , pages 4413–4423. PMLR, 2019. Yidong Ouyang, Liyan Xie, Chongxuan Li, and Guang Cheng. Missdiff: Training diffusion models on tabular data with missing values. arXiv preprint arXiv:2307.00467 , 2023. Tiberiu Popoviciu. Sur les équations algébriques ayant toutes leurs racines réelles. Mathematica , 9(129-145): 20, 1935. Donald B Rubin. Inference and missing data. Biometrika , 63(3):581–592, 1976. Vaidotas Simkus and Michael U Gutmann. Cfmi: Flow matching for missing data imputation. arXiv preprint arXiv:2506.09258 , 2025. Daniel J Stekhoven and Peter Bühlmann. Missforest—non-parametric missing value imputation for mixed-type data. Bioinformatics , 28(1):112–118, 2012. Yusuke Tashiro, Jiaming Song, Yang Song, and Stefano Ermon. Csdi: Conditional score-based diffusion models for probabilistic time series imputation. Advances in neural information processing systems , 34: 24804–24816, 2021. Alexander Tong, Kilian FATRAS, Nikolay Malkin, Guillaume Huguet, Yanlei Zhang, Jarrid Rector-Brooks, Guy Wolf, and Yoshua Bengio. Improving and generalizing flow-based generative models with minibatch optimal transport. Transactions on Machine Learning Research , 2024. Stef Van Buuren and Karin Groothuis-Oudshoorn. mice: Multivariate imputation by chained equations in r. Journal of statistical software , 45:1–67, 2011. Cédric Villani et al. Optimal transport: old and new , volume 338. Springer, 2009. Jinsung Yoon, James Jordon, and Mihaela Schaar. Gain: Missing data imputation using generative adver-sarial nets. In International conference on machine learning , pages 5689–5698. PMLR, 2018. 
+
+14 A Notation and Sources of Randomness 
+
+This appendix collects the notation used throughout the paper and then states, for every expectation and variance appearing in the analysis, exactly which variables are averaged over and which are held fixed. 
+
+A.1 Notational Conventions 
+
+We follow three conventions. First, superscripts index coordinates and subscripts index flow time, so a coordinate Xj is never confused with a flow endpoint X1. Second, every expectation and variance carries a subscript naming the variables it is taken over, together with their laws at first use; later occurrences abbreviate once the meaning is fixed. Third, conditional distributions are written with explicit random-variable subscripts when first defined, so that 
+
+p⋆X−λ |Xλ (x−λ | xλ)
+
+names the conditional law of X−λ given Xλ under X ∼ p⋆, evaluated at the values x−λ and xλ. In the body we abbreviate this to p⋆(x−λ | xλ) wherever the conditioning is unambiguous. 
+
+A.2 Notation 
+
+Data and missingness 
+
+d data dimension 
+
+[d] index set {1, . . . , d }
+
+Xj coordinate j of X
+
+Λ, −Λ observed set, missing set [d] \ Λ
+
+XΛ, X −Λ observed part in R|Λ|,missing part in Rd−| Λ|
+
+M mask in {0, 1}d, M ⊥ X under MCAR 
+
+O incomplete observation (Λ , X Λ)
+
+m(Λ) number of missing coordinates | − Λ|
+
+ρ average missing fraction E[m(Λ)] /d n, K examples, completions per example 
+
+i, k index over examples, completions 
+
+Distributions 
+
+p⋆ true data distribution of Xp⋆Xλ marginal of p⋆ on λp⋆X−Λ|XΛ oracle completion conditional 
+
+P ⋆ joint law of (X, Λ) 
+
+r⋆X−λ |Xλ,Λ true posterior of X−λ
+
+given xλ and Λ = λp0 base distribution of X0
+
+qφ learned completion model, params φ
+
+Flow matching 
+
+t, T time value, random time ∼ Unif[0 , 1] 
+
+X0, X 1 base sample, data endpoint 
+
+Xt path (1 − t)X0 + tX 1
+
+vθ model vector field, params θℓθ per-sample flow matching loss 
+
+gθ(x1) loss over X0, T at fixed endpoint x1
+
+Objectives and estimators 
+
+LFM complete-data objective 
+
+LMDFM oracle missing-data objective 
+
+Lφ objective under learned qφ
+
+Lnaive objective under the data conditional ̂
+
+L⋆n,K oracle estimator, completions from p⋆̂
+
+Lφn,K learned estimator, completions from qφ
+
+Yθ random per-completion loss 
+
+μθ (O) per-observation mean E[Yθ | O]
+
+Y i per-observation average over K̂
+
+Gn,K endpoint-loss average 
+
+¯μ ideal per-observation average 
+
+Constants 
+
+τ 2 
+
+> θ
+
+between-observation variance 
+
+σ2 
+
+> θ, base
+
+base Monte Carlo variance 
+
+σ2 
+
+> θ, miss
+
+conditional completion variance 
+
+R coordinate bound, |Xj | ≤ RLg Lipschitz constant of gθ
+
+B, B φ loss bounds, oracle and under qφ
+
+δ failure probability 
+
+W1 Wasserstein-1 distance 
+
+τ 2 
+
+> θ,φ
+
+between-observation variance under qφ
+
+σ2 
+
+> θ,φ, base
+
+base variance under qφ
+
+σ2 
+
+> θ,φ, comp
+
+completion variance under qφ
+
+Vρ,K , V θ,φ,K per-observation variance bounds 
+
+πλ(x) missingness mechanism 
+
+w(x) MNAR reweighting factor 
+
+15 A.3 What Each Expectation Averages Over 
+
+Every quantity in the analysis is defined at a fixed parameter θ, so θ is never a source of randomness. The table below records, for each remaining quantity, which variables are averaged out and which survive. 
+
+Quantity Averaged over Remains random in 
+
+gθ(x1) X0 ∼ p0, T ∼ Unif[0 , 1] nothing 
+
+LFM (θ) X0, X1 ∼ p⋆, T nothing 
+
+LMDFM (θ) Λ, XΛ, X−Λ, X0, T nothing 
+
+Yθ nothing O, X−Λ, X0, Tμθ(O) X−Λ, X0, T given O Oτ 2 
+
+> θ
+
+O (as a variance) nothing 
+
+σ2 
+
+> θ, base
+
+X0, T inside, X1 outside nothing 
+
+σ2 
+
+> θ, miss
+
+X−Λ inside, O outside nothing 
+
+Y i K inner draws Oî
+
+L⋆n,K (θ) nothing the whole sample 
+
+Two entries deserve comment, because they are the usual source of confusion. First, μθ (O) is an expectation but not a constant. It averages out the completion, the base point, and the time, and what survives is a function of the incomplete observation O. Since O = (Λ , X Λ) is itself random, so is μθ(O), and this is exactly the randomness that τ 2 
+
+> θ
+
+= Var O (μθ(O)) measures. Writing an expectation therefore does not always remove all randomness, and the subscript on the outer variance is what records which randomness is left. Second, σ2 
+
+> θ, base
+
+and σ2 
+
+> θ, miss
+
+are each an expectation of a variance, so they involve two nested averaging steps over different variables. In σ2 
+
+> θ, base
+
+the inner variance is over (X0, T ) at a fixed endpoint and the outer expectation is over the endpoint. In σ2 
+
+> θ, miss
+
+the inner variance is over the completion at a fixed observation and the outer expectation is over the observation. Interchanging the two would give a different quantity, which is why both subscripts are stated. Finally, the estimator variance Var( ̂L⋆n,K (θ)) in Theorem 5.1 is taken over the full sampling procedure, namely the n incomplete observations, the nK completions, and the nK base points and times, with θ, n,and K held fixed. 
+
+# B Standard Probabilistic Tools and Their Specialization to Our Setting 
+
+This appendix states the standard results used in our proofs, together with the substitutions that specialize each one to our setting. Throughout, all random variables are defined on a common probability space and are assumed integrable to the order required. 
+
+B.1 Tower Property and Disintegration 
+
+Lemma B.1 (Tower property) . Let U be an integrable real random variable and V any random element on the same space. Then E[E[U | V ]] = E[U ]. More generally, if κ(· | v) is a regular conditional distribution of 
+
+W given V = v and h is integrable under the joint law, then 
+
+EV
+
+[ ∫
+
+h(V, w ) κ(dw | V )
+
+]
+
+= E[h(V, W )]. (5) 
+
+Proof. The first claim is the defining property of conditional expectation applied to the trivial σ-algebra. For (5), the inner integral equals E[h(V, W ) | V ] almost surely by definition of a regular conditional distribution, and taking expectations gives the claim by the first part. 
+
+Where we use it. In Theorem 4.2 we take V = Xλ, W = X−λ, κ = p⋆(· | xλ), and h = gθ. In Proposition 4.5 we take V = O, W = X−Λ, and κ = r⋆
+
+> Λ
+
+.
+
+16 B.2 Law of Total Variance 
+
+Lemma B.2 (Law of total variance) . Let U be a square-integrable real random variable and let V be any random element on the same space. Then 
+
+Var( U ) = E[ Var( U | V )] + Var (E[U | V ]). (6) 
+
+If W is a further random element, the same identity holds conditionally, 
+
+Var( U | W ) = E[ Var( U | V, W ) ∣∣ W ] + Var (E[U | V, W ] ∣∣ W ). (7) 
+
+Proof. Write m(V ) = E[U | V ]. By definition of conditional variance, 
+
+E[ Var( U | V )] = E[E[U 2 | V ] − m(V )2] = E[U 2] − E[m(V )2],
+
+using the tower property for the first term. Also 
+
+Var( m(V )) = E[m(V )2] − (E[m(V )] )2 = E[m(V )2] − (E[U ])2.
+
+Adding the two displays gives E[U 2] − (E[U ]) 2 = Var( U ), which is (6). Identity (7) is (6) applied under the regular conditional distribution given W .
+
+Where we use it. Lemma B.2 is applied three times, with the following substitutions. 
+
+Use U conditioning 
+
+Theorem 5.1, transfer gθ(X1) V = O
+
+Theorem 5.1, step 2 Y i V = Oi
+
+Theorem 5.1, step 3 Y (i, 1)  
+
+> θ
+
+V = X⋆, (i, 1)  
+
+> −Λi
+
+, W = Oi
+
+In the first use, E[U | V ] = μθ (O) and Var( U | V ) is the conditional variance of gθ over completions, so (6) reads Var( gθ(X1)) = σ2 
+
+> θ, miss
+
++ τ 2 
+
+> θ
+
+. In the third use, (7) is the relevant form, since the decomposition is carried out conditionally on the observation Oi.
+
+B.3 Popoviciu’s Inequality 
+
+Lemma B.3 (Popoviciu’s inequality) . Let Z be a random variable with a ≤ Z ≤ b almost surely. Then 
+
+Var( Z) ≤ (b − a)2
+
+4 .
+
+Proof. The variance is the minimum mean squared deviation, so for the midpoint c = ( a + b)/2,
+
+Var( Z) ≤ E[(Z − c)2].
+
+Since Z ∈ [a, b ] almost surely, |Z − c| ≤ (b − a)/2 almost surely, whence E[( Z − c)2] ≤ (b − a)2/4.
+
+The inequality is due to Popoviciu [Popoviciu, 1935]; sharper variants exist but are not needed here. 
+
+Where we use it. In Theorem 5.5 we take Z = gθ(xΛ, X −Λ) conditional on an observation O with m
+
+missing coordinates, with a and b the essential infimum and supremum of Z given O. The Lipschitz and boundedness assumptions give b − a ≤ 2RL g
+
+√m, so Lemma B.3 yields Var( Z | O) ≤ R2L2
+
+> g
+
+m.
+
+17 B.4 Bernstein’s Inequality 
+
+Lemma B.4 (Bernstein’s inequality, bounded case) . Let Z1, . . . , Z n be i.i.d. real random variables with mean μ, variance at most v, and |Zi − μ| ≤ M almost surely. Then for every ε > 0,
+
+P
+
+(∣ ∣∣ 1
+
+> n
+
+∑ni=1 Zi − μ
+
+∣∣∣ ≥ ε
+
+)
+
+≤ 2 exp 
+
+(
+
+− nε 2 
+
+> 2v+ 2
+> 3Mε
+
+)
+
+.
+
+Equivalently, for every δ ∈ (0 , 1) , with probability at least 1 − δ,
+
+∣∣∣ 1
+
+> n
+
+∑ni=1 Zi − μ
+
+∣∣∣ ≤
+
+√ 2v log(2 /δ ) 
+
+> n
+
++ 2M log(2 /δ ) 
+
+> 3n
+
+. (8) 
+
+Proof. The tail bound is the classical Bernstein inequality for bounded independent variables; see for instance Theorem 2.10 and the following corollary in Boucheron et al. [2013]. For the inverted form, write L = log(2 /δ )
+
+and require the exponent to be at most −L, that is 
+
+nε 2 − 2 
+
+> 3
+
+M Lε − 2vL ≥ 0.
+
+The positive root of the corresponding quadratic is 
+
+ε⋆ = M L 
+
+3n +
+
+√( M L 
+
+3n
+
+)2
+
++ 2vL 
+
+n ,
+
+and any ε ≥ ε⋆ satisfies the inequality. Applying √x + y ≤ √x + √y to the square root gives ε⋆ ≤ 
+
+> 2ML
+> 3n
+
++ √2vL/n , which is (8). 
+
+Where we use it. In Theorem 5.6 we take Zi = Y i, the per-observation average, with μ = LFM (θ),
+
+v = Vρ,K , and M = B, the latter because Y i ∈ [0 , B ] implies |Y i − μ| ≤ B. In Theorem C.2 the same substitution is made with μ = Lφ(θ), v = Vθ,φ,K , and M = Bφ.
+
+B.5 Kantorovich–Rubinstein Duality 
+
+Lemma B.5 (Kantorovich–Rubinstein duality) . Let ν1, ν 2 be probability measures on Rm with finite first moments and let h : Rm → R be L-Lipschitz. Then 
+
+∣∣∣∫
+
+h dν 1 −
+
+∫
+
+h dν 2
+
+∣∣∣ ≤ L W 1(ν1, ν 2),
+
+where W1 is the Wasserstein-1 distance. Proof. Duality states W1(ν1, ν 2) = sup {∫ f dν 1 − ∫ f dν 2} over 1-Lipschitz f , a classical result for which we refer to Villani et al. [2009]. Applying this to f = h/L , which is 1-Lipschitz, gives | ∫ hdν 1 − ∫ hdν 2| ≤ 
+
+L W 1(ν1, ν 2).
+
+Where we use it. In Lemma 5.7 we take h to be gθ as a function of the missing coordinates with the observed part held fixed, extended off XO by McShane, L = Lg, ν1 = qφ(· | O), and ν2 = r⋆
+
+> Λ
+
+(· | XΛ).
+
+B.6 Sufficient Conditions for the Regularity Assumption 
+
+Assumption 4.1 asks only that the objective be finite at the given θ, and it follows from a growth condition that standard parameterizations satisfy. Suppose vθ is continuous in (x, t ), which makes it Borel measurable, and has at most linear growth in its spatial argument, 
+
+‖vθ(x, t )‖ ≤ Cθ
+
+(1 + ‖x‖) for all x ∈ Rd, t ∈ [0 , 1] .
+
+Because Xt = (1 − t)X0 + tX 1 is a convex combination, finite second moments of p0 and p⋆ give E‖Xt‖2 ≤
+
+2( E‖X0‖2 + E‖X1‖2) < ∞, hence E‖vθ(Xt, T )‖2 ≤ 2C2 
+
+> θ
+
+(1 + E‖Xt‖2) < ∞ and LFM (θ) < ∞.
+
+18 The variance results of Section 5 additionally require E[ℓθ (X0, X 1, T )2] < ∞. This follows from the same linear growth condition together with finite fourth moments of p0 and p⋆, since linear growth gives 
+
+ℓθ ≤ 2‖vθ(Xt, T )‖2 + 2 ‖X1 − X0‖2 ≤ C′ 
+
+> θ
+
+(1 + ‖X0‖2 + ‖X1‖2) for a constant C′ 
+
+> θ
+
+, and squaring the right side leaves only fourth moments. Under Assumption 5.3 with a compactly supported p0 it holds automatically. Linear growth holds for any feedforward network with Lipschitz activations, such as ReLU, GELU, SiLU, or tanh, since such a network is globally Lipschitz in x with constant bounded by the product of its layer operator norms, giving ‖vθ(x, t )‖ ≤ ‖ vθ (0 , t )‖ + Lθ‖x‖. The straight line interpolant is what keeps this clean, since Xt has finite second moment at every t and the target X1 − X0 carries no time dependent normalization that could diverge as t → 1. The same holds for rectified flow [Liu et al., 2023], which regresses the same velocity target along the same interpolant, so it inherits the condition unchanged. Two points keep the assumption honest. It is imposed at a fixed θ rather than uniformly over the parameter space, which is all our fixed θ results require. And since ℓθ ≥ 0, the marginalization identity in the proof of Theorem 4.2 follows from Tonelli’s theorem under measurability alone, so square integrability serves only to guarantee that both sides are finite rather than trivially infinite. 
+
+# C Full Proofs of the Results in Sections 4 and 5 
+
+C.1 Proof of Theorem 4.2, Oracle Equivalence 
+
+Proof. Fix λ ⊆ [d] with P(Λ = λ) > 0 and fix θ.
+
+Step 1 (reduction to gθ). The base point and time are drawn independently of the observation and the completion, so for any fixed xλ, Fubini’s theorem and the definition of gθ give 
+
+EX−λ EX0 ,T 
+
+[ℓθ
+
+(X0, (xλ, X −λ), T )] = EX−λ
+
+[gθ(xλ, X −λ)], (9) the interchange being justified by ℓθ ≥ 0 together with LFM (θ) < ∞ from Assumption 4.1. 
+
+Step 2 (inner marginalization). By Assumption 4.1, p⋆(· | xλ) is a regular conditional distribution of 
+
+X−λ given Xλ = xλ under X ∼ p⋆. Hence for p⋆λ-almost every xλ,
+
+EX−λ ∼p⋆(·| xλ)
+
+[gθ(xλ, X −λ)] = E[gθ(X) ∣∣ Xλ = xλ
+
+]. (10) 
+
+Step 3 (MCAR and the tower property). Under MCAR, conditionally on {Λ = λ} the observed part satisfies Xλ ∼ p⋆λ, which is the marginal of p⋆ on λ. Therefore the outer expectation in LMDFM restricted to this pattern is taken with respect to p⋆λ, and applying (5) of Lemma B.1 with V = Xλ, W = X−λ and 
+
+h = gθ to (10), 
+
+EXλ ∼p⋆λ
+
+[
+
+E[gθ(X) | Xλ
+
+]]
+
+= EX∼p⋆
+
+[gθ (X)] = LFM (θ), (11) the last equality being the identity LFM (θ) = EX1 ∼p⋆ [gθ(X1)] from the preliminaries. Combining (9)–(11), for every admissible λ,
+
+EXλ EX−λ ∼p⋆ (·| Xλ)EX0 ,T 
+
+[ℓθ(X0, X 1, T )] = LFM (θ).
+
+Step 4 (averaging over patterns). The right-hand side is a constant c := LFM (θ) not depending on λ. By definition (1), 
+
+LMDFM (θ) = ∑ 
+
+> λ:P(Λ= λ)>0
+
+P(Λ = λ) c = c ∑
+
+> λ
+
+P(Λ = λ) = c = LFM (θ).
+
+C.2 Proof of Theorem 5.1, Part 1, Unbiasedness of the Oracle Estimator 
+
+Proof. Fix θ and i ∈ { 1, . . . , n }. Conditional on Oi, the triples (X⋆, (i,k ) 
+
+> −Λi
+
+, X (i,k )0 , T (i,k )), k = 1 , . . . , K , are independent and identically distributed, since each is drawn from p⋆(· | X(i)Λi ) ⊗ p0 ⊗ Unif[0 , 1] independently of the others. Consequently the losses Y (i, 1)  
+
+> θ
+
+, . . . , Y (i,K ) 
+
+> θ
+
+are conditionally i.i.d. given Oi with common conditional mean 
+
+E[Y (i,k )
+
+> θ
+
+∣∣ Oi
+
+] = μθ (Oi), k = 1 , . . . , K, 
+
+19 by the definition of μθ. Linearity of conditional expectation gives 
+
+E[Y i
+
+∣∣ Oi
+
+] = 1
+
+K
+
+> K
+
+∑
+
+> k=1
+
+E[Y (i,k ) 
+
+> θ
+
+| Oi
+
+] = μθ (Oi).
+
+Assumption 4.1 gives LFM (θ) < ∞, so all expectations below are finite and the tower property applies. Taking expectations, 
+
+E[Y i
+
+] = E[μθ(Oi)] = EO E[Yθ | O] = LMDFM (θ),
+
+the last equality holding because LMDFM is by definition (1) the expectation of Yθ over the observation, the completion, the base point, and the time. Theorem 4.2 then gives LMDFM (θ) = LFM (θ). Finally, 
+
+E[̂ L⋆n,K (θ)] = 1
+
+n
+
+> n
+
+∑
+
+> i=1
+
+E[Y i
+
+] = 1
+
+n · n · L FM (θ) = LFM (θ).
+
+No step used K, so the conclusion holds for every K ≥ 1.
+
+C.3 Proof of Theorem 5.1, Part 2, the Variance Transfer Identity 
+
+Proof. Let X1 = ( XΛ, X −Λ) denote a completed endpoint formed from an oracle draw. Under MCAR, Theorem 4.2 shows X1 ∼ p⋆ marginally. First, 
+
+E[gθ(X1) | O] = E
+
+[
+
+E[Yθ | O, X −Λ
+
+] ∣∣∣ O
+
+]
+
+= E[Yθ | O] = μθ (O),
+
+using E[Yθ | O, X −Λ] = gθ(X1), which holds because (O, X −Λ) determines X1 and the only remaining randomness is (X0, T ). Now apply Lemma B.2 with U = gθ(X1) and V = O:
+
+Var (gθ(X1)) = E[ Var (gθ(X1) | O)] + Var (E[gθ(X1) | O]).
+
+The first term on the right is σ2 
+
+> θ, miss
+
+by definition, since given O the only randomness in gθ(X1) is the completion X−Λ ∼ p⋆(· | XΛ). The second is Var( μθ (O)) = τ 2 
+
+> θ
+
+by the display above. Rearranging gives the claim. 
+
+C.4 Proof of Theorem 5.1, Part 3, the Variance Decomposition 
+
+Proof. Write Y i = 1
+
+> K
+
+∑Kk=1 Y (i,k ) 
+
+> θ
+
+, so that ̂ L⋆n,K (θ) = 1
+
+> n
+
+∑ni=1 Y i.
+
+Step 1 (across observations). The pairs (Oi, {Y (i,k ) 
+
+> θ
+
+}k≤K ) are independent across i and identically dis-tributed, so 
+
+Var 
+
+( 1
+
+n
+
+> n
+
+∑
+
+> i=1
+
+Y i
+
+)
+
+= 1
+
+n2
+
+> n
+
+∑
+
+> i=1
+
+Var( Y i) = 1
+
+n Var( Y 1). (12) 
+
+Step 2 (conditioning on the observation). Apply Lemma B.2 with U = Y 1 and V = O1:
+
+Var( Y 1) = Var (E[Y 1 | O1]) + E[ Var( Y 1 | O1)].
+
+By the proof of Theorem 5.1, E[Y 1 | O1] = μθ(O1), so the first term equals τ 2 
+
+> θ
+
+. For the second, the K inner losses are conditionally i.i.d. given O1, hence 
+
+Var( Y 1 | O1) = 1
+
+K2
+
+> K
+
+∑
+
+> k=1
+
+Var (Y (1 ,k ) 
+
+> θ
+
+| O1
+
+) = 1
+
+K Var (Y (1 ,1)  
+
+> θ
+
+| O1
+
+).
+
+Therefore 
+
+Var( Y 1) = τ 2 
+
+> θ
+
++ 1
+
+K E[ Var (Y (1 ,1)  
+
+> θ
+
+| O1
+
+)] . (13) 
+
+20 Step 3 (conditioning on the completion). Apply the conditional form (7) of Lemma B.2 with U = Y (1 ,1)  
+
+> θ
+
+,
+
+V = X⋆, (1 ,1)  
+
+> −Λ1
+
+, and W = O1:
+
+Var (Y (1 ,1)  
+
+> θ
+
+| O1
+
+) = E
+
+[
+
+Var (Y (1 ,1)  
+
+> θ
+
+| O1, X ⋆, (1 ,1) 
+
+> −Λ1
+
+)∣∣∣O1
+
+]
+
++ Var 
+
+(
+
+E[Y (1 ,1)  
+
+> θ
+
+| O1, X ⋆, (1 ,1) 
+
+> −Λ1
+
+]∣∣∣O1
+
+)
+
+.
+
+The pair (O1, X ⋆, (1 ,1)  
+
+> −Λ1
+
+) determines the completed endpoint X⋆, (1 ,1) 1 , and conditional on it the only remaining randomness is (X(1 ,1) 0 , T (1 ,1) ). Hence 
+
+Var (Y (1 ,1)  
+
+> θ
+
+| O1, X ⋆, (1 ,1) 
+
+> −Λ1
+
+) = Var X0 ,T 
+
+(ℓθ(X0, X ⋆, (1 ,1) 1 , T ) | X⋆, (1 ,1) 1
+
+),
+
+E[Y (1 ,1)  
+
+> θ
+
+| O1, X ⋆, (1 ,1) 
+
+> −Λ1
+
+] = gθ
+
+(X⋆, (1 ,1) 1
+
+).
+
+Taking expectations over O1 and using that X⋆, (1 ,1) 1 ∼ p⋆ marginally (Theorem 4.2) for the first term, and the definition of σ2 
+
+> θ, miss
+
+for the second, 
+
+E[ Var (Y (1 ,1)  
+
+> θ
+
+| O1
+
+)] = σ2 
+
+> θ, base
+
++ σ2
+
+> θ, miss
+
+. (14) Substituting (14) into (13) and then into (12) gives the stated identity. 
+
+C.5 Proof of Theorem 5.5, the Completion Variance Bound 
+
+Proof. Fix an observation O = (Λ , X Λ) and set m = | − Λ|. Conditional on O, the observed coordinates are fixed and only the missing coordinates vary. Let u, v ∈ [−R, R ]m be two possible values of the missing part, and write x1(u) = ( xΛ, u ) for the corresponding completed endpoint. Then 
+
+‖x1(u) − x1(v)‖2 = ∑
+
+> j∈− Λ
+
+(uj − vj )2 ≤ m (2 R)2,
+
+since each coordinate difference satisfies |uj − vj | ≤ 2R by Assumption 5.3. Hence ‖x1(u) − x1(v)‖ ≤ 2R√m.By Assumption 5.4, ∣∣gθ(x1(u)) − gθ(x1(v)) ∣∣ ≤ Lg‖x1(u) − x1(v)‖ ≤ 2RL g
+
+√m. 
+
+Write Z = gθ(XΛ, X −Λ) for the random variable obtained by drawing X−Λ ∼ p⋆(· | XΛ), and let a and b
+
+be its essential infimum and supremum given O. The display above gives b − a ≤ 2RL g
+
+√m, so Lemma B.3 yields 
+
+Var (Z | O) ≤ (b − a)2
+
+4 ≤
+
+(2RL g
+
+√m)2
+
+4 = R2L2 
+
+> g
+
+m. 
+
+Taking expectations over O and using E[m(Λ)] = ρd ,
+
+σ2 
+
+> θ, miss
+
+= E[ Var( Z | O)] ≤ R2L2 
+
+> g
+
+E[m(Λ)] = R2L2 
+
+> g
+
+ρd. 
+
+C.6 Proof of Corollary 5.2 and the Completion-Only Error Bound 
+
+Proof of Corollary 5.2. The transfer identity of Theorem 5.1 gives τ 2 
+
+> θ
+
+= Var( gθ(X1)) − σ2
+
+> θ, miss
+
+. Substituting into Theorem 5.1, 
+
+Var (̂ L⋆n,K 
+
+) = 1
+
+n
+
+[
+
+Var( gθ(X1)) − σ2 
+
+> θ, miss
+
++ σ2 
+
+> θ, base
+
++ σ2
+
+> θ, miss
+
+K
+
+]
+
+= 1
+
+n
+
+[
+
+Var( gθ(X1)) −
+
+(
+
+1 − 1
+
+K
+
+)
+
+σ2 
+
+> θ, miss
+
++ σ2
+
+> θ, base
+
+K
+
+]
+
+,
+
+which is (2). Since 1 − 1/K ≥ 0 and σ2 
+
+> θ, miss
+
+≥ 0, dropping the middle term gives (3), with equality at K = 1 
+
+where 1 − 1/K = 0 . For monotonicity, view the right side of Theorem 5.1 as a function of K:
+
+K 7 → 1
+
+n
+
+[
+
+τ 2 
+
+> θ
+
++ σ2 
+
+> θ, base
+
++ σ2
+
+> θ, miss
+
+K
+
+]
+
+,
+
+21 which is nonincreasing in K, and strictly decreasing whenever σ2 
+
+> θ, base
+
++ σ2 
+
+> θ, miss
+
+> 0; in particular whenever 
+
+σ2 
+
+> θ, miss
+
+> 0.
+
+Proof of the fixed-budget identity. Substituting n = N/K into Theorem 5.1, 
+
+Var (̂ L⋆n,K 
+
+) = K
+
+N
+
+[
+
+τ 2 
+
+> θ
+
++ σ2 
+
+> θ, base
+
++ σ2
+
+> θ, miss
+
+K
+
+]
+
+= Kτ 2 
+
+> θ
+
++ σ2 
+
+> θ, base
+
++ σ2
+
+> θ, miss
+
+N .
+
+Only the first term in the numerator depends on K, and it is nondecreasing in K, strictly increasing when 
+
+τ 2 
+
+> θ
+
+> 0. Hence the variance is minimized at the smallest admissible K, namely K = 1 .
+
+Proof of the completion-only error bound. By the first display in Appendix C.3, E[gθ (X1) | O] = μθ (O).Define 
+
+Di = 1
+
+K
+
+> K
+
+∑
+
+> k=1
+
+(
+
+gθ
+
+(X⋆, (i,k )1
+
+) − μθ(Oi)
+
+)
+
+,
+
+so that ̂ Gn,K − ¯μ = 1
+
+> n
+
+∑ni=1 Di and E[Di | Oi] = 0 . The Di are independent across i, so for i 6 = j,
+
+E[DiDj ] = E[E[Di | Oi] E[Dj | Oj ]] = 0 . Hence 
+
+E[(̂Gn,K − ¯μ)2] = 1
+
+n2
+
+> n
+
+∑
+
+> i=1
+
+E[D2
+
+> i
+
+] = 1
+
+n E[D21
+
+].
+
+Conditionally on O1 the K summands are i.i.d. with mean zero and variance Var( gθ(X1) | O1), so E[D21 |
+
+O1] = 1 
+
+> K
+
+Var( gθ (X1) | O1) and E[D21 ] = σ2
+
+> θ, miss
+
+/K . Combining gives the stated identity, and Theorem 5.5 supplies the inequality. For the second display, (14) and conditional independence give 
+
+E[ Var (̂ L⋆n,K | O1: n
+
+)] = 1
+
+n2
+
+> n
+
+∑
+
+> i=1
+
+1
+
+K E[ Var( Y (i, 1)  
+
+> θ
+
+| Oi)] = σ2 
+
+> θ, base
+
++ σ2
+
+> θ, miss
+
+nK .
+
+C.7 Concentration Bounds for the Oracle and Learned Estimators 
+
+Bernstein’s inequality is the natural tool here because the variance is known explicitly and Bernstein uses it directly [Boucheron et al., 2013]. It requires a bounded loss. 
+
+Assumption C.1 (Bounded loss) . There exists B > 0 with 0 ≤ ℓθ(X0, X 1, T ) ≤ B almost surely. This assumption restricts the base distribution, and it is worth being precise about how much. With a Gaussian base the target X1 − X0 is unbounded and the assumption fails. Flow matching does not require a Gaussian base, however. The framework is defined for a general source distribution, and stochastic interpolants and minibatch optimal transport formulations are constructed between two arbitrary densities [Albergo and Vanden-Eijnden, 2023, Tong et al., 2024]. Taking p0 compactly supported, for instance uniform on a box, together with Assumption 5.3 confines the whole path Xt and the target X1 − X0 to a compact set, so a continuous vθ is bounded there and Assumption C.1 holds. Our experiments include a bounded base configuration for this reason. For a Gaussian base the assumption can be replaced by a sub-exponential or sub-gamma tail condition at the cost of a heavier bound, and we keep the bounded form for a clean statement. 
+
+The oracle estimator. Writing 
+
+Vρ,K = min 
+
+{
+
+τ 2 
+
+> θ
+
++ σ2    
+
+> θ, base +R2L2
+> gρd
+> K
+
+, Var (gθ (X1)) + σ2
+
+> θ, base
+> K
+
+}
+
+we obtain the guarantee. 
+
+22 Proof of Theorem 5.6. Fix θ. Assume i.i.d. incomplete observations O1, . . . , O n, oracle completions under MCAR, Assumption 4.1, and Assumptions 5.3, 5.4, and C.1. Then with probability at least 1 − δ,
+
+∣∣̂ L⋆n,K (θ) − L FM (θ)∣∣ ≤
+
+√ 2Vρ,K log(2 /δ )
+
+n + 2B log(2 /δ )
+
+3n .
+
+Proof. We verify the hypotheses of Lemma B.4 for Zi = Y i, i = 1 , . . . , n .
+
+Independence and identical distribution. The observations Oi are i.i.d. by assumption, and the comple-tions, base points, and times are drawn independently across i, so the Y i are i.i.d. 
+
+Mean. By Theorem 5.1, E[Y i] = LFM (θ) =: μ.
+
+Boundedness. Assumption C.1 gives 0 ≤ Y (i,k ) 
+
+> θ
+
+≤ B almost surely, hence 0 ≤ Y i ≤ B as an average of such terms, and therefore |Y i − μ| ≤ max( μ, B − μ) ≤ B. We may take M = B.
+
+Variance. By Theorem 5.1 applied with n = 1 , Var( Y i) = τ 2 
+
+> θ
+
++ ( σ2 
+
+> θ, base
+
++ σ2
+
+> θ, miss
+
+)/K . Theorem 5.5 bounds σ2 
+
+> θ, miss
+
+≤ R2L2
+
+> g
+
+ρd , which gives the first branch of Vρ,K . The transfer identity gives τ 2 
+
+> θ
+
++ σ2
+
+> θ, miss
+
+/K ≤
+
+τ 2 
+
+> θ
+
++ σ2 
+
+> θ, miss
+
+= Var( gθ (X1)) , which gives the second and carries no dependence on the missing fraction. Hence 
+
+Var( Y i) ≤ Vρ,K and we may take v = Vρ,K .Applying the inverted form (8) of Lemma B.4 with these μ, v, and M gives the claim, since ̂ L⋆n,K (θ) = 
+
+> 1
+> n
+
+∑ 
+
+> i
+
+Y i.
+
+The learned estimator. Under qφ the variance constants change. Let μθ,φ (O) = Eqφ ,X 0 ,T [Y φθ | O] and 
+
+τ 2 
+
+> θ,φ
+
+= Var O
+
+(μθ,φ (O)),σ2 
+
+> θ,φ, comp
+
+= EO
+
+[ Var ˜X−Λ∼qφ (·| O)
+
+(gθ(XΛ, ˜X−Λ) ∣∣ O)] ,σ2 
+
+> θ,φ, base
+
+= EO, ˜X−Λ ∼qφ
+
+[ Var X0 ∼p0, T 
+
+(ℓθ(X0, ˜X1, T ) ∣∣ ˜ X1
+
+)] ,
+
+and set Vθ,φ,K = τ 2 
+
+> θ,φ
+
++ ( σ2 
+
+> θ,φ, base
+
++ σ2
+
+> θ,φ, comp
+
+)/K .
+
+Theorem C.2 (Learned Bernstein bound) . Condition on the completion model qφ fitted on the independent auxiliary sample, and fix θ. Assume the evaluation observations are i.i.d. and 0 ≤ ℓθ ≤ Bφ almost surely under the qφ-completed endpoint distribution. Then, with probability at least 1 − δ over the evaluation observations and Monte Carlo draws, 
+
+∣∣̂ Lφn,K (θ) − L φ(θ)∣∣ ≤
+
+√ 2Vθ,φ,K log(2 /δ )
+
+n + 2Bφ log(2 /δ )
+
+3n .
+
+Proof. All statements are conditional on the completion model qφ fitted on the independent auxiliary sample, which is therefore a fixed, deterministic object throughout, and the evaluation observations O1, . . . , O n are independent of it. 
+
+Variance. Inspecting the proof of Theorem 5.1, the three steps use only independence across observations, conditional independence of the K inner draws given Oi, and the tower property. None refers to the particular law from which the completions are drawn. Replacing p⋆(· | XΛ) by qφ(· | XΛ, Λ) throughout, and μθ, σ2
+
+> θ, base
+
+,
+
+σ2 
+
+> θ, miss
+
+by μθ,φ , σ2
+
+> θ,φ, base
+
+, σ2
+
+> θ,φ, comp
+
+, gives Var( ̂Lφn,K (θ)) = Vθ,φ,K /n .
+
+Mean. The argument of Theorem 5.1 applies verbatim with qφ in place of the oracle up to the point where Theorem 4.2 was invoked. Stopping one step earlier gives E[Y φi ] = E[μθ,φ (Oi)] = Lφ(θ). Theorem 4.2 is not available here, which is precisely why the centering is Lφ rather than LFM .
+
+Boundedness. By hypothesis 0 ≤ ℓθ ≤ Bφ almost surely under the qφ-completed endpoint distribution, so the per-observation averages lie in [0 , B φ] and deviate from their mean by at most Bφ.Applying (8) with μ = Lφ(θ), v = Vθ,φ,K , and M = Bφ gives the claim. 
+
+Combining Theorem C.2 with Lemma 5.7 gives the total bound quoted in the main text. 
+
+23 Corollary C.3 (Total learned bound) . Under the assumptions of Theorem C.2 and Lemma 5.7, with prob-ability at least 1 − δ,
+
+∣∣̂ Lφn,K (θ) − L FM (θ)∣∣ ≤
+
+√ 2Vθ,φ,K log(2 /δ )
+
+n + 2Bφ log(2 /δ )
+
+3n
+
++ Lg EO W1
+
+(qφ, r ⋆
+
+> Λ
+
+).
+
+Proof. Add the two bounds and apply the triangle inequality to the decomposition of ̂ Lφn,K (θ) − L FM (θ) into estimation and bias. 
+
+C.8 Proof of Lemma 5.7, the Completion-Bias Bound 
+
+Proof. Fix an observation O = (Λ , X Λ), set XO = {u : ( XΛ, u ) ∈ X } , and regard h(·) := gθ(XΛ, ·) as a function of the missing coordinates alone. By Assumption 5.4, for any u, v ∈ X O ,
+
+|h(u) − h(v)| = ∣∣gθ (XΛ, u ) − gθ (XΛ, v )∣∣ ≤ Lg‖(XΛ, u ) − (XΛ, v )‖ = Lg‖u − v‖,
+
+so h is Lg-Lipschitz on XO , which is convex because X is. By the McShane extension theorem there is an Lg-Lipschitz ˜h on Rd−| Λ| agreeing with h on XO, and since both conditional laws are supported in XO,replacing h by ˜h changes neither integral. By Proposition 4.5, LFM (θ) = EO
+
+[ ∫ h dr ⋆
+
+> Λ
+
+], while by definition 
+
+Lφ(θ) = EO
+
+[ ∫ h dq φ
+
+]. Therefore 
+
+∣∣Lφ(θ) − L FM (θ)∣∣ ≤ EO
+
+[∣ ∣∣∫
+
+h dq φ −
+
+∫
+
+h dr ⋆
+
+> Λ
+
+∣∣∣]
+
+,
+
+by Jensen’s inequality for the absolute value. The finite first moment assumptions place both measures in the space where Lemma B.5 applies, so for each O,
+
+∣∣∣∫
+
+h dq φ −
+
+∫
+
+h dr ⋆
+
+> Λ
+
+∣∣∣ ≤ Lg W1
+
+(qφ(· | O), r ⋆
+
+> Λ
+
+(· | XΛ)).
+
+Taking expectations over O and using the integrability hypothesis EO W1 < ∞ gives the bound. The final claim follows from Proposition 4.5, which states that under MCAR or MAR the posterior r⋆ 
+
+> Λ
+
+coincides with 
+
+p⋆(· | XΛ).
+
+# D How MCAR, MAR, and MNAR Each Act on the Flow Matching Objective 
+
+This appendix develops Proposition 4.5 in full. We define the three standard missingness mechanisms, derive the true completion posterior for a general mechanism, and show precisely how each mechanism acts on the flow matching objective. Two facts emerge that the short proof in the body does not make visible. The equivalence extends from MCAR to MAR, but the argument used for MCAR does not, because MCAR gives equality for every missingness pattern while MAR gives it only after averaging over patterns. Under MNAR the naive objective is not merely unequal to the complete data objective, it is a reweighted version of it, and we identify the weight in closed form. 
+
+D.1 Setup 
+
+Let P ⋆ denote the joint law of the pair (X, Λ) , where X ∼ p⋆ on Rd and Λ ⊆ [d] is the random set of observed coordinates. We write 
+
+πλ(x) := P(Λ = λ | X = x)
+
+for the mechanism, the probability of observing pattern λ given the full data vector. An incomplete observa-tion is the pair O = (Λ , X Λ), and all expectations below are under P ⋆. Throughout, gθ is the endpoint loss from the preliminaries and we assume E|gθ(X)| < ∞.
+
+24 D.2 The Three Mechanisms 
+
+The mechanisms differ in what the missingness is allowed to depend on. In the framework of Rubin [Rubin, 1976, Little and Rubin, 2019], • Missing completely at random (MCAR). The pattern is independent of the data, πλ(x) = P(Λ = 
+
+λ) for all x. Equivalently M ⊥ X.• Missing at random (MAR). The pattern may depend on the observed coordinates but not on the missing ones, πλ(x) = πλ(xλ) for all x, where we reuse the symbol for the function of xλ alone. • Missing not at random (MNAR). Neither condition holds, so πλ(x) can depend on the unobserved coordinates x−λ.MCAR implies MAR, so the two are nested. Concretely, a sensor that drops readings because of trans-mission failures unrelated to the measured value is MCAR. A follow up test ordered only when recorded symptoms warrant it is MAR, since the decision depends on values already in the record. A respondent who declines to report income precisely because it is high is MNAR, since whether the entry is missing depends on the entry itself. 
+
+D.3 The True Completion Posterior 
+
+The correct completion distribution is the posterior of the missing part given everything observed, including the pattern. Define 
+
+r⋆λ(x−λ | xλ) := P ⋆(X−λ ∈ dx −λ
+
+∣∣ Xλ = xλ, Λ = λ).
+
+This differs from the data conditional p⋆(x−λ | xλ) because conditioning on Λ = λ can itself carry information about the missing coordinates. The next lemma makes the difference explicit. 
+
+Lemma D.1 (Posterior factorization) . For every λ with P(Λ = λ) > 0 and p⋆λ almost every xλ,
+
+r⋆λ(x−λ | xλ) = p⋆(x−λ | xλ) · πλ(xλ, x −λ)
+
+¯πλ(xλ) , ¯πλ(xλ) := E[πλ(X) | Xλ = xλ
+
+].
+
+Proof. By Bayes’ rule applied to the joint density of (X, Λ) ,
+
+r⋆λ(x−λ | xλ) = p⋆(xλ, x −λ) πλ(xλ, x −λ)
+
+p⋆λ(xλ) ¯ πλ(xλ) ,
+
+since the joint density of (Xλ, Λ = λ) is p⋆λ(xλ)¯ πλ(xλ). Dividing numerator and denominator by p⋆λ(xλ) gives the stated factorization. 
+
+The ratio in Lemma D.1 is a tilting factor. It measures how much more or less likely the pattern λ is at the particular missing value x−λ than on average over missing values consistent with xλ. Under MAR the mechanism does not depend on x−λ, so πλ(xλ, x −λ) = πλ(xλ) = ¯ πλ(xλ), the ratio is one, and the posterior collapses to the data conditional. Under MCAR both reduce further to P(Λ = λ) and the same collapse occurs. Under MNAR the ratio is a genuine function of the unobserved coordinates. 
+
+D.4 Equivalence for a General Mechanism 
+
+The general equivalence needs nothing beyond the tower property. 
+
+Proposition D.2 (General oracle equivalence, full statement) . Let E|gθ (X)| < ∞. If completions are drawn from r⋆
+
+> Λ
+
+(· | XΛ), then for any missingness mechanism, 
+
+EO EX−Λ ∼r⋆
+
+> Λ(·| XΛ)
+
+[gθ(XΛ, X −Λ)] = EX∼p⋆
+
+[gθ (X)] = LFM (θ).
+
+Proof. By construction of the regular conditional distribution r⋆
+
+> Λ
+
+, the inner expectation is E[gθ (X) | O]
+
+for P ⋆ almost every O. Integrability of gθ(X) makes this conditional expectation well defined, and the tower property gives EO
+
+[E[gθ(X) | O]] = E[gθ (X)] . The right side is LFM (θ) by the identity LFM (θ) = 
+
+EX1 ∼p⋆ [gθ(X1)] from the preliminaries. 
+
+25 Proposition D.2 is a statement about the correct posterior, not about what we can compute. Its practical content depends entirely on whether r⋆ 
+
+> Λ
+
+is available, which is exactly where the mechanisms separate. 
+
+D.5 What Each Mechanism Does to the Objective 
+
+The objective we can actually write down uses the data conditional rather than the posterior. Define the naive objective 
+
+Lnaive (θ) := EO EX−Λ ∼p⋆ (·| XΛ)
+
+[gθ (XΛ, X −Λ)],
+
+which is the objective used throughout the paper. The next result says exactly what it computes. 
+
+Proposition D.3 (Exact form of the naive objective) . For any missingness mechanism, 
+
+Lnaive (θ) = EX∼p⋆
+
+[w(X) gθ (X)], w(x) := ∑
+
+> λ
+
+¯πλ(xλ),
+
+where the sum runs over patterns with P(Λ = λ) > 0. The weight satisfies w ≥ 0 and Ep⋆ [w(X)] = 1 . Under MAR, and hence under MCAR, w ≡ 1 and Lnaive = LFM .Proof. The density of the observed part given the pattern is p(xλ | Λ = λ) = p⋆λ(xλ)¯ πλ(xλ)/P(Λ = λ).Expanding the outer expectation over O and cancelling P(Λ = λ),
+
+Lnaive (θ) = ∑
+
+> λ
+
+∫
+
+p⋆λ(xλ)¯ πλ(xλ)
+
+∫
+
+p⋆(x−λ | xλ)gθ(x) dx −λ dx λ
+
+= ∑
+
+> λ
+
+∫
+
+p⋆(x) ¯ πλ(xλ) gθ (x) dx = Ep⋆
+
+[w(X)gθ (X)].
+
+Nonnegativity is immediate. For the mean, the tower property gives Ep⋆ [¯ πλ(Xλ)] = E[πλ(X)] = P(Λ = λ),and summing over λ gives one. Under MAR, ¯πλ(xλ) = πλ(x), so w(x) = ∑ 
+
+> λ
+
+πλ(x) = 1 pointwise. 
+
+Proposition D.3 gives a sharp picture of all three cases. Under MCAR and MAR the weight is identically one and the naive objective is exactly the complete data objective, which is Theorem 4.2 and its MAR extension. Under MNAR the naive objective is a reweighted complete data objective with a weight that averages to one but need not be constant, and is nonconstant for the mechanisms of interest, so the bias is 
+
+Lnaive (θ) − L FM (θ) = Ep⋆
+
+[(w(X) − 1) gθ(X)],
+
+which vanishes only when the weight is uncorrelated with the endpoint loss. The method does not silently fail under MNAR, it optimizes a tilted objective that overweights regions of the data space where the observed coordinates make missingness patterns more likely. 
+
+D.6 Why the MCAR Proof Does Not Extend to MAR 
+
+The equivalence extends to MAR but the proof strategy does not, and the reason is worth isolating. The proof of Theorem 4.2 fixes a pattern λ and shows that the inner expectation equals LFM (θ) for that pattern, then averages a constant over Λ. That step uses XΛ | { Λ = λ} ∼ p⋆λ, which is an MCAR property. Under MAR the observed part is tilted, 
+
+p(xλ | Λ = λ) = p⋆λ(xλ) πλ(xλ)
+
+P(Λ = λ) 6 = p⋆λ(xλ) in general ,
+
+so the per pattern expectation is Ep⋆ [πλ(X)gθ(X)] /P(Λ = λ), which is a tilted version of LFM (θ) and depends on λ. Only after averaging over Λ do the tilts sum to one and cancel, by ∑ 
+
+> λ
+
+πλ(x) = 1 .The distinction matters. MCAR gives equality pattern by pattern, which is a stronger statement than the paper needs. MAR gives equality only in aggregate. Both yield the same population objective, so every result in the paper that depends only on LMDFM = LFM carries over to MAR unchanged, including unbiasedness and the variance decomposition. Results that reference the per pattern marginal p⋆λ directly should be read as MCAR statements. 
+
+26 D.7 Identifiability Under Each Mechanism 
+
+Estimability, not the algebra, is what ultimately separates MAR from MNAR. Under MCAR and MAR the mechanism is ignorable in the sense of Rubin [Rubin, 1976], so the completion conditional p⋆(x−λ | xλ) can be learned from the observed data alone without modeling πλ, subject to the observed-pattern marginals identifying the joint law within the chosen model class. This is what makes qφ trainable in practice. Under MNAR the correct completion is r⋆
+
+> Λ
+
+, which by Lemma D.1 requires the tilting factor πλ(xλ, x −λ)/¯πλ(xλ).Its numerator is a function of the unobserved coordinates, so it cannot be recovered from observed data with-out additional structure, such as a parametric model for the mechanism [Ipsen et al., 2020], an instrument, or a shadow variable. Fitting a completion model to observed data under MNAR therefore estimates p⋆(· | xλ)
+
+rather than r⋆
+
+> Λ
+
+, and by Proposition D.3 the resulting flow matching objective carries the weight w. Extending our method to MNAR means supplying that missing structure, which we leave to future work. 
+
+D.8 The Objective Gap Under Deterministic Imputation 
+
+Remark 4.4 states that deterministic imputation generally changes the objective. We make the gap explicit. Let ˆx−Λ(·) be any deterministic imputation rule and define 
+
+Limp (θ) := EO
+
+[gθ
+
+(XΛ, ˆx−Λ(XΛ))] .
+
+Under MCAR, Theorem 4.2 gives LFM (θ) = EO EX−Λ∼p⋆ (·| XΛ)[gθ(XΛ, X −Λ)] , so 
+
+Limp (θ) − L FM (θ) = EO
+
+[
+
+gθ
+
+(XΛ, ˆx−Λ
+
+) − EX−Λ∼p⋆ (·| XΛ)
+
+[gθ(XΛ, X −Λ)]]
+
+.
+
+If ˆx−Λ(xΛ) is the conditional mean and gθ(xΛ, ·) is affine, the inner difference vanishes, since the value at the mean equals the mean of the values. For a nonlinear gθ it is generally nonzero when p⋆(· | XΛ) is nondegenerate, although equality can occur accidentally for particular conditional laws. We do not claim a fixed sign, since gθ need not be convex in the endpoint for a general nonlinear vθ . What the experiments in Appendix E.7 show is the consequence rather than the sign, namely that a model trained on point imputed endpoints reproduces a conditional distribution whose spread has collapsed. 
+
+# E Experimental Details and Additional Results 
+
+This appendix gives the full protocol behind the experiments and reports the results that the main text summarizes in one line each. 
+
+E.1 The Training Procedure 
+
+Algorithm 1 states the procedure in full. The completion model is fitted once on an independent auxiliary sample and frozen, after which training differs from ordinary flow matching only in that the endpoint is supplied by a draw from qφ rather than read from the data. 
+
+E.2 Targets, Architecture, and Estimation Procedure 
+
+Synthetic target. The synthetic runs use a zero-mean Gaussian whose covariance is an AR(1) correla-tion matrix with parameter 0.6. This gives real cross-coordinate dependence while keeping the conditional 
+
+p⋆(x−Λ | xΛ) available in closed form, so the oracle draws come from the true conditional rather than from a learned stand-in. The bounded-support runs used for Theorem 5.5 replace it with the same Gaussian truncated to [−R, R ]d by rejection, which is what Assumption 5.3 requires. We sweep d ∈ { 10 , 50 , 100 } and 
+
+ρ ∈ { 0.1, 0.3, 0.5, 0.7, 0.9} under MCAR, and we repeat every setting over five seeds. 
+
+27 Algorithm 1 Missing-Data Flow Matching 
+
+Require: Incomplete data {(X(i)Λi , Λi)}ni=1 ; base p0; completion model qφ; field vθ; completions K;steps S; learning rate η 
+
+> 1:
+
+Train qφ(x−Λ | xΛ, Λ) on an independent auxiliary sample by self supervised masking  
+
+> 2:
+
+Freeze φ and initialize θ 
+
+> 3:
+
+for step = 1 to S do  
+
+> 4:
+
+Sample a minibatch B of incomplete examples  
+
+> 5:
+
+for each i ∈ B and each k = 1 , . . . , K do  
+
+> 6:
+
+˜X(i,k ) 
+
+> −Λi
+
+∼ qφ(· | X(i)Λi , Λi) 
+
+> 7:
+
+˜X(i,k )1 ← (X(i)Λi , ˜X(i,k ) 
+
+> −Λi
+
+) 
+
+> 8:
+
+X(i,k )0 ∼ p0, T (i,k ) ∼ Unif[0 , 1]  
+
+> 9:
+
+X(i,k ) 
+
+> t
+
+← (1 − T (i,k ))X(i,k )0 + T (i,k ) ˜X(i,k )1 
+
+> 10:
+
+ℓ(i,k ) ← ∥∥vθ (X(i,k ) 
+
+> t
+
+, T (i,k )) − ( ˜X(i,k )1 − X(i,k )0 )∥∥2 
+
+> 11:
+
+end for 
+
+> 12:
+
+̂ Lφ 
+
+> B,K
+
+(θ) ← 1
+
+> |B|
+
+∑ 
+
+> i∈B 1
+> K
+
+∑Kk=1 ℓ(i,k ) 
+
+> 13:
+
+θ ← θ − η ∇θ̂ Lφ 
+
+> B,K
+
+(θ) 
+
+> 14:
+
+end for Ensure: Trained vector field vθ
+
+Fixed-parameter design. All estimator-level quantities are measured at frozen θ, which is what the finite-sample theory describes. We evaluate at a random initialization and at a trained checkpoint so the conclusions do not depend on one point in parameter space. The variance components τ 2 
+
+> θ
+
+, σ2
+
+> θ, base
+
+, and σ2
+
+> θ, miss
+
+are estimated by nested Monte Carlo with an outer loop over observations and an inner loop over completions, bias corrected for the finite inner sample. The empirical variance of ̂ L⋆n,K is measured by directly simulating the estimator many times, so the formula and the measurement come from two independent estimation paths and their agreement is not circular. 
+
+Missingness patterns. The estimator-level experiments draw an independent Bernoulli mask per co-ordinate. The training experiments instead draw a fixed set of sixteen patterns once and assign each row one of them uniformly, which keeps the mechanism exactly MCAR while bounding the number of distinct Gaussian conditionings a minibatch can contain. This also mirrors real tabular data, where missingness usually arrives in a limited number of recurring shapes. 
+
+Real data. We use seven numeric UCI datasets, namely concrete, wine, diabetes, breast cancer, iono-sphere, sonar, and digits, ranging from 178 to 1797 rows and from 9 to 61 features after constant columns are dropped. Each dataset is standardized on the training split. Entries are hidden completely at random at five rates, with the mask repaired so that no row and no column is fully missing. The hidden values are held aside only to score imputation and are never seen by any method. Generative quality is measured against the held-out test split, which is complete. 
+
+Architecture and optimization. Every method shares one vector-field architecture, a multilayer perceptron with sinusoidal time embedding, three hidden layers of width 128 , and SiLU activations. The completion model qφ used on real data is a conditional flow matching model with the same backbone that predicts a velocity on the missing coordinates given the observed values and the mask. It is trained by self supervised masking, hiding a further random subset of the observed entries and predicting them from the rest, so it never touches a value that the missingness hid. All models use Adam [Kingma and Ba, 2014]. 
+
+28 E.3 Oracle Equivalence 
+
+Table 2 reports the loss gap and the gradient agreement behind the first claim of the experiments section. The gap shrinks with dimension and the MDFM-to-FM gradient cosine tracks the complete-data same-noise baseline at every dimension, so the residual is Monte Carlo noise and not a systematic tilt. 
+
+d K |L MDFM − L FM |
+
+LFM 
+
+cos(M , F) cos(F , F) 
+
+10 1 0.48% 0.901 0.894 
+
+10 4 0.43% 0.931 0.894 
+
+50 1 0.26% 0.967 0.964 
+
+50 4 0.24% 0.977 0.964 
+
+100 1 0.10% 0.967 0.966 
+
+100 4 0.10% 0.976 0.966 
+
+Table 2: Oracle equivalence at fixed parameters. cos(M , F) is the cosine between the MDFM and complete-data gradient estimates and cos(F , F) is the cosine between two independent complete-data estimates, which is the value Monte Carlo noise alone produces. Mean over five seeds and missing rates ρ ∈ { 0.3, 0.7}, pooling the random-initialization and trained checkpoints. Cosines use the largest batch. 
+
+E.4 Variance Decomposition and the K = 1 Identity 
+
+Figure 2 confirms Theorem 5.1 and Corollary 5.2. The variance components and the estimator variance are measured by the two independent routes described in Appendix E.2, nested Monte Carlo for the former and direct simulation of the estimator for the latter, so their agreement checks the decomposition rather than restating it.                     
+
+> 0.0 0.2 0.4 0.6 0.8 1.0 1/ K
+> 0.00
+> 0.25
+> 0.50
+> 0.75
+> 1.00
+> 1.25
+> 1.50 Var( ̂ L ⋆
+> n, K)
+> mean rel. err ≈ 4%
+> (a) variance vs 1/ K(ρ= 0.5)
+> markers: empirical, lines: formula
+> d= 10
+> d= 50
+> d= 100
+> 0.25 0.50 0.75 1.00 1.25 1.50 complete-data 1-sample Var
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> 1.2
+> 1.4 MDFM  K = 1 Var (formula)
+> mean rel. diff ≈ 3.0%
+> (b) K= 1 identity
+> d= 10
+> d= 50
+> d= 100
+
+Figure 2: Numerical confirmation of Theorem 5.1 and Corollary 5.2 on Gaussian data, five seeds. (a) The simulated variance of ̂ L⋆n,K (markers) against the prediction of Theorem 5.1 (lines) at 
+
+ρ = 0 .5, falling as 1/K toward the between-observation floor τ 2 
+
+> θ
+
+/n rather than toward zero, with mean relative error about four percent. The two are estimated by independent routes, the markers by simulating the estimator directly and the lines by nested Monte Carlo of the three variance components, so their agreement is a check rather than a tautology. (b) The K = 1 identity of Corollary 5.2. The oracle variance at one completion, predicted by the formula, against the complete-data one-sample variance, at d = 10 , 50 , and 100 . All three points lie on the diagonal, with mean relative difference about three percent. 29 E.5 The Missing-Fraction Bound 
+
+Figure 3 plots the measured σ2 
+
+> θ, miss
+
+against ρd together with the cap R2L2
+
+> g
+
+ρd of Theorem 5.5. The measured value stays below the cap at every setting, and the ratio is on the order of 10 −4, so the worst case overshoots by three to four orders of magnitude. Within each dimension the measured value still rises close to linearly in ρd , so the shape the theorem predicts is correct even though the constant is far too large. The ratio also falls with dimension, from about 5 × 10 −4 at d = 10 to about 1 × 10 −4 at d = 100 , because the empirical Lipschitz constant Lg grows with dimension faster than the measured variance does, so the dashed line is a numerical proxy for the worst case rather than a certified cap. The curves for the three dimensions nearly collapse onto one another as functions of ρd , which supports the choice of ρd rather than d as the quantity the bound is written in.                       
+
+> 020 40 60 80
+> ρd (e   pected  missin  )
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> 
+> 2 
+> , miss
+> (a) measured  2
+>  , miss vs cap  2L2ρd
+> solid: measured das ed: orst-case cap
+> d= 10
+> d= 50
+> d= 100
+> 020 40 60 80
+> ρd
+> 10 −4
+> 2 × 10 −4
+> 3 × 10 −4
+> 4 × 10 −4
+> 6 × 10 −4
+> 
+> 2 
+> , miss /(  2L2 ρd )
+> (b) bound looseness
+> d= 10
+> d= 50
+> d= 100
+
+Figure 3: The missing-fraction bound. Left, the measured σ2 
+
+> θ, miss
+
+against the expected number of missing coordinates ρd , with the worst-case cap R2L2
+
+> g
+
+ρd as the dashed line of matching color. Right, the ratio of the two, on the order of 10 −4 across dimensions. 
+
+E.6 Completion Models and the Transport Bound 
+
+Table 3 lists the twelve completion models behind Figure 4 together with their completion distance, the bound, and the ratio of the two. The mean-shift and conditional-mean families have a closed-form W1,since translation and point-mass couplings are optimal, so those rows use an exact W1. The remaining rows report the cost of one explicit coupling, which is an upper bound on W1. The oracle row has zero distance, so its measured bias of 0.10 is the Monte Carlo noise floor against which every other row should be read. Throughout, Lg is estimated from sampled pairs and the completion models are Gaussian rather than compactly supported, so these plots probe the inequality of Lemma 5.7 numerically rather than under its literal hypotheses. 
+
+30 0.0 0.5 1.0 1.5 2.0 2.5 completion error    1(   ,  ⋆ )       
+
+> 0
+> 5
+> 10
+> 15
+> 20
+> 25
+> 30
+> 35
+> 
+> L  − LF |
+> ( ) bi  s st  s under t  e ertifi   te
+> e   t 1
+> uer bound
+> ertifi   te L! [ 1]
+> 10 −1 10 0
+> |L −LF" |/( L# [ 1])
+> estim $ ted4096
+> me $ ns % ift0 & 1
+> me $ ns % ift0 & 2
+> me $ ns % ift0 & 05
+> estim $ ted256
+> me $ ns % ift0 & 4
+> m$ r' in $ l
+> me $ ns % ift0 &(
+> ) ondme $ n
+> v$ rs ) $  le0 & 5
+> v$ rs ) $  le1 & 5
+> (b)  ertifi   te looseness
+
+Figure 4: Empirical check of Lemma 5.7 at frozen θ. Left, the measured bias |L φ − L FM | against the completion distance EO[W1(qφ, p ⋆)] for twelve completion models, all below the bound. Circles have a closed-form W1, squares use an upper bound on W1. Right, the ratio of bias to certificate, below one for every model. 
+
+completion model W1 |L φ − L FM | EO [W1] ratio 
+
+oracle exact 0.101 0.000 –mean shift 0.05 exact 0.096 0.140 0.057 mean shift 0.1 exact 0.118 0.279 0.035 fitted, n = 4096 bound 0.065 0.321 0.019 mean shift 0.2 exact 0.341 0.559 0.049 variance ×1.5 bound 5.760 1.037 0.449 variance ×0.5 bound 3.391 1.039 0.264 mean shift 0.4 exact 1.072 1.090 0.081 marginal bound 3.549 1.843 0.158 fitted, n = 256 bound 1.671 1.904 0.065 conditional mean exact 4.338 2.022 0.178 mean shift 0.8 exact 4.362 2.237 0.159 
+
+Table 3: Completion models ordered by distance to the truth. The ratio is |L φ − L FM | divided by 
+
+Lg EO[W1] from Lemma 5.7 and is below one everywhere. Rows marked exact have a closed-form 
+
+W1.
+
+E.7 Trained Models Under Different Completion Strategies 
+
+Table 4 and Figure 5 report the experiment behind the collapse result in the main text. All seven strategies draw from the same pool of incomplete observations under the same masks, so the only thing that differs is how the missing part is supplied. The conditional standard deviation of one coordinate given the rest is the diagnostic that matches Remark 4.4, since it is exactly the quantity a point fill drives to zero. 
+
+31 strategy cov. err sliced W2 cond. s.d. ratio 
+
+complete data 0.123 0.050 0.97 oracle resampled K=4 0.079 0.040 0.99 oracle resampled K=1 0.106 0.053 0.98 oracle frozen 0.091 0.044 0.98 fitted resampled K=1 0.100 0.048 0.97 fitted frozen 0.104 0.047 0.97 conditional mean 0.250 0.164 0.64 
+
+Table 4: Trained-model quality under different completion strategies on the synthetic target. Fitted models are Gaussian conditionals estimated only from incomplete data. Every stochastic strategy recovers the conditional spread. Deterministic conditional-mean imputation alone collapses it. Mean over five seeds.  
+
+> complete
+> oracle *
+> resamp *+
+> 4
+> oracle *
+> resamp * +
+> 1
+> oracle *
+> fro ,
+> en
+> est *
+> resamp *+
+> 1
+> est *
+> fro ,
+> en
+> condmean *
+> fro ,
+> en
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> -
+> enerated / true conditional s.d.
+> (a) . enerated conditional spread
+> complete
+> oracle *
+> resamp *+
+> 4
+> oracle *
+> resamp *+
+> 1
+> oracle *
+> fro ,
+> en
+> est *
+> resamp * +
+> 1
+> est *
+> fro ,
+> en
+> condmean *
+> fro ,
+> en
+> 0.000
+> 0.025
+> 0.050
+> 0.075
+> 0.100
+> 0.125
+> 0.150
+> 0.175 sliced / 2 to t 0 e trut 0
+> (b) distributional error
+
+Figure 5: Left, the generated conditional standard deviation as a fraction of the true value, where the dashed line is the target. Right, the sliced Wasserstein distance to the truth. Only deterministic conditional-mean imputation departs from the others. 
+
+E.8 Allocation Under a Fixed Budget 
+
+Figure 6 sweeps K with the total evaluation budget nK held constant. The empirical variance rises with K
+
+and tracks the prediction of Corollary 5.2, so a single completion is the right choice whenever more incomplete observations are available. 
+
+32 20 21 22 23 24
+
+completions K (bud 1 et nK fi 2 ed) 
+
+0.10 
+
+0.12 
+
+0.14 
+
+0.16 
+
+0.18 
+
+0.20 
+
+0.22 
+
+0.24 Var( ̂ L ⋆
+
+> n, K)
+
+fi 3 ed bud 4 et favours K = 1 
+
+> formula
+> empirical
+
+Figure 6: Estimator variance against the number of completions K with the budget nK fixed. Markers are the simulated variance and the line is Corollary 5.2. 
+
+E.9 Objective Gap Under MCAR, MAR, and MNAR 
+
+Table 5 measures the gap between the naive objective, which completes from the data conditional p⋆(x−Λ |
+
+xΛ), and the complete-data objective under all three mechanisms. This is the quantity Proposition D.3 predicts. Under MCAR and MAR the weight w is identically one and the gap should vanish, and both stay at the noise floor even as the mechanism strengthens. For the MNAR mechanisms used here the weight is not constant, and the gap grows with the strength of the dependence, reaching nearly five percent. The sign is negative in all three MNAR settings, which is consistent with the reweighting picture, since the tilt overweights regions where the observed coordinates make the pattern more likely. 
+
+mechanism strength (Lnaive − L FM )/LFM 
+
+MCAR – +0 .14% 
+
+MAR 1.0 +0 .03% 
+
+MAR 2.0 +0 .18% 
+
+MAR 3.0 +0 .19% 
+
+MNAR 1.0 −1.91% 
+
+MNAR 2.0 −4.00% 
+
+MNAR 3.0 −4.77% 
+
+Table 5: Relative gap between the naive objective and the complete-data objective under the three mechanisms, mean over five seeds with standard errors below 0.005 . MCAR and MAR stay at the noise floor as Proposition D.3 predicts. Only MNAR opens a growing gap. 33 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0. 5 
+
+> missin 6 fraction ρ
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> 0.8
+> 0. 5
+> 1.0
+> 1.1 sliced 7 2
+
+(a) sliced 8 2 to 9 eld-out data            
+
+> : omplete-FM (skyline)
+> Mean ; FM
+> M< := ; FM
+> MissForest ; FM
+> >? < @ ; FM
+> MDFM (ours)
+> 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0. 5
+> missin 6 fraction ρ
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> 0.8
+> 0. 5
+> relative covariance error
+
+(b) covariance error 
+
+Figure 7: Distributional distance to held-out real data against the missing rate, averaged over seven datasets and five seeds. Left, sliced Wasserstein distance. Right, covariance error, which most directly reflects joint dependence structure. The skyline never sees a missing value, so it stays flat. 
+
+E.10 Real Data, Normalized Scores 
+
+Table 6 repeats the real-data comparison using a per-cell normalized score instead of a rank. Within each dataset, missing rate, and seed we map the best method to zero and the worst to one and then average. This checks that the ranking in the main text is not an artifact of rank ties, and it also shows the size of the gaps rather than only their order. The conclusion is the same. MDFM and MICE lead, MDFM is best on covariance error among methods trained on incomplete data, and mean imputation and GAIN trail by a wide margin. 
+
+method sW 2 energy MMD cov 
+
+Complete-FM (skyline) 0.131 0.084 0.057 0.099 Mean + FM 0.713 0.588 0.881 0.934 MICE + FM 0.204 0.123 0.078 0.334 MissForest + FM 0.267 0.179 0.155 0.358 GAIN + FM 0.816 0.844 0.758 0.564 MDFM (ours) 0.237 0.134 0.122 0.305 
+
+Table 6: Real data with per-cell normalized scores, where zero is the best method in that cell and one is the worst, averaged over datasets, missing rates, and seeds. Best incomplete-data method in 
+
+bold , second underlined .
+
+E.11 Scope of the Baseline Comparison 
+
+Our baselines isolate the contribution of the method rather than survey the field, since every method shares one vector-field backbone and differs only in how the missing coordinates are supplied. CFMI and CSDI solve a related but different problem, producing completions rather than a joint generative model. In our framework they are natural choices for qφ rather than baselines for the joint task, and Lemma 5.7 already characterizes how any such model affects the objective through its Wasserstein distance to the truth. HyperImpute selects among such models, so the same reasoning applies. Plugging them into our framework is left to future work. 
+
+34

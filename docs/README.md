@@ -18,38 +18,77 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-01
-- 运行时间：2026-08-01 19:59:43 UTC
+- 最新运行日期：2026-08-04
+- 运行时间：2026-08-04 21:36:54 UTC
 - 运行状态：成功
-- 本次总论文数：5
-- 精读区：5
-- 速读区：0
+- 本次总论文数：19
+- 精读区：7
+- 速读区：12
 
 ### 今日简报（AI）
-今日精读5篇生成模型论文，重点攻克扩散模型的高效采样与偏差问题。  
-最值得关注：《Latent-Kernel》用离散流映射实现几步生成，速度提升显著；《Spectral Prior》从频域入手降低曝光偏差，生成质量更稳定。  
-普通读者可优先体验《Latent-Kernel》的快速生成效果，或关注《Spectral Prior》如何让图像细节更自然。
-- 详情：[/202608/01/README](/202608/01/README)
+今日精读7篇，聚焦流匹配与扩散模型的数学统一，其中两篇获9.0高分。最值得深入的是《Mimicking diffusion processes》与《Flow Matching with Missing Data》，分别揭示微分方程模拟扩散的本质和缺失数据下的匹配框架。普通读者可优先关注《Meshy T2》和《StraightDP》，了解流匹配如何加速3D生成并兼顾隐私保护。
+- 详情：[/202608/04/README](/202608/04/README)
 
 ### 精读区论文标签
-1. [Latent-Kernel Discrete Flow Maps for Few-Step Generation](/202608/01/2607.27529v1-latent-kernel-discrete-flow-maps-for-few-step-generation)  
+1. [Mimicking diffusion processes with differential equations](/202608/04/2607.25685v2-mimicking-diffusion-processes-with-differential-equations)  
    标签：评分：9.0/10、query:fm
-   evidence：潜在核离散流映射用于少步生成
-2. [Spectral Prior for Reducing Exposure Bias in Diffusion Models](/202608/01/2607.22091v1-spectral-prior-for-reducing-exposure-bias-in-diffusion-models)  
+   evidence：扩散概率流ODE与概率模型的理论分析
+2. [Flow Matching with Missing Data](/202608/04/2607.28698v1-flow-matching-with-missing-data)  
+   标签：评分：9.0/10、query:fm
+   evidence：带缺失数据的流匹配生成建模
+3. [Noise-Robust Conditional Flow Matching: Generating Clean Samples from Noisy Datasets](/202608/04/2608.00064v1-noise-robust-conditional-flow-matching-generating-clean-samples-from-noisy-datasets)  
+   标签：评分：9.0/10、query:fm
+   evidence：直接提出面向生成建模的噪声鲁棒条件流匹配方法
+4. [Hybrid-Domain Posterior Sampling for Inverse Problems via Latent Flow Matching](/202608/04/2608.00537v1-hybrid-domain-posterior-sampling-for-inverse-problems-via-latent-flow-matching)  
+   标签：评分：9.0/10、query:fm
+   evidence：用于逆问题的潜在流匹配
+5. [One-Sided Quantile Coupling for Flow Matching](/202608/04/2608.00978v1-one-sided-quantile-coupling-for-flow-matching)  
+   标签：评分：9.0/10、query:fm
+   evidence：面向流匹配生成建模的单边分位数耦合
+6. [Computational and Statistical Guarantees of the \textit{c}-Rectified flow](/202608/04/2608.02487v1-computational-and-statistical-guarantees-of-the-textitc-rectified-flow)  
+   标签：评分：8.5/10、query:fm
+   evidence：为修正流提供计算与统计保证
+7. [S-Avatar: Diffusion-Guided Gaussian Head Avatars from a Single Image](/202608/04/2607.28164v1-s-avatar-diffusion-guided-gaussian-head-avatars-from-a-single-image)  
    标签：评分：8.0/10、query:fm
-   evidence：通过频谱对齐解决扩散模型的曝光偏差
-3. [SILICA: Repurposing Diffusion Priors for Joint Glass Segmentation and Depth Estimation](/202608/01/2607.24249v1-silica-repurposing-diffusion-priors-for-joint-glass-segmentation-and-depth-estimation)  
-   标签：评分：8.0/10、query:fm
-   evidence：利用扩散先验进行玻璃感知
-4. [4DHumanDiff: Direct Text-to-4DGS Generation for Consistent 360-Degree Dynamic Humans](/202608/01/2607.27634v1-4dhumandiff-direct-text-to-4dgs-generation-for-consistent-360-degree-dynamic-humans)  
-   标签：评分：8.0/10、query:fm
-   evidence：使用扩散框架直接文本生成4D高斯泼溅
-5. [The Geometric Nature and a Free Proxy for Flow-Matching Uncertainty](/202608/01/2607.27933v1-the-geometric-nature-and-a-free-proxy-for-flow-matching-uncertainty)  
-   标签：评分：8.0/10、query:fm
-   evidence：流匹配不确定性及几何解释
+   evidence：扩散引导的单图高斯头部化身生成
 
 ### 速读区论文标签
-- 本次无速读推荐。
+1. [Meshy T2: Fast Native Mesh Generation with Flow Matching](/202608/04/2607.28675v1-meshy-t2-fast-native-mesh-generation-with-flow-matching)  
+   标签：评分：8.0/10、query:fm
+   evidence：流匹配用于网格生成
+2. [WaiT for the Signal: Simple Frequency-Aware Flow-Matching](/202608/04/2607.28760v1-wait-for-the-signal-simple-frequency-aware-flow-matching)  
+   标签：评分：8.0/10、query:fm
+   evidence：频率感知的流匹配图像生成
+3. [StraightDP: Geometry-Aware Differential Privacy for Rectified-Flow Transformers](/202608/04/2607.29100v1-straightdp-geometry-aware-differential-privacy-for-rectified-flow-transformers)  
+   标签：评分：8.0/10、query:fm
+   evidence：用于生成建模的整流流变换器
+4. [Unleashing the Power of Text: Text-Guided Flow Matching for Image Fusion under Complex Degradations](/202608/04/2608.00530v1-unleashing-the-power-of-text-text-guided-flow-matching-for-image-fusion-under-complex-degradations)  
+   标签：评分：8.0/10、query:fm
+   evidence：文本引导的潜在空间流匹配用于图像融合
+5. [InstancePin: Instance-Addressable Layout-to-Image Diffusion via Coordinate Pinning](/202608/04/2608.00588v1-instancepin-instance-addressable-layout-to-image-diffusion-via-coordinate-pinning)  
+   标签：评分：8.0/10、query:fm
+   evidence：扩散概率模型用于实例可寻址布局到图像生成
+6. [Latent Flow Matching for Arbitrage-Aware Implied Volatility Surface Generation](/202608/04/2608.00616v1-latent-flow-matching-for-arbitrage-aware-implied-volatility-surface-generation)  
+   标签：评分：8.0/10、query:fm
+   evidence：使用VAE和潜在流匹配生成波动率曲面
+7. [Where Does Generative Difficulty Reside? An Empirical Study of Target Representations](/202608/04/2608.00626v1-where-does-generative-difficulty-reside-an-empirical-study-of-target-representations)  
+   标签：评分：8.0/10、query:fm
+   evidence：掩码自回归整流流模型中目标表示的实证研究
+8. [AURORA-LM: Autoencoding Unified Representation for Continuous-Latent Diffusion Language Modeling](/202608/04/2608.02602v1-aurora-lm-autoencoding-unified-representation-for-continuous-latent-diffusion-language-modeling)  
+   标签：评分：8.0/10、query:fm
+   evidence：连续潜扩散语言模型
+9. [Beyond Global Latents: Chunk-Based Sparse Grid VAE for Scalable 3D Modeling](/202608/04/2608.02016v1-beyond-global-latents-chunk-based-sparse-grid-vae-for-scalable-3d-modeling)  
+   标签：评分：7.0/10、query:fm
+   evidence：ChunkVAE是一种用于3D建模的稀疏网格变分自编码器
+10. [Fourier-Latent Diffusion for Constrained Generation of Triply Periodic Minimal Surfaces](/202608/04/2608.02151v1-fourier-latent-diffusion-for-constrained-generation-of-triply-periodic-minimal-surfaces)  
+   标签：评分：7.0/10、query:fm
+   evidence：傅里叶潜在空间扩散模型用于TPMS生成
+11. [StructureGS: Structure-aware Gaussian Splatting for Articulated Object Reconstruction](/202608/04/2607.26889v1-structuregs-structure-aware-gaussian-splatting-for-articulated-object-reconstruction)  
+   标签：评分：6.0/10、query:dgs-physics
+   evidence：重建关节物体以支持物理交互
+12. [FillGS: Filling Observation Gaps in 4D Gaussian Splatting via Viewpoint-Time Selection and Generative Refinement](/202608/04/2607.29284v1-fillgs-filling-observation-gaps-in-4d-gaussian-splatting-via-viewpoint-time-selection-and-generative-refinement)  
+   标签：评分：6.0/10、query:fm
+   evidence：使用生成式细化填补4DGS观察空隙
 
 
 <div class="dpr-home-promo-card dpr-home-panel">

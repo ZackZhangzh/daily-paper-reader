@@ -1,0 +1,2930 @@
+Title: One-Sided Quantile Coupling for Flow Matching
+
+URL Source: https://arxiv.org/pdf/2608.00978v1
+
+Published Time: Tue, 04 Aug 2026 01:17:12 GMT
+
+Number of Pages: 27
+
+Markdown Content:
+# One-Sided Quantile Coupling for Flow Matching 
+
+## Jin-Young Kim 1, So-Yoon Cho 2, Hyun-Gyoon Kim 3∗
+
+> 1
+
+Independent Researcher 
+
+> 2
+
+Division of Finance & AI, Hankuk University of Foreign Studies 
+
+> 3
+
+Dept. of Financial Engineering, Ajou University seago0828@gamil.com, soyooncho@hufs.ac.kr, hyungyoonkim@ajou.ac.kr 
+
+Abstract 
+
+Flow Matching (FM) trains continuous-time generative mod-els by regressing the velocity field of a probability path be-tween a simple source distribution and a target data distri-bution. The coupling that pairs source and target samples strongly affects optimization and sample quality, but struc-tured couplings typically rely on mini-batch transport or as-signment procedures whose cost grows at least quadratically in batch size. We propose Quantile Coupling Flow Match-ing (QC-FM) , a lightweight one-sided coupling: rather than matching two pre-sampled batches, it samples only the data batch and constructs each paired source directly. Data ranks projected along a small number of random orthogonal direc-tions are mapped to Gaussian quantiles, and the latent code is completed in the orthogonal complement by conditional Gaussian sampling. The construction is one-dimensional per slice, so the coupling requires no pairwise cost matrix and no assignment to solve. We show that, for each drawn frame, this coupling eliminates the irreducible regression variance along every selected slice and makes the ideal flow exactly straight there, while leaving the sampling prior unchanged: generation still starts from the standard Gaussian, and the training source deviates from it only through the copula of the slice codes, whose transport cost we bound. For training, we apply QC to an anchor subset and complete the remaining source slots with exact Gaussian samples, retaining the QC bias while preserving an explicit signal from the Baseline cou-pling. Across CIFAR-10, CelebA, FFHQ, and ImageNet-64, QC-FM improves over the Baseline under matched training budgets, reducing FID by up to 12 .9% , and outperforms mini-batch OT-CFM on all four datasets. These results suggest that preserving projected rank structure is a simple and scalable way to inject useful geometric bias into FM couplings without solving a mini-batch transport problem. 
+
+## Introduction 
+
+Flow Matching (FM) has emerged as an effective framework for training continuous-time generative models by directly regressing the velocity field of a probability path between a source distribution and a target data distribution (Lipman et al. 2023). A standard choice uses a Gaussian source and linear interpolation between a source sample and a data sam-ple, yielding a simple and efficient training objective. Despite this simplicity, the quality of the coupling between source 
+
+> ∗
+
+Corresponding author 
+
+and target samples plays a central role in determining the ge-ometry of the induced training trajectories. Poor couplings lead to unnecessarily long or conflicting paths, which can increase the variance of the target velocity field and make training less efficient. While recent curricula progressively organize the noise-to-data learning problem across denoising difficulty or temporal gaps (Kim et al. 2025, 2026), we focus on a complementary axis: directly structuring the noise–data endpoint coupling used at every update. Structured couplings inspired by optimal transport (OT) can reduce trajectory crossing and shorten transport paths, of-ten leading to faster convergence and better generation qual-ity. However, existing structured approaches typically rely on mini-batch OT or related matching procedures, which require constructing pairwise cost matrices and solving a batchwise assignment problem. As data dimension and batch size grow, these procedures become increasingly expensive, and their batchwise nature can introduce additional instability or bias. In this paper, we ask whether the geometric benefits of structured coupling can be obtained without matching two pre-sampled batches at all. Our answer is Quantile Coupling Flow Matching (QC-FM) , a one-sided coupling scheme: rather than drawing a noise batch and re-pairing it with the data, QC-FM samples only the data batch and constructs each paired source directly. Every data point is ranked along a small number of random orthogonal directions, and the ranks are mapped to Gaussian quantiles, so that the source preserves the batchwise order of the data along each slice. The remaining directions are completed by conditional Gaus-sian sampling, and the resulting source is structured along the selected slices and stochastic elsewhere. QC-FM is a batch-local structured coupling: it imposes monotone one-dimensional transport along k random slices. Each slice is realized by a sort against a fixed Gaussian quan-tile grid, so there is no pairwise cost matrix to build and no assignment problem to solve. Because the quantiles are computed within the current mini-batch, QC-FM is a sur-rogate for structured coupling rather than an approximation of global OT; the aim is to recover the optimization bene-fits commonly associated with structured couplings, not to compute an optimal matching. The QC coupling is the theoretical primitive of our method. In training, QC designates the source for an an-chor subset of the batch, and the remaining source slots arXiv:2608.00978v1 [cs.LG] 2 Aug 2026 are completed with exact samples from the Gaussian prior. These Gaussian-remainder completion schemes retain a con-trolled amount of QC structure while preserving an explicit signal from the Baseline coupling. QC-FM-Mixture pairs the Gaussian remainder randomly, and QC-FM-Adjacency 
+
+uses the same Gaussian remainder but pairs it through neigh-borhoods induced by the QC anchors, using every data target exactly once. The hybrids are practical completion schemes, rather than separately claimed optimal couplings. Our experiments span CIFAR-10, CelebA, FFHQ, and ImageNet-64. QC-FM-Mixture improves over the Baseline on all four after the same number of training epochs and outperforms minibatch OT-CFM on every dataset. These re-sults indicate that projected rank preservation is a promis-ing, low-cost alternative to full mini-batch transport for flow matching. The contributions of this paper are as follows: 
+
+• We propose Quantile Coupling Flow Matching (QC-FM) , a lightweight batchwise source construction for flow matching based on projected rank-to-quantile matching and conditional Gaussian completion. 
+
+• We develop a theoretical account of the QC coupling primitive: for a fixed frame, it eliminates the irreducible variance along the selected slices and makes the ideal per-slice flow straight; we further quantify the transport-cost gain, the effect of direction resampling, the finite-batch approximation, and the dependence among slice codes that separates the training source from the sampling prior. 
+
+• We introduce two Gaussian-remainder completion schemes, QC-FM-Mixture and QC-FM-Adjacency ,which apply QC to an anchor subset, complete the re-maining source slots with exact Gaussian samples, and differ in how this Gaussian remainder is paired. 
+
+• We demonstrate on CIFAR-10, CelebA, FFHQ, and ImageNet-64 that QC-FM-Mixture improves over the Baseline and minibatch OT-CFM, and analyze the anchor-ratio and slice-count trade-offs. 
+
+## Related Work 
+
+Flow matching. Flow matching (Lipman et al. 2023) trains continuous normalizing flows (Chen et al. 2018) by regress-ing the velocity field that generates a prescribed probability path from a source distribution to the data. Related formu-lations include rectified flow (Liu, Gong, and Liu 2023) and stochastic interpolants (Albergo and Vanden-Eijnden 2023; Albergo, Boffi, and Vanden-Eijnden 2025). In the Baseline formulation, a Gaussian source and a data sample are drawn independently and joined by linear interpolation, so the two endpoints are paired at random. 
+
+Couplings by minibatch assignment. One line of work replaces this independent pairing with a structured one com-puted within each minibatch. Multisample flow matching (Pooladian et al. 2023) and OT-CFM (Tong et al. 2024) in-troduce non-trivial minibatch couplings: they draw a noise batch and a data batch independently, form the B × B cost matrix between the two batches of size B, and re-pair them by solving an assignment problem ( O(B3) for an exact solve, or O(B2) per iteration under entropic regularization). Sub-sequent work refines this coupling (Lin et al. 2026; Davtyan et al. 2025; Li et al. 2024). These couplings straighten the flow but inherit the statistical bias of minibatch OT (Fatras et al. 2020; Boïté, Delon, and Nadjahi 2026), with benefits emerging mainly at large batch sizes (Zhang et al. 2026), though the cost can be amortized (Mousavi-Hosseini et al. 2025). All share a two-sided design: both endpoints are sam-pled first, and the coupling is a matching between them. QC-FM is instead one-sided : it samples only the data batch and 
+
+synthesizes the paired source directly against a fixed Gaussian quantile grid. Per slice this reduces to the one-dimensional comonotone coupling (Theorem A.3), realized by a sort in 
+
+O(B log B); there is no B × B cost matrix and no batchwise assignment, and the sampling prior is unchanged. 
+
+Data-dependent priors. A complementary line makes the source depend on the data rather than matching two batches. Data-dependent stochastic interpolants (Albergo et al. 2024) condition the source on the data, but target conditional tasks such as super-resolution and inpainting. For unconditional generation, the dependence is usually learned via a varia-tional noise coupling trained jointly with the flow (Silvestri et al. 2025). Closest to QC-FM, two recent works build the source without learning: Chemseddine et al. (2026) fit a data-adaptive prior from one-dimensional quantile functions but still couple through minibatch OT, and Malnick et al. (2026) take each image’s own low-frequency content as its prior. QC-FM shares this construct-rather-than-match philosophy but requires no learned component and no change of the 
+
+sampling prior: nothing is learned or stored for inference, and generation still starts from the standard Gaussian. Our source is built from within-batch ranks mapped through the Gaussian quantile transform; it equals the standard Gaussian exactly at k = 1 and, for k ≥ 2, deviates only through a copula whose transport cost we bound in Theorem A.7. 
+
+Sliced transport and rank-based constructions. One-dimensional OT underlies QC-FM’s per-slice mechanism: the quadratic problem is solved in closed form by the comonotone coupling that matches quantiles (Hoeffding 1940; Villani 2009), which is also the basis of sliced Wasser-stein distances (Rabin et al. 2011; Bonneel et al. 2015; Kolouri et al. 2019). Sliced transport plans lift a one-dimensional plan back to the ambient space and have likewise been used to couple flow-matching batches (Tanguy, Chapel, and Delon 2025; Chapel, Tavenard, and Vaiter 2026) — again a matching between two independent batches. The rank-to-Gaussian-quantile map itself is classical, underlying Gaus-sianization methods (Chen and Gopinath 2000; Laparra, Camps-Valls, and Malo 2011; Dai and Seljak 2021). QC-FM applies this primitive once, batch-locally, rather than com-posing it into a standalone generative model. Concurrently, Groom et al. (2026) propose a quantile-coupled objective for distributional reinforcement learning, sorting scalar returns against noise within each batch, whereas QC-FM operates on high-dimensional data via random orthogonal projections. Method 
+
+Preliminaries: Flow Matching 
+
+Let p0 denote a simple source distribution, typically p0 =
+
+N (0 , I ), and let p1 denote the data distribution. FM trains a time-dependent vector field vθ (x, t ) to match the velocity of a prescribed conditional probability path between a source sample x0 ∼ p0 and a data sample x1 ∼ p1.The Baseline uses the linear path xt = (1 − t)x0 + tx 1
+
+for t ∈ [0 , 1] , with target velocity ut = x1 − x0. The model is trained by minimizing 
+
+LFM (θ) = Et,x 0,x 1
+
+h
+
+∥vθ (xt, t ) − ut∥2i
+
+.
+
+Although the objective is simple, the choice of coupling between x0 and x1 strongly affects the geometry of the train-ing trajectories. The Baseline is easy to sample but can pro-duce long or conflicting paths, increasing the variance of the target velocity field. Structured couplings can improve this geometry, but existing approaches often rely on solving a mini-batch transport problem. Our goal is to obtain some of the benefits of structured coupling without explicit batchwise assignment. 
+
+Quantile Coupling Flow Matching 
+
+Overview We propose Quantile Coupling Flow Match-ing (QC-FM) , a lightweight one-sided coupling method that preserves the relative order of data samples along a small number of random projections. Given a data batch 
+
+Bx = {x(1) , . . . , x (B)} ⊂ Rd, QC-FM constructs a cor-responding latent batch Be = {e(1) , . . . , e (B)} ⊂ Rd by matching projected data ranks to Gaussian quantiles. The re-sulting coupling is structured along the selected projections and stochastic in the remaining directions. 
+
+Construction Let U = [ u1, . . . , u k] ∈ Rd×k have or-thonormal projection directions as columns, sampled for ex-ample by QR decomposition of a Gaussian random matrix. For each data point x(i) and direction uj , we compute the scalar projection vij = u⊤ 
+
+> j
+
+x(i). Within each projection j,we rank the values {v1j , . . . , v Bj } across the batch. For a batch B, let rj (x; B) ∈ { 1, . . . , |B|} denote the rank of u⊤ 
+
+> j
+
+x
+
+within {u⊤ 
+
+> j
+
+x′ : x′ ∈ B} , with rank 1 the smallest, and write 
+
+rij := rj (x(i); Bx). We continuity-correct the empirical rank and map it through the inverse standard normal CDF: 
+
+τij = rij − 0.5
+
+|B x| , zij = Φ −1(τij ).
+
+Collecting these coordinates as z(i) = ( zi1, . . . , z ik )⊤ ∈ Rk,we define e(i) as a standard Gaussian sample conditioned on 
+
+U ⊤e(i) = z(i).Because U has orthonormal columns, the conditional dis-tribution admits the closed form 
+
+e(i) = U z (i) + ( Id − U U ⊤)ϵ(i), ϵ(i) ∼ N (0 , I d).
+
+The first term, U z (i), enforces the desired projected coordi-nates, while the second term injects Gaussian variability in the orthogonal complement of span( U ).
+
+Geometric Interpretation QC-FM can be interpreted as imposing k linear slice constraints in latent space. For each direction uj , the condition u⊤ 
+
+> j
+
+e(i) = zij defines a hyperplane orthogonal to uj . Therefore, e(i) lies on the intersection of 
+
+k such hyperplanes. When k < d , this intersection is an affine subspace of dimension d − k, and the residual term 
+
+(Id − U U ⊤)ϵ(i) samples from the Gaussian restricted to that subspace. When k = d, the slice constraints fully determine the latent code as e(i) = U z (i).Algorithm 1 in Appendix C.1 summarizes this construc-tion. We write QC-FM (B, k ) for the algorithm, returning the source samples {e(i)}, with e(i) paired to x(i), together with the frame U . Each e(i) serves as the source endpoint of the flow-matching path for x(i), i.e. (x0, x 1) = ( e(i), x (i)).
+
+Interpretation as a Structured Coupling Surrogate QC-FM is a sliced, batch-local structured coupling. Along each projection uj , matching empirical ranks to Gaussian quan-tiles is equivalent to monotone one-dimensional transport be-tween the projected empirical data distribution and the Gaus-sian reference. QC-FM combines k such one-dimensional constraints and constructs a source point that satisfies all of them simultaneously. In this way, the method injects struc-tured geometric information into the coupling without solv-ing a full pairwise transport problem over the batch. Importantly, QC-FM is still a batch-local method: the quantiles are computed from the current mini-batch rather than from the full data distribution. Thus, QC-FM should be understood as a practical surrogate for structured coupling rather than an exact approximation to global OT. 
+
+Properties QC-FM has the following useful properties. 
+
+Projected rank preservation. For every selected direction 
+
+uj , the source samples preserve the batchwise ordering of the data projections: 
+
+rj
+
+ e(i); Be
+
+ = rj
+
+ x(i); Bx
+
+, ∀i, j. 
+
+This follows because u⊤ 
+
+> j
+
+e(i) = zij by orthonormality of 
+
+U , and zij is a strictly increasing transform of rij , which preserves order. 
+
+Gaussian completion in unconstrained directions. The residual term (Id − U U ⊤)ϵ(i) is Gaussian in the orthogonal complement of the selected projection subspace. Therefore, QC-FM preserves stochastic variability in directions not ex-plicitly constrained by projected ranks. 
+
+Batchwise Gaussian surrogate rather than exact i.i.d. source sampling. At finite batch size, QC-FM does not produce i.i.d. draws from N (0 , I d): its coordinates in 
+
+span( U ) follow a deterministic Gaussian quantile grid in-duced by the batch ranks, while the orthogonal complement remains Gaussian. At the population level, however, the dis-tinction is sharper. For k = 1 , the source marginal is exactly Gaussian; for k ≥ 2, any source–prior discrepancy is con-fined to the copula among the slice codes (Theorem A.1 in Appendix A). Thus we interpret finite-batch QC-FM as a structured batchwise Gaussian surrogate , rather than an i.i.d. replacement for standard source sampling. Controllable coupling strength. The parameter k con-trols how much structure is injected into the coupling. Small 
+
+k imposes weak, low-cost constraints, while larger k en-forces projected rank consistency along more directions and produces a stronger geometric bias. 
+
+Efficiency. QC-FM requires projection, sorting, and or-thogonalization, but avoids pairwise cost matrices and trans-port assignment over the full batch. Its dominant batch-dependent cost is sorting projected values along k direc-tions, which scales as O(kB log B), in contrast to batchwise transport methods that typically require at least quadratic dependence on batch size. 
+
+Gaussian-Remainder Hybrid Extensions 
+
+The QC coupling above is the primitive analyzed in Sec-tion . For k ≥ 2, the QC joint source law can differ from the Gaussian prior because the slice codes retain data-dependent dependence, even though every individual slice coordinate is Gaussian in the population construction. We therefore apply QC only to an anchor subset and complete the remaining source slots with exact Gaussian samples. We refer to this design as Gaussian-remainder completion . All variants be-low share the same source-side completion; they differ only in the joint pairing law assigned to the Gaussian remainder. Figure 1 later shows how these coupling choices affect the geometry of learned toy-data trajectories. Let p ∈ [0 , 1] denote the anchor ratio. Given a data batch Bx = {x(i)}Bi=1 , we split Bx = Bx, anc ∪ B x, rest with 
+
+|B x, anc | = M = ⌊pB ⌋, and write the corresponding source split as Be = Be, anc ∪ B e, rest . Applying QC-FM yields the latent anchors and frame (Be, anc , U ) = QC-FM (Bx, anc , k ),together with the anchor pairs 
+
+S = {(eanc  
+
+> m
+
+, x anc  
+
+> m
+
+)}Mm=1 , eanc  
+
+> m
+
+∈ B e, anc , x anc  
+
+> m
+
+∈ B x, anc .
+
+We define the structured-space distance dU (a, b ) =
+
+∥U ⊤a−U ⊤b∥2, which measures only the k-dimensional sub-space where QC-FM imposes structure. Using dU prevents the unconstrained Gaussian complement from dominating neighborhood assignments in high dimension. 
+
+QC-FM-Mixture. For the remainder subset, we indepen-dently sample eBe, rest ∼ N (0 , I d) and pair these latents ran-domly with Bx, rest , exactly as in the Baseline, giving the random remainder pairs 
+
+A = {(˜ e, σ 0(˜ e)) : ˜ e ∈ eBe, rest },
+
+where σ0 is a uniformly random bijection from eBe, rest to 
+
+Bx, rest . The final training set is T = S ∪ A . Writing πqc := 
+
+EU [πqc  
+
+> k,U
+
+] for the frame-averaged QC pair law and πind := 
+
+γd ⊗ p1 for the Baseline coupling, the population pair law of this construction is 
+
+πmix = p π qc + (1 − p) πind ,
+
+and hence, for every velocity field v,
+
+Lmix FM (v) = p Lπqc 
+
+> FM
+
+(v) + (1 − p) Lπind  
+
+> FM
+
+(v).
+
+Thus QC-FM-Mixture explicitly retains the Baseline objec-tive on the Gaussian remainder while injecting a structured QC component. 
+
+QC-FM-Adjacency. QC-FM-Adjacency propagates an-chor structure to the remainder of the batch without dupli-cating targets, so that every data point is used exactly once. First, each remainder data point x ∈ Bx, rest is as-signed to its nearest anchor target in structured coordinates, 
+
+a(x) = arg min m∈{ 1,...,M } dU (x, x anc  
+
+> m
+
+). This partitions the remainder data into anchor-induced groups 
+
+Gm = {x ∈ B x, rest : a(x) = m}, nm = |G m|.
+
+Next, we sample |B x, rest | Gaussian latent points eBe, rest ∼N (0 , I d). We then allocate these latent points to anchors with a parallel auction that respects the group quotas nm.In each round, every still-unassigned latent proposes to its nearest anchor (in dU (e, e anc  
+
+> m
+
+)) that still has remaining quota; each anchor provisionally keeps its closest proposers up to its quota; rejected latents re-propose in the next round. Since at least one anchor fills its quota per round, the procedure terminates in at most M rounds; in practice it converges in a small, batch-size-independent number of rounds (typi-cally fewer than ten), and it requires O(M B ) nearest-anchor distance evaluations. The auction is fully vectorized and in-dependent of the order in which anchors are processed . The matching quotas guarantee that every latent and every re-mainder target is used exactly once, producing latent groups 
+
+Hm ⊂ eBe, rest , |H m| = |G m| = nm.
+
+Finally, latent points in Hm are paired with targets in Gm
+
+via a bijection σm : Hm → G m, chosen at random within each group. The resulting remainder pair set is 
+
+N =
+
+> M
+
+[
+
+> m=1
+
+{(e, σ m(e)) : e ∈ H m}.
+
+This construction uses every target in the batch exactly once and uses the same exact-Gaussian remainder as QC-FM-Mixture. Its distinction is entirely in the pairing: instead of reverting to the Baseline on the remainder, it propagates the local geometry induced by the QC anchors through anchor-centered source and target neighborhoods. Both hybrids modify only the batchwise source–target pairing; the interpolation path and flow-matching objective remain unchanged. The QC construction and hybrid training procedure are given in Algorithms 1 and 2, respectively. 
+
+## Theoretical Analysis 
+
+Each training step draws a fresh frame U and regresses against the coupling it induces, and the results below analyze this per-step coupling at the population level. The effect of averaging over redrawn frames is quantified in Appendix A.8, and the finite-batch approximation in Appendix A.9. 
+
+Proposition 1 (Complexity) . For a batch of size B in data dimension d with k orthonormal slice directions, one QC-FM batch runs in O(B log B) time when d and k are held fixed. The detailed full cost is given in Proposition A.2 (appendix). 
+
+By contrast, assignment-based couplings such as mini-batch OT (OT-CFM (Tong et al. 2024)) solve a full batch assignment, at O(B2d) for the cost matrix, plus O(B3) for an exact Hungarian solve or O(B2) per Sinkhorn iteration. Theorem 2 (The irreducible variance vanishes along slices) .
+
+For a coupling π, let Y := x1 − x0 for the constant velocity of the linear path and 
+
+Lπ
+
+> FM
+
+(v) := Et∼q, π 
+
+∥v(xt, t ) − Y ∥2,
+
+where q is a probability density on [0 , 1] that is positive almost everywhere. Its minimum over all fields is inf v Lπ 
+
+> FM
+
+=
+
+R 10 q(t) Fπt dt , where 
+
+Fπt := Eπ
+
+ Y − Eπ [Y | xt] 2
+
+is the irreducible variance at time t (Lipman et al. 2023; Helbling et al. 2026), with slice component Fπt (uj ) := 
+
+Eπ
+
+(u⊤ 
+
+> j
+
+Y − Eπ [u⊤ 
+
+> j
+
+Y | xt]) 2. Let πqc  
+
+> k,U
+
+be the QC-FM cou-pling for a frame U with k slices and πind := γd ⊗ p1
+
+be the independent coupling used by the Baseline, where 
+
+γd = N (0 , I d). For a fixed frame U ,
+
+inf  
+
+> v
+
+Lπqc  
+
+> k,U
+> FM
+
+≤ inf  
+
+> v
+
+Lπind  
+
+> FM
+
+−
+
+> k
+
+X
+
+> j=1
+
+Z 10
+
+q(t)Fπind  
+
+> t
+
+(uj ) dt < inf  
+
+> v
+
+Lπind  
+
+> FM
+
+,
+
+the gap being the q-weighted sum of the Baseline slice vari-ances, each strictly positive whenever Var( u⊤ 
+
+> j
+
+X) > 0 for 
+
+X ∼ p1.
+
+Here Eπ [Y | xt] is the best possible velocity prediction from the current state, and Fπt is the mean squared spread of the velocities of all training pairs passing through the point 
+
+xt around this prediction; since the network can output only one velocity per point, this spread is the part of the regression error no network can remove. A lower irreducible variance bounds the attainable loss, not the speed of optimization. We prove no direct variance-to-FID inequality, since FID also depends on the trained network and the sampler. 
+
+Theorem 3 (Slice straightness) . For a fixed frame U , the ideal QC-FM flow is exactly straight along every slice and distinct pairs never cross within a slice, so all k one-dimensional slice marginals are generated exactly. 
+
+The precise assumptions, formal statement, and proof are given in Theorem A.4 (appendix). Straightness here is not learned but built in. The comono-tone slice coupling makes the per-slice velocity single-valued, so the generated law can deviate from p1 only in the dependence among the slice marginals (Theorem A.7). These results concern the QC primitive and do not bound the floor of the full hybrid coupling used in the experiments. The hybrids share their source marginal; Proposition A.6 in Appendix A.6 shows that their exact-Gaussian remainder attenuates whatever prior mismatch the QC anchors carry. 
+
+## Experiments 
+
+Setup 
+
+Benchmarks and protocol. We diagnose coupling geom-etry on Checkerboard and an 8-Gaussians ring, and evaluate generation on CIFAR-10 (Krizhevsky 2009), CelebA-64 (Liu Table 1: Toy coupling diagnostics after 20 ,000 steps. Best results are bold and runners-up are underlined.                          
+
+> Checkerboard 8-Gaussians Method PLR ↓Velocity Var. ↓PLR ↓Velocity Var. ↓
+> Baseline 2.887 4.578 1.945 5.982 OT-CFM 1.010 0.354 1.013 0.982 QC-FM-Mixture 1.007 0.174 1.010 0.804 QC-FM-Adjacency 1.009 0.158 1.012 0.707
+
+et al. 2015), FFHQ-64 (Karras, Laine, and Aila 2019), and class-conditional ImageNet-64 (Deng et al. 2009). We adopt the EDM-based image configuration released with Flow Matching Guide and Code (Lipman et al. 2024) as the com-mon model and use its independent-coupling configuration as the Baseline. Image experiments use the same U-Net, linear flow-matching path, batch size 64 , Adam ( β = (0 .9, 0.95) ,learning rate 10 −4), EMA, and EDM-style timestep law across methods; only the coupling changes. Training and timing measurements use NVIDIA RTX A6000 GPUs, with latency measured on a single GPU. Class-conditional Ima-geNet uses classifier-free guidance with scale 1.5. We re-port FID-50K from a Heun solver at NFE = 50 after matched training budgets: 1600 /500 /1200 /60 epochs for CIFAR-10/CelebA/FFHQ/ImageNet, respectively. The first three budgets train each method until performance has suf-ficiently converged; on ImageNet-64, we instead compare methods at the same number of training iterations. 
+
+Comparisons and configurations. We compare the Base-line, exact Hungarian OT-CFM (Tong et al. 2024), and the two QC-FM hybrids. CIFAR-10 ablations select k = 16 ,
+
+p = 0 .2 for Mixture, and p = 0 .8 for Adjacency. We trans-fer these values without per-dataset tuning: the calibrated heuristic of Appendix B selects k = 32 , which is used for both reported FFHQ variants; all other image results use 
+
+k = 16 . Slice frames are redrawn independently at every step. We always report the prescribed final checkpoint. 
+
+Toy Coupling Diagnostics 
+
+Checkerboard tests disconnected support, while 8-Gaussians tests mode-preserving geometry. We measure the path-length ratio (PLR) and the summed coordinate variance of the target velocity x1 − x0. Table 1 reports results after 20 ,000 train-ing steps with the same seed; this toy-only selection is not transferred to images. Figure 1 makes the PLR diagnostic tangible: the Baseline exhibits substantially more curvature, whereas both QC-FM variants yield nearly straight learned paths. Table 1 quanti-fies the same comparison. QC-FM-Mixture attains the low-est PLR on both datasets, narrowly improving on OT-CFM, while QC-FM-Adjacency gives the lowest target-velocity variance. Both QC-FM variants report lower values than OT-CFM on both diagnostics without solving a full batch assign-ment. These results probe coupling mechanics rather than claim global transport optimality. In particular, Adjacency’s lower target-velocity variance does not translate into lower image FID than Mixture, so neither diagnostic alone deter-mines sample quality. This distinction is consistent with our Standard FM   
+
+> 8-Gaussians
+> PLR 1.945
+> Checkerboard
+> PLR 2.887
+> QC-FM-Mixture
+> PLR 1.010 PLR 1.007
+> QC-FM-Adjacency
+> PLR 1.012 PLR 1.009
+
+Figure 1: Learned flow trajectories on 8-Gaussians and Checkerboard. Light-gray points show the target distribu-tion, dark-gray points are shared Gaussian initial states, red points are the corresponding model endpoints, and purple curves are 100 -step Euler trajectories. PLR is integrated path length divided by endpoint displacement, so PLR = 1 cor-responds to a straight path. Both QC-FM variants visibly straighten trajectories learned by the Baseline. theory, which controls per-slice irreducible variance rather than final sample quality. 
+
+Image Generation Results 
+
+Table 2 shows that QC-FM-Mixture is the best method on all four datasets, improving over the Baseline by 6.3% ,
+
+12 .5% , 12 .9% , and 11 .2% on CIFAR-10, CelebA, FFHQ, and ImageNet, respectively. It also outperforms Hungarian OT-CFM throughout, with the largest margins on the two face datasets. Adjacency likewise improves over the Base-line on all four datasets, including a 7.8% gain on ImageNet at the transferred k = 16 , although Mixture remains consis-tently stronger in image FID. This pattern is consistent with the hybrids’ designs: Mixture retains an explicit Baseline component on its Gaussian remainder, whereas Adjacency applies QC to most of the batch and organizes the remainder through anchor-local neighborhoods. As shown in Table 1, Table 2: Main FID-50K comparison at NFE = 50 . Best results are bold and runners-up are underlined. Parenthe-ses report the relative FID change from the Baseline; im-provements are red and degradations are blue. Mixture uses 
+
+(p, k ) = (0 .2, 16) except on FFHQ, where it uses (0 .2, 32) ;Adjacency uses (0 .8, 16) except on FFHQ, where it uses 
+
+(0 .8, 32) .                                 
+
+> 32 ×32 64 ×64
+> Method CIFAR-10 CelebA FFHQ ImageNet Baseline 2.24 1.76 2.64 8.81 OT-CFM (Hungarian) 2.59 (+15 .6% )2.23 (+26 .7% )3.19 (+20 .8% )8.80 (−0.1% )
+> QC-FM-Adjacency (ours) 2.12 (−5.4% )1.75 (−0.6% )2.35 (−11 .0% )8.12 (−7.8% )
+> QC-FM-Mixture (ours) 2.10 (−6.3% )1.54 (−12 .5% )2.30 (−12 .9% )7.82 (−11 .2% )
+
+Table 3: One- versus two-sided rank/slice couplings on CIFAR-10 under matched settings. Parentheses report the rel-ative FID increase over QC-FM-Mixture in blue. Time/step is the mean wall-clock time over 100 training steps after 10 
+
+warm-up steps at B = 64 .          
+
+> Method FID Time/step (ms) Sliced-OT (Tanguy, Chapel, and Delon 2025) 2.48 (+18 .1% )288.5 Sort/quantile (Groom et al. 2026) 2.22 (+5 .7% )289.7
+> QC-FM-Mixture (ours) 2.10 288.1
+
+the latter attains the lowest toy velocity variance. An en-tropic Sinkhorn OT-CFM solver was unstable in this setting (FID above 8 on CIFAR-10), so we report the stable Hun-garian OT-CFM result. Since minibatch OT can benefit from larger batches (Zhang et al. 2026), Table D in Appendix C.5 records the matched batch-size ablation. Matched-input end-point comparisons appear in Appendix C.6. 
+
+Sliced and Sort-Based Couplings 
+
+Table 3 isolates QC-FM’s one-sided source construction by matching the backbone, schedule, batch size, and slice count against two-sided sliced OT (Tanguy, Chapel, and Delon 2025) and batchwise sort/quantile coupling (Groom et al. 2026). At essentially matched step time, sort/quantile cou-pling and sliced OT have 5.7% and 18 .1% higher FID, re-spectively, than QC-FM-Mixture. The gap therefore cannot be explained by additional computation and supports the util-ity of constructing the Gaussian source one-sidedly rather than matching two pre-sampled batches. 
+
+Computational Cost 
+
+Proposition 1 predicts O(B log B) batch dependence for fixed (d, k ), versus O(B3) for exact Hungarian assignment. Because the U-Net masks these small differences, we time coupling construction in isolation on a single GPU. Table 4 shows that QC-FM-Mixture changes only 0.42 →
+
+0.69 ms as B grows from 64 to 2048 , while Hungarian OT grows from 0.38 to 568 .31 ms. At B = 2048 , Mixture is over 
+
+800 × faster than Hungarian and 35 × faster than Sinkhorn; Adjacency remains over 100 × faster than Hungarian. Table 5 shows that at B = 256 , the shared QC primitives total only Table 4: Isolated CIFAR-10 coupling time (ms/batch; d =3072 , k = 16 ). Model forward/backward is excluded.                         
+
+> Coupling B=64 B=256 B=1024 B=2048
+> Baseline 0.01 0.01 0.02 0.04
+> OT-CFM (Sinkhorn) 4.95 5.06 6.13 24 .62
+> OT-CFM (Hungarian) 0.38 5.09 105 .12 568 .31
+> QC-FM-Mixture 0.42 0.42 0.50 0.69
+> QC-FM-Adjacency 2.96 3.89 4.74 5.51
+
+Table 5: QC-FM cost breakdown at B = 256 , averaged over 
+
+200 calls. Percentages use the 1079 .8 ms full training step.                         
+
+> Component Cost Time/batch (ms) % of step Projection U⊤xO(Bdk )0.011 <0.01
+> QR / frame generation O(dk 2)0.162 0.02
+> kper-slice sorts O(kB log B)0.074 <0.01
+> Adjacency dUassignment O(M B )2.29 0.21
+
+0.25 ms and the entire Mixture coupling is below 0.05% of a step. Adjacency’s auction is the only visible component, yet is still 0.21% of a step. 
+
+Ablations 
+
+Table 6(a) shows a non-monotone slice-count trade-off: Mix-ture improves from 2.46 at k = 1 to 2.10 at k = 16 , then degrades to 2.24 at k = 64 . Additional nondegenerate slices remove corresponding within-frame residuals and provide the transport-cost gain predicted by Theorems 2 and A.3, but inter-slice dependence (Theorem A.7), frame disagreement, finite-batch estimation, and hybrid completion counteract that gain. We therefore use the calibrated gain–dependence heuristic of Appendix B as a selection guide. As shown in Table 6(b), at k = 16 , Mixture prefers a small anchor frac-tion ( p = 0 .2), retaining more Baseline pairs, whereas Adja-cency benefits from denser anchor neighborhoods and prefers 
+
+p = 0 .8. These CIFAR-10 choices define the transferred im-age configuration above. Table B in Appendix C.3 tests projection-frame design by comparing the default randomly resampled U with a single PCA-aligned U fixed throughout training. We also reverse the rank-to-quantile order while preserving the same Gaus-sian quantile multiset. Table C in Appendix C.4 compares the Baseline, anti-monotone, and monotone variants to test whether correct rank orientation, rather than quantile regu-larization alone, drives the gain. 
+
+## Discussion 
+
+QC-FM should be understood as a batch-local structured coupling surrogate , not an approximation to global OT. Its quantiles are estimated within each mini-batch, its projec-tions capture only partial geometry, and its theory controls coupling cost and per-slice regression variance rather than FID or globally straight trajectories. The experiments show that this limited, inexpensive bias can improve sample qual-ity under matched architectures and training budgets. The hybrid results should likewise be read empirically: Gaussian-Table 6: CIFAR-10 ablations at the common 1600 -epoch endpoint. (a) Slice-count sweep for QC-FM-Mixture at p =0.2. (b) Anchor-ratio sweep at k = 16 .                        
+
+> (a) Number of slices
+> Method kFID QC-FM-Mixture 12.46 QC-FM-Mixture 42.42 QC-FM-Mixture 16 2.10
+> QC-FM-Mixture 64 2.24
+> (b) Anchor ratio
+> Method pFID QC-FM-Mixture 0.2 2.10
+> QC-FM-Mixture 0.5 2.17 QC-FM-Mixture 0.8 2.26 QC-FM-Adjacency 0.2 2.56 QC-FM-Adjacency 0.5 2.57 QC-FM-Adjacency 0.8 2.12
+
+remainder completion attenuates source-prior mismatch, but theory does not rank Mixture and Adjacency because their remainder pairings define different joint couplings. Two questions remain open. First, slice and anchor se-lection is dataset-dependent. The gain–dependence statistics provide a useful calibrated guide, but a principled account must also include frame resampling, finite-batch error, hy-brid completion, and their relationship to final sample quality. Second, QC-FM remains local to the current mini-batch. Re-placing empirical batch quantiles with learned global quan-tile estimates could yield more stable slice coordinates across batches; establishing when such estimates preserve the one-sided coupling guarantees is an important direction. 
+
+## Conclusion 
+
+We introduced Quantile Coupling Flow Matching (QC-FM) , a lightweight structured coupling method for flow matching. QC-FM constructs source samples by preserv-ing the empirical rank structure of data points along a small number of random projections and completing the remaining dimensions by conditional Gaussian sampling. This yields a simple and efficient alternative to batchwise transport match-ing that injects geometric structure into the coupling without requiring a full pairwise assignment procedure. Building on the QC coupling primitive, we proposed Gaussian-remainder completion strategies — QC-FM-Mixture and QC-FM-Adjacency . Each applies QC to struc-tured anchors and fills the non-anchor source slots with ex-act Gaussian samples, thereby attenuating source-prior mis-match while retaining the QC bias. Mixture pairs this re-mainder as in the Baseline, whereas Adjacency organizes it through QC-anchor neighborhoods, using every target ex-actly once. QC-FM-Mixture is our main variant, delivering the lowest endpoint FID across all four image benchmarks. Taken together, our results show that preserving pro-jected rank structure is a practical and effective way to bias flow matching toward more organized source–target pair-ings. While QC-FM is not a substitute for global optimal transport, it offers an attractive middle ground between the Baseline and expensive batchwise transport methods: it is simple to implement, computationally lightweight, and con-trollable through the number of projections. We believe this makes QC-FM a promising foundation for future work on scalable structured couplings in flow matching. Future work should make slice and anchor selection more dataset-adaptive and extend QC-FM from mini-batch empir-ical quantiles to globally consistent estimates. References 
+
+Abramowitz, M.; and Stegun, I. A. 1948. Handbook of math-ematical functions with formulas, graphs, and mathematical tables , volume 55. US Government printing office. Albergo, M. S.; Boffi, N. M.; and Vanden-Eijnden, E. 2025. Stochastic Interpolants: A Unifying Framework for Flows and Diffusions. arXiv preprint arXiv:2303.08797 .Albergo, M. S.; Goldstein, M.; Boffi, N. M.; Ranganath, R.; and Vanden-Eijnden, E. 2024. Stochastic Interpolants with Data-Dependent Couplings. In International Conference on Machine Learning (ICML) .Albergo, M. S.; and Vanden-Eijnden, E. 2023. Building Nor-malizing Flows with Stochastic Interpolants. In International Conference on Learning Representations (ICLR) .Bobkov, S.; and Ledoux, M. 2019. One-dimensional em-pirical measures, order statistics, and Kantorovich transport distances , volume 261. American Mathematical Society. Boïté, S.; Delon, J.; and Nadjahi, K. 2026. Expected Batch Optimal Transport Plans and Consequences for Flow Match-ing. arXiv preprint arXiv:2605.12174 .Bonneel, N.; Rabin, J.; Peyré, G.; and Pfister, H. 2015. Sliced and Radon Wasserstein Barycenters of Measures. Journal of Mathematical Imaging and Vision , 51(1): 22–45. Chapel, L.; Tavenard, R.; and Vaiter, S. 2026. Differentiable generalized sliced wasserstein plans. Advances in Neural Information Processing Systems , 38: 162905–162929. Chemseddine, J.; Kornhardt, G.; Duong, R.; and Steidl, G. 2026. Adapting Noise to Data: Generative Flows from Learned 1D Processes. In International Conference on Ma-chine Learning (ICML) .Chen, R. T. Q.; Rubanova, Y.; Bettencourt, J.; and Duvenaud, D. 2018. Neural Ordinary Differential Equations. In Ad-vances in Neural Information Processing Systems (NeurIPS) .Chen, S. S.; and Gopinath, R. A. 2000. Gaussianiza-tion. In Advances in Neural Information Processing Systems (NeurIPS) .Dai, B.; and Seljak, U. 2021. Sliced Iterative Normalizing Flows. In International Conference on Machine Learning (ICML) .Davtyan, A.; Dadi, L. T.; Cevher, V.; and Favaro, P. 2025. Faster Inference of Flow-Based Generative Models via Im-proved Data-Noise Coupling. In International Conference on Learning Representations (ICLR) .Deng, J.; Dong, W.; Socher, R.; Li, L.-J.; Li, K.; and Fei-Fei, L. 2009. ImageNet: A Large-Scale Hierarchical Image Database. In Proceedings of the IEEE Conference on Com-puter Vision and Pattern Recognition , 248–255. Fatras, K.; Zine, Y.; Flamary, R.; Gribonval, R.; and Courty, N. 2020. Learning with Minibatch Wasserstein: Asymptotic and Gradient Properties. In International Conference on Artificial Intelligence and Statistics (AISTATS) .Fréchet, M. 1951. Sur les tableaux de corrélation dont les marges sont données. Annales de l’Université de Lyon, Sec-tion A , 14: 53–77. Gelbrich, M. 1990. On a Formula for the L2 Wasserstein Metric between Measures on Euclidean and Hilbert Spaces. 
+
+Mathematische Nachrichten , 147: 185–203. Groom, M.; Darvariu, V.-A.; Kunze, L.; Wilson, J.; and Hawes, N. 2026. Quantile-Coupled Flow Matching for Distributional Reinforcement Learning. arXiv preprint arXiv:2605.08515 .Helbling, A.; Gutierrez Hernandez, S.; Hoover, B.; Chau, D. H.; and Ram, P. 2026. What Time Is It? How Data Geom-etry Makes Time Conditioning Optional for Flow Matching. 
+
+arXiv preprint arXiv:2605.08344 .Hoeffding, W. 1940. Maßstabinvariante Korrelationstheorie. 
+
+Schriften des Mathematischen Instituts und des Instituts für Angewandte Mathematik der Universität Berlin , 5: 181–233. Hoeffding, W. 1951. A combinatorial central limit theorem. 
+
+The Annals of Mathematical Statistics , 558–566. Karras, T.; Laine, S.; and Aila, T. 2019. A Style-Based Generator Architecture for Generative Adversarial Networks. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 4401–4410. Kim, J.-Y.; Go, H.; Bogensperger, L.; Erbach, J.; Kalis-chek, N.; Tombari, F.; Schindler, K.; and Narnhofer, D. 2026. Understanding, Accelerating, and Improving Mean-Flow Training. In Proceedings of the IEEE/CVF Confer-ence on Computer Vision and Pattern Recognition (CVPR) ,37992–38003. Kim, J.-Y.; Go, H.; Kwon, S.; and Kim, H.-G. 2025. Denois-ing Task Difficulty-based Curriculum for Training Diffusion Models. In International Conference on Learning Represen-tations .Kolouri, S.; Nadjahi, K.; Simsekli, U.; Badeau, R.; and Rohde, G. K. 2019. Generalized Sliced Wasserstein Dis-tances. In Advances in Neural Information Processing Sys-tems (NeurIPS) .Krizhevsky, A. 2009. Learning Multiple Layers of Features from Tiny Images. Technical report, University of Toronto. Laparra, V.; Camps-Valls, G.; and Malo, J. 2011. Iterative Gaussianization: From ICA to Random Rotations. IEEE Transactions on Neural Networks , 22(4): 537–549. Li, Y.; Jiang, H.; Kodaira, A.; Tomizuka, M.; Keutzer, K.; and Xu, C. 2024. Immiscible Diffusion: Accelerating Diffusion Training with Noise Assignment. In Advances in Neural Information Processing Systems (NeurIPS) .Lin, Y.; Yao, Y.; Zhou, Y.; and Liu, T. 2026. Beyond Opti-mal Transport: Model-Aligned Coupling for Flow Matching. In IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) .Lipman, Y.; Chen, R. T. Q.; Ben-Hamu, H.; Nickel, M.; and Le, M. 2023. Flow Matching for Generative Modeling. In International Conference on Learning Representations (ICLR) .Lipman, Y.; Havasi, M.; Holderrieth, P.; Shaul, N.; Le, M.; Karrer, B.; Chen, R. T. Q.; Lopez-Paz, D.; Ben-Hamu, H.; and Gat, I. 2024. Flow Matching Guide and Code. arXiv:2412.06264. Liu, X.; Gong, C.; and Liu, Q. 2023. Flow Straight and Fast: Learning to Generate and Transfer Data with Rectified Flow. In International Conference on Learning Representations (ICLR) .Liu, Z.; Luo, P.; Wang, X.; and Tang, X. 2015. Deep Learning Face Attributes in the Wild. In Proceedings of the IEEE International Conference on Computer Vision , 3730–3738. Malnick, S.; Rusanovsky, M.; Fried, O.; and Avidan, S. 2026. Optimal Transport Flow Matching by Design. arXiv preprint arXiv:2606.04092 .McCann, R. J. 1997. A Convexity Principle for Interacting Gases. Advances in Mathematics , 128(1): 153–179. Mousavi-Hosseini, A.; Zhang, S. Y.; Klein, M.; and Cuturi, M. 2025. Flow Matching with Semidiscrete Couplings. arXiv preprint arXiv:2509.25519 .Nelsen, R. B. 2006. An Introduction to Copulas . Springer, 2nd edition. Pooladian, A.-A.; Ben-Hamu, H.; Domingo-Enrich, C.; Amos, B.; Lipman, Y.; and Chen, R. T. Q. 2023. Multi-sample Flow Matching: Straightening Flows with Minibatch Couplings. In International Conference on Machine Learn-ing (ICML) .Rabin, J.; Peyré, G.; Delon, J.; and Bernot, M. 2011. Wasser-stein Barycenter and Its Application to Texture Mixing. In 
+
+Scale Space and Variational Methods in Computer Vision (SSVM) .Silvestri, G.; Ambrogioni, L.; Lai, C.-H.; Takida, Y.; and Mitsufuji, Y. 2025. VCT: Training Consistency Models with Variational Noise Coupling. In International Conference on Machine Learning (ICML) .Sklar, A. 1959. Fonctions de répartition à n dimensions et leurs marges. Publications de l’Institut de Statistique de l’Université de Paris , 8: 229–231. Tanguy, E.; Chapel, L.; and Delon, J. 2025. Sliced optimal transport plans. arXiv preprint arXiv:2508.01243 .Tong, A.; Fatras, K.; Malkin, N.; Huguet, G.; Zhang, Y.; Rector-Brooks, J.; Wolf, G.; and Bengio, Y. 2024. Improving and Generalizing Flow-Based Generative Models with Mini-batch Optimal Transport. Transactions on Machine Learning Research (TMLR) .Villani, C. 2009. Optimal Transport: Old and New . Springer. Zhang, S. Y.; Mousavi-Hosseini, A.; Klein, M.; and Cuturi, M. 2026. On Fitting Flow Models with Large Sinkhorn Couplings. Transactions on Machine Learning Research (TMLR) .Supplement Material: One-Sided Quantile Coupling for Flow Matching 
+
+## Appendix A Proofs and Further Results 
+
+Throughout this appendix, we use the following notation. X ∼ p1 is the data variable in Rd, and γn is the standard Gaussian on Rn with Φ the cdf of γ1. A frame U = [ u1, . . . , u k] has orthonormal columns, and P ⊥ 
+
+> U
+
+:= Id − U U ⊤ projects onto its complement; a Haar frame is U with uniform orthonormal columns. The QC-FM coupling πqc  
+
+> k,U
+
+pairs X with e = U Z + P ⊥ 
+
+> U
+
+ϵ,
+
+ϵ ∼ γd, where Z = ( Z1, . . . , Z k)⊤ with Zj := Φ −1(Fuj (u⊤ 
+
+> j
+
+X)) the Gaussian rank code of the slice u⊤ 
+
+> j
+
+X (here Fuj is its cdf), and c(π) := E(x0,x 1)∼π ∥x1 − x0∥2 is the quadratic transport cost. We write W2 for the quadratic Wasserstein distance and R2 := E∥X∥2. We also write ρU := Law( Z) for the joint law of the slice codes and αUk := Law( e) for the fixed-frame source prior. 
+
+Appendix A.1 Population exactness, the copula identity, and soundness 
+
+Theorem A.1. Assume finite second moments and continuous slice cdfs, and write πqc  
+
+> k,U
+
+= Law( e, X ). Then: 
+
+(a) Population Exactness . Each Zj ∼ γ1 exactly, and W := P ⊥ 
+
+> U
+
+ϵ ∼ N (0 , P ⊥ 
+
+> U
+
+) is independent of Z, so Law( e) = ρU ⊗γd−k =
+
+αUk and πqc  
+
+> k,U
+
+has marginals (αUk , p 1).
+
+(b) Copula Identity . Each map Vj 7 → Zj is nondecreasing with Φ( Zj ) = Fj (Vj ) exactly, so Z and (V1, . . . , V k) have the same copula (Nelsen 2006), which is unique because the marginals are continuous, by Sklar’s theorem (Sklar 1959). Hence e ∼ γd
+
+iff the projections are independent. The entire gap between αUk and the FM prior is this one k-dimensional copula. It leaves the mean of e at zero and every slice coordinate exactly standard Gaussian, while the joint covariance can deviate from the identity, Cov( e) = Id + U  E[ZZ ⊤] − IU ⊤, and it vanishes identically at k = 1 .
+
+(c) Soundness for k. For every k and every coupling, the ideal field v∗ solves the continuity equation between αUk and p1 weakly, using only the tower property. Consequently, under standard well-posedness of the flow, the induced map Ψ transports αUk
+
+exactly to p1, so correctness depends only on the source marginal αUk , not on the pairing. Sampling, however, starts from the FM prior γd rather than from αUk . The generated law then deviates from p1 by at most W2(Ψ #γd, p 1) ≤ Lip(Ψ) W2(γk, ρ U ),with Lip(Ψ) the Lipschitz constant of the flow map. At k = 1 , this deviation vanishes, since αU 
+
+> 1
+
+= γd exactly. Integrating from x0 ∼ N (0 , I d) then yields samples of law exactly p1 under the stated finite-second-moment, continuous-slice-CDF, and flow well-posedness assumptions. This is the case in which the QC source marginal matches the Gaussian sampling prior exactly, and it anchors the soundness discussion for k ≥ 2.Proof. (a). For t ∈ (0 , 1) , let ξt := sup {s : Fj (s) ≤ t}; continuity of Fj gives Fj (ξt) = t and {Fj (Vj ) ≤ t} = {Vj ≤ ξt}, so 
+
+Fj (Vj ) ∼ Unif(0 , 1) and Zj ∼ γ1. By rotational invariance of the Gaussian, W := P ⊥ 
+
+> U
+
+ϵ ∼ N (0 , P ⊥ 
+
+> U
+
+), and W is independent of (X, Z ) since ϵ is drawn independently of X; hence Law( e) = ρU ⊗ γd−k = αUk . For k = 1 , the characteristic function factorizes: 
+
+Eeiθ ⊤e = Eei(u⊤θ)Z Eeiθ ⊤W
+
+= e− 12 (u⊤θ)2
+
+e− 12 ∥P ⊥ 
+
+> Uθ∥2
+
+= e− 12 ∥θ∥2
+
+.
+
+(b). Each Zj has continuous strictly increasing cdf Φ, and Φ( Zj ) = Φ(Φ −1(Fj (Vj ))) = Fj (Vj ), since Φ ◦ Φ−1 is the identity on (0 , 1) and Fj (Vj ) ∈ (0 , 1) almost surely. The copula of Z is therefore Law( F1(V1), . . . , F k(Vk)) , the copula of V , unique by Sklar’s theorem for continuous marginals (Sklar 1959). The independence copula gives e ∼ γd by the characteristic-function computation of (a); conversely e ∼ γd forces Z ∼ γk with independent components. 
+
+(c). Let φ ∈ C∞ 
+
+> c
+
+. Since xt+h −xt = hY , the difference quotient is dominated by an integrable bound, |φ(xt+h)−φ(xt)|/|h| ≤ ∥∇ φ∥∞∥Y ∥ ∈ L1. Dominated convergence then lets us differentiate under the expectation, and since ddt xt = Y the chain rule gives ddt E[φ(xt)] = E[∇φ(xt)⊤Y ]; the tower property replaces Y by E[Y | xt] = v∗(xt, t ), yielding 
+
+ddt E[φ(xt)] = E[∇φ(xt)⊤v∗(xt, t )] , (1) the weak continuity equation between p0 = αUk and p1, valid for every k and every coupling. Under standard well-posedness, the induced flow map satisfies Ψ#αUk = p1 with αU 
+
+> 1
+
+= γd. Started instead from the FM prior, 
+
+W2(Ψ #γd, p 1) = W2(Ψ #γd, Ψ#αk)
+
+≤ Lip(Ψ) W2(γd, α Uk )= Lip(Ψ) W2(γk, ρ U ),
+
+(2) where the last equality holds because the shared factor γd−k cancels: for product measures W 22 (μ ⊗ ν, μ ′ ⊗ ν) = W 22 (μ, μ ′).The bound “ ≤” couples ν to itself by the identity, adding an optimal coupling of (μ, μ ′) at zero extra cost; the reverse “ ≥” holds because any coupling of the two products marginalizes to a coupling of (μ, μ ′), whose cost it can only exceed. Appendix A.2 Proof of Proposition 1 
+
+Proposition A.2 (Complexity, full accounting) . For a batch of size B in data dimension d with k orthonormal slice directions, one QC-FM batch costs 
+
+O(Bdk ) + O(kB log B) + O(dk 2)
+
+time and O(Bd + dk ) memory. The three terms are the projection vij = u⊤ 
+
+> j
+
+xi, the k sorts of B values, and the one-off QR orthogonalization of U , respectively. For fixed d and k this reduces to O(B log B), dominated by the sorts: the projection term is linear in B and the orthogonalization term is independent of B.Proof. The Bk projections vij = u⊤ 
+
+> j
+
+xi cost O(Bdk ); the k sorts of B values cost O(kB log B); QR of a d × k Gaussian costs 
+
+O(dk 2); and the complement completion ϵ(i) − U (U ⊤ϵ(i)) costs O(dk ) per sample, i.e. O(Bdk ) over the batch, absorbed into the projection term. Summing gives the stated bound, and holding d, k fixed leaves O(B log B). No pairwise cost matrix is formed, and the only superlinear dependence on B is the O(B log B) of the k sorts. 
+
+Appendix A.3 Optimal Slices and Additive Gains 
+
+Theorem A.3. For a unit direction u, define the per-slice gain constant 
+
+Cu := E[VuZu] = 
+
+Z 10
+
+Φ−1(τ ) F −1 
+
+> u
+
+(τ ) dτ ∈ (0 , σ u],
+
+the covariance between a projection Vu = u⊤X, with law u#p1 and cdf Fu, and its Gaussian rank code Zu = Φ −1(Fu(Vu)) .When the slice cdfs are continuous, Cu can be computed from the data before training through 
+
+2Cu = μ2 
+
+> u
+
++ σ2 
+
+> u
+
++ 1 − W 22
+
+ u#p1, γ 1
+
+,
+
+where μu := E[u⊤X] and σ2 
+
+> u
+
+:= Var( u⊤X) are the mean and variance of the slice, with Cu = σu if and only if the slice u#p1
+
+is Gaussian. The following hold. 
+
+(a) For each j, the pair (Zj , V j ) is a.s. the comonotone coupling of (γ1, (uj )#p1), the unique minimizer of the one-dimensional quadratic transport cost among couplings with these marginals (Hoeffding 1940; Fréchet 1951; Villani 2009), and the complement coordinates are independent Gaussian noise. 
+
+(b) The batch coupling has cost 
+
+c(πqc  
+
+> k,U
+
+) = R2 + d − 2
+
+> k
+
+X
+
+> j=1
+
+Cuj ,
+
+so relative to a coupling with independent slice codes each direction uj lowers the transport cost by exactly 2Cuj > 0
+
+(positive whenever Var( u⊤ 
+
+> j
+
+X) > 0); this is the sense in which Cuj is the gain of slice j. The reductions add across slices with no interaction term, and for a Haar-random frame the expected total is EU
+
+2 P 
+
+> j
+
+Cuj
+
+ = k  R2 
+
+> d
+
++ 1 − SW 22 (p1, γ d),where SW 22 (p1, γ d) := Eu W 22 (u#p1, γ 1) is the sliced-Wasserstein distance (expectation over a uniform direction u). Proof. We first record the closed form and bounds for the constant Cu stated before the enumerated claims, then prove (a) and (b). 
+
+The quantile representation of Cu. Fix a unit direction u and write V := u⊤X, F := Fu for its cdf, and Z := Φ −1(F (V )) 
+
+for its Gaussian rank code. When F is continuous, τ := F (V ) is uniform on (0 , 1) (Theorem A.1(a)); on this event the quantile functions invert the cdfs, so V = F −1(τ ) and Z = Φ −1(τ ) almost surely. Hence, by the change of variables V 7 → τ = F (V )
+
+(which sends the law of V to Unif(0 , 1) ), 
+
+Cu = E[V Z ] = EF −1(τ ) Φ −1(τ )
+
+=
+
+Z 10
+
+F −1(τ ) Φ −1(τ ) dτ, (3) the last equality because τ is uniform. This is the integral form used below. 
+
+The closed form. The one-dimensional Wasserstein distance between laws μ, ν on R with quantile functions F −1 
+
+> μ
+
+, F −1 
+
+> ν
+
+is 
+
+W 22 (μ, ν ) = 
+
+Z 10
+
+ F −1 
+
+> μ
+
+(τ ) − F −1 
+
+> ν
+
+(τ )2 dτ, (4) since the comonotone coupling, which pairs equal quantiles, is optimal in one dimension (Villani 2009). Taking μ = u#p1 (so 
+
+F −1 
+
+> μ
+
+= F −1) and ν = γ1 (so F −1 
+
+> ν
+
+= Φ −1) and expanding the square, 
+
+W 22 (u#p1, γ 1) = 
+
+Z 10
+
+(F −1)2 dτ − 2
+
+Z 10
+
+F −1Φ−1 dτ +
+
+Z 10
+
+(Φ −1)2 dτ. (5) The three integrals are R 10 (F −1)2 dτ = E[V 2] = μ2 
+
+> u
+
++ σ2
+
+> u
+
+, the cross term R 10 F −1Φ−1 dτ = Cu by (3), and R 10 (Φ −1)2 dτ =
+
+E[Φ −1(τ )2] = 1 . Substituting into (5) and solving for Cu,
+
+2Cu = μ2 
+
+> u
+
++ σ2 
+
+> u
+
++ 1 − W 22 (u#p1, γ 1). (6) 
+
+The bounds 0 < C u ≤ σu. Since R 10 Φ−1(τ ) dτ = 0 , we may center the first factor in (3): 
+
+Cu =
+
+Z 10
+
+ F −1(τ ) − μu
+
+Φ−1(τ ) dτ. (7) For the lower bound, let V ′ be an independent copy of V and set g := Φ −1 ◦ F , so that Z = g(V ) and g is nondecreasing. Since 
+
+E[g(V )] = E[Z] = R 10 Φ−1 = 0 , expanding the product (V − V ′)( g(V ) − g(V ′)) and taking expectations gives 
+
+E(V − V ′) g(V ) − g(V ′) 
+
+= 2 E[V g (V )] − 2E[V ] E[g(V )] = 2 E[V g (V )] = 2 Cu,
+
+(8) where the first equality uses that V and V ′ are i.i.d. (so E[V g (V )] = E[V ′g(V ′)] and E[V g (V ′)] = E[V ]E[g(V ′)] ), and the second uses E[g(V )] = 0 . Each summand (V − V ′)( g(V ) − g(V ′)) is nonnegative because g is nondecreasing, so V − V ′
+
+and g(V ) − g(V ′) always share the same sign; hence 2Cu ≥ 0. The inequality is strict when Var( V ) > 0: then V̸ = V ′ on a positive-probability event, and since F is continuous and Φ−1 strictly increasing, V̸ = V ′ implies g(V )̸ = g(V ′) almost surely, so the nonnegative integrand is strictly positive there, giving 2Cu > 0.For the upper bound, apply the Cauchy–Schwarz inequality in L2(0 , 1) to the two factors of the centered integrand in (7): 
+
+Cu =
+
+Z 10
+
+ F −1 − μu
+
+Φ−1 dτ 
+
+≤
+
+ Z 10
+
+(F −1 − μu)2 dτ 
+
+1/2 Z 10
+
+(Φ −1)2 dτ 
+
+1/2
+
+= σu · 1 = σu,
+
+(9) using R 10 (F −1 − μu)2 dτ = Var( V ) = σ2 
+
+> u
+
+and R 10 (Φ −1)2 dτ = 1 . Equality in Cauchy–Schwarz forces the two factors to be proportional, F −1 − μu = c Φ−1 Lebesgue-a.e. for some c ≥ 0; both sides are left-continuous and Φ−1 is continuous, so this holds for every τ , i.e. u#p1 = N (μu, c 2) is Gaussian, and then c = σu and Cu = σu.
+
+Proof of (a). The identity F −1(F (v)) = v holds except on the interiors of the countably many flat intervals of F , each carrying zero u-slice mass, so V = S(Z) almost surely with S := F −1 ◦ Φ nondecreasing. The pair (Z, V ) therefore lies almost surely on a nondecreasing graph, which is the comonotone coupling of (γ1, u #p1). Among couplings with these marginals, comonotonicity maximizes E[ZV ] (Fréchet–Hoeffding (Hoeffding 1940; Fréchet 1951)), equivalently minimizes E[( Z − V )2],the unique optimum of one-dimensional quadratic transport (Villani 2009). The complement coordinates P ⊥ 
+
+> U
+
+ϵ ∼ N (0 , P ⊥ 
+
+> U
+
+) are independent of Z by construction. 
+
+Proof of (b). Write e = U Z + P ⊥ 
+
+> U
+
+ϵ. Expanding the cost, 
+
+c(πqc  
+
+> k,U
+
+) = E∥X∥2 + E∥e∥2 − 2 E⟨X, e ⟩. (10) The middle term uses the orthogonal decomposition e = U Z +P ⊥ 
+
+> U
+
+ϵ: the two parts are orthogonal, so ∥e∥2 = ∥U Z ∥2+∥P ⊥ 
+
+> U
+
+ϵ∥2 =
+
+∥Z∥2 + ∥P ⊥ 
+
+> U
+
+ϵ∥2 (as U has orthonormal columns), and taking expectations, 
+
+E∥e∥2 =
+
+> k
+
+X
+
+> j=1
+
+EZ2 
+
+> j
+
++ E∥P ⊥ 
+
+> U
+
+ϵ∥2 = k + ( d − k) = d, (11) because each Zj ∼ γ1 gives EZ2 
+
+> j
+
+= 1 , and P ⊥ 
+
+> U
+
+ϵ ∼ N (0 , P ⊥ 
+
+> U
+
+) with P ⊥ 
+
+> U
+
+a rank-(d − k) projection gives E∥P ⊥ 
+
+> U
+
+ϵ∥2 = tr P ⊥ 
+
+> U
+
+=
+
+d − k. The sum ∥Z∥2 = P 
+
+> j
+
+Z2 
+
+> j
+
+has no cross term ZiZj , so (11) holds whatever the joint law of Z. The cross term splits along the same decomposition: 
+
+E⟨X, e ⟩ = E⟨X, U Z ⟩ + E⟨X, P ⊥ 
+
+> U
+
+ϵ⟩
+
+=
+
+> k
+
+X
+
+> j=1
+
+E[Vj Zj ] + 0 = 
+
+> k
+
+X
+
+> j=1
+
+Cuj , (12) where the first equality is the decomposition e = U Z + P ⊥ 
+
+> U
+
+ϵ, the second expands ⟨X, U Z ⟩ = P 
+
+> j
+
+(u⊤ 
+
+> j
+
+X)Zj = P 
+
+> j
+
+Vj Zj and uses E⟨X, P ⊥ 
+
+> U
+
+ϵ⟩ = 0 (the noise ϵ is centered and independent of X), and the last is the definition Cuj = E[Vj Zj ]. Substituting (11) and (12) into (10) with E∥X∥2 = R2 gives 
+
+c(πqc  
+
+> k,U
+
+) = R2 + d − 2
+
+> k
+
+X
+
+> j=1
+
+Cuj , (13) and each Cuj > 0 whenever Var( u⊤ 
+
+> j
+
+X) > 0 by (8). Because (11) is independent of the joint law of Z, the cost reads only the marginals of the slice codes: each slice contributes its own 2Cuj with no interaction term, and the dependence among slices — the copula of Theorem A.1(b) — never enters c(πqc  
+
+> k,U
+
+).For the Haar average, recall μu = u⊤m and σ2 
+
+> u
+
+= u⊤Σu, so μ2 
+
+> u
+
++ σ2 
+
+> u
+
+= u⊤mm ⊤u + u⊤Σu = u⊤(mm ⊤ + Σ) u. Taking 
+
+Eu over a uniform direction, where Eu[uu ⊤] = I/d ,
+
+Eu[μ2 
+
+> u
+
++ σ2
+
+> u
+
+] = Eu
+
+u⊤(mm ⊤ + Σ) u
+
+= tr  (mm ⊤ + Σ) Eu[uu ⊤]
+
+= tr( mm ⊤ + Σ) 
+
+d = R2
+
+d ,
+
+(14) where the third equality writes the quadratic form as a trace, u⊤Au = tr( Auu ⊤), and the last uses tr( mm ⊤ + Σ) = 
+
+∥m∥2 + tr Σ = E∥X∥2 = R2. Averaging the closed form (6) over u and using the definition of the sliced Wasserstein distance, 
+
+Eu[W 22 (u#p1, γ 1)] = SW 22 (p1, γ d) (with u#γd = γ1), gives Eu[2 Cu] = R2 
+
+> d
+
++ 1 − SW 22 (p1, γ d). Each column of a Haar frame is marginally uniform on Sd−1, so summing over j = 1 , . . . , k yields 
+
+EU
+
+h
+
+2
+
+> k
+
+X
+
+> j=1
+
+Cuj
+
+i
+
+= k
+
+ R2
+
+d + 1 − SW 22 (p1, γ d)
+
+
+
+. (15) By (b), the reductions add across slices with no interaction term, so larger k is favorable along the cost axis. The price of raising k lies elsewhere, in the dependence among the slice codes (Theorem A.7). The gain is measurable before training: the closed form (6) is estimable from the data by Monte Carlo slicing, and its Haar average (15) gives the sliced-Wasserstein prediction k  R2 
+
+> d
+
++ 1 − SW 22 (p1, γ d).
+
+Appendix A.4 Proof of Theorem 2 
+
+Proof of Theorem 2. For any field v, the fixed-time regression loss splits into a part that depends on v and a part that does not (Lipman et al. 2023; Helbling et al. 2026): 
+
+ℓπt (v) = Eπ
+
+∥v(xt, t ) − Eπ [Y | xt]∥2| {z }
+
+> approximation error
+
++ Eπ
+
+∥Y − Eπ [Y | xt]∥2| {z }
+
+> Fπt
+
+. (16) The first term is minimized to zero by the ideal field v∗ 
+
+> π
+
+(x, t ) := Eπ [Y | xt = x], so Fπt is irreducible: no choice of v lowers it. Averaging under the training-time law gives inf v Lπ 
+
+> FM
+
+= R 10 q(t) Fπt dt .We use three facts about the QC-FM construction. The code is Zj := Φ −1(Fj (Vj )) with Vj := u⊤ 
+
+> j
+
+X, the increasing map 
+
+Sj := F −1 
+
+> j
+
+◦ Φ satisfies Vj = Sj (Zj ) a.s., and m(j) 
+
+> t
+
+:= (1 − t) id + t S j carries the code to the time-t slice position. We prove the three ingredients and then assemble the loss inequality. 
+
+Step 1: the slice variance vanishes under QC-FM. Because the slice cdfs are continuous, F −1 is strictly increasing, and hence so are Sj and every m(j) 
+
+> t
+
+; each therefore has a well-defined inverse. Along direction uj , the slice position at time t is a deterministic increasing function of the code alone, 
+
+u⊤ 
+
+> j
+
+xt = (1 − t) Zj + t S j (Zj ) = m(j) 
+
+> t
+
+(Zj ),
+
+which can be inverted to recover the code, Zj = ( m(j) 
+
+> t
+
+)−1(u⊤ 
+
+> j
+
+xt). The slice velocity is likewise a function of the code, 
+
+u⊤ 
+
+> j
+
+Y = u⊤ 
+
+> j
+
+(x1 − x0) = Sj (Zj ) − Zj , so substituting the recovered code expresses it through the single deterministic map 
+
+u⊤ 
+
+> j
+
+Y = Sj (Zj ) − Zj = h(j)
+
+> t
+
+ u⊤ 
+
+> j
+
+xt
+
+,h(j) 
+
+> t
+
+:=  Sj − id  ◦ (m(j) 
+
+> t
+
+)−1.
+
+(17) Thus knowing xt pins down the slice velocity exactly: it is σ(u⊤ 
+
+> j
+
+xt)-measurable, its conditional variance given xt is zero, and so the slice variance Fπqc  
+
+> k,U
+> t
+
+(uj ) = E[Var( u⊤ 
+
+> j
+
+Y | xt)] is identically zero. The ideal slice field is the explicit map 
+
+u⊤ 
+
+> j
+
+v∗(x, t ) = h(j) 
+
+> t
+
+(u⊤ 
+
+> j
+
+x).
+
+Step 2: the same slice variance is strictly positive under the Baseline. This is what makes the QC-FM loss strictly , not merely weakly, smaller. In the present convention x0 is the noise endpoint and x1 the data endpoint, so under πind the source is independent of the data and the slice source Z′ := u⊤x0 ∼ γ1 is independent of X. Write V := u⊤X. On the slice, 
+
+u⊤xt = (1 − t)Z′ + tV and u⊤Y = V − Z′; eliminating Z′ = ( u⊤xt − tV )/(1 − t) leaves u⊤Y = ( V − u⊤xt)/(1 − t), so conditionally on xt the only randomness in u⊤Y is that of V , and 
+
+Var( u⊤Y | xt) = Var( V | xt)(1 − t)2 . (18) It therefore suffices that V is not already pinned down by xt, i.e. Var( V | xt) > 0. Suppose instead Var( V | xt) = 0 on a set of positive probability. By Bayes’ rule, the conditional law of the data given xt is the data law p1(dx ) reweighted by the likelihood of the noise x0 = ( xt −tx )/(1 −t); since x0 ∼ γd = N (0 , I d), the noise scaled by (1 −t) has density ϕ1−t, the N (0 , (1 −t)2Id)
+
+density, so the conditional law has density proportional to ϕ1−t(xt − tx ) against p1(dx ). This reweighting factor ϕ1−t(xt − tx )
+
+is strictly positive and finite for every x, so the conditional law and p1 share the same null sets. If V = u⊤X were constant under the conditional law, it would then be constant under p1 as well, contradicting Var( u⊤X) > 0. Hence, Var( V | xt) > 0
+
+at every interior t, and by (18) the Baseline slice variance is strictly positive there. To gauge the size of this variance in the simplest case, suppose the data are Gaussian and the slice V = u⊤X ∼ N (μu, σ 2
+
+> u
+
+)
+
+is independent of the complement coordinates P ⊥ 
+
+> U
+
+X, as for isotropic data or u along a principal axis. Image data are not exactly of this form, but the case is analytically tractable and already shows that the variance is of the order of the data’s own spread. The complement observation then carries no information about V , so Var( V | xt) = Var( V | u⊤xt), the pair (V, u ⊤xt) is jointly Gaussian, and 
+
+Fπind  
+
+> t
+
+(u) = Var( V | xt)(1 − t)2 = σ2
+
+> u
+
+(σ2 
+
+> u
+
++ 1) t2 − 2t + 1 ,
+
+Z 10
+
+q(t) Fπind  
+
+> t
+
+(u) dt > 0; 
+
+(19) for q(t) ≡ 1, Z 10
+
+Fπind  
+
+> t
+
+(u) dt = π
+
+2 σu, (20) where σ2 
+
+> u
+
+= Var( u⊤X) is the slice variance of the data: a strictly positive amount that QC-FM removes and the Baseline cannot. 
+
+Step 3: the off-slice (complement) variance is no larger under QC-FM. The complement component of the irreducible variance is the residual of the velocity components orthogonal to the frame, 
+
+Fπt (⊥) := Eπ
+
+∥P ⊥ 
+
+> U
+
+Y − Eπ [P ⊥ 
+
+> U
+
+Y | xt]∥2,
+
+where P ⊥ 
+
+> U
+
+= I − U U ⊤ projects onto the (d − k)-dimensional complement of the frame; since P ⊥ 
+
+> U
+
+is a fixed matrix, E[P ⊥ 
+
+> U
+
+Y |
+
+xt] = P ⊥ 
+
+> U
+
+E[Y | xt]. We compare this quantity between the QC-FM coupling πqc  
+
+> k,U
+
+and the Baseline coupling πind . Throughout, 
+
+σ(·) denotes the σ-field generated by the listed random variables — the information available to the ideal predictor, which is the conditional expectation given that σ-field. The idea is simple: both couplings must predict the same complement target from the state xt, and QC-FM’s state reveals strictly more about the frame directions than the Baseline does, so its predictor is at least as good and its residual at least as small. We make this precise by realizing both couplings on a single probability space. Let X ∼ p1, a complement noise W ∼ N (0 , P ⊥ 
+
+> U
+
+), and a frame code Z′′ ∼ γk be mutually independent, and let Z be the QC-FM code of X, i.e. Zj = Φ −1(Fj (u⊤ 
+
+> j
+
+X)) . Realize QC-FM through x0 = U Z + W and the Baseline through ˜x0 = U Z ′′ + W .The complement velocity is then 
+
+T := P ⊥ 
+
+> U
+
+Y = P ⊥ 
+
+> U
+
+X − W, 
+
+the same random variable under both couplings, and both states reveal the same complement observation At := P ⊥ 
+
+> U
+
+xt =(1 − t)W + tP ⊥ 
+
+> U
+
+X. The two couplings differ only in what their states reveal about the frame directions V := U ⊤X.Under QC-FM, the frame coordinates of the state recover the code exactly, U ⊤xt = mt(Z) with mt strictly increasing per slice, and since V = S(Z) with S a bijection this is equivalent to knowing V :
+
+σ(xt) = σ(V, A t).
+
+Under the Baseline, the frame coordinates of the state are the noisy mixture U ⊤ ˜xt = (1 − t)Z′′ + tV , which reveals V only through the independent noise Z′′ ; the state is a function of (Z′′ , A t), so 
+
+σ(˜ xt) ⊆ σ(V, Z ′′ , A t).Refining the conditioning cannot increase the residual: for σ-fields G ⊆ H , the predictor E[T | G ] is H-measurable, whereas 
+
+E[T | H ] is the L2-optimal H-measurable predictor, so E∥T − E[T | H ]∥2 ≤ E∥T − E[T | G ]∥2. Apply this with G = σ(˜ xt) ⊆H = σ(V, Z ′′ , A t), and note that the independent code is idle: Z′′ ⊥ (X, W ) gives Z′′ ⊥ (T, V, A t), so E[T | V, Z ′′ , A t] = 
+
+E[T | V, A t], and σ(V, A t) = σ(xt) is exactly the QC-FM state. Hence 
+
+Fπind  
+
+> t
+
+(⊥) = E T − E[T | ˜xt] 2
+
+≥ E T − E[T | V, A t] 2 = Fπqc  
+
+> k,U
+> t
+
+(⊥).
+
+(21) 
+
+Assembling the loss inequality. The irreducible variance splits along the frame: with w := Y − Eπ [Y | xt], the orthonormal expansion ∥w∥2 = Pkj=1 (u⊤ 
+
+> j
+
+w)2 + ∥P ⊥ 
+
+> U
+
+w∥2 together with u⊤ 
+
+> j
+
+E[Y | xt] = E[u⊤ 
+
+> j
+
+Y | xt] gives Fπt = P 
+
+> j
+
+Fπt (uj ) + Fπt (⊥).Under QC-FM every slice part is zero (Step 1) and the complement part is at most that of the Baseline (Step 3), so for every t,
+
+Fπqc  
+
+> k,U
+> t
+
+= Fπqc  
+
+> k,U
+> t
+
+(⊥) ≤ F πind  
+
+> t
+
+(⊥) = Fπind  
+
+> t
+
+−
+
+> k
+
+X
+
+> j=1
+
+Fπind  
+
+> t
+
+(uj ).
+
+Integrating against q(t) dt and using inf v Lπ 
+
+> FM
+
+= R 10 q(t) Fπt dt gives the displayed bound, 
+
+inf  
+
+> v
+
+Lπqc  
+
+> k,U
+> FM
+
+≤ inf  
+
+> v
+
+Lπind  
+
+> FM
+
+−
+
+> k
+
+X
+
+> j=1
+
+Z 10
+
+q(t) Fπind  
+
+> t
+
+(uj ) dt, 
+
+and the subtracted sum is strictly positive by Step 2, so the right-hand side is strictly below inf v Lπind  
+
+> FM
+
+.
+
+Appendix A.5 Slice Straightness 
+
+Theorem A.4 (Slice straightness, full statement) . Fix a frame U and assume each slice (uj )#p1 has a continuous positive density on an interval. Let v∗ be the ideal QC-FM field of Theorem 2, and let yt be the flow generated by v∗ from y0 ∼ γd.Along every sliced direction, the ideal flow is exactly straight, and distinct QC-FM pairs never cross in that slice. Consequently, each of the k slice marginals is generated exactly: 
+
+u⊤ 
+
+> j
+
+y1 ∼ (uj )#p1, j = 1 , . . . , k. 
+
+Corollary A.5 (Geodesic slice marginals and exact slice generation) . In the setting of Theorem A.4, the slice marginal path is the W2-geodesic from γ1 to (uj )#p1 for each j. Consequently, for y0 ∼ γd, every one-dimensional slice marginal of the generated flow is exact, and any deviation of the generated law from p1 is confined to the dependence among slices. Proof of Theorem A.4 and Corollary A.5. Straightness. Fix a slice direction u and drop the index. With interval support and a continuous positive density, the slice cdf F is a continuously differentiable increasing bijection onto (0 , 1) , so the code-to-quantile map S = F −1 ◦ Φ is continuously differentiable with derivative S′ = ϕ/ (f ◦ S) > 0, where f is the slice density and ϕ the standard-normal density. Hence ∂z mt = (1 − t) + tS ′ > 0 for the code-to-position map mt = (1 − t) id + tS , so 
+
+z 7 → mt(z) is strictly increasing for each t and invertible. The ideal QC-FM field v∗ of Theorem 2 acts on this slice as the scalar field h defined below, so proving the claim for h establishes it for v∗ along u. For a fixed code z, the slice position traces the curve η(t) = mt(z) = (1 − t)z + tS (z), which is affine in t: a straight line from z to S(z) at constant velocity S(z) − z. As 
+
+z ranges over R these lines fill the strip [0 , 1) × R without ever meeting, so they form a foliation, a partition of the strip into non-crossing curves. Differentiating η(t) and substituting z = m−1 
+
+> t
+
+(η) recovers the velocity field h(t, η ) := ( S − id)  m−1 
+
+> t
+
+(η):
+
+˙η(t) = S(z) − z = ( S − id)  m−1 
+
+> t
+
+(η) = h t, η (t). (22) Thus each line is a characteristic curve of the field h. Conversely h is continuous and, by the implicit function theorem applied to 
+
+∂z mt > 0, jointly continuously differentiable in (t, η ), hence locally Lipschitz in η; so the scalar ODE ˙η = h(t, η ) has a unique solution through each initial point, which must be the line above. The ideal flow therefore moves each slice coordinate along a straight line, extended to t = 1 by continuity. Non-crossing across a pair of samples follows from the same monotonicity: if 
+
+vij < v i′j then their codes satisfy zij < z i′j , and the two lines (1 − t)z + tv keep this order for all t ∈ [0 , 1] .
+
+Geodesic marginals. Compare the slice marginal at two times s < t by coupling them through the shared code Z. The pair 
+
+(ms(Z), m t(Z)) moves each code the same signed amount, so it is the comonotone coupling, which is the unique optimal coupling in one dimension (Villani 2009). Its cost is 
+
+E(mt(Z) − ms(Z)) 2 = E(( t − s)( S(Z) − Z)) 2
+
+= ( t − s)2 E(S(Z) − Z)2
+
+= ( t − s)2 W 22 (γ1, u #p1),the last equality because E[( S(Z) − Z)2] is exactly the one-dimensional transport cost from γ1 to u#p1, attained by the comonotone coupling of Z ∼ γ1 with S(Z) ∼ u#p1. A cost quadratic in t − s means the path moves at constant W2-speed; a constant-speed path joining two measures along optimal couplings is the unique W2-geodesic between them, the displacement interpolation from γ1 to u#p1 (McCann 1997). 
+
+Generated marginals. For y0 ∼ γd, the slice coordinate evolves as u⊤ 
+
+> j
+
+yt = m(j) 
+
+> t
+
+(u⊤ 
+
+> j
+
+y0) with u⊤ 
+
+> j
+
+y0 ∼ γ1, which pushes forward to the geodesic marginal at every t. Each one-dimensional slice marginal of the generated flow therefore equals the target (uj )#p1 at t = 1 : it is generated exactly. Since the slice maps are monotone and monotone maps preserve copulas, any deviation of the joint generated law from p1 is carried entirely by the copula of Theorem A.1(b), i.e. by the dependence among slices. 
+
+Appendix A.6 Gaussian-Remainder Completion 
+
+Proposition A.6. Let ¯αk := EU [αUk ] be the frame-averaged source prior. In the population idealization, any hybrid that uses a QC anchor with probability p and an exact Gaussian source otherwise has source marginal 
+
+μp,k = p ¯αk + (1 − p) γd,
+
+and it satisfies 
+
+W 22 (μp,k , γ d) ≤ p W 22 (¯ αk, γ d),
+
+so the deviation contracts by the factor √p on the W2 scale. Moreover, for a finite batch of size B with M anchors, conditional on the empirical anchor source law bαk,M , a uniformly selected source slot has marginal MB bαk,M +  1 − MB
+
+γd, and the same inequality holds with p = M/B and ¯αk replaced by bαk,M . This guarantee concerns the source marginal only. Mixture and Adjacency share the same Gaussian remainder but induce different source–target pairing laws. Proof. Let (A, G ) be an optimal coupling of (¯ αk, γ d) and let C ∼ Bernoulli( p) be independent. Conditional on C = 1 , use the pair (A, G ). Conditional on C = 0 , draw G0 ∼ γd and use the identity pair (G0, G 0). The first marginal of the resulting coupling is p¯αk + (1 − p)γd = μp,k , while its second marginal is γd. Its expected squared cost is 
+
+p E∥A − G∥2 = p W 22 (¯ αk, γ d).
+
+Since W 22 is the minimum over all couplings, this construction proves W 22 (μp,k , γ d) ≤ pW 22 (¯ αk, γ d), and taking square roots gives the √p contraction. In a finite batch, a uniformly selected source slot is an anchor with probability M/B , so the same argument applies conditionally on the empirical anchor law, with p = M/B and ¯αk replaced by bαk,M .
+
+Appendix A.7 The Price of k under Direction Resampling 
+
+The frame is redrawn at every training step, so the coupling the model sees is the frame average ¯π := EU [πqc  
+
+> k,U
+
+]. The source marginal of ¯π is the frame average ¯αk := EU [αUk ] of the fixed-frame source priors. 
+
+Theorem A.7. By the definition of W2, every coupling π of a pair (μ, ν ) splits as 
+
+c(π) = W 22 (μ, ν ) + E(π), E(π) ≥ 0,
+
+the floor set by the marginals plus the excess of its pairing over OT. Raising k moves the two components in opposite directions, exactly as follows. 
+
+(a) The transport cost still falls linearly in k,
+
+c(¯ π) = R2 + d − k
+
+ R2 
+
+> d
+
++ 1 − SW 22 (p1, γ d)
+
+
+
+,
+
+and Theorem 2 and Theorem A.4 hold at each step for the frame drawn at that step. This gain is a pure excess reduction: the independent pairing π⊥ := ¯ αk ⊗ p1 with the same marginals shares the floor W 22 (¯ αk, p 1), so the floor cancels in the difference and c(π⊥) − c(¯ π) = E(π⊥) − E(¯ π) = 2 ¯C k with 2 ¯C := R2 
+
+> d
+
++ 1 − SW 22 (p1, γ d).
+
+(b) Let RZ = E[ZZ ⊤] be the correlation matrix of the slice codes and κij := ( RZ )ij the code correlation of directions i, j . For a Haar frame, EU [κ2 
+
+> ij
+
+] is the same for all i̸ = j; denoting this common value ϱ ∈ [0 , 1] , which depends on (p1, d ) but not on 
+
+k, the dependence obeys the exact identity 
+
+EU ∥RZ − I∥2 
+
+> F
+
+= EU
+
+X
+
+> i̸=j
+
+κ2 
+
+> ij
+
+= k(k − 1) ϱ. 
+
+(c) The dependence of (b) is a transport-scale deviation of the source prior ρU from the sampling prior γk: for every frame, 
+
+W 22 (ρU , γ k) ≥ g ∥RZ − I∥2
+
+> F
+
+,g(F ) := F
+
+ 1 + 
+
+p
+
+1 + √F 2 ,
+
+and on average EU W 22 (ρU , γ k) ≥ k(k − 1) ϱ/ (1 + √k)2. The bound g is quadratic for F ≲ 1 and of order √F for F ≫ 1.The certificate in (c) is per-frame. The frame-averaged source ¯αk can only be closer to the prior, since W 22 (¯ αk, γ d) ≤
+
+EU W 22 (αUk , γ d) by the joint convexity of W 22 .
+
+Proof. (a). The transport cost is linear in the coupling, c(π) = R ∥x1 − x0∥2 dπ , so for the averaged coupling ¯π = EU [πqc  
+
+> k,U
+
+],exchanging the frame average with the transport integral by Fubini gives 
+
+c(¯ π) = EU [c(πqc  
+
+> k,U
+
+)] = EU
+
+h
+
+R2 + d − 2 X
+
+> j
+
+Cuj
+
+i
+
+= R2 + d − k
+
+ R2 
+
+> d
+
++ 1 − SW 22 (p1, γ d)
+
+
+
+,
+
+(23) substituting the per-frame cost identity of Theorem A.3(b) and averaging with the Haar formula (15). For the excess-reduction claim, the independent pairing π⊥ with the same marginals (¯ αk, p 1) has cost c(π⊥) = E∥e∥2 + E∥X∥2 = d + R2 (the cross term vanishes by independence and E[e] = 0 ), and both couplings decompose as c = W 22 (¯ αk, p 1) + E with the same floor; hence the floor cancels in the difference and c(π⊥) − c(¯ π) = E(π⊥) − E(¯ π) = 2 ¯C k , a pure reduction of the excess component. The per-frame statements of Theorems 2 and A.4 apply conditionally on the drawn U and describe the coupling used at that step. The network itself does not observe U , and the floor of its averaged objective decomposes as in Proposition A.8. 
+
+(b). The Frobenius energy carries two nested expectations, 
+
+EU ∥RZ − I∥2 
+
+> F
+
+= EU
+
+X
+
+> i̸=j
+
+ E[ZiZj ]2,
+
+an inner expectation over the data inside each κij = E[ZiZj ], and an outer one over the frame U . The inner one is already performed, so κij is a deterministic function of the pair (ui, u j ) and only EU remains. By linearity, it passes inside the off-diagonal sum, EU ∥RZ − I∥2 
+
+> F
+
+= P 
+
+> i̸=j
+
+EU [κ2 
+
+> ij
+
+]; the standing continuity of the slice cdfs makes each code exactly N (0 , 1) , so 
+
+RZ has unit diagonal and ∥RZ − I∥2 
+
+> F
+
+= P 
+
+> i̸=j
+
+κ2 
+
+> ij
+
+per frame. The Haar law of U is invariant under permutation of its columns, so the columns are exchangeable — their joint law is unchanged by any permutation — and EU [κ2 
+
+> ij
+
+] therefore takes the same value for every ordered pair i̸ = j. Moreover, any two columns of a Haar k-frame have the joint law of the first two columns of a Haar d × d orthogonal matrix, which does not involve k; hence that common value is a function of (p1, d ) alone. Summing the k(k − 1) equal terms yields the exact identity 
+
+EU ∥RZ − I∥2 
+
+> F
+
+= X
+
+> i̸=j
+
+EU [κ2 
+
+> ij
+
+] = k(k − 1) ϱ, ϱ := EU [κ2 
+
+> ij
+
+] ∈ [0 , 1] ,
+
+(24) where ϱ ∈ [0 , 1] because κ2 
+
+> ij
+
+≤ 1 by Cauchy–Schwarz for the unit-variance codes. Finally, ϱ = 0 exactly when the codes are pairwise uncorrelated for Haar-almost-every orthogonal direction pair. For isotropic Gaussian data p1 = N (0 , σ 2Id), projections onto orthogonal directions are independent, so every κij = 0 and the dependence vanishes identically. In general, ∥RZ − I∥2 
+
+> F
+
+is a covariance-based certificate of prior mismatch rather than a complete measure of dependence. The constant ϱ is a pre-training data statistic. 
+
+(c). This part connects the dependence of (b) to sampling: by Theorem A.1(c), a flow trained on the source αUk but sampled from the FM prior incurs a generation error controlled by W2(γk, ρ U ), so a lower bound on this deviation in terms of the dependence certifies that the dependence is a genuine transport-scale price. The shared factor γd−k cancels as in (2), giving 
+
+W 22 (αUk , γ d) = W 22 (ρU , γ k), so it suffices to bound the latter. 
+
+Step 1: reduce to the correlation matrix. Gelbrich’s inequality (Gelbrich 1990, Thm. 2.1) bounds the W2 distance between any two laws from below by the W2 distance between Gaussians matching their means and covariances. For centered laws that Gaussian distance is the Bures distance between the covariances, Bures 2(A, B ) := tr  A + B − 2( A1/2BA 1/2)1/2. The codes have covariance RZ with unit diagonal, so applying the bound to RZ and I,
+
+W 22 (ρU , γ k) ≥ Bures 2(RZ , I )= tr  RZ + I − 2R1/2
+
+> Z
+
+
+
+= 2 
+
+> k
+
+X
+
+> i=1
+
+ 1 − pλi
+
+,
+
+(25) where λ1, . . . , λ k are the eigenvalues of RZ . Since P 
+
+> i
+
+λi = tr RZ = k, the last expression equals P
+
+> i
+
+ √λi − 12, which the next step bounds below. Step 2: transport lower bounds. Let F := ∥RZ − I∥2 
+
+> F
+
+; by the unit diagonal, F = P
+
+> i
+
+(λi − 1) 2 = P 
+
+> i̸=j
+
+κ2 
+
+> ij
+
+, the total squared code correlation of the frame. For each eigenvalue, multiplying and dividing by (1 + √λi)2 gives (√λi − 1) 2 =(λi − 1) 2/(1 + √λi)2, whence, per frame, 
+
+W 22 (ρU , γ k) ≥ X
+
+> i
+
+(λi − 1) 2
+
+ 1 + √λi
+
+2 ≥ F
+
+ 1 + √λmax 
+
+2 ,λmax := λmax (RZ ).
+
+(26) Two unconditional bounds on λmax make (26) usable. First, RZ is a covariance matrix, so its eigenvalues are nonnegative and sum to tr RZ = k; a nonnegative family summing to k has every member at most k, so λmax ≤ k and (26) gives, per frame, 
+
+W 22 (ρU , γ k) ≥ F/ (1 + √k)2. This coefficient is deterministic and the bound is linear in F . Averaging therefore passes through it, and (24) with EU F = k(k − 1) ϱ gives 
+
+EU W 22 (ρU , γ k) ≥ k(k − 1) ϱ
+
+(1 + √k)2 .
+
+Second, with ∥ · ∥ op the largest singular value, the top eigenvalue’s deviation satisfies λmax − 1 ≤ ∥ RZ − I∥op ≤ ∥ RZ − I∥F =√F . Substituting λmax ≤ 1 + √F into the denominator of (26) gives the self-normalizing per-frame bound 
+
+W 22 (ρU , γ k) ≥ g(F ), g(F ) = F
+
+ 1 + 
+
+p
+
+1 + √F 2 . (27) This bound is stated per frame because g is concave and so, unlike the linear bound above, does not pass through EU . Its two regimes locate where the transport image of the dependence stops growing quadratically. As F → 0, g(F ) = 14 F + O(F 5/4),the constant 14 arising as (1 + √λ)−2 at λ = 1 : for small dependence the prior’s transport deviation grows at the full quadratic rate. As F → ∞ , g(F ) = √F + O(F 1/4): the transport deviation grows only like √F , so the quadratic growth of the price is carried by the identity (24), not by its transport image. 
+
+Appendix A.8 Variance Decomposition under Direction Resampling 
+
+In training, the frame is redrawn at every step and the velocity network v(xt, t ) does not observe U . All expectations below are taken on the joint space where U is a Haar frame and (x0, x 1) ∼ πqc  
+
+> k,U
+
+given U , so the pair law is the frame average 
+
+¯π = EU [πqc  
+
+> k,U
+
+] of the preceding subsection, and the attainable floor of the network is inf v L¯π 
+
+> FM
+
+= R 10 q(t) F ¯πt dt in the notation of Theorem 2. The next results separate what survives the averaging from what the resampling adds, and then bound the added term. 
+
+Proposition A.8 (Variance decomposition under direction resampling) . In the setting above, 
+
+F ¯πt = EU
+
+Fπqc 
+
+> k,U
+> t
+
+ + Dt,Dt := E E[Y | xt, U ] − E[Y | xt] 2 ≥ 0.
+
+(28) 
+
+Proof. Conditioning on (xt, U ) refines conditioning on xt alone, σ(xt) ⊆ σ(xt, U ). Decompose Y − E[Y | xt] =  Y − E[Y |
+
+xt, U ] +  E[Y | xt, U ] − E[Y | xt]. The first residual is orthogonal in L2 to every σ(xt, U )-measurable variable, in particular to the second, so the cross term vanishes in expectation. Given U , the conditional E[Y | xt, U ] is the per-frame ideal field of the coupling πqc  
+
+> k,U
+
+, so the first squared term averages to EU
+
+Fπqc 
+
+> k,U
+> t
+
+, which is (28). 
+
+Proposition A.9 (General bounds on the resampling term) . Let m := EX. For every t ∈ [0 , 1] ,
+
+0 ≤ Dt ≤ R2 + d − 2 ¯C k − ∥ m∥2, (29) 
+
+and the time integral is exactly the excess of the U -blind floor over the mean per-frame floor, 
+
+Z 10
+
+q(t) Dt dt = inf  
+
+> v
+
+L¯π 
+
+> FM
+
+− EU
+
+h
+
+inf  
+
+> v
+
+Lπqc 
+
+> k,U
+> FM
+
+i
+
+. (30) 
+
+Proof. The lower bound is the definition of Dt as a mean squared norm. For the upper bound, (28) gives Dt ≤ F ¯πt , since the remaining term is nonnegative. The conditional mean minimizes the L2 prediction error over all functions of xt, in particular beating the constant EY , so F ¯πt ≤ E∥Y − EY ∥2 = E∥Y ∥2 − ∥ EY ∥2. Here EY = EX − Ee = m, since EZ = 0 and Eϵ = 0 
+
+give Ee = 0 , and E∥Y ∥2 = c(¯ π) = R2 + d − 2 ¯C k by Theorem A.7(a), which yields (29). Retaining the subtracted term instead gives the sharper form Dt ≤ R2 + d − 2 ¯C k − ∥ m∥2 − EU
+
+Fπqc 
+
+> k,U
+> t
+
+. For (30), integrate (28) against q(t) dt . Tonelli exchanges EU with the weighted time integral, and R 10 q(t) Fπt dt = inf v Lπ 
+
+> FM
+
+for ¯π and for each πqc  
+
+> k,U
+
+by the characterization in Theorem 2. Proposition A.10 (Isotropic direction-mixture price) . For the special case of isotropic Gaussian data p1 = N (0 , σ 2Id) with 
+
+σ̸ = 1 , let U be a Haar frame of rank k ≤ d and take linear paths. Write s⋆ := (1 − t) + tσ and s2 
+
+> ⊥
+
+:= (1 − t)2 + t2σ2 for the in-slice and complement interpolation scales, and set ∆ := s−2 
+
+> ⊥
+
+− s−2 
+
+> ⋆
+
+and λ := ∆2 ∥xt∥2. Then the slice dependence of Theorem A.7(b) vanishes identically, i.e. αUk = γd for every U (the fixed-frame source prior coincides with the FM prior), so 
+
+Dt is the only price of resampling, and the following hold. 
+
+(a) The resampled field is linear, 
+
+E[Y | xt, U ] = [ a⊥I + ( a⋆ − a⊥)U U ⊤]xt
+
+with a⋆ = σ−1 
+
+> s⋆
+
+and a⊥ = tσ 2−(1 −t)
+
+> s2
+> ⊥
+
+, and 
+
+Dt = ( a⋆ − a⊥)2 E∥xt∥2 α(1 − α),
+
+∥xt∥2 d
+
+= s2
+
+> ⋆
+
+χ2 
+
+> k
+
++ s2
+
+> ⊥
+
+χ2
+
+> d−k
+
+,
+
+where χ2 
+
+> k
+
+and χ2 
+
+> d−k
+
+are independent chi-squared variables with k and d − k degrees of freedom and α is the tilted-Beta mean of (32) below. 
+
+(b) At the crossover time t† = 11+ σ , where the source and target scales balance, 1 − t = tσ , the field becomes frame-free and 
+
+Dt† = 0 ; at the endpoints D0 = σ2k(1 − kd ) and D1 = k(1 − kd ), and Dt ≡ 0 when k = d.
+
+(c) The resampled irreducible variance strictly beats the Baseline coupling at every k ≤ d and every interior t,
+
+k σ2
+
+s2
+
+> ⊥
+
+− Dt ≥ k 2σ3t(1 − t)
+
+s4
+
+> ⊥
+
+> 0.
+
+Proof. (a). For isotropic Gaussian data the population codes are linear, Z = U ⊤X/σ , so the per-slice regressions of Theorem 2, specialized to a Gaussian slice, make E[X | xt, U ] linear with the stated in-frame and complement slopes. Hence 
+
+E[Y | xt, U ] = a⊥I + ( a⋆ − a⊥)PU
+
+xt, PU = U U ⊤, (31) and Dt = ( a⋆ − a⊥)2 E∥PU xt − E[PU xt | xt]∥2. Conditioned on xt, the law of U is the rank-one Bingham tilt of the Haar measure, with density proportional to exp( ∆2 x⊤ 
+
+> t
+
+PU xt) = exp( λβ ), where β := ∥U ⊤ ˆxt∥2 and ˆxt := xt/∥xt∥. Under the Haar prior, β d
+
+= χ2
+
+> k
+
+/(χ2 
+
+> k
+
++ χ2
+
+> d−k
+
+) ∼ Beta( k 
+
+> 2
+
+, d−k 
+
+> 2
+
+) by rotational invariance, so the conditional law of β given xt is the exponential tilt of this Beta law, whose mean is the log-derivative of the Beta moment generating function E[eλβ ] = 1F1( k 
+
+> 2
+
+; d 
+
+> 2
+
+; λ), Kummer’s function M ( k 
+
+> 2
+
+, d 
+
+> 2
+
+, λ ), given by the integral representation of Abramowitz and Stegun (1948, Eq. 13.2.1). Differentiating with the derivative formula (Abramowitz and Stegun 1948, Eq. 13.4.8) yields 
+
+α = ∂λ log 1F1
+
+  k 
+
+> 2
+
+; d 
+
+> 2
+
+; λ = kd
+
+> 1
+
+F1( k 
+
+> 2
+
++1; d 
+
+> 2
+
++1; λ)
+
+> 1
+
+F1( k 
+
+> 2
+
+; d 
+
+> 2
+
+; λ) . (32) By symmetry of the tilt around the axis ˆxt, E[PU xt | xt] = α x t with α := E[β | xt]. Since ∥PU xt∥2 = x⊤ 
+
+> t
+
+PU xt = ∥xt∥2β,expanding the square gives E∥PU xt − αx t∥2 xt
+
+ = ∥xt∥2α(1 − α), and taking the outer expectation yields the displayed Dt.
+
+(b). Direct simplification gives a⋆ − a⊥ = σ(1 − (1 + σ)t)/(s⋆s2
+
+> ⊥
+
+), which vanishes exactly at t† = 11+ σ , so Dt† = 0 . At t†
+
+the field (31) reduces to a⊥xt, which no longer involves U , so the per-frame ideal fields agree and the disagreement vanishes. The endpoints follow from λ → 0, where α → k/d .
+
+(c). The key identity E[∥xt∥2α] = ks 2 
+
+> ⋆
+
+follows from the tower property. Since α = E[β | xt],
+
+E∥xt∥2α = E∥xt∥2E[β | xt] = E∥xt∥2β
+
+= E∥U ⊤xt∥2 = Es2
+
+> ⋆
+
+∥Z∥2 = k s 2
+
+> ⋆
+
+, (33) where the first equality substitutes α = E[β | xt], the second is the tower property E[∥xt∥2E[β | xt]] = E[∥xt∥2β] (valid because 
+
+∥xt∥2 is σ(xt)-measurable), the third uses ∥xt∥2β = ∥xt∥2∥U ⊤ ˆxt∥2 = ∥U ⊤xt∥2, the fourth uses U ⊤xt = (1 −t)Z +tU ⊤X =
+
+s⋆Z (the slice pairs are perfectly correlated for isotropic Gaussian data), and the last uses E∥Z∥2 = k. Since α ∈ (0 , 1) ,
+
+α(1 − α) ≤ α pointwise, so E[∥xt∥2α(1 − α)] ≤ ks 2 
+
+> ⋆
+
+and Dt ≤ k(a⋆ − a⊥)2s2
+
+> ⋆
+
+. Comparing with the per-slice Baseline variance 
+
+σ2/s 2 
+
+> ⊥
+
+of Theorem 2, 
+
+k σ2
+
+s2
+
+> ⊥
+
+− k(a⋆ − a⊥)2s2 
+
+> ⋆
+
+= kσ 2
+
+s4
+
+> ⊥
+
+h
+
+s2 
+
+> ⊥
+
+− (1 − (1 + σ)t)2i
+
+, (34) and expanding the bracket, 
+
+s2 
+
+> ⊥
+
+− (1 − (1 + σ)t)2
+
+= (1 − t)2 + t2σ2 − 1 − 2(1 + σ)t + (1 + σ)2t2
+
+= 2 σt (1 − t) > 0
+
+(35) on (0 , 1) , which gives the margin 2σ3t(1 − t)/s 4 
+
+> ⊥
+
+> 0.By Theorem 2, given U the slice variances of πqc  
+
+> k,U
+
+vanish, so the first term of (28) reduces to the complement variance and the slice-variance elimination survives the frame averaging. The resampling enters only through Dt, the mean squared disagreement of the per-frame ideal fields around their frame average, so per-frame slice-variance elimination does not by itself transfer to the U -blind model, whose floor gains this nonnegative term. Propositions A.9 and A.10 quantify the term. In general, Dt obeys the moment bound (29), and its time integral equals the excess of the U -blind floor over the mean per-frame floor (30). In the isotropic Gaussian model, Dt is given analytically, vanishes at an interior crossover time, equals σ2k(1 − kd ) and k(1 − kd ) at the endpoints, and leaves the resampled floor strictly below the Baseline floor at every k, providing a concrete guide to its size. The fixed-frame results of Theorems 2 and A.4 describe the mechanism of the coupling used at each training step, and (28), together with these bounds, quantifies what the deployed model inherits from them. 
+
+Appendix A.9 Consistency of the Batch Scheme 
+
+The population theory above uses the slice cdfs, while the algorithm uses within-batch ranks. This subsection quantifies the gap. Given a batch {x(i)}i≤B and a frame U , let rij be the rank of the projection vij = u⊤ 
+
+> j
+
+x(i) within slice j (projections assumed distinct within each slice), and let the batch codes be zij := grij , where gr := Φ −1  r−1/2
+
+> B
+
+ is the midpoint quantile grid. Write ˆGB := 1
+
+> B
+
+P 
+
+> r≤B
+
+δgr for the grid measure and its cdf, and sB := 1
+
+> B
+
+P 
+
+> r≤B
+
+g2 
+
+> r
+
+for its second moment. Deviations are measured by the Kolmogorov–Smirnov distance dKS (μ, ν ) := sup x∈R |Fμ(x) − Fν (x)|, with Fμ, F ν the cdfs, and by the bounded-Lipschitz distance dBL (μ, ν ) := sup  R f dμ − R f dν : ∥f ∥∞ ≤ 1, Lip( f ) ≤ 1 .The first result states what the batch source actually is. It is not an i.i.d. Gaussian sample but a deterministic stratification of one, so its deviation from the population Gaussian is exact rather than asymptotic, and its slice statistics carry no sampling noise. 
+
+Proposition A.11 (The finite-B source is an exact stratification) . Assume the projections are distinct within each slice. Then, within any batch, the slice codes {zij }i≤B form a permutation of the fixed grid {gr }r≤B , so QC-FM stratifies its slice coordinates rather than sampling them. Consequently, 
+
+(a) the grid deviates from the Gaussian by dKS ( ˆGB , γ 1) = 12B exactly, and 
+
+(b) every slice statistic is deterministic, 1
+
+> B
+
+P 
+
+> i
+
+f (zij ) = 1
+
+> B
+
+P 
+
+> r
+
+f (gr ) for every f , with mean exactly 0 and second moment exactly 
+
+sB . Under the Baseline, the same statistic is computed from i.i.d. Gaussian codes and has sampling variance Var γ1 (f )/B ,where Var γ1 (f ) := Var( f (G)) for G ∼ γ1.Proof. (a). The grid cdf ˆGB jumps by 1/B at each gr = Φ −1  r−1/2
+
+> B
+
+. On the open interval (gr , g r+1 ), ˆGB ≡ r/B while Φ
+
+increases continuously from r−1/2 
+
+> B
+
+to r+1 /2 
+
+> B
+
+. The deviation | ˆGB − Φ| is therefore largest at the interval’s endpoints, where it equals exactly 12B , and the same value is approached on the two unbounded tails ( Φ < 12B below g1, Φ > 1 − 12B above gB ). Hence dKS ( ˆGB , γ 1) = sup | ˆGB − Φ| = 12B exactly. 
+
+(b). With distinct within-batch projections, the multiset {zij }i≤B is, for every batch, exactly the fixed grid {gr }r≤B , and only the assignment of grid points to samples varies. Any batch statistic of the form 1
+
+> B
+
+P 
+
+> i
+
+f (zij ) is a symmetric function of this multiset, hence equals the deterministic value 1
+
+> B
+
+P 
+
+> r
+
+f (gr ) regardless of the data, with zero variance, whereas i.i.d. Gaussian codes give variance Var γ1 (f )/B . The mean is 1
+
+> B
+
+P 
+
+> r
+
+gr = 0 by the grid’s sign symmetry gB+1 −r = −gr , and the second moment is 1
+
+> B
+
+P 
+
+> r
+
+g2 
+
+> r
+
+= sB by definition. 
+
+Theorem A.12 (Batch QC-FM estimates πqc  
+
+> k,U
+
+). Fix a frame U and assume i.i.d. data with finite second moments and continuous slice cdfs. For each sample x(i), collect its batch codes into z(i) := ( zi1, . . . , z ik )⊤ and its population codes into Z(i) := ( Zi1, . . . , Z ik )⊤, where Zij := Φ −1(Fj (vij )) and Fj := Fuj . Let ˆπB and ˜πB denote the empirical measures of 
+
+{(U z (i) + P ⊥ 
+
+> U
+
+ϵ(i), x (i))}i≤B and {(U Z (i) + P ⊥ 
+
+> U
+
+ϵ(i), x (i))}i≤B respectively, the latter being an i.i.d. sample from πqc  
+
+> k,U
+
+.
+
+(a) The grid deviations are exactly quantifiable, with dKS ( ˆGB , γ 1) = 12B , with c−/B ≤ 1 − sB ≤ c+/B for universal constants 
+
+0 < c − ≤ c+, and with W 22 ( ˆGB , γ 1) = O  1  
+
+> Blog B
+
+.
+
+(b) The batch coupling is consistent, in that dBL (ˆ πB , ˜πB ) → 0 almost surely, so ˆπB converges weakly to πqc  
+
+> k,U
+
+and 
+
+W2(ˆ πB , π qc  
+
+> k,U
+
+) → 0 almost surely. (c) The finite-B error is dimension-free. Pathwise, 
+
+W 22 (ˆ πB , ˜πB ) ≤ 1
+
+B
+
+X
+
+> i
+
+∥z(i) − Z(i)∥2
+
+=
+
+> k
+
+X
+
+> j=1
+
+W 22
+
+  ˆGB , ˆγ(j)
+
+> B
+
+,
+
+ˆγ(j) 
+
+> B
+
+:= 1
+
+B
+
+X
+
+> i
+
+δZij ,
+
+and in expectation 
+
+E W 22 (ˆ πB , ˜πB ) ≤ 2k W 22 ( ˆGB , γ 1) + 2 
+
+> k
+
+X
+
+> j=1
+
+E W 22 (ˆ γ(j) 
+
+> B
+
+, γ 1)= O
+
+ k log log BB
+
+
+
+(Bobkov and Ledoux 2019), with constants independent of the ambient dimension d. The deterministic grid term is O( 1   
+
+> Blog B
+
+),strictly smaller than the i.i.d.-Gaussian term ≍ log log BB , so the grid is closer to γ1 than an i.i.d. sample of the same size. Proof. (a). The Kolmogorov–Smirnov equality is Proposition A.11(a). For sB , write ψ := (Φ −1)2 and note R 10 ψ(τ ) dτ =
+
+E[G2] = 1 for G ∼ γ1, while sB = 1
+
+> B
+
+P 
+
+> r
+
+ψ  r−1/2
+
+> B
+
+ is the midpoint-rule approximation of this integral over the B quantile cells   r−1 
+
+> B
+
+, rB
+
+. The function ψ is strictly convex on (0 , 1) , since ψ′′ = 2(1 + q2)/ϕ (q)2 > 0 with q = Φ −1 and ϕ the standard normal density. A convex function lies above its tangent at the cell midpoint, and the tangent integrates over the cell to exactly the midpoint value times the cell width, so each cell integral is at least the midpoint contribution and sB < 1. Summing the per-cell convexity gaps over the interior cells, and comparing the two unbounded edge cells against the integral directly, both contributions are of order 1/B , which gives c−
+
+B ≤ 1 − sB ≤ c+
+
+B . (36) For the W 22 rate, pair ˆGB with γ1 by matching quantiles, so that 
+
+W 22 ( ˆGB , γ 1) = 
+
+> B
+
+X
+
+> r=1
+
+Z r/B 
+
+> (r−1) /B
+
+ Φ−1(τ ) − gr
+
+2 dτ. 
+
+On an interior cell the mean value theorem gives |Φ−1(τ ) − gr | ≤ 12B
+
+ min cell ϕ(Φ −1), and the tail asymptotics ϕ(Φ −1(τ )) ∼
+
+τ p2 log(1 /τ ) as τ ↓ 0, which follows from the normal tail estimate 1 − Φ( x) ∼ ϕ(x)/x (Abramowitz and Stegun 1948, Eq. 26.2.12), make the cell at rank r contribute O  1 
+
+> Br 2log( B/r )
+
+, symmetrically at the upper tail. The sum over cells is dominated by the extreme cells and totals 
+
+W 22 ( ˆGB , γ 1) = O
+
+ 1
+
+B log B
+
+
+
+; (37) see (Bobkov and Ledoux 2019) for systematic one-dimensional W2 estimates of this kind. Only the rate is used below. 
+
+(b). Fix a slice j, let ˆFB,j be the empirical cdf of the projections v1j , . . . , v Bj , and set τij := Fj (vij ) and ˆτij := ˆFB,j (vij )− 12B ,so that Zij = Φ −1(τij ) and zij = Φ −1(ˆ τij ). Write δB := ∥ ˆFB,j − Fj ∥∞ + 12B , so that sup i |ˆτij − τij | ≤ δB and, by Glivenko– Cantelli, δB → 0 almost surely. A test function with ∥f ∥∞ ≤ 1 and Lip( f ) ≤ 1 moves by at most min(2 , ∥z(i) − Z(i)∥) ≤P 
+
+> j
+
+min(2 , |zij − Zij |) between corresponding atoms, so 
+
+dBL (ˆ πB , ˜πB ) ≤
+
+> k
+
+X
+
+> j=1
+
+1
+
+B
+
+X
+
+> i
+
+min  2, |zij − Zij |.
+
+Fix η ∈ (0 , 12 ) and split the samples of slice j by whether τij ∈ [η, 1 − η]. On this central part, once δB < η/ 2 both τij and 
+
+ˆτij lie in [η/ 2, 1 − η/ 2] , where Φ−1 is Lipschitz with constant Lη := 1 /ϕ (Φ −1(η/ 2)) , since (Φ −1)′ = 1 /ϕ (Φ −1) and ϕ(Φ −1)
+
+attains its minimum over the interval at the endpoints. Hence every central summand is at most Lη δB , uniformly in i, and the central part tends to zero. On the tail part each summand is at most 2, and the fraction of tail samples tends to 2η by the strong law, since the τij are i.i.d. uniform. Hence lim sup B of each slice term is at most 4η for every η, so dBL (ˆ πB , ˜πB ) → 0 almost surely. The measure ˜πB converges weakly to πqc  
+
+> k,U
+
+almost surely by Varadarajan’s theorem, hence so does ˆπB . Weak convergence upgrades to W2 convergence once the second moments converge to that of the limit (Villani 2009). The second moment of ˆπB
+
+splits by the orthogonality of U z (i) and w(i) := P ⊥ 
+
+> U
+
+ϵ(i) into 1
+
+> B
+
+P 
+
+> i
+
+∥z(i)∥2 + 1
+
+> B
+
+P 
+
+> i
+
+∥w(i)∥2 + 1
+
+> B
+
+P 
+
+> i
+
+∥x(i)∥2. The first term equals ks B deterministically, since within each slice the codes form exactly the grid by Proposition A.11, and sB → 1 by (36). The second and third tend to E∥w(1) ∥2 = tr P ⊥ 
+
+> U
+
+= d − k and E∥x(1) ∥2 = R2 by the strong law. The total d + R2 matches the second moment of πqc  
+
+> k,U
+
+, which is E∥e∥2 + E∥X∥2 = d + R2 by (11), and the W2 convergence follows. 
+
+(c). Transporting each atom of ˆπB to the corresponding atom of ˜πB costs ∥U (z(i) − Z(i))∥2 = ∥z(i) − Z(i)∥2, which gives the pathwise inequality. Within slice j, both zij and Zij are strictly increasing in the same within-slice ranks, so the index pairing matches the r-th smallest grid point with the r-th smallest population code; in one dimension this comonotone pairing is the OT, so 1
+
+> B
+
+P
+
+> i
+
+(zij − Zij )2 = W 22 ( ˆGB , ˆγ(j) 
+
+> B
+
+), which gives the pathwise equality. Triangulating each slice term through 
+
+γ1, W 22 ( ˆGB , ˆγ(j) 
+
+> B
+
+) ≤ 2W 22 ( ˆGB , γ 1) + 2 W 22 (ˆ γ(j) 
+
+> B
+
+, γ 1), and taking expectations, the grid term is deterministic and O( 1   
+
+> Blog B
+
+)
+
+by (37), while each ˆγ(j) 
+
+> B
+
+is the empirical measure of B i.i.d. standard Gaussians, the population codes being exactly γ1 by Theorem A.1(a), whose expected deviation is E W 22 (ˆ γ(j) 
+
+> B
+
+, γ 1) = O(log log B/B ) (Bobkov and Ledoux 2019). Summing the k
+
+slices gives the display, and no constant depends on d.
+
+Proposition A.13 (Dependence diagnostic) . Let ˆRZ := 1
+
+> Bs B
+
+P 
+
+> i
+
+z(i)z(i)⊤. With distinct within-batch projections, the following hold. 
+
+(a) diag ˆRZ = I exactly. 
+
+(b) Under independent sliced coordinates, E∥ ˆRZ − I∥2 
+
+> F
+
+= k(k−1)  
+
+> B−1
+
+exactly. 
+
+(c) ˆκij → κij almost surely. Hence bB := ∥ ˆRZ − I∥2 
+
+> F
+
+− k(k−1)  
+
+> B−1
+
+is the bias-corrected dependence statistic to monitor during training, since subtracting the exact null mean of (b) centers it at zero under independence, so positive values indicate genuine slice dependence. Under resampled U , average the statistic across steps, never the matrices, because EU [κij ] = 0 
+
+by sign symmetry. Proof. (a). See Proposition A.11(ii). 
+
+(b). Under the null the rank vectors of distinct slices are independent uniform permutations of {1, . . . , B }, so 
+
+ˆκij = 1
+
+Bs B
+
+X
+
+> m
+
+gσ(m)gσ′(m)
+
+> d
+
+= 1
+
+Bs B
+
+X
+
+> m
+
+gmgτ (m) (38) for a single uniform permutation τ . Its mean is zero, since E[gτ (m)] = ¯ g = 0 . For its variance, note that a uniform permutation has the moments E[g2 
+
+> τ(m)
+
+] = 1
+
+> B
+
+P 
+
+> p
+
+g2 
+
+> p
+
+= sB and, for m̸ = m′, E[gτ (m)gτ (m′)] = 1
+
+> B(B−1)
+
+P 
+
+> p̸=q
+
+gpgq = − sB 
+
+> B−1
+
+, the negative correlation coming from P 
+
+> p
+
+gp = 0 . Expanding the square of P 
+
+> m
+
+gmgτ (m) with these moments, 
+
+Var 
+
+ X 
+
+> m
+
+gmgτ (m)
+
+
+
+= sB
+
+X
+
+> m
+
+g2 
+
+> m
+
+− sB
+
+B − 1
+
+X
+
+> m̸=m′
+
+gmgm′
+
+= Bs 2 
+
+> B
+
++ sB
+
+B − 1 · Bs B = (Bs B )2
+
+B − 1 ,
+
+(39) where the second equality uses P 
+
+> m̸=m′
+
+gmgm′ =   P  
+
+> m
+
+gm
+
+2 − P 
+
+> m
+
+g2 
+
+> m
+
+= −Bs B . This is the classical variance of a simple linear rank statistic (Hoeffding 1951), specialized to the scores gm. Dividing by (Bs B )2 gives E[ˆ κ2 
+
+> ij
+
+] = 1 
+
+> B−1
+
+, and summing over the k(k − 1) ordered pairs gives E∥ ˆRZ − I∥2 
+
+> F
+
+= k(k−1)  
+
+> B−1
+
+.
+
+(c). The bivariate extension of the consistency argument of Theorem A.12. Sign symmetry holds because uj 7 → − uj preserves the Haar law and flips ranks. 
+
+## Appendix B A Calibrated Heuristic for Selecting k
+
+This appendix records the rule used to select the number of slices. The theorems supply two exact ingredients. Theorem A.7(a) gives the linear transport-cost gain 2 ¯C k , and Theorem A.7(b)–(c) give the dependence law EU ∥RZ − I∥2 
+
+> F
+
+= k(k − 1) ϱ together with its transport certificate g. The two ingredients act on sample quality through different routes. The gain acts on the training side, through the coupling that Theorems 2 and A.4 analyze, while the prior deviation acts at sampling time, through the endpoint bound of Theorem A.1(c). No inequality combining the two routes into final sample quality is proved here, so the rule below is a one-parameter heuristic built on the two exact ingredients, with the balance between them calibrated on data rather than derived. The two theoretical ingredients live on a common squared-transport scale. The gain is the exact reduction of the squared transport cost c(¯ π) in Theorem A.7(a). The second term is a plug-in proxy: it evaluates the shape of the per-frame covariance-based certificate from Theorem A.7(c) at the mean dependence k(k − 1) ϱ from Theorem A.7(b). Because g(EFU ) is not itself a proved lower bound on either the mean per-frame mismatch or the frame-averaged source mismatch, we use it only as a calibrated diagnostic. A single dimensionless weight trades this proxy against the exact gain, and we take as our selection score 
+
+Q(k) = 2 ¯C k − ω g  k(k − 1) ϱ,
+
+2 ¯C := Eu[2 Cu] = R2 
+
+> d
+
++ 1 − SW 22 (p1, γ d),
+
+where ω > 0 is that weight. The proxy is approximately quadratic in k below the crossover k ≈ 1 + ϱ−1/2 and asymptotically linear in k above it, with slope ω√ϱ, so the calibrated score can have an interior maximum when this slope exceeds the gain’s. Its maximizer k∗ solves the first-order condition 2 ¯C = ω ϱ (2 k − 1) g′ k(k − 1) ϱ numerically. This score omits the frame-disagreement term, finite-batch approximation effects, and hybrid-specific disagreement; consequently, k∗ is a heuristic selection value rather than a theorem about final sample quality. Both inputs are computable from the data before training, ¯C by Monte Carlo slicing (Theorem A.3) and ϱ by Monte Carlo over Haar direction pairs using the debiased statistic of Proposition A.13. We fix ω by matching the observed optimum k∗ 
+
+> Mix
+
+= 16 
+
+of the CIFAR-10 sweep, which gives ω ≈ 13 .4, and we apply the resulting rule to all hybrid variants. The remaining rows of Table A are transferred heuristic selections rather than fitted observations, obtained from each dataset’s measured statistics 
+
+(ˆ ϱ, ¯C).Table A: Heuristic maximizers k∗ of the calibrated selection score Q(k) = 2 ¯C k − ω g (k(k − 1) ϱ), computed from pre-training data statistics: ˆϱ by Monte Carlo over Haar direction pairs (debiased, Proposition A.13) and ¯C by Monte Carlo slicing (Theorem A.3).                         
+
+> Dataset dˆϱ¯Ck∗
+> CelebA-64 12288 0.0821 1.057 15 .0
+> CIFAR-10 3072 0.0677 0.964 16 .0†
+> ImageNet-64 12288 0.0673 1.057 21 .9
+> FFHQ-64 12288 0.0524 0.994 31 .7
+> †Calibration point, fixing ω≈13 .4by matching the observed CIFAR-10 optimum.
+
+In practice, we restrict k to powers of two, matching the sweep grid, and select the power nearest to k∗ on the logarithmic scale, k = 2 round(log 2 k∗), which gives k = 16 on CIFAR-10 and CelebA-64 and k = 32 on FFHQ-64. 
+
+## Appendix C Algorithms, Ablations, and Qualitative Results 
+
+Appendix C.1 QC-FM and Hybrid Training Algorithms Appendix C.2 Training with QC-FM-Based Couplings 
+
+Given the coupled batch T = {(e(i), x (i))}Bi=1 produced by either hybrid strategy, we sample t ∼ q from the training-time distribution, construct xt = (1 − t)e(i) + tx (i), and train the velocity field with the same conditional flow-matching objective 
+
+LFM (θ) = E(e,x )∼T , t ∼q
+
+h
+
+vθ (xt, t ) − (x − e) 2i
+
+.
+
+Thus QC-FM changes only the batchwise source–target pairs; the interpolation path and regression objective remain unchanged. The hybrids inherit the structured anchor pairs while retaining exact Gaussian source samples on the non-anchor slots. Proposi-tion A.6 formalizes the resulting attenuation of prior mismatch, while Mixture and Adjacency differ only in their joint pairing laws. 
+
+Appendix C.3 Fixed PCA Projection Ablation 
+
+The main experiments redraw a Haar-random orthonormal frame U at every training step. To study the combined effect of projection alignment and frame resampling, we additionally trained matched CIFAR-10 variants using a single PCA-aligned frame throughout training. We computed the top 16 components once from the 50 ,000 training images and their horizontal flips (100 ,000 samples in total), using the same CHW ordering and [−1, 1] normalization as training. These components explain 
+
+71 .66% of the empirical variance. All other settings are unchanged: k = 16 , B = 64 , and p = 0 .2 for Mixture or p = 0 .8 for Adjacency. Table B reports this matched comparison. The PCA-fixed configuration slightly improves Mixture from 2.10 to 2.07 , but slightly degrades Adjacency from 2.12 to 2.16 .Thus, the combined change in projection alignment and frame resampling is hybrid-dependent rather than uniformly beneficial. Algorithm 1 Quantile Coupling Flow Matching (QC-FM)  
+
+> 1:
+
+Input: Data batch {x(i)}Bi=1 ⊂ Rd, number of slices k 
+
+> 2:
+
+Output: Source batch {e(i)}Bi=1 and frame U 
+
+> 3:
+
+Sample A ∈ Rd×k with i.i.d. entries Aab ∼ N (0 , 1)  
+
+> 4:
+
+Compute QR decomposition A = QR , and set U ← Q[: , 1 : k] 
+
+> 5:
+
+for j = 1 , . . . , k do  
+
+> 6:
+
+for i = 1 , . . . , B do  
+
+> 7:
+
+vij ← u⊤ 
+
+> j
+
+x(i) 
+
+> 8:
+
+end for  
+
+> 9:
+
+Compute ranks rij of {v1j , . . . , v Bj } 
+
+> 10:
+
+for i = 1 , . . . , B do  
+
+> 11:
+
+τij ← (rij − 0.5) /B  
+
+> 12:
+
+zij ← Φ−1(τij ) 
+
+> 13:
+
+end for  
+
+> 14:
+
+end for  
+
+> 15:
+
+for i = 1 , . . . , B do  
+
+> 16:
+
+Form z(i) = ( zi1, . . . , z ik )⊤ 
+
+> 17:
+
+Sample ϵ(i) ∼ N (0 , I d) 
+
+> 18:
+
+e(i) ← U z (i) + ( Id − U U ⊤)ϵ(i) 
+
+> 19:
+
+end for  
+
+> 20:
+
+return {e(i)}Bi=1 , U 
+
+Table B: Random-resampled versus PCA-fixed projection frames on CIFAR-10 at the common 1600 -epoch endpoint (FID-50K, 
+
+NFE = 50 ).                  
+
+> Method Projection frame UpFID ↓
+> QC-FM-Mixture Random, resampled 0.2 2.10 QC-FM-Mixture PCA, fixed 0.2 2.07 QC-FM-Adjacency Random, resampled 0.8 2.12 QC-FM-Adjacency PCA, fixed 0.8 2.16
+
+Appendix C.4 Rank-Orientation Ablation 
+
+The default QC-FM assigns increasing data ranks to increasing Gaussian quantiles, forming the monotone one-dimensional coupling. As an orientation control, we reverse this assignment so that anchor rank r ∈ { 1, . . . , M } receives the Gaussian grid quantile at rank M + 1 − r. This anti-monotone variant preserves the same Gaussian quantile multiset, random frame distribution, anchor ratio, and computational cost; it changes only the orientation of each rank pairing. We train the matched QC-FM-Mixture control on CIFAR-10 with a fresh random U at every step, (p, k ) = (0 .2, 16) , and B = 64 . Table C compares it with the Baseline and the monotone variant. The anti-monotone control degrades FID to 2.41 , worse than both the Baseline ( 2.24 ) and the monotone construction ( 2.10 ), despite using the same Gaussian quantile grid. This supports that the gain comes from preserving the correct rank orientation rather than from quantile regularization alone. 
+
+Appendix C.5 Batch-Size Ablation 
+
+Minibatch OT is known to benefit mainly at large batch sizes (Zhang et al. 2026). Table 4 shows that QC-FM’s measured coupling latency grows only mildly over the tested range and remains negligible relative to a full training step: from B = 64 
+
+to B = 2048 , QC-FM-Mixture increases from 0.42 to 0.69 ms and QC-FM-Adjacency from 2.96 to 5.51 ms. To place the OT-CFM comparison on fair footing, we compare QC-FM and OT-CFM across batch sizes; Table D reports the resulting sweep. The Baseline remains nearly unchanged with B, whereas OT-CFM improves from 2.59 to 2.11 and narrows its gap to QC-FM-Mixture from 0.49 to 0.07 . QC-FM-Mixture nevertheless remains best at every tested batch size, with its lowest observed FID of 2.02 at B = 512 ; at B = 1024 , its isolated coupling construction is about 210 × faster than Hungarian OT (Table 4). 
+
+Appendix C.6 Qualitative Image Results 
+
+FID summarizes distribution match but not per-sample fidelity or failure modes. Figures A–D provide an illustrative matched-noise comparison between the Baseline and QC-FM-Mixture at NFE = 50 . Corresponding grid positions share the same Gaussian initial state; ImageNet additionally shares the class label. Each pair of method grids uses the same ordering. Baseline QC-FM-Mixture 
+
+Figure A: Matched-noise CIFAR-10 comparisons at the common 1600 -epoch endpoint ( NFE = 50 ). Corresponding cells use identical Gaussian initial states. Baseline QC-FM-Mixture 
+
+Figure B: Matched-noise CelebA-64 comparisons at the common 500 -epoch endpoint ( NFE = 50 ). Corresponding cells use identical Gaussian initial states. Baseline QC-FM-Mixture 
+
+Figure C: Matched-noise FFHQ-64 comparisons at the common 1200 -epoch endpoint ( NFE = 50 ). Corresponding cells use identical Gaussian initial states. Baseline QC-FM-Mixture 
+
+Figure D: Matched-input class-conditional ImageNet-64 comparisons at the common 60 -epoch endpoint under the ADM center-crop protocol. Corresponding cells use identical Gaussian initial states and class labels ( NFE = 50 , classifier-free guidance scale 1.5). Algorithm 2 Flow Matching Training with QC-FM-Based Hybrid Coupling 
+
+1: Input: Batch size B, anchor ratio p, number of slices k, training-time distribution q; method ∈ { Mixture , Adjacency }
+
+2: while not converged do 
+
+3: Sample data batch Bx = {x(i)}Bi=1 ∼ pdata 
+
+4: Split Bx into Bx, anc and Bx, rest with |B x, anc | = ⌊pB ⌋
+
+5: (Be, anc , U ) ← QC-FM (Bx, anc , k )
+
+6: Form anchor pairs S = {(eanc  
+
+> m
+
+, x anc  
+
+> m
+
+)}
+
+7: if method is Mixture then 
+
+8: Sample eBe, rest ∼ N (0 , I d)
+
+9: Pair eBe, rest randomly with Bx, rest to form A
+
+10: T ← S ∪ A 
+
+11: else if method is Adjacency then 
+
+12: Assign each x ∈ B x, rest to its nearest anchor target using dU (x, x anc  
+
+> m
+
+)
+
+13: Let Gm be the resulting target groups and nm = |G m|
+
+14: Sample eBe, rest ∼ N (0 , I d)
+
+15: Allocate latents to anchors by a parallel auction, respecting the quotas nm
+
+16: Let Hm be the allocated latent groups with |H m| = nm
+
+17: Pair each Hm with Gm within group to form N
+
+18: T ← S ∪ N 
+
+19: end if 
+
+20: Sample t ∼ q
+
+21: Construct xt = (1 − t)x0 + tx 1 for all (x0, x 1) ∈ T 
+
+22: Compute LFM (θ) and update θ
+
+23: end while 
+
+Table C: Rank-orientation ablation on CIFAR-10 at the common 1600 -epoch endpoint (FID-50K, NFE = 50 ). QC-FM rows use Mixture with (p, k ) = (0 .2, 16) , B = 64 .
+
+Method Rank assignment FID ↓
+
+Baseline – 2.24 QC-FM-Mixture Anti-monotone 2.41 QC-FM-Mixture Monotone 2.10 
+
+Table D: Effect of batch size on CIFAR-10 (FID at a common epoch endpoint for each setting). QC-FM is compared against OT-CFM as the batch size grows, since minibatch OT is disadvantaged at small B. Best results at each batch size are bold. 
+
+Method B=64 B=256 B=512 B=1024 
+
+Baseline 2.24 2.21 2.22 2.26 OT-CFM (Hungarian) 2.59 2.30 2.15 2.11 QC-FM-Mixture 2.10 2.06 2.02 2.04

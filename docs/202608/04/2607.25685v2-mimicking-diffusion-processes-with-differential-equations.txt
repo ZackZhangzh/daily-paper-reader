@@ -1,0 +1,3683 @@
+Title: Mimicking diffusion processes with differential equations
+
+URL Source: https://arxiv.org/pdf/2607.25685v2
+
+Published Time: Tue, 04 Aug 2026 02:11:45 GMT
+
+Number of Pages: 41
+
+Markdown Content:
+# Mimicking diffusion processes with differential equations 
+
+Rama Cont ∗
+
+Mathematical Institute, University of Oxford 
+
+Abstract 
+
+The probability-flow ordinary differential equation (PF-ODE) associated with a diffusion process is widely used in score-based generative modeling as a deterministic sampler that reproduces the marginal distributions of the diffusion. The validity of this marginal-matching property depends on the well-posedness of an ordinary differential equation whose velocity field is constructed from the score function of the diffusion. We examine the precise mathematical relation between a diffusion process, the Fokker-Planck equation and the associated probability-flow ODE (PF-ODE) under weak regularity assumptions on the drift and score function. We first establish existence and uniqueness of the marginal density flow as a solution of the Fokker–Planck equation under minimal assumptions on the diffusion coefficients. We then study the corresponding Lagrangian problem using the DiPerna–Lions–Ambrosio theory of regular Lagrangian flows. We prove existence, uniqueness and stability of the PF-ODE flow, and show that it transports the initial distribution onto the diffusion marginals, under Sobolev or bounded-variation regularity of the score together with one-sided bounds on the divergence of the probability-flow velocity. We identify sufficient conditions for the required regularity in diffusion models relevant for applications. Our analysis underlines a fundamental distinction between Eulerian and Lagrangian descriptions. We construct a counterexample in which the Fokker–Planck equation has a unique density flow while the associated PF-ODE fails to admit a regular Lagrangian flow from the initial time, demonstrating that uniqueness of the density evolution does not in general imply the existence of a deterministic probability-flow representation. Finally, we derive stability estimates for probability-flow trajectories under learned score approx-imations. We discuss the implications of our findings for the training and deployment of generative diffusion models. 
+
+Keywords : Score-based diffusion models; Diffusion processes; Fokker–Planck equations; DiPerna–Lions theory; Kolmogorov equations; Linear transport equations; generative models. 
+
+Mathematics Subject Classification : 35Dxx 35Q84 60H10 49J52 35J60 35Kxx 
+
+> ∗
+
+The author thanks Luigi Ambrosio and Gabriel Peyré, whose insightful lectures at the Spring School on Mathematics of Random Systems (Pisa, 2025) inspired this work, and RenYuan Xu for enlightening discussions on generative models. 
+
+1arXiv:2607.25685v2 [math.PR] 3 Aug 2026 Contents 
+
+1 Mimicking diffusions with differential equations 3
+
+1.1 Generative diffusion models and continuous probability flows . . . . . . . . . . 31.2 Contributions . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 41.3 Relation with previous research . . . . . . . . . . . . . . . . . . . . . . . . . . . 51.4 Outline . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 5
+
+2 Definitions and assumptions 63 Eulerian viewpoint: uniqueness of the density flow 84 Lagrangian viewpoint: the probability flow ODE 13 5 Regularity of the score function 18 6 A counterexample 22 
+
+6.1 Solution of the PF-ODE: the quantile flow . . . . . . . . . . . . . . . . . . . . . 23 6.2 Failure of Lagrangian well-posedness . . . . . . . . . . . . . . . . . . . . . . . . 23 6.3 Numerical illustration . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 25 
+
+7 Stability under a learned score function 27 
+
+7.1 Assumptions on the learned score function . . . . . . . . . . . . . . . . . . . . . 27 7.2 A stability estimate for the ODE flow . . . . . . . . . . . . . . . . . . . . . . . 28 7.3 From the score-matching loss to Ev . . . . . . . . . . . . . . . . . . . . . . . . . 30 7.4 Lipschitz score functions . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 31 
+
+8 Implications for generative modeling 33 A Proof of Lemma 4.9 38 B Proof of Proposition 5.4 40 C Density estimates used in Section 7 41 
+
+C.1 Proof of Lemma 7.5 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 41 C.2 Proof of Lemma 7.6 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 41 21 Mimicking diffusions with differential equations 
+
+1.1 Generative diffusion models and continuous probability flows 
+
+Score-based diffusion models [29, 30, 31, 35] have become state-of-the-art generative models for image and video generation [21, 28]. Score-based diffusion models progressively add noise to a data set through a forward diffusion process, learn the score function s(x, t ) = ∇ log pt(x)
+
+associated with marginals, and then generate samples by applying time-reversed dynamics : either via a time-reversed stochastic differential equation or via a deterministic probability-flow ODE which transports a Gaussian distribution back onto the data distribution [27]. Score-based diffusion models use two ingredients [31, 35]: a stochastic differential equation (SDE)–the forward diffusion process – to transform a complex data distribution p0 to a refer-ence (Gaussian) distribution pT by slowly injecting noise, and a corresponding time-reversed SDE which generates the reverse probability flow qt = pT −t, thus transforming the reference distribution back into the data distribution. Crucially, the time-reversed SDE depends only on the score function ∇ log pt(x) of the forward diffusion [5, 18]. By estimating the score function with a neural network, one can then generate samples from the data distribution by simulating the time-reversed SDE. One of the features underlying the computational efficiency of these models is the idea, used by Song et al. [31], that one may sample from the marginal densities (pt)t∈[0 ,T ] of a diffusion process by first sampling from the initial distribution p0 then transporting the initial sample via an ordinary differential equation (ODE), called the probability-flow ODE (PF-ODE). Indeed, consider a diffusion process in Rd driven by a d−dimensional Brownian motion W :
+
+dX t = f (Xt, t )dt + σ(t)dW t, X0 ∼ μ0
+
+with (scalar) diffusion coefficient σ : [0 , T ] 7 → (0 , ∞) and initial distribution μ0 ∈ P (Rd).Assume Xt has a strictly positive density pt(x) on Rd for t > 0. The density pt(x) solves the Fokker–Planck / Kolmogorov forward equation on Rd × (0 , T ):
+
+∂tpt(x) + ∇· (f (., t )pt)( x) − 12 σ(t)2∆pt(x) = 0 . (1) Song et al [31] considered the ordinary differential equation:  
+
+> ddt
+
+Z(t, x ) = v(Z(t, x ), t ), Z(0 , x ) = x, where v(x, t ) := f (x, t ) − 12 σ(t)2∇ log pt(x). (2) Assuming this ODE is well-posed, if we initialize it with a random initial condition Z0 with density p0 then the density pt of Z(t, Z 0) evolves according to the continuity equation 
+
+∂tpt + ∇· (pt v) = 0 (3) which describes the ’probability flow’ associated with the ODE (2). Using ∆pt = ∇ · (pt∇ log pt), we observe that the continuity equation (3) is formally identical to the Fokker-Planck equation (1). So, if the ODE (2) is well-posed and the PDEs (1) and (3) have unique solutions, then by initializing the ODE with a random initial condition 
+
+X0 ∼ μ0 we obtain a solution Zt = Z(t, X 0) which has the same distribution as Xt:
+
+Law( Z(t, X 0)) = Law( Xt).
+
+Thus the ODE 2 with initial condition X0 mimicks the flow of marginal distributions of the diffusion process X: (2) is called the ’probability flow ODE’ ( PF-ODE ) associated with the diffusion X.This probability-flow ODE (PF-ODE) may thus be used to generate samples from the distribution (pt) of Xt (or the reverse flow qt = pT −t) without additional random simulation, 3by sampling Zt0 ∼ pt0 then transporting it along the PF-ODE (2) either forwards or backwards. The probability-flow ODE has become the sampler of choice in diffusion models, as it easier to simulate and leads to exact likelihood evaluation and deterministic decoding [30]. The idea of ”mimicking” the marginal probability flow of a stochastic process with a simpler, analytically tractable process goes back to Gyöngy [16], who proposed a method for mimicking the marginal flow of an Ito process with a Markovian-type SDE. Here the idea is taken one step further, namely mimicking the marginal flow of a diffusion process with a 
+
+deterministic differential equation. The validity of this marginal-matching property, often assumed in the literature on gener-ative models, depends on the well-posedness of the nonlinear differential equation (2). Even when f is Lipschitz-continuous and σ bounded, the vector field v may not always satisfy the Cauchy-Lipschitz assumptions for well-posedness of the ODE (2), as it involves regularity of the score function s(x, t ) = ∇ log pt. The relations between the PDE, the probability flow and the ODE thus need to be qualified and only hold under certain conditions. 
+
+1.2 Contributions 
+
+Inspired by the questions arising in the context of generative diffusion models, we examine the precise mathematical relation between the diffusion process X, the associated Fokker-Planck equation (1) and the probability-flow ODE (PF-ODE) (2), under weak regularity assumptions on the drift and the score function. We distinguish two complementary viewpoints: • the Eulerian representation: Is the density flow (pt) of Xt the unique solution of the Fokker-Planck equation (1) in a natural class? This is a question about the linear parabolic PDE (1) with possibly irregular coefficients, which we tackle in Section 3. • the Lagrangian representation: Does the ODE (2) generate a well-defined flow Z, and does this flow transport p0 onto pT ? This is a question about the first-order ODE (2) and the associated transport equation (3). We tackle this question in Section 4 using the DiPerna–Lions theory [13, 1] of regular Lagrangian flows and its extension by Ambrosio [1, 2]. In particular we examine whether, as implicitly assumed in many studies on diffusion models, these representations are interchangeable, or equivalent, ways of generating a desired proba-bility flow. This requires to understand in detail the mathematical relation between the SDE, its marginal flow, the PF-ODE and the continuity equation. Our analysis combines two methodologies: the well-posedness of Fokker–Planck equations with irregular coefficients [14, 23, 24] and the DiPerna–Lions–Ambrosio theory of regular La-grangian flows [13, 1, 2]. This allows us to formulate the probability-flow ODE under minimal regularity assumptions and to identify the role of each assumption. The counterexample in Section 6 provides further insight into the role of various assumptions. Replacing the score function ∇ log pt by a learned (neural network) approximation sθ gives an estimator vθ. A question of interest is to quantify the impact ‖Zθ − Z‖ of this estimation error for the flow. Such quantitative error estimates are the focus of Section 7. Theorem 7.1 studies the impact of the estimation error on the flow and Proposition 7.4 examines the relation with the score-matching objective function. Importantly, our error estimates require conditions on the design of the estimator but not on the loss function or the training procedure. These results complement recent work by Han et al. [17] on error estimates for score-based diffusion models. 41.3 Relation with previous research 
+
+Recent theoretical work [8, 20, 26, 33, 32] has established a rigorous understanding of probability-flow dynamics in the Cauchy-Lipschitz regime where the coefficients and score satisfy strong regularity conditions. Mooney, Wang, Xin, and Yu [26] derive Lipschitz estimates for diffusion scores for a broad class of initial distribution and use local Lipschitz control to prove global well-posedness and convergence of score-based generative dynamics. Their analysis also identifies deterioration of score-Lipschitz bounds for non-log-concave distributions and an O(1 /t ) regularization rate for nonsmooth measures supported on compact smooth manifolds with boundary. Stéphanovitch [33] obtains Lipschitz and one-sided Lipschitz estimates for diffusion and flow-matching vector fields under weak log-concavity assumptions, leading to Lipschitz transports and quantitative sampling rates. Iske and Schönlieb [20] show that when the score has a uniformly bounded Hessian the probability-flow ODE generates a bi-Lipschitz diffeomorphism, and use this struc-ture to study the expressivity of bi-Lipschitz normalizing flows. Brigati and Pedrotti [8] derive explicit log-Hessian bounds for log-Lipschitz perturbations of strongly log-concave measures, yielding sufficient score-regularity for diffusion dynamics, and show that arbitrarily strong tail decay alone does not guarantee uniform log-Hessian control. These results establish classical well-posedness when quantitative score regularity is avail-able. Our analysis is complementary: we study probability-flow dynamics beyond the classi-cal Lipschitz regime. Using regular Lagrangian-flow theory, we prove well-posedness under Sobolev and BV regularity, distinguish Eulerian density evolution from Lagrangian trans-port, and exhibit examples in which the density evolution is well defined although no regular Lagrangian probability flow exists from the initial time. A complementary line of work [17, 19] studies the statistical and computational aspects of score-based generative models, assuming that the score can be estimated with sufficient accuracy. Han, Razaviyayn and Xu [17] establish optimization and generalization guarantees for gradient-descent training of neural-network score estimators, proving L2 error bounds for learned scores. Huang, Huang, and Lin [19] analyze the effect of score approximation and numerical discretization errors on probability-flow ODE sampling, deriving quantitative con-vergence guarantees in total variation under smoothness assumptions on the learned score. Chen, Vanden-Eijnden and Xu [9] use the marginal-matching representation to optimize in-terpolation schedules by improving the Lipschitz conditioning of the resulting drift. These results quantify how statistical estimation and computational errors propagate through a probability-flow dynamics, assumed to be well-posed. By contrast, our analysis addresses the underlying analytical question of when the probability-flow vector field itself generates a meaningful Lagrangian transport. Our stability results for learned score fields in Section 7 are therefore complementary to these error analyses and go beyond the classical Cauchy-Lipschitz assumptions. 
+
+1.4 Outline 
+
+Section 2 introduces the forward diffusion, the Fokker–Planck equation and the probability-flow ODE, together with the assumptions used in various results. Section 3 treats the Eulerian problem: Theorem 3.1 establishes existence and uniqueness of the density flow under weak assumptions on the drift — requiring only a one-sided bound on the scalar divergence ∇ · 
+
+f and no regularity of the score — and identifies it with the marginal flow of the SDE. Section 4 turns to the Lagrangian problem: using the Ambrosio–DiPerna–Lions theory of regular Lagrangian flows, Theorem 4.5 shows that under the additional assumption (S) on the score, the PF-ODE (6) generates a unique regular Lagrangian flow transporting p0 onto 
+
+pt, and Corollary 4.12 identifies the stronger two-sided divergence bounds required for time reversal and invertibility. Section 5 provides verifiable sufficient conditions for the regularity 5of the score function: strongly log-concave initial data with linear drift (Proposition 5.2), compactly supported — possibly singular — initial laws after early stopping (Proposition 5.3), and nonlinear gradient drifts under a confinement condition (Proposition 5.4). Section 6 presents a counterexample for which the density flow is uniquely determined by Theorem 3.1 yet the PF-ODE admits no regular Lagrangian flow from time zero and the continuity equation fails to be solvable for a range of initial conditions. The mechanism is a 
+
+1/t blow-up of the score outside the initial support, which separates assumption (S4) from its Fisher-information relaxation (S4’). Section 7 studies the deterministic sampler with a learned score: Theorem 7.1 gives a quantitative log-Lipschitz stability estimate for the flow in terms of the L1 velocity error, Proposition 7.4 relates this error to the score-matching loss through an inverse-density factor, and Proposition 7.8 gives a linear-rate alternative for Lipschitz scores. Section 8 discusses implications of our results for generative modelling. 
+
+# 2 Definitions and assumptions 
+
+Let T > 0, d ≥ 1, and Ld be the Lebesgue measure on Rd. We consider a diffusion process 
+
+dXt = f (Xt, t ) d t + σ(t) d Wt, t ∈ [0 , T ], X0 ∼ μ0 ∈ P (Rd), (4) with σ : [0 , T ] → (0 , ∞) scalar and no spatial dependence. When the SDE (4) has a unique solution, we will denote pt(x) the density of Xt. The density pt(x) solves the Fokker–Planck / Kolmogorov forward equation on Rd × (0 , T ):
+
+∂tpt(x) + ∇· (f p t)( x) − 12 σ(t)2∆pt(x) = 0 . (5) We associate with this diffusion process a ’probability flow differential equation’ ( PFODE )[31]  
+
+> dds
+
+Z(t, x ) = v(Z(t, x ), t ) Z(0 , x ) = x, (6) 
+
+where v(x, t ) := f (x, t ) − 12 σ(t)2∇ log ps(x). (7) The continuity equation associated with the ODE (6) is the linear transport equation 
+
+∂tρ + ∇· (ρv ) = 0 , (8) As noted in Section 1, the interest in the particular choice of the vector field (7) stems from the observation that, under certain assumptions (to be specified) the continuity equation (8) formally coincides with (5). Our goal is to study the mathematical relation between the Eulerian description of the marginal probability flow (pt)t∈[0 ,T ] of the diffusion (4) through its Fokker–Planck equation (5) and the Lagrangian description of the probability flow provided by the ODE (6). For the Eulerian problem, under uniform ellipticity of the second-order term, uniqueness follows from a direct energy estimate in the class where ∇p ∈ L2. The essential point is that testing the equation against the difference of two solutions p1, p 2 produces ∫ f · ∇ (|p1 − p2|2),which after one integration by parts involves ∇· f alone : the full gradient ∇f and the score never appear. This places the Eulerian problem inside the classical variational framework for parabolic equations with irregular data [24]. For the Lagrangian problem, since the vector field v in (7), contains the score function 
+
+s(x, t ) = ∇ log pt, assumptions on the regularity of the score function are unavoidable. We will use Ambrosio’s BV extension [1, 2] to the DiPerna–Lions theory [13], which will allow us to impose weak regularity assumptions on the coefficients involved. We will thus consider various sets of assumptions in the following sections. 6Assumption 1 (Diffusion coefficient— (E1), (E2)) .
+
+(E1) σ ∈ L∞(0 , T ) and 0 < ϵ ≤ σ(s) ≤ ϵ−1 for a.e. s.(E2) σ ∈ Cα/ 2([0 , T ]) for some α ∈ (0 , 1) .Theorem 3.1 uses only (E1); (E2) is used in Section 5 for parabolic regularity. 
+
+Assumption 2 (Drift (D)) .
+
+(D0) f ∈ L2loc 
+
+([0 , T ] × Rd; Rd);(D1) f ∈ L1([0 , T ]; BV loc (Rd; Rd)).(D2) ∇· f ∈ L1([0 , T ]; L1loc (Rd)) and [∇· f ]− ∈ L1([0 , T ]; L∞(Rd));(D3) f
+
+1 + |x| ∈ L1([0 , T ]; L1 + L∞(Rd));We shall also need, for Theorem 3.1 and again in Section 7, a pointwise bound on f :(D4) |f (x, t )| ≤ Cf (t) (1 + |x|) for a.e. (x, t ), with Cf ∈ L1(0 , T ).(D4) implies (D3) but not conversely: in (D3) the component f1 with |f1| 
+
+> 1+ |x|
+
+∈ L1 
+
+> x
+
+may be unbounded on every ball. The distinction is consequential; see Remark 3.2. 
+
+Remark 2.1 . (D2) requires the absolutely continuity of the distributional divergence: 
+
+∑
+
+> i
+
+∂ifi = ( ∇· f ) Ld, (9) 
+
+∇· f then denotes its density; [ ∇· f ]− is the negative part. This is a standing hypothesis in Ambrosio’s BV theory [1, 2]. Condition (9) is not implied by (D1), as a BV loc field may have a divergence with a nonzero singular part, and it may not be weakened to a hypothesis on the absolutely continuous part alone. We will use different combinations of these assumptions. We use the notations • (D E) for (D0), (D2), (D3); • (D +E ) for (D0), (D2), (D4); and • (D L) for (D0), (D1), (D2), (D3). (D E) imposes no derivative on f beyond the scalar distribution ∇· f ; in particular f need not be weakly differentiable. This will be enough for studying the Eulerian problem in Section 3 (Theorem 3.1). By contrast, the Lagrangian result in Section 4 needs the full matrix ∇f to be defined as a measure. 
+
+Assumption 3 (Initial distribution μ0 (I)) .
+
+(I1) μ0 has a probability density p0 ∈ L1 ∩ L∞(Rd).(I2) ∫ |x|2p0 dx < ∞ and Ent( p0) := ∫ p0 log p0 dx < ∞.
+
+Assumption 4 (Score regularity: (S)) . The marginal flow (pt, t ∈ [0 , T ]) of (4) satisfies 7(S1) pt > 0 Ld-a.e. for each t, p ∈ L∞((0 , T ); L1 ∩ L∞), sup 0≤t≤T
+
+∫ |x|2pt(x)dx < ∞, and 
+
+t 7 → ptLd is narrowly continuous; (S2) ∇ log p· ∈ L1((0 , T ); W 1,1loc (Rd; Rd));(S3) ∥∥[∆ log pt]+∥∥L∞ ≤ Λ( t) with Λ ∈ L1(0 , T );(S4) |∇ log ps(x)| ≤ A(s)(1 + |x|) for a.e. x, with A ∈ L1(0 , T ).We also record the weaker alternative to (S4): (S4 ′)
+
+∫ T
+
+> 0
+
+I(ps) d s < ∞, where I(p) := ∫ 
+
+> Rd
+
+p |∇ log p|2 dx is the Fisher information. 
+
+# 3 Eulerian viewpoint: uniqueness of the density flow 
+
+Define the energy class 
+
+X := 
+
+{
+
+p ∈ L∞([0 , T ]; L1 ∩ L∞(Rd)) : ∇p ∈ L2([0 , T ]; L2(Rd))}
+
+.
+
+A function p ∈ X is a weak solution of the Fokker-Planck-Kolmogorov equation (5) with initial condition p0 if for all φ ∈ C∞ 
+
+> c
+
+([0 , T ) × Rd)
+
+∫ T
+
+> 0
+
+∫
+
+> Rd
+
+p ∂ tφ +
+
+∫
+
+> Rd
+
+p0φ(0 , ·) = −
+
+∫ T
+
+> 0
+
+∫
+
+> Rd
+
+p 〈f, ∇φ〉 + 12
+
+∫ T
+
+> 0
+
+dt 
+
+∫
+
+> Rd
+
+σ(t)2〈∇ pt, ∇φ〉.
+
+Theorem 3.1 (Existence and uniqueness of the marginal flow) .
+
+(a) (Uniqueness) Under assumptions (E1) , (D E) and (I1) , there is at most one weak solution of the Fokker-Planck-Kolmogorov equation (5) in X with initial condition p0.
+
+(b1) (Existence of solutions and L2 estimate) Under assumptions (E1) , (D +E ), and (I1) there exists a weak solution p ∈ X of (5) with initial condition p0, and it satisfies 
+
+sup 
+
+> s≤T
+
+‖ps‖2 
+
+> L2
+
+≤ ‖ p0‖2 
+
+> L2
+
+eθ, (10) 
+
+ϵ2
+
+∫ T
+
+> 0
+
+‖∇ ps‖2 
+
+> L2
+
+ds ≤ ‖ p0‖2
+
+> L2
+
+(1 + θ e θ), (11) 
+
+where θ := ∫ T 
+
+> 0
+
+‖[∇· f (·, s )] −‖L∞ ds. In particular: 
+
+sup 
+
+> s≤T
+
+‖ps‖2 
+
+> L2
+
++ ϵ2
+
+∫ T
+
+> 0
+
+‖∇ ps‖2 
+
+> L2
+
+ds ≤ 2 ‖p0‖2 
+
+> L2
+
+e2θ. (12) (b2) (Moments and Fisher information) If, in addition, (I2) is satisfied then 
+
+sup 
+
+> t≤T
+
+∫
+
+> Rd
+
+‖x‖2pt(x)dx < ∞ and 
+
+∫ T
+
+> 0
+
+I(pt)dt < ∞
+
+(c) (Identification) If X is any weak solution of the stochastic differential equation (4) 
+
+with X0 ∼ p0Ld whose marginals are absolutely continuous with densities in X , then the density flow of X is the (unique) weak solution of the Fokker-Planck-Kolmogorov equation (5) with initial condition p0.
+
+8No positivity, smoothness, log-concavity is required for p0 or pt and no differentiability of 
+
+f beyond (D2) is needed. 
+
+Proof. Uniqueness is a self-contained energy estimate; we give it in full, since it is the reason the hypotheses can be as weak as they are. 
+
+Step 1: the difference of two solutions. Let p1, p 2 ∈ X solve (5) with the same initial condition and put w := p1 − p2 ∈ X , so that w(0) = 0 and w is a weak solution of 
+
+∂sw + ∇· (f w ) − 12 σ(s)2∆w = 0 . (13) By interpolation w ∈ L∞([0 , T ]; L2), and ∇w ∈ L2([0 , T ]; L2).
+
+Step 2: localised energy identity. Fix ϕ ∈ C∞ 
+
+> c
+
+(Rd) with 0 ≤ ϕ ≤ 1, ϕ ≡ 1 on B1,
+
+supp ϕ ⊂ B2, and set ϕR(x) := ϕ(x/R ). As w ∈ L2 
+
+> s
+
+H1 
+
+> x
+
+and, by (D0) and w ∈ L∞, f w ∈ L2loc ,
+
+∂tw ∈ L2([0 , T ], H −1(B2R)) and Lions–Magenes duality applies. Testing (13) against wϕ R
+
+gives 
+
+dds
+
+12
+
+∫
+
+w2ϕR + σ2
+
+2
+
+∫
+
+ϕR|∇ w|2 =
+
+∫
+
+ϕR f · w∇w
+
+︸ ︷︷ ︸
+
+> =:I
+
++
+
+∫
+
+(f · ∇ ϕR) w2
+
+︸ ︷︷ ︸
+
+> =:II
+
+− σ2
+
+2
+
+∫
+
+w ∇w · ∇ ϕR
+
+︸ ︷︷ ︸
+
+> =:III
+
+.
+
+Step 3: the drift term only depends on ∇· f . Since w ∈ H1loc ∩ L∞ we have w∇w = 12 ∇(w2)
+
+classically , the chain rule being available because membership of X already grants one weak derivative — no renormalisation is needed to justify it. Hence 
+
+ψ := φRw2 ∈ H1 
+
+> c
+
+(Rd) ∩ L∞(Rd) ⊂ W 1,1 
+
+> c
+
+(Rd).
+
+The distributional-divergence identity, initially defined for test functions in C∞ 
+
+> c
+
+, extends to this ψ by approximation. Indeed, one may choose ψn ∈ C∞ 
+
+> c
+
+(Rd), supported in a fixed compact set and satisfying 
+
+sup 
+
+> n
+
+‖ψn‖L∞ ≤ ‖ ψ‖L∞ , ψn → ψ in H1, ψn → ψ a.e. Since f ∈ L2loc , one has ∫
+
+f · ∇ ψn →
+
+∫
+
+f · ∇ ψ, 
+
+while ∇· f ∈ L1loc and dominated convergence give 
+
+∫
+
+(∇· f )ψn →
+
+∫
+
+(∇· f )ψ. 
+
+Consequently, ∫
+
+f · ∇ ψ = −
+
+∫
+
+(∇· f )ψ. 
+
+Applying this identity with ψ = φRw2 gives 
+
+I = 12
+
+∫
+
+φRf ·∇ (w2) = 12
+
+∫
+
+f ·∇ (φRw2)− 12
+
+∫
+
+(f ·∇ φR)w2 = − 12
+
+∫
+
+(∇· f )φRw2− 12
+
+∫
+
+(f ·∇ φR)w2.
+
+Note that only the scalar ∇· f is used, not the gradient ∇f . It is paired with the bounded compactly supported function ϕRw2. Two things are being used here, and only the first is about ∇f . First, the definition of the distributional divergence gives ∫ f · ∇ ψ = −〈 ∑ 
+
+> i
+
+∂ifi, ψ 〉
+
+with ψ = ϕRw2. Second — and this is where (9) enters — absolute continuity of ∑ 
+
+> i
+
+∂ifi lets us write that pairing as the Lebesgue integral ∫ (∇· f )ϕRw2. Without (9) the identity above acquires the extra term − 12 〈Dsf, ϕ Rw2〉, which has no sign, need not be absorbable, and in 9general is not even well defined: w2 is an H1loc ∩ L∞ function, specified only up to Ld-null sets, while Dsf is carried by a Ld-null set. Consequently 
+
+I + II ≤ 12
+
+∥∥[∇· f (·, s )] −∥∥L∞
+
+∫
+
+w2ϕR + 12
+
+∣∣∣∫
+
+(f · ∇ ϕR)w2
+
+∣∣∣.
+
+Step 4. Write f = f1 + f2 as in (D3) with |f1| 
+
+> 1+ |x|
+
+∈ L1 
+
+> s
+
+L1 
+
+> x
+
+and |f2| 
+
+> 1+ |x|
+
+∈ L1 
+
+> s
+
+L∞ 
+
+> x
+
+. Since 
+
+|∇ ϕR| ≤ ‖∇ ϕ‖∞/R and ∇ϕR is supported in {R ≤ | x| ≤ 2R}, where 1 + |x| ≤ 1 + 2 R ≤ 3R,
+
+∣∣∣∫
+
+(f · ∇ ϕR)w2
+
+∣∣∣ ≲ ‖w‖2
+
+> L∞
+
+∫
+
+> |x|≥ R
+
+|f1|
+
+1 + |x| +
+
+∥∥∥ |f2|
+
+> 1+ |x|
+
+∥∥∥L∞
+
+∫
+
+> |x|≥ R
+
+w2 −−−−→ 
+
+> R→∞
+
+0,
+
+both terms by dominated convergence. Likewise |III | ≤ ϵ−2∥∇ ϕ∥∞ 
+
+> 2R
+
+‖w‖L2 ‖∇ w‖L2 → 0.
+
+Step 5: Grönwall. Letting R → ∞ and using σ ≥ ϵ,
+
+dds
+
+12 ‖ws‖2 
+
+> L2
+
++ ϵ2
+
+2 ‖∇ ws‖2 
+
+> L2
+
+≤ 12 Θ0(s) ‖ws‖2 
+
+> L2
+
+,
+
+with Θ0(s) = ‖[∇.f (., s )] −‖L∞ ∈ L1(0 , T ) by (D2). Since w0 = 0 , Grönwall gives w ≡ 0,proving (a). Only the negative part of ∇· f was used, which is why (D2) is one-sided. 
+
+Step 6: energy bounds. Running Steps 2–5 with w replaced by p itself yields the differential inequality 
+
+dds
+
+12 ‖ps‖2 
+
+> L2
+
++ ϵ2
+
+2 ‖∇ ps‖2 
+
+> L2
+
+≤ 12 Θ0(s) ‖ps‖2 
+
+> L2
+
+.
+
+Discarding the (nonnegative) dissipation term and applying Grönwall gives (10). Retaining it instead and integrating over [0 , T ],
+
+ϵ2
+
+2
+
+∫ T
+
+> 0
+
+‖∇ ps‖2 
+
+> L2
+
+≤ 12 ‖p0‖2 
+
+> L2
+
+− 12 ‖pT ‖2 
+
+> L2
+
++ 12
+
+∫ T
+
+> 0
+
+Θ0(s)‖ps‖2 
+
+> L2
+
+ds ≤ 12 ‖p0‖2
+
+> L2
+
+(1 + θe θ),
+
+where (10) was inserted in the last step; this is (11). Adding the two and using 1 + (1 + θ)eθ ≤
+
+2e2θ gives (12). 
+
+Step 7: existence. This is not a standard construction: under (D E) the drift carries no pointwise bound and no weak derivative beyond the scalar ∇· f . We need to mollify in x and note that 
+
+(7a) The approximation preserves the hypotheses. Let ρε be a standard mollifier and f ε := f ∗ρε
+
+(in x, for a.e. s). Then f ε → f in L2loc by (D0). Because (9) holds, the divergence is a function and commutes with convolution, ∇· f ε = ( ∇· f ) ∗ ρε, whence for a.e. s
+
+∇· f ε(x) = 
+
+∫
+
+∇· f (y) ρε(x−y) d y ≥ − ∥∥[∇· f (·, s )] −∥∥L∞ , so ∥∥[∇· f ε]−∥∥L∞ ≤ ∥∥[∇· f ]−∥∥L∞ .
+
+The one-sided bound is therefore preserved with the same constant, uniformly in ε. Finally, since 1 + |x| ≤ 2(1 + |y|) whenever |x − y| ≤ ε ≤ 1, (D3) passes to f ε with its constants at most doubled, and (D4) passes to f ε with Cf replaced by 2Cf , since |f ε(x)| ≤ (|f | ∗ ρε)( x) ≤
+
+Cf (s)(1 + |x| + ε). Under condition (I1), there exists pε 
+
+> 0
+
+∈ C∞ 
+
+> c
+
+(Rd), pε 
+
+> 0
+
+≥ 0, such that 
+
+∫
+
+> Rd
+
+pε
+
+> 0
+
+(x) dx = 1 , pε 
+
+> 0
+
+→ p0 in L1(Rd), ‖pε
+
+> 0
+
+‖L∞ ≤ ‖ p0‖L∞ .
+
+This is where (D4) is needed. Under (D4) the field f ε is smooth with globally linear growth, so the regularised Cauchy problem on Rd — uniformly parabolic, constant diffusion, smooth drift of linear growth — has a unique solution pε, mass is conserved, and the Phragmén–Lindelöf form of the maximum principle applies, which is what (7b) below uses. See Remark 3.2. 10 To show (b2) we note that, under (I2) , the approximant pε may be chosen to satisfy 
+
+sup 
+
+> ε> 0
+
+∫
+
+> Rd
+
+|x|2pε
+
+> 0
+
+(x) dx < ∞
+
+and step (7c’) gives uniform bounds on the second moment. 
+
+(7b) Positivity and L∞ control. pε ≥ 0 by the parabolic maximum principle. Write the equation in nondivergence form: 
+
+∂spε + f ε ·∇ pε + ( ∇· f ε)pε = σ2 
+
+> 2
+
+∆pε.
+
+At a spatial maximum ∇pε = 0 and ∆pε ≤ 0, so ∂spε ≤ − (∇· f ε)pε ≤ ‖ [∇· f ε]−‖L∞ pε, and Grönwall with (7a) gives 
+
+∥∥pεs
+
+∥∥L∞ ≤ ‖ p0‖L∞ eθ, uniformly in ε. (14) Only the one-sided bound is used, consistently with (D2). 
+
+(7c) Mass conservation and tightness. Mass is conserved for the regularised problem. For tightness the linear cut-off ϕR of Step 4 is not adequate: the drift term produces the annular mass ∫ 
+
+> {R≤| x|≤ 2R}
+
+pε, which is not controlled by ∫ pε(1 − ϕR), since 1 − ϕR vanishes at the inner edge |x| = R where that mass may be concentrated. We therefore use a logarithmic 
+
+cut-off, for which the drift term is small outright and no Grönwall argument is used. Let 
+
+χ ∈ C∞([0 , ∞); [0 , 1] ) with χ ≡ 1 on [0 , 12 ] and χ ≡ 0 on [1 , ∞), and for R > e set 
+
+ψR(x) := χ
+
+( log(1 + |x|)log R
+
+)
+
+, (15) so that ψR ≡ 1 on {1 + |x| ≤ √R} and ψR ≡ 0 on {1 + |x| ≥ R}. Writing ˆx = x/ |x|, one has ∇ψR = χ′  
+
+> log R
+> ˆx
+> 1+ |x|
+
+and ∆ψR = χ′′   
+
+> (log R)2(1+ |x|)2
+
++ χ′  
+
+> log R
+
+∆ log(1 + |x|) with ∆ log(1 + |x|) =  
+
+> d−1
+> |x|(1+ |x|)
+
+− 1(1+ |x|)2 ; since ∇ψR is supported in {| x| ≥ √R − 1}, this gives for R large 
+
+(1 + |x|) ∣ ∣∇ψR(x)∣∣ ≤ ‖χ′‖∞
+
+log R , (1 + |x|)2∣∣∆ψR(x)∣∣ ≤ Cd
+
+(‖χ′‖∞ + ‖χ′′ ‖∞
+
+)
+
+log R . (16) 
+
+(1 + |x|)|∇ ψR| → 0 uniformly, whereas for the linear cut-off (1 + |x|)|∇ ϕR| is merely bounded. Now test the regularised equation against ψR. Splitting f ε = f ε 
+
+> 1
+
++ f ε 
+
+> 2
+
+with f εi := fi ∗ ρε,which by (7a) satisfies ∥∥ |f ε 
+
+> 2(·,s )|
+> 1+ |x|
+
+∥∥L∞ ≤ 2κ2(s) and ∥∥ |f ε 
+
+> 1(·,s )|
+> 1+ |x|
+
+∥∥L1 ≤ 2κ1(s) with κ1, κ 2 ∈ L1(0 , T )
+
+furnished by (D3), 
+
+∣∣∣ dds
+
+∫
+
+pεsψR
+
+∣∣∣ ≤
+
+∫
+
+pεs
+
+∣∣f ε
+
+> 2
+
+∣∣ |∇ ψR|
+
+︸ ︷︷ ︸   
+
+> ≤2κ2(s)∥χ′∥∞/log R
+
++
+
+∫
+
+pεs
+
+∣∣f ε
+
+> 1
+
+∣∣ |∇ ψR|
+
+︸ ︷︷ ︸    
+
+> ≤2κ1(s)∥pε∥L∞∥χ′∥∞/log R
+
++ σ2
+
+> 2
+
+∫
+
+pεs|∆ψR|
+
+︸ ︷︷ ︸   
+
+> ≤Cd,ϵ /log R
+
+,
+
+where the first and third bounds use ∫ pεs = 1 together with (16), and the second uses ‖pε‖L∞
+
+from (14). Every term carries the factor (log R)−1 and none involves the exterior mass, so integrating in s,
+
+sup 
+
+> s≤T
+
+∣∣∣∫
+
+pεsψR −
+
+∫
+
+pε
+
+> 0
+
+ψR
+
+∣∣∣ ≤ C
+
+log R ,
+
+with C depending only on d, ϵ, χ , ‖κi‖L1(0 ,T ), ‖p0‖L∞ and θ — in particular not on ε or R.Since ∫ pε
+
+> 0
+
+ψR → 1 as R → ∞ uniformly in ε (as pε 
+
+> 0
+
+→ p0 in L1 and ψR ↑ 1), and ψR vanishes off {1 + |x| < R },
+
+sup 
+
+> ε
+
+sup 
+
+> s≤T
+
+∫
+
+> {1+ |x|≥ R}
+
+pεs dx ≤ 1 − inf 
+
+> ε
+
+∫
+
+pε
+
+> 0
+
+ψR + C
+
+log R −−−−→ 
+
+> R→∞
+
+0.
+
+11 The family is therefore uniformly tight, no mass escapes in the limit, and ‖ps‖L1 = 1 . Note that the L1 component of (D3) is again handled with no pointwise bound on f : it is paired with (1 + |x|)|∇ ψR|, which (16) makes uniformly small. 
+
+(7c ′) Uniform second moments. By Itô’s formula for the regularised SDE, or equivalently by testing against bounded C2 truncations of |x|2 and then applying monotone convergence, 
+
+dds 
+
+∫
+
+> Rd
+
+|x|2pεs(x) dx = 2 
+
+∫
+
+> Rd
+
+x · f ε(x, s )pεs(x) dx + d σ (s)2.
+
+By (D4) and (7a), |f ε(x, s )| ≤ 2Cf (s)(1 + |x|). Since |x|(1 + |x|) ≤ 1 + 2 |x|2, writing 
+
+mε
+
+> 2
+
+(s) := 
+
+∫
+
+> Rd
+
+|x|2pεs(x) dx, 
+
+we obtain dds mε
+
+> 2
+
+(s) ≤ Cd
+
+(1 + Cf (s))( 1 + mε
+
+> 2
+
+(s)).
+
+Hence, by Grönwall’s inequality, 
+
+M := sup 
+
+> ε> 0
+
+sup  
+
+> s∈[0 ,T ]
+
+mε
+
+> 2
+
+(s) < ∞.
+
+By lower semicontinuity, 
+
+sup  
+
+> s∈[0 ,T ]
+
+∫
+
+> Rd
+
+|x|2ps(x) dx ≤ M. 
+
+(7d) Uniform energy bounds. Steps 2–5 applied to pε are legitimate classically and, by (7a), yield (10)–(11) with constants independent of ε. In particular ∇pε is bounded in L2L2.
+
+(7e) Compactness of the flux f εpε. This is the only step where a product of two weakly convergent sequences must be passed to the limit, and it needs strong compactness of pε. For 
+
+ψ ∈ C∞ 
+
+> c
+
+(K),
+
+∣∣〈∂spε, ψ 〉∣∣ ≤ ∥∥f εpε∥∥L2(K)‖∇ ψ‖L2 + ϵ−2 
+
+> 2
+
+‖∇ pε‖L2 ‖∇ ψ‖L2 , ∥∥f εpε∥∥L2(K) ≤ ‖ f ε‖L2(K)‖pε‖L∞ ,
+
+which is bounded by (D0) and (14). Hence ∂spε is bounded in L2([0 , T ]; H−1(K)) while pε is bounded in L2([0 , T ]; H1(K)), and Aubin–Lions gives, along a subsequence, pε → p strongly in L2([0 , T ]; L2(K)) for every compact K. Combined with f ε → f strongly in L2loc , this gives 
+
+f εpε → f p in L1loc , and every term of the weak formulation passes to the limit. (D0) is used here. 
+
+(7f) Initial trace. The bound on ∂spε in L2(H−1(K)) makes {pε} equicontinuous in 
+
+C([0 , T ]; H−1(K)); hence p ∈ C([0 , T ]; H−1loc 
+
+) and ps → p0 in H−1loc as s ↓ 0, so the initial condition is attained. Together with (14), (7c) and (7d), the limit p lies in X and solves (5). 
+
+Step 8: identification. For (c), let X be a weak solution of (4) with marginal densities 
+
+qs ∈ X . Itô’s formula applied to φ ∈ C∞ 
+
+> c
+
+and integration in x show that (qs) is a weak solution of (5) with initial condition p0. By part (a), (qs) is the unique weak solution of (5) with initial condition p0. If (D+ 
+
+> E
+
+) also holds, it coincides with the solution furnished by part (b1). 
+
+Remark 3.2 (Existence needs (D4) while uniqueness does not) . Uniqueness in Theorem 3.1(a) sees the drift only through the two integrals ∫ ϕR f · ∇ (w2) and ∫ (f · ∇ ϕR)w2 of Steps 3–4, in both of which f is paired with a bounded, compactly supported weight. The decomposition (D3) is tailored to this: the L1 
+
+> x
+
+component is integrated, never evaluated, and the factor 3R
+
+from the annulus cancels the R−1 from ∇ϕR.Existence is different because it requires the approximating problems to be solvable, mass-conserving, and to obey a maximum principle on Rd, which are pointwise statements about f ε.under (D3) alone, f ε carries no pointwise bound and truncation would destroy the divergence estimate. (D4) provides such a pointwise bound. 12 Remark 3.3 (Absolute continuity of the divergence is necessary) . If (9) is dropped and (D2) is reinterpreted as a hypothesis on the absolutely continuous part alone then the conclusion of Theorem 3.1(b) does not hold. Take d = 1 and 
+
+σ ≡ 1, f (x) = − sign( x), p0(x) = e−2|x|.
+
+Then ∫ p0 = 1 , and f satisfies (D0) ( f ∈ L∞), (D1) ( sign ∈ BV loc ) and (D3) ( |f | ≤ 1). Its distributional divergence is ∂xf = −2δ0, purely singular, so its absolutely continuous part is zero ∇ · f ≡ 0, giving Θ0 ≡ 0 and (D2). The flux vanishes identically, since ∂xp0 =
+
+−2 sign( x)e−2|x| gives 
+
+f p 0 − 12 ∂xp0 = − sign( x)e−2|x| + sign( x)e−2|x| = 0 ,
+
+so ps ≡ p0 solves (5) and lies in X . Here ‖p0‖2 
+
+> L2
+
+= 12 , ‖∂xp0‖2 
+
+> L2
+
+= 2 , ϵ = 1 and θ = 0 , so the dissipation bound (11) would assert 
+
+2T = ϵ2
+
+∫ T
+
+> 0
+
+‖∂xps‖2 
+
+> L2
+
+ds ≤ ‖ p0‖2
+
+> L2
+
+(1 + θe θ) = 12 .
+
+The left side grows linearly in T while the right side does not depend on T at all, so this is false for every T > 14 , with an unbounded deficit as T → ∞ . The discrepancy is exactly the term dropped in Step 3: with Dsf = −2δ0,
+
+− 12
+
+〈Dsf, p 2〉 = p0(0) 2 = 1 = 
+
+∫
+
+> R
+
+f p 0 ∂xp0 dx = 12 ‖∂xp0‖2 
+
+> L2
+
+,
+
+so restoring it turns the false inequality into the exact stationary energy identity. Note that the singular divergence here is negative , i.e. compressing; the drift − sign( x) funnels mass into the origin at a rate the a.c. part cannot see. 
+
+Remark 3.4 . Theorem 3.1 holds for p0 bounded and integrable. No smoothness or other property is required. In particular data may be concentrated near a lower-dimensional set: the density flow is still uniquely determined. As we will see in the next section, the same is not true for the Lagrangian flow. 
+
+# 4 Lagrangian viewpoint: the probability flow ODE 
+
+We now turn to the probability flow ODE (6). We recall the concept of regular Lagrangian flow, following DiPerna and Lions [13]: 
+
+Definition 4.1 (Regular Lagrangian flow) . Z : [0 , T ] × Rd → Rd is a regular Lagrangian flow 
+
+(RLF) for a velocity field v if (i) for Ld-a.e. x, t 7 → Z(t, x ) is absolutely continuous with Z(t, x ) = x + ∫ t 
+
+> 0
+
+v(Z(s, x ), s )d s;(ii) Z(t, ·)#Ld ≤ L Ld for some L ≥ 1.
+
+Definition 4.2 (Bounded distributional solution) . For u0 ∈ L1 ∩ L∞(Rd), a bounded distri-butional solution of (8) with initial condition u0 is a function u ∈ L∞((0 , T ); L1 ∩ L∞(Rd))
+
+with uv ∈ L1loc such that 
+
+∫ T
+
+> 0
+
+∫
+
+> Rd
+
+(∂sφ + v · ∇ φ) u dx ds +
+
+∫
+
+> Rd
+
+φ(·, 0) u0 dx = 0 ∀ φ ∈ C∞
+
+> c
+
+(Rd × [0 , T )).
+
+This formulation presupposes v ∈ L1loc ([0 , T ] × Rd), without which the second term in the integrand is undefined for general u ∈ L∞; see Theorem 6.4(i). 13 The following result summarizes Ambrosio’s BV renormalisation theorem, comparison principle, and existence and uniqueness theory for regular Lagrangian flows; see [2, Theo-rems 3.6, 4.3, 5.1 and 6.1], which extend previous results by DiPerna and Lions [13, Theo-rem III.2] derived for ∇· v ∈ L1((0 , T ); L∞).
+
+Theorem 4.3 (Ambrosio/DiPerna-Lions) . Let v : Rd × (0 , T ) → Rd be a vector field satisfying 
+
+(R1) v ∈ L1((0 , T ); BV loc (Rd; Rd)),
+
+(R2) D· vt = ( ∇· vt)Ld for a.e. s, [∇· v]− ∈ L1((0 , T ); L∞(Rd)),
+
+(R3) |v|
+
+1 + |x| ∈ L1((0 , T ); L1(Rd)) + L1((0 , T ); L∞(Rd)).
+
+Then: 1. For every u0 ∈ L1 ∩ L∞(Rd), the continuity equation 
+
+∂tu + ∇· (vu ) = 0 , u(., 0) = u0,
+
+has at most one bounded distributional solution u ∈ L∞((0 , T ); L1 ∩ L∞(Rd)).
+
+2. There exists a regular Lagrangian flow Z associated with v, unique up to Ld-null sets, and 
+
+Z(t, ·)#Ld ≤ exp 
+
+(∫ t
+
+> 0
+
+∥∥[∇· v(·, s )] −∥∥L∞ ds 
+
+)
+
+Ld.
+
+3. For every nonnegative u0 ∈ L1 ∩ L∞(Rd), the unique solution is utLd = Z(t, ·)#(u0Ld).
+
+If, in addition, 
+
+[∇· v]+ ∈ L1((0 , T ); L∞(Rd)),
+
+then the reverse flow is well posed and satisfies two-sided compression bounds; in particular 
+
+Z(t, ·) is essentially invertible. 
+
+The uniqueness assertion follows from [2, Theorems 4.3 and 5.1]: Theorem 5.1 yields renormalisation, and Theorem 4.3 yields the comparison principle; applying comparison in both directions gives uniqueness. 
+
+Theorem 4.4 (Superposition [1, 3, 4]) . If t 7 → μt is narrowly continuous and satisfies 
+
+∂tμt + ∇· (vμ t) = 0 , and 
+
+∫ T
+
+> 0
+
+∫ |v|
+
+1 + |x| dμtdt < ∞,
+
+then there is η ∈ P (C([0 , T ]; Rd)) concentrated on integral curves of v with (et)#η = μt, where 
+
+et(γ) = γ(t) is the evaluation map. 
+
+The following result uses the Ambrosio-Diperna-Lions theory to study the PF-ODE (6) and the associated continuity equation (8). Theorem 3.1 did not require any regularity assumption on the score function ∇ log pt; here we cannot avoid such assumptions. The PF-ODE (6) is associated with the velocity field v = f − 12 σ2∇ log p so one does require regularity of ∇ log pt.
+
+Theorem 4.5 (Lagrangian well-posedness and transport for the PF-ODE) . Assume (E1) ,
+
+(D L), (I) and (S) , and let v(x, t ) = f (x, t ) − 12 σ2(t)∇ log pt(x). Then: 
+
+(i) v satisfies conditions (R1)–(R3) of Theorem 4.3, with 
+
+∥∥[∇· v(·, t )] −∥∥∞ ≤ ∥∥[∇· f (·, t )] −∥∥∞ + 12 ‖σ‖2 
+
+> L∞
+
+Λ( t) =: Θ −(t) ∈ L1(0 , T ).
+
+14 (ii) The PF-ODE (6) admits a regular Lagrangian flow Z, unique up to Ld-null sets, with compressibility constant L = eΘ− , where Θ− := ∫ T 
+
+> 0
+
+Θ−(t) d t;
+
+(iii) Z(t, ·)#(p0Ld) = ptLd for every t ∈ [0 , T ]; hence for Z0 ∼ p0 and Zt := Z(t, Z 0),
+
+Law( Zt) = Law( Xt), t ∈ [0 , T ].
+
+The asymmetry between Theorems 3.1 and 4.5 is due to the fact that the diffusion model benefits from ’regularisation by noise’ [34, 22, 15] which leads to well-posedness of the SDE even in absence of regularity of the velocity field. The PF-ODE (6) does not benefit from this effect, so well-posedness of its associated probability flow requires many more assumptions. 
+
+Remark 4.6 . As we will see in Section 5, under certain additional assumptions ensuring that the score is globally Lipschitz and f is smooth, the probability-flow velocity v is Lipschitz, so classical Cauchy–Lipschitz theory already yields a unique flow. The significance of Theorem 4.5 is not to recover this classical setting, but to extend well-posedness to Sobolev and bounded-variation score functions, where classical ODE theory no longer applies. This extension is essential for treating diffusion models beyond the uniformly Lipschitz regime. f need only be locally of bounded variation with one-sided divergence bound, while (S3) requires control only of [∆ log ps]+, rather than of the full log-Hessian. The price to pay is that Z is defined only 
+
+Ld-a.e. 
+
+Remark 4.7 (The PF-ODE only replicates the marginal flow) . Theorem 4.5(iii) states that the PF-ODE replicates the flow of marginal distributions of X. Conditionally on Z0, the law of (Zs)s≤T is a concentrated on a single curve, so is singular with respect to the law of 
+
+X = ( Xt)t∈[0 ,T ]; all conditional distributions for X and Z are in fact mutually singular! What is preserved is exactly {Law( Xt)}t∈[0 ,T ], which is what a sampler requires. We now turn to the proof of Theorem 4.5. 
+
+Proof. By Itô’s formula and integration by parts, p is a weak solution of (5). By (S1)–(S2), 
+
+ps > 0 a.e. and ∇ log ps ∈ W 1,1loc , so ∇ps = ps∇ log ps in L1loc and 12 σ2∆ps = 12 σ2∇· (ps∇ log ps)
+
+in D′. Substituting gives ∂sp + ∇ · (pv ) = 0 , with pv ∈ L1loc by (S1), (S4) and the uniform second-moment bound. (R1): (D1) gives f ∈ L1(BV loc ) and (S2) gives 12 σ2∇ log p ∈ L1(W 1,1loc ) ⊂ L1(BV loc ), using 
+
+σ2 ≤ ϵ−2. (R2): ∇· v = ∇· f − 12 σ2∆ log p, so [∇· v]− ≤ [∇· f ]− + 12 σ2[∆ log p]+, and (D2), (E1), (S3) give the stated Θ−.For (R3) : by (D3), f = f1 + f2 with 
+
+f1
+
+1 + |x| ∈ L1((0 , T ); L1(Rd)), f2
+
+1 + |x| ∈ L1((0 , T ); L∞(Rd)).
+
+Let v1 = f1, and v2 = f2 − 12 σ2∇ log p. Then 
+
+|v1|
+
+1 + |x| = |f1|
+
+1 + |x| ∈ L1((0 , T ); L1(Rd)),
+
+while (S4) and σ2 ≤ ϵ−2 give 
+
+|v2(x, s )|
+
+1 + |x| ≤
+
+∥∥∥∥
+
+f2(·, s )1 + | · | 
+
+∥∥∥∥L∞
+
++ 12 ϵ−2A(s) = G(s).
+
+Thus (R3) holds. 
+
+(ii). We apply Theorem 4.3. If in addition [∇· v]+ ∈ L1(L∞) one obtains the two-sided Jacobian bound 
+
+e−Θ+ Ld ≤ Z(s, ·)#Ld ≤ eΘ− Ld, Θ± := 
+
+∫ T
+
+> 0
+
+∥∥[∇· v(·, s )] ±∥∥L∞ ds, (17) 15 and Z(s, ·) is essentially injective. In the smooth case the Jacobian J(s, x ) = det ∇xZ(s, x )
+
+solves ∂sJ = ( ∇· v)( Z, s )J, so e−Θ− ≤ J ≤ eΘ+ ; since the pushforward density at Z(s, x ) is 
+
+1/J (s, x ), the upper bound on Z(s, ·)#Ld is governed by Θ− and the lower bound by Θ+,as displayed. Under (D2) and (S3), which are one-sided bounds, only Θ− < ∞ is obtained. The complementary estimate Θ+ < ∞ does not follow from these assumptions; it requires, for example, control of [∇· f ]+ and [∆ log p]−. Under the additional hypothesis [∇ · v]+ ∈ L1(L∞)
+
+the lower compression bound holds and the reverse flow is well posed; in particular, Z(s, ·) is essentially invertible. 
+
+(iii). Let μs := Z(s, ·)#(p0Ld). By Theorem 4.3, (μs) is a weak solution of 
+
+∂sμs + ∇· (vμ s) = 0 , μ0 = p0Ld.
+
+Moreover, by the compressibility estimate, 
+
+μs ≤ ‖ p0‖L∞ Z(s, ·)#Ld ≤ ‖ p0‖L∞ exp 
+
+(∫ s
+
+> 0
+
+∥∥[∇· v(·, r )] −∥∥L∞ dr 
+
+)
+
+Ld.
+
+Thus μs = usLd, where 
+
+u ∈ L∞((0 , T ); L1 ∩ L∞(Rd)), ‖us‖L1 = 1 , ‖us‖L∞ ≤ eΘ−
+
+‖p0‖L∞ .
+
+Hence u belongs to the uniqueness class of Theorem 4.3. By the first paragraph of the proof, 
+
+p is also a bounded weak solution of the same continuity equation with initial condition p0.Uniqueness therefore gives u = p a.e. on (0 , T ) × Rd. The curves 
+
+s 7 −→ μs, s 7 −→ psLd
+
+are narrowly continuous; therefore their equality for a.e. s extends to every s ∈ [0 , T ]. Thus 
+
+Z(s, ·)#(p0Ld) = psLd for every s ∈ [0 , T ].
+
+If Z0 ∼ p0Ld and Zs := Z(s, Z 0), then Law( Zs) = psLd = Law( Xs).
+
+Remark 4.8 (Replacing (S4) by (S4 ′)) . If assumption (S4) is replaced by the weaker assumption (S4 ′), then conclusions (ii) and (iii) may fail but (pt) admits a probabilistic representation as a superposition of integral curves of v (Theorem 4.4). Indeed, an application of the Cauchy– Schwarz inequality yields 
+
+∫ T
+
+> 0
+
+∫ |v|
+
+1 + |x| ps dx ds ≤
+
+∫ T
+
+> 0
+
+∫ |f |
+
+1 + |x| ps+ 12 ϵ−2
+
+∫ T
+
+> 0
+
+∫
+
+|∇ log ps| ps ≤ C+ 12 ϵ−2√T
+
+( ∫ T
+
+> 0
+
+I(ps)d s
+
+)1/2
+
+< ∞,
+
+the first term being finite by (D3) and (S1). So the integrability assumption of Theorem 4.4 holds and it yields the representation. It does not yield (R3), which is a pointwise statement about v and not implied by a pt-weighted bound; hence neither RLF nor uniqueness of η can be asserted. The following lemma shows that finite initial entropy and second-moment plus the one-sided divergence bound imply (S4 ′): 
+
+Lemma 4.9 (Entropy dissipation and (S4′)). Assume (E1) , (D+ 
+
+> E
+
+) and (I1)–(I2) , and let p be the solution constructed in Theorem 3.1(b), i.e. the limit of the regularized scheme of Step 7. Then 
+
+ϵ2
+
+2
+
+∫ T
+
+> 0
+
+I(ps) ds ≤ log (1 + ‖p0‖L∞
+
+) + 1 + Cd(1 + M ) + ∥∥[∇· f ]−∥∥L1([0 ,T ]; L∞) < ∞, (18) 
+
+where 
+
+M := sup 
+
+> ε> 0
+
+sup  
+
+> s∈[0 ,T ]
+
+∫
+
+> Rd
+
+|x|2pεs(x) dx < ∞
+
+is the uniform second-moment bound obtained in Step 7( c′). In particular, (S4′) holds. 
+
+16 The proof of this lemma is given in Appendix A. The above results apply to score-based diffusion models [31, 17]: 
+
+Corollary 4.10 (Score-based generative models) . Consider the variance-preserving SDE 
+
+f (x, s ) = −β(s)x, σ = √2β, 0 < β min ≤ β(s) ≤ βmax < ∞ for a.e. s ∈ [0 , T ], (19) 
+
+or the variance-exploding SDE ( f ≡ 0) with σ satisfying (E1) . Let p0 ∈ L1 ∩ L∞(Rd) satisfy (I2) i.e. have finite entropy and finite second moment. Then: 
+
+(i) (E1) , (D L) and (I) hold. For the variance-preserving model (19) is exactly what (E1) 
+
+requires, since σ2 = 2 β; the upper bound alone does not suffice. 
+
+(ii) If, in addition, p0 satisfies the two-sided log-Hessian condition (22) of Proposition 5.2, namely −β0I  ∇ 2 log p0  − α0I with 0 < α 0 ≤ β0 < ∞, then Proposition 5.2 supplies 
+
+(S) on [0 , T ] and Theorem 4.5 gives a unique RLF for ˙Zs = −β(s)Zs − 12 σ(s)2∇ log ps(Zs)
+
+transporting p0 onto ps.
+
+(iii) Condition (22) may not be omitted: it is not implied by the hypotheses of (i) , and without it (S) can fail ; see Remark 4.11. But if supp p0 ⊂ BR then for every δ ∈ (0 , T ), (S) 
+
+holds on [δ, T ] by Proposition 5.3 and Theorem 4.5 applies there. The constant in (S3) 
+
+is O(R2ς−4min ), the constant in (S4) is O(ς−2min ), and the log-Hessian bound governing (S2) 
+
+is O(ς−2min + R2ς−4min ).
+
+X0 ∼ μ0
+
+supp μ0 ⊂ BR
+
+Possibly singular 
+
+t = δ
+
+Law( Xδ) = pδ Ld
+
+pδ > 0 and smooth 
+
+t > δ 
+
+Law( Xt) = pt Ld
+
+t ∈ [δ, T ]
+
+Diffusion 
+
+0 → δ
+
+PF-ODE 
+
+Zδ,s              
+
+> Proposition 5.3 gives
+> ∇log pt,t∈[δ, T ],
+> together with (S1)–(S4).
+> Theorem 4.5, applied to the time-shifted problem, yields
+> (Zδ,s )#(pδLd) = psLd.
+> No density or score
+> ∇log μ0is required.
+> Early-stopped problem on [δ, T ]
+
+Figure 1: Diffusion regularizes the possibly singular initial law by time δ; the probability-flow ODE is then applied only to the smooth density flow starting from pδ.
+
+Remark 4.11 . Corollary 4.10(ii) requires (22), which is strong log-concavity together with a bounded log-Hessian; it is a far stronger requirement than belonging to L1 ∩ L∞ with finite entropy and second moment. Condition (22) constrains the second derivative of log p0
+
+pointwise and forces p0 to be strictly positive with sub-Gaussian tails. A counterexample will be given in Section 6. (iii) states that for δ > 0 the situation is good but the reason is not that smoothing restores (22). It does not: Gaussian smoothing of compactly supported multimodal data need not be log-concave at moderate noise levels, so pδ cannot in general be fed back into Proposition 5.2. Part (iii) relies instead on the direct verification of Proposition 5.3, which 17 uses only semiconvexity together with compact support to control Cov( Y | X = x) from above. For the variance-exploding model, ς2min  δ, so Proposition 5.3 gives the worst-case estimate 
+
+Λδ = O(R2δ−2)
+
+for (S3) , while the (S4) constant is O(δ−1). This worst-case positive-part estimate need not be attained. For example, the uniform density of Section 6 is log-concave, and Gaussian convolution preserves log-concavity, so [∂2 
+
+> x
+
+log pt]+ = 0 for every t > 0 while the negative part grows like t−1.
+
+Corollary 4.12 (Time reversal) . Assume the hypotheses of Theorem 4.5 and, in addition , the one-sided bound [∇· v]+ ∈ L1(0, T ; L∞(Rd)). (20) 
+
+Let Yτ := XT −τ , so that the reverse PF-ODE has velocity ˜v(y, τ ) := −v(y, T − τ ). Then: 
+
+(i) ˜v satisfies (R1) and (R3) with the same constants as v, both being invariant under 
+
+v 7 → − v and s 7 → T − s.
+
+(ii) ˜v satisfies (R2) , but not with the same constant: since ∇· ˜v(·, τ ) = −∇· v(·, T − τ ) one has [∇· ˜v]− = [ ∇· v]+, so the relevant norm is Θ+ of (17) , supplied by (20) and in general unrelated to the forward constant Θ−. The reverse RLF ˜Z exists and is unique, with compressibility constant eΘ+ .
+
+(iii) Under (20) the two-sided Jacobian bound (17) holds, so Z(s, ·) is essentially injective and ˜Z(τ, ·) = Z(T − τ, ·) ◦ Z(T, ·)−1 Ld-a.e. 
+
+(iv) ˜Z(τ, ·)#
+
+(pT Ld) = pT −τ Ld for every τ ∈ [0 , T ]; in particular the deterministic reverse sampler transports pT onto p0.
+
+Note that the forward and reverse directions are not symmetric. Assumption (20) is a genuine addition and cannot be read off from Theorem 4.5 which is deliberately one-sided. Reversing time exchanges the roles of [∇· v]±, so the reverse flow needs the bound the forward theory never assumed. Essential invertibility of Z and hence the identification of ˜Z with Z−1
+
+is a two-sided statement and does not follow from the forward hypotheses; both directions require (20). A sampler that runs in one direction only needs a one-sided bound, whereas anything requiring invertibility (exact likelihood evaluation by change-of-variables formula, encode-decode round trips) needs both. 
+
+Remark 4.13 (Consistency with the reverse SDE) . The reverse SDE [5, 18] and the reverse PF-ODE differ in the score coefficient, σ2 versus 12 σ2. The factor 12 is what turns 12 σ2∆p into a divergence, removing all randomness while preserving the probability flow (5). Both share the same marginal flow (pt) but the reverse SDE also reproduces the transition statistics of the time-reversed diffusion. 
+
+# 5 Regularity of the score function 
+
+Theorem 4.5 requires regularity assumptions –denoted (S)– on the score function s(t, x ). In this section we provide sufficient conditions under which these regularity assumptions hold, in settings relevant for applications. Alternative sufficient conditions for score regularity have recently been obtained by Stéphanovitch [32]. We begin with a useful lemma: 
+
+Lemma 5.1 (Log-Hessian bound under Gaussian smoothing) . Let q0 be a probability density with −βI  ∇ 2 log q0  − αI , 0 < α ≤ β < ∞, and q := q0 ∗ N (0 , ς 2I). Then 
+
+− β
+
+1 + βς 2 I  ∇ 2 log q  − α
+
+1 + ας 2 I, 
+
+18 so ‖∇ 2 log q‖op ≤ β uniformly in ς > 0 and |∆ log q| ≤ dβ .Proof. Let Y ∼ q0, X = Y + ςξ ∼ q. From ∇ϕς (x − y) = −ς−2(x − y)ϕς (x − y) one gets 
+
+∇ log q(x) = −ς−2(x − E[Y | X = x]) , and with the Tweedie identity ∇xE[Y | X = x] = 
+
+ς−2Σ( x), Σ( x) := Cov( Y | X = x),
+
+∇2 log q(x) = −ς−2I + ς−4Σ( x). (21) The posterior has density ∝ e−Ux , Ux(y) = − log q0(y) + |x−y|2 
+
+> 2ς2
+
+, so (α + ς−2)I  ∇ 2Ux 
+
+(β + ς−2)I. The Brascamp–Lieb inequality [7] gives Σ  (α + ς−2)−1I; the Cramér–Rao bound gives 
+
+Σ  (E∇2Ux)−1  (β + ς−2)−1I. 
+
+Inserting into (21) and simplifying gives the claim. Let us first examine the case where the SDE has linear drift: this is the case for so-called ’variance-preserving’ (VP) and ’variance-exploding’ (VE) forward diffusions used in generative diffusion models [17, 31, 30]: 
+
+Proposition 5.2 (Linear drift: VP and VE SDEs) . Assume (E1) , f (x, s ) = −β(s)x with 
+
+β ∈ L∞(0 , T ), and the two-sided log-Hessian condition 
+
+−β0I  ∇ 2 log p0  − α0I, 0 < α 0 ≤ β0 < ∞. (22) 
+
+Then (S) holds: with ms := e− ∫ s  
+
+> 0β
+
+∈ [mmin , m max ] ⊂ (0 , ∞),
+
+‖∇ 2 log ps‖op ≤ β0
+
+m2
+
+> s
+
+≤ β0
+
+m2min 
+
+, |∆ log ps| ≤ dβ 0
+
+m2min 
+
+,
+
+and |∇ log ps(x)| ≤ A∗(1 + |x|) with A∗ = max {sup s≤T |∇ log ps(0) |, β 0m−2min } < ∞.Proof. Variation of constants gives Xs d
+
+= msX0 + ςsξ with ς2 
+
+> s
+
+= m2
+
+> s
+
+∫ s 
+
+> 0
+
+σ(r)2m−2 
+
+> r
+
+dr > 0
+
+for s > 0, the noise being isotropic because σ is scalar and x-independent. Hence ps =
+
+p(s)0 ∗ N (0 , ς 2 
+
+> s
+
+I) with p(s)0 (x) = m−ds p0(x/m s), and ∇2 log p(s)0 (x) = m−2 
+
+> s
+
+∇2 log p0(x/m s), so 
+
+−β0m−2 
+
+> s
+
+I  ∇ 2 log p(s)0  − α0m−2 
+
+> s
+
+I. Lemma 5.1 with α = α0m−2 
+
+> s
+
+, β = β0m−2 
+
+> s
+
+, ς = ςs gives the Hessian bounds, hence (S3) with constant Λ; (S2) follows since ∇ log ps is smooth with bounded derivative. The Hessian bound makes ∇ log ps globally Lipschitz, and s 7 → ∇ log ps(0) 
+
+is continuous on the compact [0 , T ], giving (S4); (S4 ′) is then automatic, or alternatively follows from Lemma 4.9. For (S1): positivity and smoothness are immediate for s > 0;
+
+‖ps‖∞ ≤ m−d
+
+> min
+
+‖p0‖∞; and ∫ |x|2ps = m2
+
+> s
+
+∫ |x|2p0 + dς 2 
+
+> s
+
+is bounded on [0 , T ].Brigati and Pedrotti [8] derive quantitative bounds on ∇2 log pt for Gaussian convolutions of strongly log-concave measures with Lipschitz perturbations. Their estimates similarly imply spatial Lipschitz regularity of the score and thus classical well-posedness of the probability-flow ODE. Our objective is different: rather than deriving additional sufficient conditions for Lipschitz regularity, we investigate the probability-flow ODE under substantially weaker Sobolev and BV assumptions on the score. The following proposition deals with the frequently encountered situation where the ini-tial distribution μ0 may be concentrated on a lower-dimensional compact submanifold (so in particular not absolutely continuous): 
+
+Proposition 5.3 (Early-stopping for compactly supported data) . Assume (E1) . Let X =(Xt)t∈[0 ,T ] be the solution of the linear SDE with drift f (x, s ) = −β(s)x, β ∈ L∞(0 , T ):
+
+dX t = −β(t)Xtdt + σ(t)dW t, X0 ∼ μ0
+
+19 where μ0 ∈ P (Rd) is a probability measure on Rd with compact support supp μ0 ⊂ BR. No absolute continuity, regularity, or log-concavity of μ0 is assumed. Let 0 < δ < T and ms, ς s as in Proposition 5.2, 
+
+ς2min := inf   
+
+> s∈[δ,T ]
+
+ς2 
+
+> s
+
+> 0, mmax := sup 
+
+> s≤T
+
+ms < ∞.
+
+Then the density pt of Xt satisfies (S) on [δ, T ], with the explicit constants 
+
+∥∥[∆ log ps]+∥∥L∞ ≤ d
+
+( m2 
+
+> s
+
+R2
+
+ς4
+
+> s
+
+− 1
+
+ς2
+
+> s
+
+)+
+
+≤ d m 2max R2ς−4min , giving (S3) , (23) 
+
+‖∇ 2 log ps‖op ≤ ς−2 
+
+> s
+
++ m2 
+
+> s
+
+R2ς−4 
+
+> s
+
+≤ ς−2min + m2max R2ς−4min giving (S2) , (24) 
+
+|∇ log ps(x)| ≤ ς−2min max {1, m max R}(1 + |x|), giving (S4) . (25) 
+
+In addition, 
+
+∇2 log ps ≥ − ς−2 
+
+> s
+
+I, ∥∥[∆ log ps]−∥∥L∞ ≤ dς −2min .
+
+Proof. Variation of constants gives psLd = μ(s)0 ∗ N (0 , ς 2 
+
+> s
+
+I), where μ(s)0 is the pushforward of μ0 under y 7 → msy, supported in BmsR; and ς2 
+
+> s
+
+> 0 for s > 0 by (E1). Thus ps is smooth and strictly positive for s > 0, which with ‖ps‖L∞ ≤ (2 πς 2min )−d/ 2, ∫ |x|2ps(x)dx =
+
+m2
+
+> s
+
+∫ |x|2μ0(dx ) + dς 2 
+
+> s
+
+and narrow continuity gives (S1). Write Y ∼ μ(s)0 and X = Y + ςsξ ∼ ps. The Tweedie identities used in Lemma 5.1 read 
+
+∇ log ps(x) = − x − E[Y | X = x]
+
+ς2
+
+> s
+
+, ∇2 log ps(x) = − 1
+
+ς2
+
+> s
+
+I+ 1
+
+ς4
+
+> s
+
+Σ( x), Σ( x) = Cov( Y | X = x).
+
+(26) Since Σs(x)  0, the identity (26) gives the semiconvexity estimate 
+
+∇2 log ps(x)  − ς−2 
+
+> s
+
+I. (27) This controls the negative part of ∆ log ps, but the one-sided condition (S3) requires an upper bound on its positive part. The conditional law of Y given X = x is supported in BmsR.Hence, for every unit vector ξ,
+
+ξ⊤Σs(x)ξ = Var( ξ · Y | X = x) ≤ E[( ξ · Y )2 | X = x] ≤ m2 
+
+> s
+
+R2,
+
+and therefore 
+
+0  Σs(x)  m2 
+
+> s
+
+R2I. 
+
+Taking traces in (26) yields 
+
+∆ log ps(x) = − dς2
+
+> s
+
++ tr Σ s(x)
+
+ς4
+
+> s
+
+≤ − dς2
+
+> s
+
++ d m 2 
+
+> s
+
+R2
+
+ς4
+
+> s
+
+.
+
+Consequently, 
+
+[∆ log ps(x)] + ≤ d
+
+( m2 
+
+> s
+
+R2
+
+ς4
+
+> s
+
+− 1
+
+ς2
+
+> s
+
+)+
+
+≤ d m 2max R2ς−4min ,
+
+which proves (S3) . Combining 
+
+−ς−2 
+
+> s
+
+I  ∇ 2 log ps(x)  (m2 
+
+> s
+
+R2ς−4 
+
+> s
+
+− ς−2
+
+> s
+
+) I
+
+gives 
+
+‖∇ 2 log ps‖op ≤ ς−2 
+
+> s
+
++ m2 
+
+> s
+
+R2ς−4 
+
+> s
+
+,
+
+and hence (S2) . Finally, E[Y | X = x] ∈ BmsR, so the first identity in (26) gives 
+
+|∇ log ps(x)| ≤ ς−2 
+
+> s
+
+(|x| + msR),
+
+which yields (S4) .20 Proposition 5.4 (Nonlinear gradient drift) . Let σ ≡ σ0 be constant and f = −∇ V with 
+
+V ∈ C3(Rd), inf V > −∞ , and 
+
+∇2V  − κI, ‖∇ 2V ‖∞ ≤ L2, ‖∇ 3V ‖∞ ≤ L3
+
+for some κ ∈ R and L2, L 3 < ∞. Assume in addition the confinement condition 
+
+〈∇V (x), x 〉 ≥ a|x|2 − b for all x ∈ Rd, (28) 
+
+with constants a > 0 and b ≥ 0. Let μ := e−2V /σ 20 and suppose p0 = μh 0 with 0 < c 0 ≤
+
+h0 ≤ C0 < ∞ and ‖∇ h0‖∞, ‖∇ 2h0‖∞ < ∞. Then (S) holds, with ‖∇ 2 log ps‖op ≤ M for all 
+
+s ∈ [0 , T ], where κ+ := max( κ, 0) and 
+
+M = 2L2
+
+σ20
+
++ e2κ+T
+
+c0
+
+(‖∇ 2h0‖∞ + L3T ‖∇ h0‖∞
+
+) + e2κ+T
+
+c20
+
+‖∇ h0‖2
+
+> ∞
+
+,
+
+and moreover 
+
+sup  
+
+> s∈[0 ,T ]
+
+∫
+
+> Rd
+
+|x|2ps(x) d x ≤
+
+∫
+
+> Rd
+
+|x|2p0(x) d x + 2b + d σ 20
+
+2a < ∞. (29) The proof is given in Appendix B 
+
+Remark 5.5 (Condition (28) cannot be dropped: the Cauchy example) . Without (28) the conclusion is false, and it fails in the moment clause of (S1) alone . Take d = 1 , σ20 = 2 and 
+
+V (x) = log (1 + x2), h0 ≡ 1
+
+π .
+
+All the remaining assumptions hold. V is smooth with inf V = 0 ; V ′′ (x) = 2(1 −x2)(1+ x2)2 has 
+
+min V ′′ = − 14 at x = ±√3 and ‖V ′′ ‖∞ = 2 , so κ = 14 and L2 = 2 ; V ′′′ is bounded ( L3 ≈ 2.91 ); and h0 is constant, so c0 = C0 = 1 
+
+> π
+
+and ∇h0 = ∇2h0 = 0 . Here μ(x) = e−2V /σ 20 = (1 + x2)−1
+
+with ∫ μ = π, so 
+
+p0(x) = μ(x)h0 = 1
+
+π(1 + x2)
+
+is the standard Cauchy density. Since h0 is constant and Ps1 = 1, we get hs ≡ h0 and therefore ps ≡ p0 for every s: the flow is stationary at the invariant measure. Consequently ∫ |x| pt dx = ∞ and the moment requirement in (S1) fails. (S2) holds; ∂2 
+
+> x
+
+log ps = 2( x2−1) (1+ x2)2 is bounded by 2, giving (S3); and the score ∂x log p0(x) = 
+
+− 2x 
+
+> 1+ x2
+
+is bounded by 1, so (S4) holds with room to spare. Even the quantitative conclusion is correct: the proposition predicts M = 2 L2/σ 20 = 2 , and indeed sup x |∂2 
+
+> x
+
+log ps| = 2 .The issue is that the assumptions on V bound ∇2V from above and below but impose no growth condition, so μ = e−2V /σ 20 may have merely power-law tails; and assumptions on 
+
+h0 constrain only the ratio p0/μ , never μ itself. Note also that p0 is not log-concave here — 
+
+∂2 
+
+> x
+
+log p0(3) = 425 > 0 — which is exactly what distinguishes this setting from Proposition 5.2, where the two-sided hypothesis ∇2 log p0  − α0I with α0 > 0 is strong log-concavity and leads to sub-Gaussian tails. Condition (28) excludes the example: here 〈V ′(x), x 〉 = 2x2 
+
+> 1+ x2
+
+≤ 2
+
+is bounded, so (28) fails for every a > 0.An alternative to (28), is to require ∫ |x|2μ0(d x) < ∞ which then leads to (29). 21 6 A counterexample 
+
+Theorem 4.5, which gives condition for a well-posed ODE (Lagrandian) flow requires much more assumptions than Theorem 3.1, which governs the probability flow generated by the SDE (4). The gap between them is not an artefact: it reflects a fundamental fact that much more regularity is needed for the PF-ODE to replicate the same probability flow as the SDE: one should not assume that because the latter is well-posed, the former will generate the same flow. To illustrate this gap, we provide in this section an example of well-posed SDE whose density flow (pt) is uniquely determined by Theorem 3.1, for which the continuity equation (8) is not well posed and admits no regular Lagrangian flow. Consider standard Brownian motion started from the uniform law on [−1, 1] :
+
+d = 1 , f ≡ 0, σ ≡ 1, p0 = 12 1[−1,1] . (30) Assumptions (E1), (D L) and (I1) hold — the drift conditions vacuously, since f ≡ 0 — and 
+
+p0 ∈ L1 ∩ L∞ with ‖p0‖∞ = 12 , ∫ x2p0 dx = 13 and Ent( p0) = − log 2 . Moreover ∇p ∈
+
+L2([0 , T ]; L2). Hence Theorem 3.1 applies: pt = p0 ∗ N (0 , t ) is the unique weak solution of (5) in X with initial condition p0, and the SDE is strongly well posed with pathwise uniqueness. Only the energy bound needs comment. Away from the two jump points of p0 the derivative 
+
+∂xpt is uniformly bounded on [η, T ] for each η > 0; near x = ±1 the initial layer has width 
+
+O(√t) and |∂xpt| = O(t−1/2) there, so ∫ 
+
+> R
+
+|∂xpt|2dx = O(t−1/2) and ∫ T
+
+> 0
+
+∫ |∂xpt|2 dx dt < ∞.Denote by Φ, ϕ the standard normal distribution and density. Convolution of (30) with 
+
+N (0 , t ) gives, for t > 0,
+
+pt(x) = 14
+
+[
+
+erf 
+
+( 1−x√2t
+
+)
+
++ erf 
+
+( 1+ x√2t
+
+)] 
+
+, (31) 
+
+∂xpt(x) = 12√2πt 
+
+[
+
+e−(x+1) 2/2t − e−(x−1) 2/2t]
+
+, (32) 
+
+Ft(x) := 
+
+∫ x
+
+> −∞
+
+pt =
+
+√t
+
+2
+
+[
+
+G
+
+( x+1 √t
+
+)
+
+− G
+
+( x−1√t
+
+)] 
+
+, G(u) := uΦ( u) + ϕ(u). (33) Since f ≡ 0 and σ ≡ 1, the probability-flow velocity of (8) is v = − 12 ∂x log pt, i.e. 
+
+v(x, t ) = 1
+
+√2πt e−(x−1) 2/2t − e−(x+1) 2/2t
+
+erf ( 1−x√2t
+
+) + erf ( 1+ x√2t
+
+) , (34) and the PF-ODE (6) reads ˙Zt = v(Zt, t ) with v given by (34). The field is odd, real-analytic and strictly positive on x > 0 for each t > 0; it vanishes at x = 0 by symmetry. 
+
+Lemma 6.1 (Behaviour outside the initial support) . Fix x > 1. As t ↓ 0,
+
+pt(x) = 
+
+√t
+
+2√2π (x − 1) e−(x−1) 2/2t(1 + O(t)),
+
+and consequently 
+
+∂x log pt(x) = − x − 1
+
+t − 1
+
+x − 1 + O(t), ∂2 
+
+> x
+
+log pt(x) = − 1
+
+t + 1(x − 1) 2 + O(t),
+
+so that 
+
+v(x, t ) = x − 12t + 12( x − 1) + O(t) (t ↓ 0) . (35) 22 The corresponding statements for x < −1 follow by symmetry. In particular, for any compact set K ⊂ {| x| > 1},
+
+∫
+
+> K
+
+∣∣∂x log pt
+
+∣∣ dx = 1
+
+t
+
+∫
+
+> K
+
+(|x| − 1)dx + O(1) ,
+
+∫
+
+> K
+
+∣∣∂2 
+
+> x
+
+log pt
+
+∣∣ dx = |K|
+
+t + O(1) . (36) 
+
+Proof. For x > 1 rewrite (31) as pt(x) = 14
+
+[ erfc ( x−1√2t
+
+) − erfc ( x+1 √2t
+
+)] and insert the standard expansion erfc( u) = e−u2
+
+> u√π
+
+(1 − 12u2 + O(u−4)) with u = x−1√2t → ∞ ; the second term is smaller by a factor e−2x/t and is absorbed in the error. Taking logarithms, log pt(x) = − (x−1) 2 
+
+> 2t
+
+−
+
+log( x − 1) + 12 log t + c + O(t), and differentiating in x gives the stated expansions. Finally 
+
+v = − 12 ∂x log pt.
+
+Remark 6.2 (Consistency with (27)) . Lemma 6.1 gives ∂2 
+
+> x
+
+log pt → − 1/t outside [−1, 1] , which saturates the universal lower bound ∇2 log pt  − 1 
+
+> t
+
+I of (27). The example is therefore extremal for the Gaussian-smoothing estimate of Lemma 5.1: it is exactly the case in which the posterior covariance Σ( x) collapses, because conditionally on a far-field observation the initial point is pinned to the support edge. 
+
+6.1 Solution of the PF-ODE: the quantile flow 
+
+The following identity is general and of independent interest; it gives closed-form solutions of the PF-ODE in one dimension for any initial density. 
+
+Lemma 6.3 (One-dimensional PF-ODE = monotone rearrangement) . Let d = 1 and let (pt)
+
+solve (5) with ∫ x 
+
+> −∞
+
+pt finite, and set Ft(x) := ∫ x 
+
+> −∞
+
+pt. Assume pt > 0 and ptv ∈ L1loc with vanishing flux at −∞ . Then 
+
+∂tFt(x) = −pt(x) v(x, t ), (37) 
+
+and consequently t 7 → Ft(Zt) is constant along every absolutely continuous solution of ˙Zt =
+
+v(Zt, t ). Hence, whenever the right-hand side is defined, 
+
+Z(t, x ) = F −1
+
+> t
+
+(F0(x)). (38) 
+
+Proof. Integrating ∂tpt + ∂x(ptv) = 0 over (−∞ , x ) gives (37). Then, along a solution,  
+
+> ddt
+
+Ft(Zt) = ∂tFt(Zt) + pt(Zt) ˙Zt = −pt(Zt)v(Zt, t ) + pt(Zt)v(Zt, t ) = 0 . Thus the quantile level q := Ft(Zt) is a first integral, and inverting the strictly increasing Ft yields (38). For the case (30), F0(x) = x+1 2 on [−1, 1] , F0 ≡ 0 on (−∞ , −1] and F0 ≡ 1 on [1 , ∞), while 
+
+Ft given by (33) is a strictly increasing real-analytic bijection 
+
+Ft : R −→ (0 , 1) for every t > 0.
+
+6.2 Failure of Lagrangian well-posedness 
+
+Theorem 6.4 (The PF continuity equation is not well posed) . Let v be given by (34) and 
+
+T > 0.
+
+(i) v / ∈ L1loc 
+
+([0 , T ]×R). The weak formulation of Definition 4.2 is not meaningful for general 
+
+u ∈ L∞((0 , T ); L1 ∩ L∞), and assumptions (R1) , (R3) of Theorem 4.3 fail. 
+
+(ii) For every x0 with |x0| ≥ 1 there is no absolutely continuous Z : [0 , T ] → R with 
+
+Z(0) = x0 and Z(t) = x0 + ∫ t 
+
+> 0
+
+v(Z(s), s ) d s. Consequently no regular Lagrangian flow exists: condition (i) of Definition 4.1 fails on the set {| x| > 1}.
+
+23 (iii) For every x ∈ (−1, 1) there is exactly one such solution, namely (38) , and 
+
+Z(t, ·) : ( −1, 1) → R is a smooth increasing bijection. 
+
+(iv) The Cauchy problem fails to be solvable for any initial condition u0 ∈ L1 ∩L∞ with u0 = 0 
+
+a.e. on [−1, 1] : there is no narrowly continuous family of probability measures (μt)t∈[0 ,T ]
+
+with μ0 = u0Ld solving (8) and satisfying the integrability hypothesis of Theorem 4.4. Remark 6.5 . For every δ > 0 the field v is smooth on R × [δ, T ] and, because p0 is supported in [−1, 1] , the first Tweedie identity in (26) gives 
+
+|∂x log pt(x)| ≤ |x| + 1 
+
+t ≤ |x| + 1 
+
+δ ,
+
+since E[Y |X = x] ∈ [−1, 1] . Hence (S1)–(S4) hold on [δ, T ] and Theorem 4.5 applies, with constants of order 1/δ . The obstruction is the boundary of the support , not lack of regularity. 
+
+Proof. (i) By (35), for 1 < a < b and x ∈ [a, b ] we have v(x, t ) ≥ a−12t (1 + o(1)) as t ↓ 0, hence 
+
+∫ T
+
+> 0
+
+∫ ba
+
+|v(x, t )| dx dt ≥ (b − a)( a − 1) 4
+
+∫ t0
+
+> 0
+
+dtt = + ∞
+
+for t0 small enough. Since (R1) and (R3) both presuppose local integrability in space-time, both fail. 
+
+(ii) Suppose Z were such a solution with Z(0) = x0, |x0| ≥ 1. Since pt > 0 and v is real-analytic on R × (0 , T ], Lemma 6.3 applies on every [η, T ] and gives a constant q ∈ (0 , 1) with 
+
+Ft(Z(t)) = q for all t ∈ (0 , T ]. Now pt → p0 in L1 as t ↓ 0, so ‖Ft − F0‖∞ ≤ ‖ pt − p0‖L1 → 0;and Z is continuous at 0 with Z(0) = x0. Therefore 
+
+q = lim  
+
+> t↓0
+
+Ft
+
+(Z(t)) = F0(x0) ∈ { 0, 1},
+
+contradicting q ∈ (0 , 1) . Hence no such Z exists. As {| x| > 1} has infinite measure, Defini-tion 4.1(i) — which demands trajectories for Ld-a.e. x ∈ R — cannot hold. 
+
+(iii) For x ∈ (−1, 1) set q := F0(x) = x+1 2 ∈ (0 , 1) and Z(t, x ) := F −1 
+
+> t
+
+(q), which is well defined since Ft : R → (0 , 1) is an increasing bijection. Differentiating Ft(Z) = q and using (37) gives ˙Z = v(Z, t ), and Z(t, x ) → F −10 (q) = x as t ↓ 0 by the uniform convergence 
+
+Ft → F0 together with strict monotonicity, so the initial condition is attained. Uniqueness holds because v is locally Lipschitz in x on R × (0 , T ], so two solutions agreeing at some t > 0
+
+agree throughout; and the first integral q is determined by x. Analyticity and monotonicity of x 7 → Z(t, x ) follow from those of F0 and F −1 
+
+> t
+
+, with 
+
+∂xZ(t, x ) = p0(x)
+
+pt
+
+(Z(t, x )) = 12 pt(Z(t, x )) > 0. (39) Surjectivity onto R holds because F0 maps (−1, 1) onto (0 , 1) and F −1 
+
+> t
+
+maps (0 , 1) onto R.
+
+(iv) Suppose such a family (μt) existed. By Theorem 4.4 there is η ∈ P (C([0 , T ]; R)) 
+
+concentrated on absolutely continuous integral curves of v with (e0)#η = μ0 = u0Ld. Since 
+
+u0 vanishes a.e. on [−1, 1] , η-a.e. curve γ satisfies |γ(0) | ≥ 1; but by (ii) no integral curve has this property. Hence η is the zero measure, contradicting η(C([0 , T ]; R)) = 1 .This example (30) separates assumption (S4) from (S4 ′): (a) (S2) and (S4) fail at the same rate. Each is an unweighted local norm of the score integrated in time, and by Lemma 6.1 every one of them diverges like t−1 as t ↓ 0:24 – (S4): for fixed x > 1, |∂x log pt(x)| ≥ x−1 
+
+> t
+
+(1 + o(1)) , so no admissible A lies in 
+
+L1(0 , T );– (S2): for any compact K ⊂ {| x| > 1},
+
+∥∥∇ log pt
+
+∥∥W 1,1(K) =
+
+∫
+
+> K
+
+∣∣∂x log pt
+
+∣∣ +
+
+∫
+
+> K
+
+∣∣∂2 
+
+> x
+
+log pt
+
+∣∣ = cK
+
+t
+
+(1 + o(1) ),cK := 
+
+∫
+
+> K
+
+(|x| − 1)dx + |K| > 0,
+
+so t 7 → ‖∇ log pt‖W 1,1(K) is not in L1(0 , T ) and ∇ log p· /∈ L1([0 , T ]; W 1,1loc 
+
+).Smoothness of ∇ log pt for each t > 0 is not sufficient: (S2) requires integrability in time .(b) By contrast (S3) and (S4 ′) hold, together with (S1) for t > 0. Indeed pt > 0 is real-analytic for t > 0, ‖pt‖∞ ≤ 12 , ∫ x2pt = 13 + t, and by Lemma 4.9 with f ≡ 0, σ ≡ 1,
+
+> 12
+
+∫ T
+
+> 0
+
+I(pt) d t = Ent( p0) − Ent( pT ) ≤ − log 2 + C(1 + 13 + T ) < ∞.
+
+The positivity clause of (S1) fails at the single time t = 0 , where supp p0 = [ −1, 1] ; this is immaterial, every other clause of (S) being an L1-in-time condition. Hence Theorem 4.5 is not applicable, but (S4 ′) is satisfied. We are thus in the situation described in Remark 4.8. 
+
+6.3 Numerical illustration 
+
+Figure 2 displays the four ingredients of the mechanism. Writing S(t) := sup 1≤x≤2 |∂x log pt(x)|
+
+and W (t) := 2 (1 − Ft(1) ) for the length of the emitting interval: 
+
+t S(t) t S (t) I(pt) √t I(pt) W (t) √t/ 2π
+
+0.5 2.638 1.319 1.210 0.8558 0.281606 0.282095 0.1 10 .860 1.086 2.856 0.9032 0.126157 0.126157 0.01 100 .981 1.010 9.032 0.9032 0.039894 0.039894 0.002 500 .996 1.002 20 .196 0.9032 0.017841 0.017841 
+
+The second column confirms S(t) = t−1(1 + o(1)) , so S / ∈ L1(0 , T ) and (S4) fails; the fourth confirms I(pt) = c t −1/2(1 + o(1)) with c ≈ 0.9032 , so I ∈ L1(0 , T ) and (S4 ′) holds. The 
+
+t−1/2 rate is what one expects from the two jump discontinuities of p0: each contributes an initial layer of width O(√t) on which |∂x log pt| = O(t−1/2). The last two columns confirm 
+
+W (t) = √t/ 2π (1 + o(1)) .It is worthwhile noting that in this example the transport identity holds: by Theo-rem 6.4(iii) the map Z(t, ·) is defined on (−1, 1) , which carries full p0-measure, and by (39) it satisfies Z(t, ·)#(p0Ld) = ptLd for every t ∈ [0 , T ]. The conclusion of Theorem 4.5(iii) is true 
+
+here even though its assumptions fail. Moreover the compressibility bound Definition 4.1(ii) holds on (−1, 1) , the pushforward density being 1/|∂xZ| = 2 pt ≤ 1.Points that lie outside [−1, 1] at time t are the images of the interval (2Ft(1) − 1, 1), whose length is 2(1 − Ft(1) ) ∼ √t/ 2π — small, but of positive measure for each t > 0. There is no “creation of mass from a single point. Failure of well-posedness is therefore a statement about the Cauchy problem for arbitrary data, and about the non-existence of a flow on the entire real line; it does not contradict the marginal-matching identity for a specific p0.25 4 3 2 1 0 1 2 3 4
+
+x 
+
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> t
+> no characteristic
+> starts here
+> supp p0
+
+(a) characteristics Z(t, x) = F 1 
+
+> t
+
+(F0(x))       
+
+> 1
+> 0
+> t
+> t/2
+> 0.0 0.5 1.0 1.5 2.0 2.5 3.0
+
+x 
+
+> 0
+> 10
+> 20
+> 30
+> 40
+> 50
+> 60
+> v(x, t)
+> v0
+
+(b) PF velocity blows up like 1/ t off supp p0              
+
+> t= 0.5
+> t= 0.2
+> t= 0.05
+> t= 0.02
+> x12t,t= 0.02
+> 0.0 0.5 1.0 1.5 2.0 2.5 3.0
+
+x        
+
+> 10 22
+> 10 19
+> 10 16
+> 10 13
+> 10 10
+> 10 7
+> 10 4
+> 10 1
+> 10 2
+> score explodes exactly where
+> the mass has already vanished
+
+(c) the separation, t = 0.05         
+
+> pt(x)
+> |xlog pt(x)|
+> pt|xlog pt|2
+> 10 210 110 0
+
+t   
+
+> 10 3
+> 10 2
+> 10 1
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+
+(d) (S4) fails, (S4 ′) holds             
+
+> sup
+> 1x2
+> |xlog pt|
+> t1(not L1)
+> (pt)
+> t1/2 (in L1)
+> 2 (1 Ft(1))
+> t/2
+
+Figure 2: Marginal flow for Brownian motion with uniform initialisation p0 = 12 1[−1,1] .
+
+(a) Characteristics Z(t, x ) = F −1
+
+t (F0(x)) of the PF-ODE. Every curve originates in supp p0 =[−1, 1] (thick bar); the region |x| > 1 at t = 0 emits none, which is Theorem 6.4(ii) and the reason no regular Lagrangian flow exists. Red curves are the near-edge quantiles. Inset: the points lying outside [−1, 1] at time t are the images of an interval of length 2(1 −Ft(1)) ∼ √t/ 2π
+
+— small, but of positive measure, so the transport identity itself does not fail. (b) The velocity 
+
+v(x, t ) is exponentially small on [−1, 1] and diverges like (x − 1) /2t off the support (dashed, 
+
+t = 0 .02 ), giving v / ∈ L1loc , Theorem 6.4(i). (c) At t = 0 .05 : |∂x log pt| grows without bound exactly where pt has already decayed by twenty orders of magnitude, so the Fisher integrand 
+
+pt|∂x log pt|2 stays negligible there. (d) The sup-norm of the score diverges ∼ t−1 and is not integrable, so (S4) fails; the local W 1,1 norm in (S2) also diverges at the same rate. By contrast, (S3) holds and I(pt) ∼ t−1/2 is integrable, so (S4′) holds. 26 Remark 6.6 (Generality of the construction) . Nothing in the example depends on the particular shape of p0. Any compactly supported density produces the same 1/t blow-up outside its support, however smooth, since the obstruction is that F0 attains its extreme values 0 and 
+
+1 on sets of positive measure. Taking p0 = 12 1[−2,−1] + 12 1[1 ,2] places a vacuum region in the interior, with characteristics filling (−1, 1) from both edges. What is required to restore Theorem 4.5 is a globally positive p0 with tails no lighter than Gaussian — which is what the two-sided condition −β0I  ∇ 2 log p0  − α0I of Proposition 5.2 enforces. 
+
+# 7 Stability under a learned score function 
+
+In diffusion models ∇ log pt(x) is replaced by a learned score function sθ(x, t ), and one inte-grates [30, 17]:  
+
+> ddt
+
+Zδθ (t, x ) = vθ
+
+(Zδθ (t, x ), t ), vθ(x, t ) := f (x, t ) − 12 σ2(t)sθ(x, t ), Zδθ (δ, x ) = x. (40) Both flows are started at time δ, not at t = 0 . All assumptions in this section are imposed on [δ, T ] only, for the reason set out in Remark 4.11: for data of interest (S) simply fails on 
+
+(0 , δ ). Accordingly we write, for δ ∈ (0 , T ),
+
+Zδ(t, ·), Zδθ (t, ·), t ∈ [δ, T ],
+
+for the regular Lagrangian flows of v and of vθ on [δ, T ] normalised by Zδ(δ, x ) = Zδθ (δ, x ) = x.The forward flow of Theorem 4.5 factors as Z(t, ·) = Zδ(t, ·) ◦ Z(δ, ·) for t ≥ δ, Ld-a.e., and 
+
+Zδ(t, ·)#
+
+(pδLd) = ptLd by Theorem 4.5(iii) applied on [δ, T ] with initial condition pδ.Theorem 4.5 applied to vθ says (40) is well posed; it says nothing about ‖Zδ − Zδθ ‖. In this section we provide error estimates on the flow using the a priori estimates of Crippa– De Lellis [11]. As shown in Theorem 7.1, this error is controlled by the L1 error on the velocity Ev := ∥∥v − vθ
+
+∥∥L1([ δ,T ]×BR), while the score is trained using a probability-weighted L2
+
+norm (46) with weight pt(x). We discuss this discrepancy and its consequences in Section 7.3. 
+
+7.1 Assumptions on the learned score function 
+
+The score function is learned using a parametric model or neural network sθ(x, t ), for which we make the following assumptions. 
+
+Assumption 5 (Learned score — (A)) . For some p > 1 and some δ ∈ [0 , T ), all conditions being imposed on [δ, T ].(A1) sθ ∈ L1([δ, T ]; W 1,p  
+
+> loc
+
+(Rd; Rd));(A2) [∇· vθ]− ∈ L1([δ, T ]; L∞).(A3) |sθ(x, t )| ≤ Aθ(s)(1 + |x|) with Aθ ∈ L1(δ, T ).We also strengthen (S2) to: [(S2 p)] ∇2 log p· ∈ L1([δ, T ]; Lp
+
+> loc
+
+) for the same p > 1.We replace the drift assumptions (D1) and (D3) by stronger assumptions on [δ, T ]:(D1 p) f ∈ L1([δ, T ]; W 1,p  
+
+> loc
+
+(Rd; Rd)) for the same p > 1;(D4) |f (x, t )| ≤ Cf (t) (1 + |x|) for a.e. (x, t ) ∈ Rd × [δ, T ], with Cf ∈ L1(δ, T ).Here the growth bound (D4) of Assumption 2 is only required for t ∈ [δ, T ]. The case δ = 0 
+
+is permitted but is available only when (S) holds up to t = 0 , which by Remark 4.11 requires the two-sided condition (22). We write (D S) for (D0), (D2), (D1 p), (D4). 27 Note that these are assumptions on the architecture , not the loss function or the training algorithm. The score-matching objective constrains sθ in L2(psdxds); it says nothing about 
+
+∇ · sθ. By Theorem (4.3), (A1)–(A3) ensure that (40) has a regular Lagrangian flow Zδθ
+
+with compression constant Lθ = exp ‖[∇· vθ]−‖L1(L∞). Compressibility of the learned flow is therefore an assumption on the network that must be imposed or verified separately e.g. by a Jacobian-trace constraint. 
+
+7.2 A stability estimate for the ODE flow 
+
+Theorem 7.1 (Log-Lipschitz stability of the PF-ODE) . Assume (E1) , (D S), (I) , (S) with 
+
+(S2 p), and (A) . Fix r > 0 and set 
+
+R := (1 + r) exp 
+
+(
+
+‖G‖L1 + ‖Gθ‖L1
+
+)
+
+, Ev := ∥∥v − vθ
+
+∥∥L1([ δ,T ]×BR),
+
+where G, G θ ∈ L1 are the linear-growth rates of v, v θ from Theorem 4.5 (i) and (A3) . Then for every λ > 0 and η > 0,
+
+Ld({x ∈ Br : ∣∣Zδ(T, x ) − Zδθ (T, x )∣∣ > η })
+
+≤ 1log (1 + η/λ )[
+
+Cp + Lθ
+
+λ Ev
+
+]
+
+, (41) 
+
+where 
+
+Cp := Cd,p (L + Lθ) |BR|1/p ′
+
+∫ Tδ
+
+∥∥∇v(·, s )∥∥Lp(B3R)ds, 1 
+
+> p′
+
+= 1 − 1 
+
+> p
+
+.
+
+Optimising with λ = √Ev gives, for Ev < η 2,
+
+Ld({x ∈ Br : |Zδ(T, x ) − Zδθ (T, x )| > η })
+
+≤ Cp + Lθ
+
+√Ev
+
+log (1 + η E−1/2
+
+> v
+
+) −−−−−→  
+
+> Ev→0
+
+0. (42) 
+
+The convergence is logarithmic in Ev.Proof. Throughout this proof we abbreviate Z := Zδ and Zθ := Zδθ . Both are normalised at time δ by Z(δ, x ) = Zθ(δ, x ) = x; this is exactly what makes Φλ(δ) = 0 legitimate in Step 2, and it is false for the flows started at time 0.
+
+e(t, x ) := |Z(t, x ) − Zθ(t, x )| is absolutely continuous in t with ˙e ≤ | v(Z, t ) − vθ(Zθ, t )|.Split 
+
+˙e ≤ ∣∣v(Z, t ) − v(Zθ, t )∣∣︸ ︷︷ ︸ 
+
+> regularity of v
+
++ ∣∣(v − vθ)( Zθ, t )∣∣︸ ︷︷ ︸
+
+> model error
+
+.Zδ and Zδθ are the flows normalised at time δ, so that e(δ, ·) ≡ 0 and Φλ(δ) = 0 below. 
+
+Step 1: confinement. Here (D4) is used, and (D3) would not suffice: combining (D4) with (S4) and (A3) gives the pointwise bounds 
+
+|v(x, s )| ≤ G(s)(1 + |x|), |vθ(x, s )| ≤ Gθ(s)(1 + |x|),
+
+with G := Cf + 12 ϵ−2A and Gθ := Cf + 12 ϵ−2Aθ, both in L1(δ, T ). Grönwall then gives 
+
+|Zδ(s, x )|, |Zδθ (s, x )| ≤ (1 + |x|)e∥G∥L1 +∥Gθ ∥L1 . Hence both trajectories started in Br remain in 
+
+BR for all s ∈ [δ, T ].
+
+Step 2: the logarithmic functional. For λ > 0 set 
+
+Φλ(s) := 
+
+∫
+
+> Br
+
+log 
+
+(
+
+1 + e(s, x )
+
+λ
+
+)
+
+dx, Φλ(δ) = 0 .
+
+Then 
+
+Φ′
+
+> λ
+
+(s) ≤
+
+∫
+
+> Br
+
+∣∣v(Z, s ) − v(Zθ, s )∣∣
+
+λ + e(s, x ) dx + 1
+
+λ
+
+∫
+
+> Br
+
+∣∣(v − vθ)( Zθ, s )∣∣dx =: I( s) + II( s).
+
+28 Step 3: term I via maximal functions. This is where (D1 p) is used. By (D1 p) and (S2 p), 
+
+∇v = ∇f − 12 σ2∇2 log p ∈ L1([δ, T ]; Lp
+
+> loc
+
+), so v(·, s ) ∈ W 1,p  
+
+> loc
+
+with p > 1.
+
+It is essential that both summands be Sobolev: under (D1) alone the singular part Dsf would survive into Dv and v would only be BV loc .For ℓ > 0 let Mℓg(x) := sup 0<u<ℓ 
+
+∫ 
+
+> Bu(x)
+
+|g| denote the truncated maximal operator at scale 
+
+ℓ > 0. For u ∈ W 1,p  
+
+> loc
+
+we have 
+
+|u(x) − u(y)| ≤ Cd |x − y|
+
+(
+
+Mℓ|∇ u|(x) + Mℓ|∇ u|(y)
+
+)
+
+for a.e. x, y with |x − y| ≤ ℓ, (43) together with the local bound ‖Mℓg‖Lp(BR) ≤ Cd,p ‖g‖Lp(BR+ℓ) for p > 1. By Step 1 both 
+
+Zδ(s, x ) and Zδθ (s, x ) lie in BR, so their separation never exceeds 2R; we may therefore take 
+
+ℓ = 2 R, and the enlarged ball in (43) is B3R. Applying (43) and using e/ (λ + e) ≤ 1I( s) ≤ Cd
+
+∫
+
+> Br
+
+(
+
+M2R|∇ v|(Zδ(s, x )) + M2R|∇ v|(Zδθ (s, x )) 
+
+)
+
+dx, 
+
+where λ was introduced in Step 2. Pushing forward by the two flows, using their compressibility constants L, L θ and Step 1, and the Hölder inequality 
+
+I( s) ≤ Cd (L + Lθ)
+
+∫
+
+> BR
+
+M2R|∇ v(·, s )| dy ≤ Cd (L + Lθ) |BR|1/p ′ ∥∥M2R|∇ v(·, s )|∥∥Lp(BR).
+
+The maximal operator is bounded on Lp for p > 1, with constant Cd,p , whence ‖M2R|∇ v|‖ Lp(BR) ≤
+
+Cd,p ‖∇ v‖Lp(B3R) and ∫ Tδ I( s)d s ≤ C p. The maximal operator maps L1 into weak-L1: the failure of the Lp bound at p = 1 is the reason why Crippa–De Lellis [11] require p > 1.For II , pushing forward by Zθ and using Step 1, 
+
+∫ Tδ
+
+II( s)d s ≤ Lθ
+
+λ
+
+∫ Tδ
+
+∫
+
+> BR
+
+∣∣v − vθ
+
+∣∣ dy ds = Lθ
+
+λ Ev.
+
+Combining the above we obtain Φλ(T ) ≤ C p + LθEv/λ . On the set where e(T, x ) > η the integrand of Φλ(T ) exceeds log(1+ η/λ ), giving (41); (42) is obtained by choosing λ = √Ev.
+
+Corollary 7.2 (L1 and Wasserstein error estimates) . Let 
+
+Dr := 2(1 + r) e∥G∥L1 +∥Gθ ∥L1
+
+be the trajectory-diameter bound of Step 1. Then for every η > 0,
+
+∥∥Zδ(T, ·) − Zδθ (T, ·)∥∥L1(Br ) ≤ η |Br| + Dr · Cp + Lθ
+
+√Ev
+
+log(1 + η E−1/2 
+
+> v
+
+) =: R(η, r ). (44) 
+
+The initial law is pδ, not p0, since both flows are normalised at time δ. As pδ will in general have full support, the tail must be estimated separately. Using Step 1 to bound |Zδ(T, x )−Zδθ (T, x )| ≤ 
+
+2e∥G∥L1 +∥Gθ ∥L1 (1 + |x|) off Br, one gets for every r, η > 0
+
+W1
+
+(
+
+Zδ(T, ·)#pδ, Z δθ (T, ·)#pδ
+
+)
+
+≤ ‖ pδ‖L∞ R(η, r ) + 2 e∥G∥L1 +∥Gθ ∥L1
+
+∫
+
+> |x|>r
+
+(1 + |x|) pδ(x) d x. 
+
+(45) 
+
+The tail integral tends to 0 as r → ∞ because pδ has a finite first moment by (S1) , so for fixed 
+
+θ-dependent constants Lθ, Gθ and Cp, optimising over r and η makes the right-hand side of 
+
+(45) tend to 0 as Ev → 0. Since Zδ(T, ·)#pδ = pT by Theorem 4.5 (iii) applied on [δ, T ], the left-hand side is the W1 distance between pT and the output of the deterministic sampler run from pδ with the learned score. 
+
+29 Remark 7.3 (Convergence along a sequence of learned score functions) . Theorem 7.1 and Corollary 7.2 are estimates for a fixed θ: every constant on the right-hand side ( Lθ, Gθ, Dr,
+
+Cp, and the radius R itself) is allowed to depend on sθ. The assertion that the bound vanishes as Ev → 0 must therefore be understood with those constants held fixed. It does not yield convergence along a sequence (sθn ) with E(n) 
+
+> v
+
+→ 0, and such a statement requires uniform bounds: (U1) sup 
+
+> n
+
+Lθn = sup 
+
+> n
+
+exp ∥∥[∇· vθn ]−∥∥L1(0 ,T ;L∞) < ∞;(U2) sup 
+
+> n
+
+‖Aθn ‖L1(δ,T ) < ∞ in (A3), equivalently sup n ‖Gθn ‖L1 < ∞;(U3) Cp < ∞ for the radius R resulting from (U2), i.e. ∇v ∈ L1([δ, T ]; Lp(B3R)).(U2) is not a technicality. By Step 1 the confinement radius is R = (1 + r)e∥G∥L1 +∥Gθ ∥L1 , so if ‖Gθn ‖L1 is unbounded then Rn → ∞ ; and then the domain [δ, T ] × BRn on which E(n) 
+
+> v
+
+is measured varies with n, as does Cp = Cp(Rn) through ‖∇ v‖Lp(B3Rn ) and through the factor 
+
+|BRn |1/p ′
+
+. Under (U1)–(U3) the radius may be fixed once and for all, the constants are uniform, and (42) gives 
+
+Ld({x ∈ Br : ∣∣Zδ(T, x ) − Zδθn (T, x )∣∣ > η })
+
+−−−→ 
+
+> n→∞
+
+0 for every η > 0.
+
+(U1)–(U3) are not determined by the training objective, which controls only Eθ.
+
+7.3 From the score-matching loss to Ev
+
+The stability estimate in Theorem 7.1 is expressed in terms of an unweighted L1 norm Ev ,whereas score matching is based on a probability-weighted L2 norm with weight pt(x). We now explore the relation between these two quantities. Proposition 7.4 relates the training cost to the norm required by the flow estimate, thus relating score approximation to sampler stability, and identifying the mismatch between the training and stability norms in low density regions. 
+
+Proposition 7.4 (Relation between velocity error and score matching loss) . Let 
+
+E2 
+
+> θ
+
+:= 
+
+∫ Tδ
+
+∫
+
+> Rd
+
+pt(x) ∣∣sθ(x, t ) − ∇ log pt(x)∣∣2 dx dt (46) 
+
+be the denoising score-matching loss function. If the conversion factor 
+
+κδ,R := 
+
+∫ Tδ
+
+∫
+
+> BR
+
+dx dsps(x) < ∞
+
+is finite , then Ev = 12
+
+∥∥σ2(∇ log p − sθ
+
+)∥ ∥L1([ δ,T ]×BR) ≤ ‖σ‖2
+
+> L∞
+
+2 Eθ
+
+√κδ,R .
+
+Proof. Write |∇ log ps − sθ| = (√ps |∇ log ps − sθ|) · p−1/2 
+
+> s
+
+and apply Cauchy–Schwarz on 
+
+[δ, T ] × BR; then bound σ2 ≤ ‖ σ‖2 
+
+> L∞
+
+≤ ϵ−2 by (E1). Finiteness of κδ,R is an additional assumption ; it requires a lower bound on the density and does not follow from (E1)–(E2) and (D E). The following lemma shows that it is satisfied in the case of linear diffusion models. 30 Lemma 7.5 (κδ,R < ∞ for linear drift) . Assume (E1) and f (x, s ) = −β(s)x with β ∈ L∞(0 , T )
+
+— the variance-preserving and variance-exploding models of Corollary 4.10. Let p0 be any probability density. With ms := e− ∫ s  
+
+> 0β
+
+and ς2 
+
+> s
+
+:= m2
+
+> s
+
+∫ s 
+
+> 0
+
+σ(r)2m−2 
+
+> r
+
+dr, set ς2min := inf s∈[δ,T ] ς2 
+
+> s
+
+>
+
+0, ς2max := sup s∈[δ,T ] ς2 
+
+> s
+
+< ∞ and mmax := sup s≤T ms. Fix any ρ > 0 with μρ := ∫ 
+
+> Bρ
+
+p0 dx > 0.Then for all s ∈ [δ, T ] and |x| ≤ R,
+
+ps(x) ≥ μρ
+
+(2 πς 2max )d/ 2 exp 
+
+(
+
+− (R + mmax ρ)2
+
+2ς2min 
+
+)
+
+> 0, (47) 
+
+and consequently 
+
+κδ,R ≤ (T − δ) |BR| (2 πς 2max )d/ 2
+
+μρ
+
+exp 
+
+( (R + mmax ρ)2
+
+2ς2min 
+
+)
+
+< ∞.
+
+The proof, given in Appendix C.1, uses Gaussian convolution. We now give a sufficient condition for κδ,R < ∞ for a general class of nonlinear velocity fields. The proof is given in Appendix C.2. 
+
+Lemma 7.6 (κδ,R < ∞ for nonlinear drift) . Let σ satisfy (E1)–(E2) and f ∈ L∞([0 , T ] ×
+
+Rd; Rd) with no condition on ∇· f , which may be a measure with a nonzero singular part. Let 
+
+p0 be a probability density with μρ := ∫ 
+
+> Bρ
+
+p0 dx > 0 for some ρ > 0, and let ps denote the density of the law of Xs, the solution of (4) , which exists and is unique in law under (E1) .Then κδ,R < ∞ for every 0 < δ < T and R > 0.
+
+Note that we do not assume (9). We use Aronson’s estimates, which require only that the divergence-form operator have bounded measurable coefficients, a condition on f itself and not on its derivative. Thus an example such as f (x, t ) = − sign( x) in Remark 3.3, which is excluded from Theorem 3.1 precisely because ∇· f = −2δ0 is singular, is covered here. Lemmas 7.5 and 7.6 cover disjoint situations. Bounded f excludes the variance-preserving model, whose drift −β(s)x is unbounded; Lemma 7.5 covers it, but only because the linear structure makes ps an explicit Gaussian convolution and no heat-kernel theory is needed. Conversely Lemma 7.6 allows drifts far outside the linear class — including the f = − sign 
+
+field of Remark 3.3, whose divergence is a measure — at the price of global boundedness. In the intermediate case of nonlinear drifts with linear growth one may obtain similar statements for f ∈ Lq([0 , T ]; Lr(Rd)) with dr + 2 
+
+> q
+
+< 1; see [10]. 
+
+Remark 7.7 . In these examples, κδ,R is finite but its size is governed by inf [δ,T ]×BR ps, which is exponentially small in R2/ς 2 
+
+> δ
+
+by the Gaussian lower bound and degenerates as δ ↓ 0. So the score can be learned to high accuracy in high density regions yet still have low accuracy on the low-density regions. This discrepancy is detected by the unweighted norm, which is precisely the norm entering the flow-stability estimate. The chain 
+
+Eθ
+
+︸︷︷︸ 
+
+> trainable Prop. 7.4
+
+−−−−−−→
+
+> ×√κδ,R
+
+Ev
+
+︸︷︷︸ 
+
+> L1
+> Thm. 7.1
+
+−−−−−−−−→ 
+
+> logarithmic
+
+‖Zδ − Zδθ ‖
+
+︸ ︷︷ ︸  
+
+> error on [δ,T ]
+
+7.4 Lipschitz score functions 
+
+When the score function is approximated by a neural network, one can easily enforce Lipschitz continuity by using smooth activation functions and ’clipping’ (bounding) the weights [17]. In this case, one can bypass the above estimates entirely for a linear, rather than logarithmic, rate. 
+
+Proposition 7.8 (Grönwall stability) . Assume the time-dependent bounds 
+
+‖∇ 2 log ps‖op ≤ M (s), ‖∇ f (·, s )‖∞ ≤ F (s), F, σ 2M ∈ L1(δ, T ).
+
+31 Then v(·, s ) is Lipschitz with constant Lip s(v) ≤ F (s) + 12 σ(s)2M (s), and for every x
+
+sup  
+
+> s∈[δ,T ]
+
+∣∣Zδ(s, x )−Zδθ (s, x )∣∣ ≤ exp 
+
+(∫ Tδ
+
+(F (s) + 12 σ(s)2M (s))ds
+
+)︸ ︷︷ ︸ 
+
+> =: Aδ
+
+· 12
+
+∫ Tδ
+
+σ(s)2∥∥∇ log ps−sθ(·, s )∥∥L∞ ds. 
+
+(48) 
+
+Proof. ˙e ≤ Lip s(v) e + ‖(v − vθ)( ·, s )‖∞ pointwise. Applying Grönwall with e(δ, x ) = 0 , which again uses the normalisation Zδ(δ, x ) = Zδθ (δ, x ) = x yields the estimate. 
+
+Remark 7.9 . Proposition 7.8 leads to a linear error estimate, far better than (42), but it pays for this in the amplification factor Aδ of (48). The size of Aδ depends on whether M is taken uniform or time-dependent. 
+
+With a uniform bound. Proposition 5.3 gives, for early-stopped compactly supported data, 
+
+sup s≥δ M (s) = O(R2ς−4min ) — not O(ς−2min ). Inserting this constant into (48) yields only 
+
+Aδ ≲ exp (CR 2ς−4min 
+
+) = exp (CR 2δ−2) for ς2 
+
+> s
+
+= s. 
+
+With the time-dependent bound. Keeping M (s) inside the integral and using the pointwise form of (24), M (s) ≤ ς−2 
+
+> s
+
++ m2max R2ς−4 
+
+> s
+
+, the exponent becomes, for the variance-exploding model with σ ≡ σ0 and ς2 
+
+> s
+
+= σ20 s,
+
+> 12
+
+∫ Tδ
+
+σ20 M (s) d s ≤ 12 log Tδ + R2
+
+2σ20
+
+( 1
+
+δ − 1
+
+T
+
+)
+
+, since 
+
+∫ Tδ
+
+s−2ds = δ−1 − T −1,
+
+so that Aδ ≲ (T /δ )1/2 exp (CR 2δ−1). The δ−2 in the exponent is therefore an artefact of the uniform bound: the true rate is exp( CR 2/δ ), because ς−4 
+
+> s
+
+is integrable in s away from the origin while its supremum is not. Either way the factor blows up as the sampler approaches the data end, which is the analytic reason why the final reverse steps are the delicate ones. The two regimes are complementary and neither is fully satisfactory: Crippa–De Lellis [11] gives an L1 spatial error and mild regularity at the price of a logarithmic rate, while the Grönwall estimate (48) gives a linear rate with an L∞ error and an exponentially large constant. Neither delivers a bound that is quantitatively useful at realistic values of Eθ. The logarithmic rate is not an artefact of the proof: it is known to be essentially optimal for Sobolev velocity fields [12]. 
+
+Remark 7.10 (Error analysis for generative models) . Our error estimate focuses on the impact of the estimation error for the score s. There are other sources of error which affect the accuracy of score-based generative models [17]. 
+
+Early stopping: Theorem 7.1 compares two flows normalised at time δ, and therefore bounds only the error generated on [δ, T ]. Writing Z(T, ·) = Zδ(T, ·) ◦ Z(δ, ·) and similarly for 
+
+Zθ, the missing piece is the propagation through Zδθ (T, ·) of the discrepancy |Z(δ, x ) − Zθ(δ, x )|
+
+already accumulated on [0 , δ ].
+
+Time discretisation: everything above compares exact flows of v and vθ, whereas a sampler integrates (40) numerically, and the integrator error must be composed with (42). 
+
+Truncation error: Ev is measured on BR with R growing exponentially in ‖G‖L1 , so the tail contribution is not controlled by a risk computed under ps.
+
+Finite horizon: the initial condition of the reverse sampler is N (0 , ς 2 
+
+> T
+
+I), which is the invariant distribution, rather than pT . That mismatch is a separate additive term, controlled by the mixing of the forward process and not by anything above. Han et al.[17] provide estimates for some of these error terms in the case where the score is estimated using a neural network with one hidden layer. 32 8 Implications for generative modeling 
+
+We conclude by outlining some implications of our results for generative modeling with diffu-sion models. 1. A well-posed forward diffusion does not automatically yield a well-posed probability-flow ODE The Fokker–Planck density flow may be uniquely determined under relatively weak assumptions on the drift and diffusion coefficient, without sub-stantial regularity of the score. By contrast, the probability-flow velocity field 
+
+v(x, t ) = f (x, t ) − 12 σ(t)2∇ log pt(x)
+
+inherits the singularities and irregularities of the score. Consequently, existence and uniqueness of the deterministic flow require a separate analysis. In particular, one must verify (Sobolev or BV ) regularity, divergence bounds, and growth conditions for v. The statement that the probability-flow ODE has the same one-time marginals as the SDE is therefore contingent on various assumptions, rather than a purely formal consequence of rewriting the Fokker–Planck equation. 2. Smoothing does not remove the singularity of the data endpoint For compactly supported or lower-dimensional data, the forward diffusion may produce a strictly posi-tive and smooth density pt for t > 0, while the score ∇ log pt becomes singular as t ↓ 0.Thus, smoothness at every t > 0 does not imply uniform regularity up to the data end-point. The marginal density flow may remain well posed even though a global regular Lagrangian flow generated by the probability-flow velocity fails to exist on an interval starting at t = 0 . This shows why the reverse-time steps closest to the data distribution are often the most delicate. 3. Early stopping is a regularization mechanism, not just a numerical device. 
+
+For every fixed δ > 0, the score estimates required by the regular Lagrangian-flow theory may hold on the truncated interval [δ, T ]. One then proceeds as follows: 
+
+μ0 forward diffusion 
+
+−→ pδ Ld probability-flow ODE 
+
+−→ pt Ld, t ∈ [δ, T ].
+
+In the reverse direction, the deterministic probability-flow sampler is justified from pT
+
+down to pδ. Reaching the original data law at t = 0 , especially when that law is singular, requires an additional limiting argument or a separate terminal denoising step. There is a trade-off: decreasing δ moves the sampler closer to the original data distribution, but generally worsens the regularity constants entering the flow analysis. 4. Reverse sampling and invertibility require stronger hypotheses than forward transport A one-sided divergence bound may be sufficient to construct a forward regular Lagrangian flow and to control its compression. Running the same flow backwards requires the complementary one-sided estimate 
+
+[∇· v]+ ∈ L1(
+
+(0 , T ); L∞(Rd)
+
+)
+
+.
+
+Accordingly, the following assertions are stronger than forward marginal matching: • existence of a well-posed deterministic reverse sampler; • almost-everywhere invertibility of the flow; • deterministic encoding and decoding as inverse operations; 33 • likelihood evaluation through a change-of-variables formula. These conclusions require two-sided control of the divergence. A forward probability-flow ODE may therefore be well posed even when the reverse flow is not. 5. A small score-matching loss does not by itself imply a stable sampler A stan-dard score-matching objective controls an error of the form 
+
+E2 
+
+> θ
+
+=
+
+∫ Tδ
+
+∫
+
+> Rd
+
+pt(x) |sθ(x, t ) − ∇ log pt(x)|2 dx dt. 
+
+This is a density-weighted error. By contrast, the flow-stability estimate generally re-quires an unweighted spatial norm of the velocity error. Passing from the weighted error to an unweighted local error introduces an inverse-density quantity such as 
+
+κδ,R =
+
+∫ Tδ
+
+∫
+
+> BR
+
+dx dt pt(x) .
+
+Consequently, approximation errors in low-density regions may contribute very little to the training loss while still affecting the global ODE vector field and its trajectories. This reveals a mismatch between the metric used for training and the metric controlling deterministic sampler stability. Score fitting alone may therefore be insufficient un-less it is combined with localisation, low-density control, or regularisation aligned with the velocity-field error. This point differentiates the PF-ODE from the time-reversed diffusion, which is controlled by the score matching error. 6. Architectural regularity is part of sampler correctness The learned score enters the deterministic sampler through the velocity field 
+
+vθ(x, t ) = f (x, t ) − 12 σ(t)2sθ(x, t ).
+
+A small score-matching loss controls the approximation sθ only in a density-weighted norm, typically L2(p). It does not, by itself, control the spatial derivatives, divergence, growth, or compressibility of the learned velocity field. Accordingly the analysis requires conditions such as 
+
+sθ ∈ L1(
+
+[δ, T ]; W 1,p  
+
+> loc
+
+(Rd; Rd)
+
+)
+
+, p > 1,
+
+on [δ, T ] together with the one-sided divergence bound 
+
+[∇· vθ]− ∈ L1(
+
+[δ, T ]; L∞(Rd)
+
+)
+
+,
+
+and a linear-growth condition of the form 
+
+|sθ(x, t )| ≤ Aθ(t)(1 + |x|), Aθ ∈ L1(δ, T ).
+
+These assumptions play different roles: • Sobolev regularity enables to compare the exact and learned flows. • The one-sided divergence bound controls compression and is essential for the exis-tence, uniqueness, and stability of the corresponding regular Lagrangian flow. • The linear-growth condition prevents trajectories from escaping to infinity during the interval on which the flows are compared. 34 The practical consequence is that a neural score model is not certified to yield a stable probability-flow ODE sampler merely because its score-matching loss is small. The architecture or regularisation procedure must also impose, or one must separately verify, suitable Jacobian, divergence, Sobolev, and growth bounds. 
+
+In particular, a small score-matching loss does not by itself imply an accurate simulation of the flow via the ODE. For convergence of a sequence of learned samplers, the rele-vant regularity, growth, and compressibility constants must remain uniformly controlled across the sequence of models. Spectral normalisation and Jacobian-based penalties may help enforce such control. Some of these remarks are valid more generally for other ODE-based continuous flows such as flow matching [25], which depend on the existence of corresponding Lagrangian flows. 
+
+# References 
+
+[1] L. Ambrosio , Transport equation and Cauchy problem for BV vector fields , Inventiones Mathematicae, 158 (2004), pp. 227–260. [2] L. Ambrosio , Transport equation and cauchy problem for non-smooth vector fields , in Calculus of Variations and Non-Linear Partial Differential Equations, vol. 1927 of Lecture Notes in Mathematics, Springer, 2008, pp. 1–41. [3] L. Ambrosio, N. Gigli, and G. Savaré , Gradient Flows in Metric Spaces and in the Space of Probability Measures , Lectures in Mathematics ETH Zürich, Birkhäuser Verlag, Basel, 2nd ed., 2008. [4] L. Ambrosio and D. Trevisan , Well-posedness of Lagrangian flows and continuity equations in metric measure spaces , Analysis & PDE, 7 (2014), pp. 1179–1234. [5] B. D. O. Anderson , Reverse-time diffusion equation models , Stochastic Processes and their Applications, 12 (1982), pp. 313–326. [6] D. G. Aronson , Bounds for the fundamental solution of a parabolic equation. , Bull. Amer. Math. Soc., 73 (1967), pp. 890–896. [7] H. J. Brascamp and E. H. Lieb , On extensions of the Brunn–Minkowski and Prékopa– Leindler theorems, including inequalities for log concave functions, and with an application to the diffusion equation , Journal of Functional Analysis, 22 (1976), pp. 366–389. [8] G. Brigati and M. Pedrotti , Heat flow, log-concavity, and Lipschitz transport maps ,Electronic Communications in Probability, 30 (2025), pp. 1–12. [9] S. Chen, E. Vanden-Eijnden, and Y. Xu , Lipschitz-guided design of interpolation schedules in generative models , arXiv:2509.01629, (2025). [10] S. Cho, P. Kim, and H. Park , Two-sided estimates on dirichlet heat kernels for time-dependent parabolic operators with singular drifts in c1,α -domains , Journal of Differential Equations, 252 (2012), pp. 1101–1145. [11] G. Crippa and C. De Lellis , Estimates and regularity results for the DiPerna–Lions flow , Journal für die reine und angewandte Mathematik, 616 (2008), pp. 15–46. [12] C. De Lellis , ODEs with Sobolev coefficients: the Eulerian and the Lagrangian approach ,Discrete Contin. Dyn. Syst. Ser. S, 1 (2008), pp. 405–426. 35 [13] R. J. DiPerna and P.-L. Lions , Ordinary differential equations, transport theory and Sobolev spaces , Inventiones Mathematicae, 98 (1989), pp. 511–547. [14] A. Figalli , Existence and uniqueness of martingale solutions for SDEs with rough or degenerate coefficients , Journal of Functional Analysis, 254 (2008), pp. 109–153. [15] F. Flandoli, M. Gubinelli, and E. Priola , Well-posedness of the transport equation by stochastic perturbation , Inventiones Mathematicae, 180 (2010), pp. 1–53. [16] I. Gyöngy , Mimicking the one-dimensional marginal distributions of processes having an Itô differential , Probability theory and related fields, 71 (1986), pp. 501–516. [17] Y. Han, M. Razaviyayn, and R. Xu , Neural network-based score estimation in diffu-sion models: Optimization and generalization , in International Conference on Learning Representations (ICLR), 2024, pp. 42520–42558. [18] U. G. Haussmann and É. Pardoux , Time reversal of diffusions , The Annals of Prob-ability, 14 (1986), pp. 1188–1205. [19] D. Z. Huang, J. Huang, and Z. Lin , Convergence analysis of probability flow ODE for score-based generative models , IEEE Transactions on Information Theory, (2025). [20] M. Iske and C.-B. Schönlieb , Expressivity of bi-Lipschitz normalizing flows: A score-based diffusion perspective , arXiv preprint arXiv:2605.06172, (2026). [21] D. Kim, C.-H. Lai, W. Liao, N. Murata, Y. Takida, T. Uesaka, Y. He, Y. Mit-sufuji, and S. Ermon , Consistency trajectory models: Learning probability flow ode tra-jectory of diffusion , in International Conference on Learning Representations, vol. 2024, 2024, pp. 44493–44525. [22] N. V. Krylov and M. Röckner , Strong solutions of stochastic equations with singular time dependent drift , Probability Theory and Related Fields, 131 (2005), pp. 154–196. [23] C. Le Bris and P.-L. Lions , Existence and uniqueness of solutions to Fokker–Planck type equations with irregular coefficients , Communications in Partial Differential Equa-tions, 33 (2008), pp. 1272–1317. [24] C. Le Bris and P.-L. Lions , Parabolic Equations with Irregular Data and Related Issues , De Gruyter, 2019. [25] Y. Lipman, R. T. Chen, H. Ben-Hamu, M. Nickel, and M. Le , Flow matching for generative modeling , in International Conference on Learning Representations (ICLR), 2022. [26] C. Mooney, Z. Wang, J. Xin, and Y. Yu , Global well-posedness and convergence analysis of score-based generative models via sharp Lipschitz estimates , in International Conference on Learning Representations (ICLR), vol. 2025, 2025, pp. 79960–79986. [27] G. Peyré , Optimal and diffusion transports in machine learning , in Proceedings of the International Congress of Mathematicians 2026, vol. 7: Invited Lectures (Sections 15–20), pp. 110–128. [28] Y. Shen, Y. Xi, J. Ren, X. Zhang, Y. Wang, B. Chen, Z. Zheng, N. Liang, C. Wang, A. Cai, et al. , ODE-driven deterministic diffusion posterior sampling for sparse-view ct image reconstruction , IEEE Transactions on Radiation and Plasma Medical Sciences, (2026). 36 [29] J. Sohl-Dickstein, E. A. Weiss, N. Maheswaranathan, and S. Ganguli , Deep unsupervised learning using nonequilibrium thermodynamics , in Proceedings of the 32nd International Conference on Machine Learning, F. Bach and D. Blei, eds., vol. 37 of Proceedings of Machine Learning Research, Lille, France, 2015, PMLR, pp. 2256–2265. [30] Y. Song, C. Durkan, I. Murray, and S. Ermon , Maximum likelihood training of score-based diffusion models , in Advances in Neural Information Processing Systems, A. Beygelzimer, Y. Dauphin, P. Liang, and J. W. Vaughan, eds., vol. 34, 2021. [31] Y. Song, J. Sohl-Dickstein, D. P. Kingma, A. Kumar, S. Ermon, and B. Poole ,
+
+Score-based generative modeling through stochastic differential equations , in International Conference on Learning Representations (ICLR), 2021. [32] A. Stéphanovitch , Regularity of the score function in generative models ,arXiv:2506.19559, (2025). [33] A. Stéphanovitch , Lipschitz regularity in flow matching and diffusion models: Sharp sampling rates and functional inequalities , arXiv:2604.06065, (2026). [34] A. J. Veretennikov , On strong solutions and explicit formulas for solutions of stochastic integral equations , Mathematics of the USSR-Sbornik, 39 (1981), pp. 387–403. [35] L. Yang, Z. Zhang, Y. Song, S. Hong, R. Xu, Y. Zhao, W. Zhang, B. Cui, and M.-H. Yang , Diffusion models: A comprehensive survey of methods and applications ,ACM computing surveys, 56 (2023), pp. 1–39. 37 A Proof of Lemma 4.9 
+
+For η ∈ (0 , 1] , set 
+
+βη(r) := ( r + η) log( r + η) − η log η, r ≥ 0.
+
+Then βη ∈ C∞([0 , ∞)) is convex and 
+
+βη(0) = 0 , rβ ′′  
+
+> η
+
+(r) = rr + η ↑ 1 as η ↓ 0, (49) while 
+
+Bη(r) := rβ ′
+
+> η
+
+(r) − βη(r) = r − η log 
+
+(
+
+1 + rη
+
+)
+
+.
+
+Since log(1 + u) ≤ u for u ≥ 0, we have 0 ≤ Bη(r) ≤ r. We use the one-sided estimates 
+
+r log r ≤ βη(r) ≤ r log(1 + r) + r. (50) Fix ε > 0 and η ∈ (0 , 1] , and let ψR be the logarithmic cutoff defined in (15). Since pε is a classical solution and 
+
+0 ≤ pε ≤ ‖ p0‖L∞ eθ,
+
+the function β′
+
+> η
+
+(pε) is bounded for fixed η. Multiplying the regularised equation by β′
+
+> η
+
+(pε)ψR
+
+and integrating over Rd gives 
+
+dds 
+
+∫
+
+> Rd
+
+βη(pε)ψR dx = − σ(s)2
+
+2
+
+∫
+
+> Rd
+
+β′′  
+
+> η
+
+(pε)|∇ pε|2ψR dx 
+
+−
+
+∫
+
+> Rd
+
+Bη(pε)( ∇· f ε)ψR dx + Rεη,R (s),
+
+where 
+
+Rεη,R (s) := 
+
+∫
+
+> Rd
+
+βη(pε)f ε · ∇ ψR dx + σ(s)2
+
+2
+
+∫
+
+> Rd
+
+βη(pε)∆ ψR dx. 
+
+The divergence term is estimated only from above. Since Bη ≥ 0, Bη(r) ≤ r, and 0 ≤
+
+ψR ≤ 1,
+
+−
+
+∫
+
+> Rd
+
+Bη(pε)( ∇· f ε)ψR dx ≤ ∥∥[∇· f ε(·, s )] −∥∥L∞
+
+∫
+
+> Rd
+
+Bη(pε) dx 
+
+≤ ∥∥[∇· f (·, s )] −∥∥L∞ . (51) Here we used mass conservation and the mollification estimate from Step 7( a),
+
+∥∥[∇· f ε]−∥∥L∞ ≤ ∥∥[∇· f ]−∥∥L∞ .
+
+No global integrability of (∇· f ε)+pε is required or asserted. For fixed η, the facts that βη(0) = 0 and pε is uniformly bounded imply 
+
+|βη(r)| ≤ cηr, 0 ≤ r ≤ ‖ p0‖L∞ eθ,
+
+where 
+
+cη := sup  
+
+> 0≤r≤∥ p0∥L∞eθ
+
+|β′
+
+> η
+
+(r)| < ∞.
+
+Consequently, the two terms in Rεη,R are bounded by cη times the corresponding quantities estimated in Step 7( c). The defining properties of the logarithmic cutoff therefore give 
+
+∫ T
+
+> 0
+
+∣∣Rεη,R (s)∣∣ ds −→ 0 as R → ∞ 
+
+38 for each fixed η and ε.Integrating the renormalised identity over [0 , T ], using (51), and letting R → ∞ , we obtain 
+
+12
+
+∫ T
+
+> 0
+
+σ(s)2
+
+∫
+
+> Rd
+
+β′′  
+
+> η
+
+(pεs)|∇ pεs|2 dx ds ≤ Ent η(pε
+
+> 0
+
+) − Ent η(pεT )+ ∥∥[∇· f ]−∥∥L1([0 ,T ]; L∞), (52) where 
+
+Ent η(q) := 
+
+∫
+
+> Rd
+
+βη(q(x)) dx. 
+
+By the upper bound in (50), mass conservation, and 
+
+‖pε
+
+> 0
+
+‖L∞ ≤ ‖ p0‖L∞ ,
+
+we have 
+
+Ent η(pε
+
+> 0
+
+) ≤
+
+∫
+
+> Rd
+
+pε 
+
+> 0
+
+log(1 + pε
+
+> 0
+
+) dx +
+
+∫
+
+> Rd
+
+pε 
+
+> 0
+
+dx ≤ log (1 + ‖p0‖L∞
+
+) + 1 .
+
+By the lower bound in (50), 
+
+− Ent η(pεT ) ≤ − Ent( pεT ).
+
+The Gaussian entropy comparison gives, for every probability density q with finite second moment, 
+
+Ent( q) ≥ − Cd
+
+(
+
+1 + 
+
+∫
+
+> Rd
+
+|x|2q(x) dx 
+
+)
+
+.
+
+Hence 
+
+− Ent η(pεT ) ≤ Cd
+
+(
+
+1 + 
+
+∫
+
+> Rd
+
+|x|2pεT (x) dx 
+
+)
+
+≤ Cd(1 + M ).
+
+Here M < ∞ is supplied by Step 7( c′). That step is justified using Itô’s formula for the regularised SDE; equivalently, one may first test against bounded C2 truncations of |x|2, derive an estimate uniform in the truncation parameter, and then apply monotone convergence. In particular, the argument does not rely on tightness alone. Explicitly, 
+
+dds 
+
+∫
+
+> Rd
+
+|x|2pεs(x) dx = 2 
+
+∫
+
+> Rd
+
+x · f ε(x, s )pεs(x) dx + d σ (s)2,
+
+and the linear-growth estimate 
+
+|f ε(x, s )| ≤ 2Cf (s)(1 + |x|)
+
+gives the uniform second-moment bound by Grönwall’s inequality. Combining these estimates with (52) yields 
+
+12
+
+∫ T
+
+> 0
+
+σ(s)2
+
+∫
+
+> Rd
+
+β′′  
+
+> η
+
+(pεs)|∇ pεs|2 dx ds ≤ log (1 + ‖p0‖L∞
+
+) + 1 + Cd(1 + M )+ ∥∥[∇· f ]−∥∥L1([0 ,T ]; L∞). (53) 
+
+Letting η ↓ 0. Since 
+
+β′′  
+
+> η
+
+(r) = 1
+
+r + η ↑ 1
+
+r as η ↓ 0
+
+for every r > 0, and pεs > 0 for s > 0, monotone convergence gives 
+
+∫
+
+> Rd
+
+β′′  
+
+> η
+
+(pεs)|∇ pεs|2 dx ↑ I(pεs).
+
+39 Using σ(s)2 ≥ ϵ2 in (53), we therefore obtain 
+
+ϵ2
+
+2
+
+∫ T
+
+> 0
+
+I(pεs) ds ≤ log (1 + ‖p0‖L∞
+
+) + 1 + Cd(1 + M )+ ∥∥[∇· f ]−∥∥L1([0 ,T ]; L∞), (54) uniformly in ε.
+
+Letting ε ↓ 0. By Step 7( e),
+
+pε −→ p strongly in L2([0 , T ]; L2(K))
+
+for every compact K ⊂ Rd. Combined with the uniform tightness from Step 7( c) and the uniform L∞ bound (14), this yields 
+
+pε −→ p strongly in L1([0 , T ] × Rd).
+
+Moreover, the global energy estimate from Step 7( d) gives, after passing to a subsequence if necessary, 
+
+∇pε ⇀ ∇p weakly in L2([0 , T ] × Rd; Rd).
+
+Define the function 
+
+U (μ, ξ ) := 
+
+
+
+|ξ|2
+
+μ , μ > 0,
+
+0, (μ, ξ ) = (0 , 0) ,
+
++∞, μ = 0 , ξ 6 = 0 .
+
+Then U is convex and lower semicontinuous on [0 , ∞)×Rd. By the standard lower-semicontinuity theorem for convex integral functionals, 
+
+∫ T
+
+> 0
+
+∫
+
+> Rd
+
+U (ps, ∇ps) dx ds ≤ lim inf 
+
+> ε↓0
+
+∫ T
+
+> 0
+
+∫
+
+> Rd
+
+U (pεs, ∇pεs) dx ds. 
+
+Equivalently, ∫ T
+
+> 0
+
+I(ps) ds ≤ lim inf 
+
+> ε↓0
+
+∫ T
+
+> 0
+
+I(pεs) ds. 
+
+Passing to the lower limit in (54) proves (18). Therefore 
+
+∫ T
+
+> 0
+
+I(ps) ds < ∞,
+
+which is precisely (S4′).
+
+# B Proof of Proposition 5.4 
+
+We first use (28) to estimate the tail and moments of μ. For |x| = r ≥ 1 write x = rθ with 
+
+|θ| = 1 . By (28), 
+
+ddr V (rθ ) = 〈∇V (rθ ), θ 〉 = 1
+
+r
+
+〈∇V (rθ ), rθ 〉 ≥ ar − br ,
+
+and integrating from 1 to r gives V (x) ≥ a 
+
+> 2
+
+|x|2 − b log |x| − c1 with c1 := a 
+
+> 2
+
+− inf |y|=1 V (y) < ∞.Hence, for |x| ≥ 1,
+
+μ(x) = e−2V (x)/σ 20 ≤ e2c1/σ 20 |x|2b/σ 20 e−a|x|2/σ 20 ,
+
+40 so ∫ (1 + |x|2) μ dx < ∞; in particular μ is finite and all polynomial moments of μ converge. Since p0 = μh 0 ≤ C0 μ, we obtain ∫ |x|2p0 dx ≤ C0
+
+∫ |x|2μ dx < ∞.By Itô’s formula applied to |Xs|2
+
+dds E|Xs|2 = −2 E〈∇V (Xs), X s
+
+〉 + dσ 20 ≤ − 2a E|Xs|2 + 2 b + dσ 20 ,
+
+using (28) again. Grönwall then gives E|Xs|2 ≤ e−2as E|X0|2 + 2b+dσ 20 
+
+> 2a
+
+(1 − e−2as ), which is (29). Note that (28) is crucial here; see Remark 5.5. We now use Cole-Hopf. μ is invariant, and hs := ps/μ solves ∂sh = σ20 
+
+> 2
+
+∆h − ∇ V ·∇ h, i.e. 
+
+hs = Psh0 for the Markov semigroup of dX = −∇ V (X)d s + σ0dW . The Markov property gives c0 ≤ hs ≤ C0, hence ps ≥ c0μ > 0 and ps ≤ C0e−2 inf V /σ 20 ; together with the results above this shows (S1). Because the noise is additive, the Jacobian Js = ∇xXxs solves the pathwise ODE ˙Js =
+
+−∇ 2V (Xs)Js, so ‖Js‖ ≤ eκ+s; the second variation Ks = ∇2
+
+> x
+
+Xxs solves ˙Ks = −∇ 2V (Xs)Ks −∇3V (Xs)[ Js, J s] with K0 = 0 , so ‖Ks‖ ≤ L3T e 2κ+T . Differentiating Psh0(x) = E[h0(Xxs )] ,
+
+‖∇ hs‖∞ ≤ eκ+T ‖∇ h0‖∞, ‖∇ 2hs‖∞ ≤ e2κ+T (‖∇ 2h0‖∞ + L3T ‖∇ h0‖∞
+
+).
+
+Since ∇2 log ps = − 2
+
+> σ20
+
+∇2V + ∇2hs 
+
+> hs
+
+− ∇hs⊗∇ hs
+
+> h2
+> s
+
+, we obtain ‖∇ 2 log ps‖op ≤ M , hence (S2), (S3) and — ∇ log ps being globally M -Lipschitz — also (S4), exactly as in Proposition 5.2. 
+
+# C Density estimates used in Section 7 
+
+C.1 Proof of Lemma 7.5 
+
+As in Step 1 of Proposition 5.2, variation of constants gives ps = p(s)0 ∗ N (0 , ς 2 
+
+> s
+
+I) with p(s)0 (y) = 
+
+m−ds p0(y/m s), the noise being isotropic because σ is scalar and x-independent; and ς2 
+
+> s
+
+> 0 for 
+
+s > 0 by (E1), so ς2min > 0. Restricting the convolution integral to y ∈ msBρ, on which p(s)0
+
+has total mass ∫ 
+
+> Bρ
+
+p0 = μρ and |x − y| ≤ R + mmax ρ,
+
+ps(x) ≥
+
+∫
+
+> msBρ
+
+p(s)0 (y) e−| x−y|2/2ς2
+
+> s
+
+(2 πς 2 
+
+> s
+
+)d/ 2 dy ≥ μρ
+
+(2 πς 2max )d/ 2 e−(R+mmax ρ)2/2ς2min ,
+
+which is (47). Integrating 1/p s over [δ, T ] × BR gives the bound on κδ,R .
+
+C.2 Proof of Lemma 7.6 
+
+Under (E1)–(E2) and f ∈ L∞([0 , T ] × Rd; Rd) the operator in (5) is uniformly parabolic in divergence form with bounded measurable coefficients, so Aronson’s two-sided estimates [6] apply to its fundamental solution Γ( s, x ; 0 , y ): there are c1, c 2 > 0, depending only on d, ϵ and 
+
+‖f ‖L∞ , with 
+
+Γ( s, x ; 0 , y ) ≥ c1
+
+sd/ 2 exp 
+
+(
+
+− c2|x − y|2
+
+s
+
+)
+
+.
+
+Hence, for s ∈ [δ, T ] and |x| ≤ R, restricting the representation ps(x) = ∫ Γ( s, x ; 0 , y )p0(y)d y
+
+to y ∈ Bρ,
+
+ps(x) ≥ μρ inf  
+
+> |y|≤ ρ
+
+Γ( s, x ; 0 , y ) ≥ c1 μρ
+
+T d/ 2 exp 
+
+(
+
+− c2(R + ρ)2
+
+δ
+
+)
+
+> 0,
+
+and integrating 1/p s over [δ, T ] × BR gives the claim. 41
