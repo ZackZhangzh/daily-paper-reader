@@ -1,0 +1,453 @@
+Title: Intrinsic-Hybrid Latent Diffusion Models for Generative Modeling on Unknown Manifolds
+
+URL Source: https://arxiv.org/pdf/2608.04827v1
+
+Published Time: Thu, 06 Aug 2026 01:13:28 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+> 1
+
+# Intrinsic-Hybrid Latent Diffusion Models for Generative Modeling on Unknown Manifolds 
+
+Yizhu Wang, Mu Niu, and Xiaochen Yang 
+
+Abstract —We introduce the Intrinsic Hybrid Latent Diffu-sion Model (ILDM), a generative framework that integrates probabilistic dimensionality reduction with geometry-aware dif-fusion on unknown manifolds. While diffusion models (DMs) have achieved state-of-the-art results in high-dimensional data synthesis, they rely on large training datasets and ignore intrinsic geometric structure. Latent diffusion models (LDMs) address the high dimensionality by learning a latent space, but they typically impose a Euclidean structure, failing to capture the underlying manifold geometry, especially problematic in data-sparse regimes. ILDM addresses these limitations by interpreting the latent space as a chart of an unknown Riemannian manifold, with geometry and uncertainty quantified through a probabilistic decoder. The forward process is a hybrid diffusion that switches between Riemannian and Euclidean dynamics based on local uncertainty, where the Riemannian component is governed by a probabilistic metric tensor derived from the decoder. To learn the generative dynamics, we introduce an approximate denoising score matching method tailored to the hybrid diffusion setting, enabling a back-ward process defined by hybrid Langevin dynamics. Experiments on COIL-100, MNIST, and cardiac MRI datasets demonstrate that ILDM significantly improves generation quality, achieving lower FID and LPIPS scores compared to standard diffusion and latent diffusion models. 
+
+Index Terms —Unknown manifold, Latent diffusion model, Brownian Motion, Probabilistic generative model, Riemannian metric 
+
+I. I NTRODUCTION 
+
+# GENERATIVE modeling via diffusion processes has emerged as a transformative framework for synthesizing high-dimensional data, achieving state-of-the-art performance in tasks such as image generation [1, 2]. Recent progress has significantly expanded the applicability of diffusion-based models, enabling breakthroughs in diverse domains such as high-fidelity image synthesis [3] and text-to-video generation [4]. Central to this paradigm are score-based generative models [5, 6, 7], which learn to reverse predefined stochastic dif-ferential equations (SDEs) that gradually perturbs data into noise. Although recent advances [7] have unified the design of diffusion SDEs and improved sampling efficiency, these models usually require a large number of training data to generate good quality images, limiting their potential in sparse-data regimes. The manifold hypothesis [8] provides an impor-tant perspective on this issue: real-world data distributions of-ten concentrate near low-dimensional manifolds embedded in high-dimensional ambient spaces. This hypothesis empirically holds for many datasets and has become the foundation of manifold learning. Leveraging this intrinsic structure could, 
+
+Yizhu Wang, Mu Niu, and Xiaochen Yang are with the School of Mathe-matics and Statistics, University of Glasgow, Glasgow, U.K. 
+
+in principle, simplify generative modeling by reducing am-bient dimensionality. When the manifold geometry is known, various generative methods have been developed. Extrinsic ap-proaches [9, 10] embed the manifold into a higher-dimensional Euclidean space and define diffusion in the ambient space. While computationally convenient, these methods depend on access to accurate embeddings. Intrinsic approaches avoid embeddings by directly modeling diffusion on the manifold. De Bortoli et al. [11] used Geodesic Random Walks and heat kernel estimation, while Jo et al. [12] proposed bridge-based processes using the logarithm map. However, these methods require explicit knowledge of manifold operators, such as the Laplace-Beltrami eigenbasis, limiting their use to manifolds with explicitly known structure. In practice, however, the manifold geometry is often un-known. Latent diffusion models (LDMs) [13] address this challenge by learning a low-dimensional latent representation via a dimensionality reduction approach, such as the vari-ational autoencoder (VAE) [14] or Gaussian process (GP) decoder [15, 16, 17], and performing diffusion in this la-tent space. However, these approaches typically impose a Euclidean structure on the latent space, disregarding the true geometry of the underlying manifold. Additionally, they use dimensionality reduction only to create a low-dimensional space, ignoring it in the subsequent forward and backward diffusion processes. As a result, two challenges arise: i) geo-metric mismatch , where the forward and backward diffusion processes assume Euclidean dynamics that fail to reflect the geometry and metric variations of the manifold; and ii) sparse data degradation , where limited training data lead to increased reconstruction errors in regions of high mapping uncertainty, due to the lack of robustness of manifold learning methods beyond densely sampled area. In this work, we propose intrinsic hybrid latent diffusion models (ILDM), a generative framework that integrates prob-abilistic dimensionality reduction with geometry-aware hybrid diffusion processes. ILDM is particularly effective in data-sparse settings, where conventional diffusion models often struggle. At the core of ILDM is a hybrid diffusion model designed to operate on latent spaces learned via pretrained decoders. We interpret the latent space as a chart of an unknown manifold equipped with Riemannian metric. This metric encodes both the intrinsic geometry and the uncertainty of the latent-to- data mapping, forming the basis for geometry-aware diffusion. The forward process evolves as a mixture of Riemannian and Euclidean Brownian motion, switching dynamically based on mapping uncertainty. To learn the gen-erative dynamics, we estimate the time-dependent score func-arXiv:2608.04827v1 [stat.ML] 5 Aug 2026 2<latexit sha1_base64="SKu5/BFEibyNf8You4bKpoIY8Kw=">AAAB63icbVBNS8NAEJ3Ur1q/qh69LBbBU0lEWvFU8OKxgv2ANpTNdtMs3d2E3Y1QQv+CFw+KePUPefPfuGlz0NYHA4/3ZpiZFyScaeO6305pY3Nre6e8W9nbPzg8qh6fdHWcKkI7JOax6gdYU84k7RhmOO0nimIRcNoLpne533uiSrNYPppZQn2BJ5KFjGCTS8MkYqNqza27C6B14hWkBgXao+rXcByTVFBpCMdaDzw3MX6GlWGE03llmGqaYDLFEzqwVGJBtZ8tbp2jC6uMURgrW9Kghfp7IsNC65kIbKfAJtKrXi7+5w1SE974GZNJaqgky0VhypGJUf44GjNFieEzSzBRzN6KSIQVJsbGU7EheKsvr5PuVd1r1BsP17XWbRFHGc7gHC7Bgya04B7a0AECETzDK7w5wnlx3p2PZWvJKWZO4Q+czx8Uso5C</latexit> 
+
+# ω 
+
+> <latexit sha1_base64="kScT+Winkms9uWOLW2wljuyyrZM=">AAAB8nicbVDLSsNAFL2pr1pfVZdugkVwVRKR6rLgxmUF+4A2lMl00g6dzISZG6GEfoYbF4q49Wvc+TdO2iy09cDA4Zx7mXNPmAhu0PO+ndLG5tb2Tnm3srd/cHhUPT7pGJVqytpUCaV7ITFMcMnayFGwXqIZiUPBuuH0Lve7T0wbruQjzhIWxGQsecQpQSv1BzHBCSUi682H1ZpX9xZw14lfkBoUaA2rX4ORomnMJFJBjOn7XoJBRjRyKti8MkgNSwidkjHrWypJzEyQLSLP3QurjNxIafskugv190ZGYmNmcWgn84hm1cvF/7x+itFtkHGZpMgkXX4UpcJF5eb3uyOuGUUxs4RQzW1Wl06IJhRtSxVbgr968jrpXNX9Rr3xcF1rekUdZTiDc7gEH26gCffQgjZQUPAMr/DmoPPivDsfy9GSU+ycwh84nz+RaZFn</latexit>
+
+X <latexit sha1_base64="WFk1brCGHknwLGjTB4Xrn+dHssU=">AAAB8nicbVDLSsNAFL2pr1pfVZdugkVwVRKR6rLgxmVF+4A2lMl00g6dzISZG6GEfoYbF4q49Wvc+TdO2iy0emDgcM69zLknTAQ36HlfTmltfWNzq7xd2dnd2z+oHh51jEo1ZW2qhNK9kBgmuGRt5ChYL9GMxKFg3XB6k/vdR6YNV/IBZwkLYjKWPOKUoJX6g5jghBKR3c+H1ZpX9xZw/xK/IDUo0BpWPwcjRdOYSaSCGNP3vQSDjGjkVLB5ZZAalhA6JWPWt1SSmJkgW0Seu2dWGbmR0vZJdBfqz42MxMbM4tBO5hHNqpeL/3n9FKPrIOMySZFJuvwoSoWLys3vd0dcM4piZgmhmtusLp0QTSjaliq2BH/15L+kc1H3G/XG3WWt6RV1lOEETuEcfLiCJtxCC9pAQcETvMCrg86z8+a8L0dLTrFzDL/gfHwDidCRYg==</latexit> 
+
+S
+
+Fig. 1: Illustration of manifold parameterization for the COIL image dataset. The mapping ϕ : X → S projects latent points (blue triangles in the left sub-figure) to their corresponding images (six examples shown in the right sub-figure). Background shading in the latent space represents the uncertainty of ϕ, quantified as the variance of the mapping, which increases with distance from observed data points. 
+
+tion from simulated hybrid trajectories using an approximate denoising score matching objective. The backward process is formulated as a hybrid of Riemannian and Euclidean Langevin dynamics, guided by the learned scores and adjusted according to the Riemannian metric. We evaluated ILDM on three benchmark datasets under sparse data conditions, the ‘Lucky Cat’ object of COIL-100 [18], left ventricle cardiac MRI scans [19, 20] and sub-sets of MNIST [21]. ILDM consistently outperforms conven-tional score-based diffusion models(DM) and LDMs, achiev-ing lower Fr´ echet Inception Distance (FID) and LPIPS scores. II. C ONCEPTS OF RIEMANNIAN GEOMETRY AND DATA 
+
+NOISE MANIFOLD 
+
+A widely used strategy for modeling high-dimensional data is to map it into a lower-dimensional latent space via a set of (potentially nonlinear) functions. Previous works [22, 23] have explored the geometric properties of probabilistic gener-ative models for dimensionality reduction – such as Gaussian process decoders (GP decoders) and VAEs. These models define a latent manifold embedded in high-dimensional space via a probabilistic mapping from the latent coordinates. As illustrated in Figure 1 for the ’Lucky Cat’ object of COIL dataset, latent points (blue triangles) are mapped to the image space through a mapping function ϕ, revealing a compact and structured representation of the data. In this work, we adopt both GP decoders and VAEs for dimensionality reduction. These decoders are pretrained prior to training the diffusion models, and their parameters remain fixed throughout [13]. Serving as a bridge between the image space and latent space, they enable diffusion processes to operate efficiently within the lower-dimensional latent domain. Additional descriptions of GP decoders and VAEs are provided in the Appendix H. Let si ∈ Rp denote the observed data point (or image) in a high-dimensional space (or image space). We define S =
+
+{si|i = 1 , · · · , n }, where S ∈ Rn×p. To model the data, we introduce latent variables xi, where xi ∈ Rq with q < p .We have X = {xi|i = 1 , · · · , n }, where X ∈ Rn×q . The latent variables xi are linked to the observed data si via a probabilistic mapping: 
+
+si = ϕ(xi) + ei, (1) where ei is an independent Gaussian noise term, and ϕ is modeled by the decoder. It is important to recognize that not all points in the latent space yield plausible reconstructions in the data space. Probabilistic decoders often extrapolate poorly in regions far from training data. In these regions, reconstructions are dominated by noise. Unlike the data manifold assumed in classical manifold learning approaches [24, 25], where every point corresponds to a valid high dimensional observation, in our setting, the latent space describes a data noise manifold :a q-dimensional sub-manifold embedded in the p-dimensional data space, capturing both meaningful data structures and the surrounding regions dominated by noise. The latent space X serves as a chart for this manifold. Intuitively, a chart provides a locally distorted view of the underlying manifold. While distances and measurements are defined intrinsically on the manifold, they can be computed locally in the chart (or latent space) and then integrated to obtain global quantities. This leads naturally to the notion of a Riemannian metric g: a smoothly varying, symmetric, positive-definite matrix that defines an inner product on the tangent space at each point of the manifold [26]. Let M be a q-dimensional Riemannian manifold with the Riemannian metric g. The metric quantifies how infinitesimal perturbations in the latent space are stretched or compressed when mapped to the data space via ϕ, and thus governs the geometry-aware behavior of diffusion processes on the manifold. Formally, let ϕ : Rq → Rp be the mapping from latent to data space, and let J denote its Jacobian matrix. The Riemannian metric g is given by: 
+
+g = J ⊤J , with Ji,j = ∂ϕ i
+
+∂x j , (2) where the superscript i = 1 , . . . , p indexes the data-space dimensions, and j = 1 , . . . , q indexes the latent dimensions. The metric g ∈ Rq×q encodes local geometric distortions introduced by the mapping ϕ. For notational simplicity, we write g without explicitly indexing its dependence on x,though it is understood to be position-dependent in latent space. When using GP decoders, the mapping ϕ is modeled as a multivariate Gaussian distribution, and so does the Jacobian [27], p(J |X , S ) = Qpl=1 N (μlJ , ΣJ ). The corresponding metric follows a noncentral Wishart distribution [28]. We use the mean of the noncentral Wishart distribution to define g as 
+
+g = E(J ⊤)E(J ) + pΣJ . (3) Further details and expressions for μlJ and ΣJ are provided in Appendix H-A. For VAEs, where the uncertainty of the mapping is not explicit, we can use the formulation in Equa-tion (2) to construct the metric. Additional details on metric construction for VAEs are given in Appendix H-B. III. I NTRINSIC HYBRID LATENT DIFFUSION MODEL 
+
+Following the construction of the mapping ϕ and the asso-ciated Riemannian metric g on the latent space, we now turn to the task of defining diffusion processes that are consistent with the learned manifold structure. In particular, we aim to 3Score 
+
+> Matching
+> Hybrid Forward
+> process
+> Hybrid
+> Langevin
+> Reconstruct
+
+Fig. 2: Score-based generative model on the data noise manifold. The blue triangles in each sub-figure represent the data points in the latent space. The left sub-figure shows three Brownian motion (BM) paths in the latent space. Starting from the black circle, the red and green paths follow Riemannian BM, while the yellow path initially follows Riemannian BM but switches to Euclidean BM when it enters the high uncertainty (dark) region. Once the BM paths are simulated, the vector field of score function ( ∇x log p(x(t)) ) is learned as described in Section III-B. The gradients at some grid points are shown in middle sub-figure, and they clearly point toward the data points (blue triangles). The learned scores are then used to construct the backward process. The right panel shows two backward paths, which start from white circles and converge toward the data distribution. 
+
+model stochastic dynamics that respect the intrinsic geometry of the manifold and adapt to varying levels of uncertainty across different regions of the latent space. In standard score-based generative modeling, data are pro-gressively perturbed across multiple noise scales, and the evolution of the perturbed distributions is governed by SDEs in Euclidean space. Here, we generalize this idea by consid-ering diffusion processes that evolve on the learned manifold. However, as discussed earlier, the estimated metric g becomes unreliable in regions far from the training data, where the uncertainty of the mapping ϕ is high. To address this, we introduce a hybrid diffusion approach: in regions of low uncertainty, we simulate manifold-based stochastic processes; in high-uncertainty regions, we switch to standard Euclidean dynamics, where manifold structure is less informative. This allows the generative process to naturally account for geometry and uncertainty of the unknown manifold. In the following, we formalize the forward and backward diffusion processes under this hybrid approach. We also de-scribe how score estimation is adapted to this setting, where closed-form transition densities are not available. An overview of the proposed framework is provided in Figure 2. 
+
+A. Forward process 
+
+We define the forward process {x(t)}Tt=0 on the unknown manifold, indexed by a continuous time variable t ∈ [0 , T ].We denote the probability density of x(t) by pt(x). The initial state follows x(0) ∼ p0, where p0 represents the data distribution, and we have access to an i.i.d. dataset of samples. The terminal state is distributed as x(T ) ∼ pT ,where pT serves as the prior distribution, from which we can generate samples. The transition density from x(ti) to x(tj )is denoted as ptitj (x(ti)|x(tj )) . The forward process alternates between two types of diffusion mechanisms, depending on the uncertainty in ϕ. In confident regions, we simulate Riemannian Brownian motion (BM) on manifold. Conversely, in high-uncertainty regions, we transition to the BM in Euclidean space, a special case of variance-exploding SDEs as introduced in [7]. Given the estimate of the metric g as in Section II, the BM on a Riemannian manifold in a local coordinate system is formulated as a system of SDEs in the Itˆ o form [29, 30]: 
+
+dx i(t) = 12 G−1/2
+
+> q
+
+X
+
+> j=1
+
+∂∂x j
+
+
+
+g−1ij G1/2
+
+dt +
+
+
+
+g−1/2db (t)
+
+
+
+> i
+
+(4) where G is the determinant of g, b(t) represents an indepen-dent BM in the Euclidean space, and i is the i-th dimension of the latent space. The discretized version of the SDEs is derived from the Euler-Maruyama method [31, 32]: 
+
+xi(t) = xi(t − ∆t) + 12
+
+> q
+
+X
+
+> j=1
+
+−g−1 ∂g
+
+∂x j g−1
+
+!
+
+> ij
+
+∆t
+
++ 14
+
+> q
+
+X
+
+> j=1
+
+(g−1)ij tr g−1 ∂g
+
+∂x j
+
+!
+
+∆t +  g−1/2db (t)
+
+> i
+
+= μ xi(t − ∆t), ∆t +  √∆t g−1/2zt
+
+ 
+
+> i
+
+(5) where ∆t is the diffusion time of each step of the BM simu-lation, tr (·) is the trace operator, zt represents a q-dimensional Gaussian-distributed random vector, and μ(x(t−∆t), ∆t) de-notes the drift term consisting of the first three deterministic components in the discretized update rule. Notably, both the drift and diffusion terms depend on g, which varies with position x in the latent space. The estimated metric g is only reliable in regions of low mapping uncertainty. 
+
+Hybrid Switching. The reliability of the Riemannian met-ric is determined by the predictive variance σ2(x) of the mapping ϕ(x). As a point in the latent space moves away from the data, the variance increases and eventually plateaus at the maximum value σ2
+
+> max
+
+. In the case of GP decoder, 
+
+σ2max corresponds to the model’s prior variance. To determine whether the forward process should follow manifold-based or Euclidean dynamics, we introduce a switching threshold 4
+
+based on this maximum predictive variance. Specifically, we introduce a scaling parameter α ∈ (0 , 1) and set the switching threshold σ2 
+
+> thresh
+
+as the fraction of the maximum variance: 
+
+σ2 
+
+> thresh
+
+= α σ 2max . When σ2(x) < σ 2
+
+> thresh
+
+, the forward process follows Riemannian BM on the learned manifold; otherwise, it switches to Euclidean BM. This allows the model to leverage the geometric structure where ϕ is confident, while permitting more flexible exploration in high-uncertainty regions. There is no closed-form solution for this hybrid forward process. 
+
+p0t(xt|x0) is not tractable. Nevertheless, the hybrid SDE can be simulated numerically using schemes such as Euler-Maruyama. Figure 2 (left) illustrates three representative hy-brid forward trajectories initialized from the same starting point (black circle). While two trajectories (red, green) remain as Riemanian BM throughout, the third (yellow) switches to Euclidean dynamics upon entering a high-uncertainty region. The complete simulation procedure is detailed in Algorithm 1. An ablation study examining the impact of α on generative quality is provided in Appendix B. We empirically tested 
+
+α ∈ { 0.3, 0.4, 0.5}, corresponding to thresholds at 30% −50% 
+
+of σ2max , respectively. Across all settings, the ILDM-generated images consistently achieved lower FID scores compared to those produced by the standard LDM, indicating improved sample quality. In practice, the value of α can be treated as a tunable hyperparameter and selected via cross-validation. While this work specifically considers BM in Rq for high uncertainty regions, our framework is flexible and could in-corporate alternative SDEs in high uncertainty region, such as those described in [7]. For VAEs, a related construction of Riemannian metrics and uncertainty-driven dynamics is provided in Appendix H-B. 
+
+Algorithm 1 Forward Diffusion Process on Unknown Mani-fold 
+
+Input: Learn metric g from point cloud S = {si | i =1, . . . , n d}; nf : Number of starting points; nBM : Number of trajectories per starting point; ntf : Number of diffusion steps; ∆tf : Step size; σ2
+
+> thresh
+
+: Switching variance threshold. 
+
+Output: Simulation trajectories x.
+
+for i = 1 , . . . , n f do for j = 1 , . . . , n BM do for l = 1 , . . . , n tf do if Var( ϕ(xi,j (l−1))) < σ 2 
+
+> thresh
+
+then 
+
+q(xi,j (l) | xi,j (l−1)) ←N
+
+
+
+xi,j (l) μ(xi,j (l−1) , ∆tf ) ,
+
+∆tf g−1
+
+
+
+> (Eq. (5))
+
+else 
+
+q(xi,j (l) | xi,j (l−1)) ←N
+
+
+
+xi,j (l) xi,j (l−1) , ∆tf
+
+
+
+end if end for end for end for return x
+
+B. Estimating Scores via Time-Dependent Score Matching 
+
+To enable generative sampling in our ILDM, we require estimating the time-dependent score function ∇x log pt(x),where pt(x) is the density of the forward process at time 
+
+t. This score function is approximated by a neural network 
+
+sθ (x, t ) : Rq × [0 , T ] → Rq , which we train using variants of score matching [33, 34]. In standard LDMs, where the forward process operates in Euclidean latent space and admits a closed-form transition density, denoising score matching (DSM) can be directly applied to supervise the score network using known perturbation distributions [2, 5]. However, in ILDM, the forward process is governed by a hybrid SDEs on an unknown manifold. The transition density p0t(xt|x0) is intractable, precluding the direct use of standard DSM. To address this challenge, we consider two approaches based on simulated forward trajectories: a sliced score match-ing (SSM) objective adapted from Song and Ermon [2], and a novel approximate denoising score matching (ADSM) objec-tive developed in this work. Both methods rely on simulating the forward SDEs paths (Algorithm 1) to obtain samples from the transition distribution, which are then used to train the score network. In ADSM, for each x0 ∼ p0, we simulate nBM paths of the hybrid forward SDEs, each with ntf steps (see Algorithm 1 ). We approximate the intractable transition density p0t(xt | x0)
+
+by a Gaussian N (˜ μt, ˜τ 2 
+
+> t
+
+), where ˜μt and ˜τ 2 
+
+> t
+
+denote the sample mean and variance of simulated trajectories at time t, stating from that specific x0. This yields an approximation of the score function: ∇x log p0t(xt | x0) ≈ xt−˜μt 
+
+> ˜τ2
+> t
+
+, which we use to define the following training objective: 
+
+θ = arg min  
+
+> θ
+
+Et
+
+(
+
+λ(t)Ex(0) Ex(t)|x(0) 
+
+"
+
+sθ (xt, t ) · ˜τt
+
+− xt − ˜μt
+
+˜τt
+
+> 2
+
+#) 
+
+, (6) where λ(t) : [0 , T ] → R+ is a time-dependent weighting func-tion. Here, λ(t) is computed using the marginal variance of xt,estimated over all simulated trajectories at time t, aggregated across all x0. This global weighting scheme stabilizes training and ensures consistent scaling across time steps, in line with the noise-aware weighting strategy in Song and Ermon [2]. The score network sθ (x, t ) is implemented as a U-Net with convolution layers (appendix G). Alternatively, SSM also offers a density-free approach to score estimation based on random directional projections. Following Song et al. [7], we define the objective as: 
+
+θ = arg min  
+
+> θ
+
+Et
+
+(
+
+λ(t)Ex(0) Ex(t)Ev∼pv
+
+"
+
+12 sθ (x(t), t ) 22
+
++ v⊤∇xsθ (x(t), t )v
+
+#) 
+
+, (7) where v ∼ pv is a random direction vector drawn from a standard multivariate Gaussian distribution. While SSM circumvents the need for transition densities, it can suffer from slow convergence in high dimensions due to its reliance 5
+
+on random projections, which yield high-variance gradient estimates. In contrast, ADSM yields more stable and efficient opti-mization. Despite assuming a Gaussian approximation to the conditional distribution, our experiments demonstrate that the estimated score field closely aligns with that from SSM. In both methods, evaluating the score network sθ (xt, t ) at grid points in latent space yields a vector field, which can be interpreted the gradient of the log-density. Throughout, we use the terms score function and vector field interchangeably. Additional comparisons of vector field visualizations and training stability for Approximate DSM and SSM are provided in Appendix B. To illustrate the impact of geometry-aware score estimation, we compare ILDM (via ADSM) with the standard LDM using the COIL image dataset. Figure 3 shows the learned vector field in latent space. In ILDM (left panel), the estimated vector field consistently points toward data distribution (blue triangles), accurately capturing the local geometry of the data distribution. In contrast, the LDM vector field (right panel) predominantly points toward the center of the latent space, where no data exist, revealing its failure to capture the underlying manifold structure. 
+
+C. Backward process 
+
+After training the time-dependent score model sθ (xt, t ), we construct the backward process to draw samples from the data distribution p0. The backward process is designed as a hybrid of Euclidean and Riemannian Langevin dynamics [35, 36], adapting to the uncertainty in ϕ.Starting from x(t) ∼ pT , we simulate the backward process to obtain samples x(0) ∼ p0. In regions of high mapping uncertainty, the process follows Euclidean Langevin dynamics. Since we are running the process backward in time (time flows from T to 0), the corresponding SDE is given by 
+
+dx (t) = − 12 ∇x log( p(x(t))) dt + db (t), (8) where b(t) is a independent Euclidean BM and dt is an infinitesimal negative timestep. Replacing the score 
+
+∇x log p(x(t)) with the learned estimator sθ (xt, t ), we can simulate the SDE with numerical solver, which discretizes the SDE using finite time steps and small Gaussian noise. In low uncertainty regions, we employ Riemannian Langevin dynamics [35]. The corresponding backward-time SDE is given by 
+
+dx (t) = − 12 g−1∇x log pt(x(t)) dt + d ˜B(t), (9) where g−1∇x log pt(x(t)) is the natural gradient [37], and 
+
+˜B(t) is the Brownian motion on manifolds. If we expand Equation (9) for the i-th coordinate of the latent space and replace ∇x log pt(x(t)) with the estimated score sθ (xt, t ), we obtain the following SDEs: 
+
+dx i(t) = −
+
+ 12 g−1sθ (xt, t )dt 
+
+
+
+> i
+
++ 12 G−1/2
+
+> q
+
+X
+
+> j=1
+
+∂∂x j
+
+
+
+g−1ij G1/2
+
+dt 
+
++
+
+
+
+g−1/2db (t)
+
+
+
+> i
+
+. (10) As with the forward process, the hybrid backward SDE is simulated using Euler-Maruyama, with a switching rule based on the variance of mapping function. The variance threshold 
+
+σ2 
+
+> thresh
+
+is defined as in Section III-A. The discretization details of equation (10) are given in Appendix A. Figure 2 (right panel) illustrates example trajectories of the backward hybrid process. Two paths are initialized from points in high-uncertainty regions (dark), far from the data distribution. The trajectories initially follow the Euclidean Langevin diffusion and move with large steps. As they enter the low uncertainty region (white), the dynamics switch to Riemmanian Langevin updates and converge towards the data distribution. The complete backward sampling procedure is presented in Algorithm 2.  
+
+> (a) Vector field of ILDM (b) Vector field of LDM
+
+Fig. 3: Comparison of vector field estimates from ILDM (a) and LDM (b). 6
+
+Algorithm 2 Backward Langevin Process on Unknown Man-ifold 
+
+Input: nb: Number of backward points; nLa : Number of trajectories; ntb : Number of backward steps; ∆tb: Step size; σ2
+
+> thresh
+
+: Variance threshold; G: Riemannian metric; xT :Terminal states. 
+
+Output: Reconstructed ˜x.Initialize backward starting points xi,j (ntb ) ← xT .
+
+for i = 1 , . . . , n b do for j = 1 , . . . , n La do for l = ntb , . . . , 1 do if Var( ϕ(xi,j (l))) < σ 2 
+
+> thresh
+
+then 
+
+q(xi,j (l−1) | xi,j (l)) ←N
+
+
+
+xi,j (l−1) ˜μ(xi,j (l), ∆tb) ,
+
+∆tb G−1
+
+
+
+> (Eq. 12)
+
+else 
+
+q(xi,j (l−1) | xi,j (l)) ←N
+
+
+
+xi,j (l−1) μ(xi,j (l), ∆tb) ,
+
+∆tb
+
+
+
+> (Eq. 13)
+
+end if end for end for end for return ˜x
+
+D. Controllable generation with classifier-free guidance 
+
+We can extend our framework to class conditional gener-ation using classifier-free guidance. Following the approach of Ho and Salimans [38], we train a conditional score net-work sθ (x, t, c ) alongside an unconditional score network 
+
+sθ (x, t ) := sθ (x, t, c = ∅), both implemented using a shared U-Net architecture [34]. The networks are jointly optimized using the approximate DSM objective (Equation (6)). During training, the conditioning input c is randomly set to null with probability puncond , allowing the model to simultaneously learn both conditional and unconditional score functions. As demonstrated in Ho and Salimans [38], Dhariwal and Nichol [39], small values of puncond ∈ { 0.1, 0.2} are sufficient for effective guidance without compromising conditional model performance. We adopt a similar setting and find it adequate for high-quality guided sampling within our ILDM framework. Detailed algorithms for training the joint score network are provided in Appendix C. A comparison of the conditional vector fields produced by ILDM and LDM is presented in Figure 4. The experiment considers two conditions corresponding to front and back views of the ‘lucky cat’ object. In the latent space, the front-view samples (blue triangles) are concentrated on the right-hand side in Figure 4(a). As shown, the vector field generated by ILDM (red arrows) consistently points toward this region, indicating precise guidance toward the conditional data distribution. In contrast, the LDM vector field in Figure 4(b) exhibits disorganized and inconsistent directions, failing to accurately capture the conditional structure. When performing backward sampling, classifier-free guid-ance is implemented by linearly combining the conditional and unconditional score estimates, following the approach of Ho and Salimans [38] and Salimans and Ho [40] 
+
+˜sθ (x, t, c ) = (1 + w)sθ (x, t, c ) − ws θ (x, t ), (11) where the guidance weight w ≥ 0 controls the strength of the conditional signal. When w = 0 , the model performs unconditional generation. As demonstrated in prior work [38], guidance strengths of w ≥ 4 typically yield strong guide. De-tailed algorithms for classifier free guidance sampling process and conditional generated images are provided in Appendix C. IV. E XPERIMENTS 
+
+We evaluate the proposed ILDM on three benchmark datasets: the ‘lucky cat’ object from COIL-100 [18], a subset of MNIST [21], and cardiac MRI scans [19, 20]. These datasets vary in structure and dimensionality, allowing us to assess ILDM’s ability to adapt to different underlying geometries. We compare ILDM against standard diffusion models (DM) and latent diffusion models (LDM), using both qualitative reconstructions and quantitative metrics: Fr´ echet Inception Distance (FID) and Learned Perceptual Image Patch Similarity (LPIPS)[41, 42]. For completeness, the specific SDEs used to implement LDM and DM baselines are detailed in Appendix I. 
+
+A. COIL-100 Images 
+
+We first evaluate the proposed ILDM with approximate denoising score matching on the Lucky Cat object from the COIL-100 dataset. The dataset contains 72 color images of the object, each with a resolution of 128×128 pixels and captured at 5° increments to span a complete 360° view. A GP decoder (shown in appendix H-A) is pretrained to embed the images to a two-dimensional latent space which defines the Riemannian metric used for diffusion. Figure 5 provides a qualitative comparison of image re-constructions. Figure 5(a) shows a subset of training images. Figure 5(b) presents samples generated by ILDM with the approximate DSM objective. The reconstructions preserve the global structure, shape, and color consistency of the original object across multiple views, indicating that ILDM success-fully captures the data distribution on the unknown manifold. In comparison, Figure 5(c) presents samples generated by a standard LDM that performs diffusion in a Euclidean latent space without geometric awareness. These samples exhibit visible distortions and artifacts, particularly in finer details. Figure 5(d) shows samples generated by score based diffusion model, which largely fail to produce meaningful structure and resemble noise. More generated images can be found in the Appendix D. We further assess model performance using quantitative measures. Table I summarizes results for three models: ILDM, standard LDM, and a baseline image-space diffusion model (DM). All models generate 200 samples, which are evalu-ated using the Fr´ echet inception distance (FID) and learned 7 
+
+> (a) Condition vector field estimated by ILDM (b) Condition vector field estimated by LDM
+
+Fig. 4: Comparison of conditional vector fields estimated by ILDM (a) and LDM (b) under the ‘front view’ condition. The blue triangles on the right half of the latent space represent samples from the true conditional distribution corresponding to the front view of the object. In (a), the ILDM vector field (red arrows) consistently points toward these regions, capturing the correct conditional structure. In contrast, (b) shows the LDM vector field, which is disorganized and misaligned with the target distribution. 
+
+(a) Original images (b) ILDM reconstruction 
+
+(c) LDM reconstruction (d) DM reconstruction 
+
+Fig. 5: Comparison of COIL-100 Lucky Cat image reconstructions using different methods. (a) Original input images. (b) Images generated by ILDM with approximate DSM. (c) Images generated by the LDM method. (d) Images generated by the DM method. 
+
+perceptual image patch similarity (LPIPS). Lower FID and LPIPS scores indicate better visual fidelity and perceptual similarity, respectively. Among the three models, the ILDM achieves the best overall performance, obtaining the lowest FID (154.12) and LPIPS (0.5049) scores. The LDM performs moderately well but suffers from degraded perceptual quality. The baseline DM yields significantly higher FID and LPIPS TABLE I: Performance comparison of diffusion models on the COIL image dataset. Evaluation metrics include FID and LPIPS, where lower values indicate better image quality and perceptual similarity.          
+
+> Method ILDM LDM DM
+> FID ↓154.12 171.07 352.17 LPIPS ↓0.5049 0.5442 1.2905
+
+values, indicating less effective image synthesis under the same evaluation. Additional results for class-conditioned gen-eration are provided in Appendix C. 
+
+B. Left Ventricle Cardiac MRI 
+
+We then evaluate the proposed ILDM on a cardiac magnetic resonance image (MRI) dataset focused on the left ventri-cle. This dataset is constructed from two publicly available sources: the Automatic Cardiac Diagnosis Challenge (ACDC) and the MICCAI 2020 Left Ventricle Challenge [19, 20]. The dataset comprises 110 healthy subjects and 100 subjects diagnosed with hypertrophic cardiomyopathy (HCM). Each subject contributes two short-axis MRI slices, yielding a total of 330 images. All images were resampled to a resolution of 128 × 128 pixels. Each image was cropped around the region of interest, specifically focusing on the heart, as illustrated in Figure 6(a). The preprocessed images were then encoded into a five-dimensional latent space for subsequent diffusion. Figure 6(b) displays images generated by the ILDM method, which largely preserves the overall shape, features, and clear contours. Figure 6(c) shows the result generated by the LDM method, in which the contours are blurred and the shapes do not form clearly. This comparison underscores the enhanced representational and generative abilities of the ILDM method in reconstruction tasks. Additional generated heart images can be found in the Appendix E. 8
+
+(a) Original images (b) ILDM reconstruction 
+
+(c) LDM reconstruction (d) DM reconstruction 
+
+Fig. 6: Comparison of cardiac MRI image reconstructions using different generative models. (a) Original input images. (b) Images generated by the proposed ILDM method. (c) Images generated by LDM. (d) Images generated by DM. 
+
+TABLE II: Performance comparison on the left ventricle cardiac MRI dataset. Evaluation metrics include FID and LPIPS, where lower values indicate better image quality and perceptual similarity.          
+
+> Method ILDM LDM DM
+> FID ↓162.94 221.88 404.53 LPIPS ↓0.5118 0.5278 0.7241
+
+Table II presents the quantitative results. ILDM achieves the best overall performance, yielding the lowest FID score (162.94) and LPIPS score (0.5118). These results highlight ILDM’s ability to more accurately model the structural and visual characteristics of cardiac MRI data compared to LDM and DM. 
+
+C. MNIST 
+
+We further evaluate our method on a subset of the MNIST dataset [21], a widely used benchmark composed of grayscale images of handwritten digits (0–9), each with a resolution of 28×28 pixels. For training purposes, we specifically extracted 120 images corresponding to digits 3, 8, and 9. To reflect the intrinsic dimensionality of the underlying manifold, as estimated in prior work [43], we encoded the input images into a 10-dimensional latent space. Representative examples of the selected input images are illustrated in Figure 7a: Figure 7 provides a comparative analysis of MNIST image reconstructions produced by different models. Specifically, the 
+
+(a) Original images (b) ILDM reconstruction 
+
+(c) LDM reconstruction (d) DM reconstruction 
+
+Fig. 7: Comparison of MNIST image reconstructions using different generative models. (a) Original input images. (b) Images generated by the ILDM method. (c) Images generated by the LDM. (d) Images generated by the DM. 
+
+Intrinsic Latent Diffusion Model (ILDM) 7(b) generates re-constructions that are more faithful to the original inputs 7(a), preserving the fine details and overall structure of the digits. Compared to the standard Latent Diffusion Model (LDM) 7(c), the ILDM outputs exhibit clearer contours and more coherent shapes. For a more extensive set of generated MNIST samples, readers are referred to Appendix F. We further compare the results quantitatively using FID and LPIPS, as shown in Table III: TABLE III: Performance comparison on a subset of the MNIST dataset. Evaluation metrics include FID and LPIPS, where lower values indicate better image quality and percep-tual similarity.          
+
+> Method ILDM LDM DM
+> FID ↓136.70 155.93 353.65 LPIPS ↓0.6816 0.6891 0.8892
+
+Table III provides a quantitative evaluation using FID and LPIPS metrics. The Riemannian LDM achieves the lowest FID score (136.70), outperforming both the standard LDM (155.93) and the baseline image-space DM (353.65). In terms of perceptual similarity, RLDM also performs best, obtaining a slightly lower LPIPS value (0.6816) compared to LDM (0.6891). These results suggest that ILDM better captures the underlying digit structure and perceptual characteristics even in limited-data settings. 9
+
+V. C ONCLUSION 
+
+In this work, we propose the Intrinsic Hybrid Latent Dif-fusion Model (ILDM), a novel generative framework that combines probabilistic dimensionality reduction with score-based diffusion on unknown manifolds. By modeling the latent space as a chart of an data driven Riemannian manifold with geometry induced by a pre-trained mapping function, ILDM captures both the intrinsic geometric structure of the data and the uncertainty of the generative mapping. This integration enables faithful sampling through a hybrid diffusion process that adaptively transitions between Riemannian and Euclidean dynamics based on mapping uncertainty. Empirical evaluations on COIL-100, MNIST, and cardiac MRI datasets show that ILDM consistently outperforms standard diffusion and latent diffusion models in perceptual quality (LPIPS) and fidelity (FID). These findings demonstrate how geometry-aware and uncertainty-adaptive modeling can enhance generative per-formance, especially when training data is limited. Future directions include extending ILDM to more expressive decoder architectures, such as attention-based models, and developing more computationally efficient methods for hybrid diffusion sampling and score estimation. REFERENCES 
+
+[1] J. Ho, A. Jain, and P. Abbeel, “Denoising diffusion probabilistic models,” Advances in neural information processing systems, vol. 33, pp. 6840–6851, 2020. [2] Y. Song and S. Ermon, “Generative modeling by esti-mating gradients of the data distribution,” Advances in neural information processing systems, vol. 32, 2019. [3] T. Karras, M. Aittala, and S. Laine, “Elucidating the design space of diffusion-based generative models,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, 2023. [4] U. Singer et al., “Text-to-video generation,” in NeurIPS, 2023. [5] P. Vincent, “A connection between score matching and denoising autoencoders,” Neural computation, vol. 23, no. 7, pp. 1661–1674, 2011. [6] J. Sohl-Dickstein, E. Weiss, N. Maheswaranathan, and S. Ganguli, “Deep unsupervised learning using nonequi-librium thermodynamics,” in International conference on machine learning. pmlr, 2015, pp. 2256–2265. [7] Y. Song, J. Sohl-Dickstein, D. P. Kingma, A. Kumar, S. Ermon, and B. Poole, “Score-based generative mod-eling through stochastic differential equations,” arXiv preprint arXiv:2011.13456, 2020. [8] C. Fefferman, S. Mitter, and H. Narayanan, “Test-ing the manifold hypothesis,” Journal of the American Mathematical Society, vol. 29, no. 4, pp. 983–1049, 2016. [9] L. Lin, N. Mu, P. Cheung, and D. Dunson, “Extrinsic gaussian processes for regression and classification on manifolds,” Bayesian Analysis, vol. 14, no. 3, pp. 887– 906, 2019. [10] C.-W. Huang, M. Aghajohari, J. Bose, P. Panangaden, and A. C. Courville, “Riemannian diffusion models,” Advances in Neural Information Processing Systems, vol. 35, pp. 2750–2761, 2022. [11] V. De Bortoli, J. Xu, J. Thornton et al., “Riemannian diffusion models,” in NeurIPS, 2022. [12] M. Jo, J. Ha et al., “Generative modeling on manifolds through mixture of riemannian diffusion processes,” in AISTATS, 2024. [13] R. Rombach, A. Blattmann, D. Lorenz, P. Esser, and B. Ommer, “High-resolution image synthesis with latent diffusion models,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition, 2022, pp. 10 684–10 695. [14] D. P. Kingma, M. Welling et al., “An introduction to variational autoencoders,” Foundations and Trends® in Machine Learning, vol. 12, no. 4, pp. 307–392, 2019. [15] N. Lawrence, “Probabilistic non-linear principal com-ponent analysis with gaussian process latent variable models,” Journal of machine learning research, vol. 6, no. Nov, pp. 1783–1816, 2005. [16] N. D. Lawrence, “Learning for larger datasets with the gaussian process latent variable model,” in Artificial intelligence and statistics, 2007, pp. 243–250. [17] P. Moreno-Mu˜ noz, C. Feldager, and S. Hauberg, “Revis-10 
+
+iting active sets for gaussian process decoders,” Advances in Neural Information Processing Systems, vol. 35, pp. 6603–6614, 2022. [18] S. A. Nene, S. K. Nayar, H. Murase et al., “Columbia object image library (coil-100),” 1996. [19] O. Bernard, A. Lalande, C. Zotti, F. Cervenansky, X. Yang, P.-A. Heng, I. Cetin, K. Lekadir, O. Camara, M. A. G. Ballester et al., “Deep learning techniques for automatic mri cardiac multi-structures segmentation and diagnosis: is the problem solved?” IEEE transactions on medical imaging, vol. 37, no. 11, pp. 2514–2525, 2018. [20] V. M. Campello, J. F. R. Palomares, A. Guala, M. Marakas, M. Friedrich, and K. Lekadir, “Multi-centre, multi-vendor and multi-disease cardiac image segmentation challenge,” 2020. [Online]. Available: https://zenodo.org/record/3886268 [21] Y. LeCun, L. Bottou, Y. Bengio, and P. Haffner, “Gradient-based learning applied to document recogni-tion,” Proceedings of the IEEE, vol. 86, no. 11, pp. 2278– 2324, 1998. [22] A. Tosi, S. Hauberg, A. Vellido, and N. D. Lawrence, “Metrics for probabilistic geometries,” arXiv preprint arXiv:1411.7432, 2014. [23] G. Arvanitidis, S. Hauberg, P. Hennig, and M. Schober, “Fast and robust shortest paths on manifolds learned from data,” in The 22nd International Conference on Artificial Intelligence and Statistics. PMLR, 2019, pp. 1506–1515. [24] M. Belkin and P. Niyogi, “Laplacian eigenmaps for dimensionality reduction and data representation,” Neural computation, vol. 15, no. 6, pp. 1373–1396, 2003. [25] S. T. Roweis and L. K. Saul, “Nonlinear dimensionality reduction by locally linear embedding,” science, vol. 290, no. 5500, pp. 2323–2326, 2000. [26] J. M. Lee, Introduction to smooth manifolds, 2nd ed., ser. Graduate Texts in Mathematics. Springer, New York, 2013, vol. 218. [27] C. E. Rasmussen and C. K. Williams, Gaussian processes for machine learning. MIT press Cambridge, MA, 2006, vol. 2, no. 3. [28] T. W. Anderson, “The non-central wishart distribution and certain problems of multivariate statistics,” The Annals of Mathematical Statistics, pp. 409–431, 1946. [29] P. Hsu, “Brownian motion and Riemannian geometry,” Contemporary Mathematics, vol. 73, pp. 95–104, 1988. [30] E. P. Hsu, “A brief introduction to Brownian motion on a Riemannian manifold,” Lecture Notes, 2008. [31] P. E. Kloeden and E. Platen, “Higher-order implicit strong numerical schemes for stochastic differential equa-tions,” Journal of Statistical Physics, vol. 66, no. 1, pp. 283–314, 1992. [32] D. Lamberton and B. Lapeyre, Introduction to Stochastic Calculus Applied to Finance. CRC press, 2007. [33] A. Hyv¨ arinen and P. Dayan, “Estimation of non-normalized statistical models by score matching.” Journal of Machine Learning Research, vol. 6, no. 4, 2005. [34] O. Ronneberger, P. Fischer, and T. Brox, “U-net: Convolutional networks for biomedical image segmentation,” in Medical image computing and computer-assisted intervention–MICCAI 2015: 18th international conference, Munich, Germany, October 5-9, 2015, proceedings, part III 18. Springer, 2015, pp. 234– 241. [35] M. Girolami and B. Calderhead, “Riemann manifold langevin and hamiltonian monte carlo methods,” Journal of the Royal Statistical Society Series B: Statistical Methodology, vol. 73, no. 2, pp. 123–214, 2011. [36] T. Chen, E. Fox, and C. Guestrin, “Stochastic gradient hamiltonian monte carlo,” in International conference on machine learning. PMLR, 2014, pp. 1683–1691. [37] S.-i. Amari and H. Nagaoka, Methods of information geometry. American Mathematical Soc., 2000, vol. 191. [38] J. Ho and T. Salimans, “Classifier-free diffusion guid-ance,” arXiv preprint arXiv:2207.12598, 2022. [39] P. Dhariwal and A. Nichol, “Diffusion models beat gans on image synthesis,” Advances in neural information processing systems, vol. 34, pp. 8780–8794, 2021. [40] T. Salimans and J. Ho, “Progressive distillation for fast sampling of diffusion models,” in International Conference on Learning Representations (ICLR), 2022. [Online]. Available: https://openreview.net/forum?id= TIdIXIpzhoI [41] M. Heusel, H. Ramsauer, T. Unterthiner, B. Nessler, and S. Hochreiter, “Gans trained by a two time-scale update rule converge to a local nash equilibrium,” in Advances in Neural Information Processing Systems (NeurIPS), vol. 30, 2017. [42] R. Zhang, P. Isola, A. A. Efros, E. Shechtman, and O. Wang, “The unreasonable effectiveness of deep fea-tures as a perceptual metric,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR), 2018, pp. 586–595. [43] P. Pope, C. Zhu, A. Abdelkader, M. Goldblum, and T. Goldstein, “The intrinsic dimension of images and its impact on learning,” in Proceedings of the 9th International Conference on Learning Representations (ICLR), 2021. [Online]. Available: https://openreview. net/forum?id=XJk19XzGq2J

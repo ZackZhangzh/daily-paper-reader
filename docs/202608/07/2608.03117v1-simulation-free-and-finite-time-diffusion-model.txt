@@ -1,0 +1,1038 @@
+Title: Simulation-free and finite-time diffusion model
+
+URL Source: https://arxiv.org/pdf/2608.03117v1
+
+Published Time: Wed, 05 Aug 2026 00:36:08 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# Simulation-free and finite-time diffusion model 
+
+Kentaro Kaba, 1, ∗ Masayuki Ohzeki, 1, 2, 3, 4 and Yuki Sughiyama 2
+
+> 1
+
+Department of Physics, Institute of Science Tokyo, Meguro-ku, Tokyo 152-9551, Japan 
+
+> 2
+
+Graduate School of Information Sciences, Tohoku University, Sendai, Miyagi 980-9564, Japan 
+
+> 3
+
+Research and Education Institute for Semiconductors and Informatics, Kumamoto University, Kumamoto, Kumamoto 860-8555, Japan 
+
+> 4
+
+Sigma-i Co., Ltd., Minato-ku, Tokyo 108-0075, Japan 
+
+(Dated: August 5, 2026) The performance of generative diffusion models is determined by the choice of the reference dif-fusion process connecting the empirical and prior distributions. Conventional approaches typically trade off simulation-free training against finite-time generation. We propose a framework for design-ing the reference process that achieves both simultaneously. The key idea is to prescribe tractable time-dependent conditional distributions and then construct the reference process realizing them as its marginals. This framework reveals that score matching is not fundamental to diffusion-model training but instead emerges naturally through reversal of the reference process. We further show that conditional flow matching arises as the small-noise limit of the proposed framework. 
+
+I. INTRODUCTION 
+
+Generative diffusion models [1–3] have become state-of-the-art models across various domains, including im-ages [4], audio [5], video [6], and text [7]. These models generate samples by simulating a stochastic differential equation (SDE) initialized from a prior distribution. The drift of the SDE is parameterized by a neural network and trained so that its terminal distribution approximates the empirical distribution of a given dataset. A common training framework minimizes the Kullback–Leibler divergence between the generation process and a prescribed reference process connecting the prior and empirical distributions [8]. The choice of the reference process determines two desirable proper-ties: simulation-free training and finite-time generation .The former means that the objective can be evaluated without simulating the reference SDE, thereby reducing the computational cost of training. The latter requires that the reference process connects the prior and empirical distributions within a prescribed finite time horizon, which improves generation efficiency by limiting the time horizon. However, representative conventional models have difficulty satisfying these two properties simultaneously. Score-based models (SBMs) [3] achieve simulation-free training by choosing an Ornstein–Uhlenbeck (OU) pro-cess [9] as the reference process. Because its corre-sponding Fokker–Planck equation (FPE) is analytically tractable, samples from the reference process can be drawn directly from its time-dependent marginal dis-tributions. This property leads to the denoising score matching scheme [10] without simulating the reference SDE. However, the drawback of SBMs is that they do not naturally support finite-time generation. The OU process approaches the prior distribution only asymptot- 
+
+> ∗kaba.k.df05@m.isct.ac.jp
+
+ically [8], so accurate sample generation typically requires a sufficiently long simulation time, which becomes in-creasingly expensive for high-dimensional and large-scale datasets. To overcome this limitation, several approaches [11, 12] construct reference processes that connect the empiri-cal and prior distributions within a finite time horizon. A representative example is the Schr¨ odinger bridge ap-proach [11, 13], which formulates the problem as finite-time stochastic optimal transport. However, because the corresponding FPE is generally unsolvable, training re-quires repeated simulation of the reference SDE. In this work, we propose a framework for constructing reference processes that achieves simulation-free training and finite-time generation simultaneously. The central idea is to reverse the conventional design procedure: in-stead of specifying a reference SDE first and analyzing its induced distributions, we first prescribe a family of time-dependent distributions and then construct a refer-ence SDE that realizes them. This proposed perspective not only leads to a practical training framework but also provides new insights into previous work. In particu-lar, it reveals that score matching is not fundamental to diffusion-model training but instead emerges naturally from reversing the reference process to align its direction with the generative process. Furthermore, conditional flow matching [14] is recovered as the small noise limit of the proposed framework. This paper is organized as follows. In Sec. II, we review the conventional diffusion models. In Sec. III, we con-struct the reference process from prescribed conditional distributions. In Sec. IV, we give practical constructions for Gaussian and non-Gaussian priors. In Sec. V, we show that our proposed construction provides new in-sights into previous work. In Sec. VI, we present numer-ical experiments. Section VII concludes the paper. arXiv:2608.03117v1 [cs.LG] 4 Aug 2026 2 
+
+> II. CONVENTIONAL DIFFUSION MODELS
+
+Given a dataset {xi}ni=1 ⊂ Rd, the goal of agenerative model is to learn a model distribution qθ
+
+that approximates the empirical distribution μ(x) =(1 /n ) Pni=1 δ(x − xi). This objective is formally ex-pressed as the minimization of the Kullback–Leibler (KL) divergence min  
+
+> θ
+
+DKL (μ∥qθ ). (1) In generative diffusion models, the model distribution 
+
+qθ is defined as the terminal distribution of a path mea-sure Qθ on a continuous path x[0 ,T ] ∈ C([0 , T ], Rd): 
+
+qθ (x) := 
+
+Z
+
+dQθ [x[0 ,T ]] δ(x − xT ), (2) where Qθ is induced by the stochastic differential equa-tion (SDE): 
+
+dX t = sθ (t, X t)dt + b(t, X t) · dW t, X0 ∼ π. (3) Here, the drift term sθ : [0 , T ] × Rd → Rd is a neural net-work parameterized by θ, b : [0 , T ] × Rd → GL( d, R) is the diffusion coefficient, and W[0 ,T ] ∈ C([0 , T ], Rd) is the standard Wiener process [9, 15]. The initial distribution 
+
+π is called the prior and is typically chosen as the stan-dard Gaussian N (0 , I d). The product “ · ” represents the Itˆ o integral convention [9, 15]. After training sθ , we can generate new samples by simulating the SDE (3). Thus, we refer to Qθ as the generation process. Since direct evaluation of Eq. (1) is intractable in this setting, we instead introduce a path-space objective for training: 
+
+LDM (θ) := DKL (P∥Qθ ). (4) Here, P is a path measure on C([0 , T ], Rd) whose terminal distribution is μ:
+
+Z
+
+dP[x[0 ,T ]] δ(x − xT ) = μ(x). (5) By the data processing inequality [16], this objective up-per bounds the KL divergence in Eq. (1): 
+
+DKL (μ∥qθ ) ≤ DKL (P∥Qθ ). (6) Since P specifies the target dynamics against which the generative process is trained, we call it the reference pro-cess. In the conventional setting, we assume that P is induced by a time-backward diffusion process: 
+
+dX t = ˜ a(t, X t)dt + b(t, X t) ˜ · dW t, XT ∼ μ, (7) where ˜ a : [0 , T ] × Rd → Rd is the drift term, and “ ˜ · ”represents the backward Itˆ o integral convention [17]. To train the neural network sθ in Eq. (3) in practice, we need to express the objective LDM explicitly in terms of sθ . For this purpose, we reverse the time-direction of the reference SDE (7) and obtain 
+
+dX t = a(t, X t)dt + b(t, X t) · dW t, X0 ∼ p0, (8) 
+
+a(t, x ) := ˜ a(t, x ) + Γ( t, x )∇x log pt(x) + ∇x · Γ( t, x ), (9) where Γ := bb ⊤ and ( ∇x · Γ) i := P 
+
+> j
+
+∂xj Γij . More-over, pt is the marginal distribution of P at time t, i.e., 
+
+pt(z) = R dxρ t(z|x)μ(x), where ρt is the solution of the corresponding Fokker-Planck equation (FPE) with the terminal condition ρT (z|x) = δ(z − x): 
+
+∂tρt(z|x) = − ∇ z · [˜ a(t, z )ρt(z|x)] 
+
+− 12
+
+X
+
+> i,j
+
+∂zi ∂zj [Γ ij (t, z )ρt(z|x)] . (10) The term ∇x log pt in Eq. (9) is called the score of pt.With this expression, we can reformulate the objective 
+
+LDM with the Girsanov theorem [13, 18] as follows: 
+
+LDM (θ) = DKL (p0∥π)+ EX[0 ,T ]∼P
+
+"
+
+12
+
+Z T
+
+> 0
+
+dt ∥a(t, X t) − sθ (t, X t)∥2Γ( t,X t)−1
+
+#
+
+,
+
+(11) where ∥a − sθ ∥2Γ−1 := ( a − sθ )⊤Γ−1(a − sθ ). Equation (11) clarifies the requirements that should be imposed on the reference process. First, the initial dis-tribution p0 should coincide with the prior π, so that the first term vanishes. Equivalently, the reference process must satisfy 
+
+Z
+
+dP[x[0 ,T ]] δ(x − x0) = π(x). (12) Second, the second term should be computationally fea-sible. To this end, we must realize the following facts: easy path sampling from P and the computability of the score of pt contained in the drift a.Score-based models (SBMs) [3] satisfy the above two requirements for the first and second terms in Eq. (11) by adopting the Ornstein–Uhlenbeck process [9] as the reference process. When π = N (0 , I d), the OU process connects μ to π asymptotically as T → ∞ . Moreover, its conditional distribution ρt(z|x) is Gaussian. This allows us to use the following formula, which is equivalent to the second term of Eq. (11) with respect to the minimization over θ:12n
+
+> n
+
+X
+
+> i=1
+
+Z T
+
+> 0
+
+dt EZ∼ρt(·| xi)
+
+h
+
+∥α(t, Z, x i) − sθ (t, Z )∥2Γ( t,Z )−1
+
+i
+
+,
+
+(13) 
+
+α(t, z, x ) := ˜ a(t, z ) + Γ( t, z )∇z log ρt(z|x) + ∇z · Γ( t, z ).
+
+(14) The computation of this objective requires only the score of ρt and direct sampling from ρt, both of which are tractable for the Gaussian. This technique is known 3as the denoising score matching (DSM) [10]. However, SBMs suffer from an intrinsic limitation in data genera-tion. The OU process reaches the prior π only asymptot-ically, and hence the time horizon T must be sufficiently large for this convergence to occur. Since the data gen-eration is conducted by simulating the SDE (3) over the interval [0 , T ], this requirement directly reduces sampling efficiency, especially in high-dimensional settings. To overcome this drawback, some models [11, 12] design reference processes that connect the two distri-butions over a prescribed finite time horizon. Repre-sentative examples [11, 13] are models based on the Schr¨ odinger bridge [19], which is a finite-time stochastic optimal transport problem. However, because such mod-els introduce a more complicated process for P [13, 20], 
+
+ρt cannot be explicitly calculated as in the OU process. Therefore, in these models, a different technique known as implicit score matching (ISM) [21] is used instead of the DSM. Here, the second term of Eq. (11) is represented as 
+
+EX[0 ,T ]∼P
+
+" Z T
+
+> 0
+
+dt 
+
+ 12 ∥vθ (t, X t)∥2Γ( t,X t)−1 +∇Xt ·vθ (t, X t)
+
+#
+
+,
+
+(15) 
+
+vθ (t, x ) := sθ (t, x ) − ˜a(t, x ) − ∇ x · Γ( t, x ). (16) Although this technique eliminates the score ∇x log pt,evaluating the expectation requires path sampling from 
+
+P and hence simulation of the reference SDE (7). This imposes substantial costs during training, which are not required in the DSM objective in Eq. (13). The above discussion reveals a fundamental trade-off in conventional diffusion models between the computa-tional costs of training and generation. We characterize this trade-off by two properties: simulation-free training ,which avoids simulating the reference SDE, and finite-time generation , which establishes the connection be-tween μ and π over a prescribed finite time horizon. The main challenge of this work is to construct a reference process that satisfies both properties simultaneously.  
+
+> III. CONSTRUCTION OF THE REFERENCE PROCESS
+
+Let us construct a reference process that enables both simulation-free training and finite-time generation. As shown in the previous section, the main obstruction to simulation-free training is that obtaining ρt from the FPE (10) is generally intractable. To avoid this dif-ficulty, we reverse the conventional order of construc-tion: rather than starting from a reference SDE (7), we first prescribe a family of tractable conditional distribu-tions {ρt}t∈[0 ,1] and then construct a process that realizes them. This makes the objective evaluable in a DSM-like form, since samples from ρt are directly available. More-over, prescribing ρt over a finite time interval [0 , 1] yields a finite-time connection between π and μ without relying on asymptotic convergence. We first specify the properties of conditional distribu-tions used in this construction. Let {ρt}t∈[0 ,1] be a family of conditional distributions satisfying the following condi-tions: (i) ρt(z|x) is C1,2 with respect to ( t, z ) ∈ [0 , 1] ×Rd;(ii) samples from ρt(·| x) can be drawn directly; and (iii) the induced marginal distributions 
+
+pt(z) := 
+
+Z
+
+dx ρ t(z|x)μ(x) (17) satisfy the boundary conditions inferred from Eqs. (5) and (12): 
+
+p0(z) = π(z), p1(z) = μ(z). (18) The next step is to construct an SDE corresponding to a reference process based on the prescribed conditional distributions as follows. We first seek coefficients α :[0 , 1] × Rd × Rd → Rd and b : [0 , 1] × Rd → GL( d, R) such that the given {ρt}t∈[0 ,1] satisfies 
+
+∂tρt(z|x) = − ∇ z · [α(t, z, x )ρt(z|x)] + 12
+
+X
+
+> i,j
+
+∂zi ∂zj [Γ ij (t, z )ρt(z|x)] . (19) If we find such coefficients, we can define the SDE for the reference process P by 
+
+dZ t = a(t, Z t)dt + b(t, Z t) · dW t, Z0 ∼ p0, (20) 
+
+a(t, z ) := 
+
+Z
+
+dx α (t, z, x ) ρt(z|x)μ(x)
+
+pt(z) , (21) where α and b are chosen to satisfy Eq. (19) with Γ = bb ⊤.The proposed construction achieves the two desired properties simultaneously. Integrating Eq. (19) with re-spect to μ shows that the marginal distribution of this constructed process P is pt (see Eq. (17)). Therefore, un-der condition (iii), the constructed reference process con-nects π and μ over the finite time interval [0 , 1], which guarantees finite-time generation. Moreover, we can de-rive a simulation-free objective function as follows. As in Eq. (11), the objective LDM can be reformulated with the Girsanov theorem [13]: 
+
+LDM (θ)= EZ[0 ,1] ∼P
+
+ 12
+
+Z 10
+
+dt ∥a(t, Z t) − sθ (t, Z t)∥2Γ( t,Z t)−1
+
+
+
+.
+
+(22) Here, condition (iii) makes the first term in Eq. (11) van-ish. Furthermore, by substituting Eqs. (17) and (21), we can rewrite Eq. (22) up to an additive constant as 
+
+LSF (θ) := 12n
+
+> n
+
+X
+
+> i=1
+
+Z 10
+
+dt EZ∼ρt(·| xi)
+
+h
+
+∥α(t, Z, x i) − sθ (t, Z )∥2Γ( t,Z )−1
+
+i
+
+.
+
+(23) 4The detailed derivation is shown in Appendix A. This objective requires only direct sampling from ρt and the conditional drift α, not simulation of the reference SDE. Under condition (ii), hence, the computation of this ob-jective is tractable. Thus, the trade-off faced in the con-ventional models is resolved by prescribing tractable con-ditional distributions {ρt}t∈[0 ,1] before constructing the diffusion process P. 
+
+> IV. PRACTICAL CONSTRUCTION
+
+In this section, we present practical instances of the construction developed in Sec. III. We first consider the standard case in which the prior is the standard Gaus-sian. We then extend the construction to more general priors. In the following constructions, some coefficients or transformations may become singular or degenerate at t = 1. In such cases, the Girsanov representation in Eq. (22) is understood by applying it on [0 , τ ] with τ < 1and then taking the limit τ → 1, while the terminal dis-tribution is obtained in the same limiting sense.  
+
+> A. Gaussian prior
+
+When the prior π is the standard Gaussian, we choose the conditional distribution ρt to be Gaussian: 
+
+ρt(z|x) := N (z; mt(x), σ (t)2Id). (24) Here, the mean m : [0 , 1] × Rd → Rd and the standard deviation σ : [0 , 1] → R≥0 are assumed to be C1 in t for condition (i) to hold. To satisfy condition (iii), they are chosen so that 
+
+m0(x) = 0 , m 1(x) = x, σ(0) = 1 , σ (1) = 0 . (25) Condition (ii) is obviously satisfied as follows: A sam-ple Zxt ∼ ρt(·| x) can be drawn by reparametrization trick [22]: 
+
+Zxt = mt(x) + σ(t)ξ, ξ ∼ N (0 , I d). (26) We next seek an SDE that connects the conditional distributions ρt in Eq. (24). Under the assumption that 
+
+b is independent of z and isotropic, the coefficients of the SDE are evaluated as 
+
+α(t, z, x ) = ∂tmt(x) + 
+
+ ˙σ(t)
+
+σ(t) − 12 λ(t)
+
+
+
+(z − mt(x)) ,
+
+(27) 
+
+b(t) = pλ(t) σ(t)Id, (28) where λ : [0 , 1] → R>0 is arbitrary. The derivation is given in Appendix B. Owing to the above construction of α and b, we can perform simulation-free training by substituting them into Eq. (23).  
+
+> B. Non-Gaussian priors
+
+When the prior is not the standard Gaussian, the above construction is not directly applicable. For this case, we use a push-forward construction. Let ζt denote the marginal distribution of the following diffusion process whose stationary distribution is π:
+
+dY t = 12 γ(t)∇y log π(Yt)dt + pγ(t)Id · dW t, Y 0 ∼ π. 
+
+(29) We define the conditional distribution ρt as the push-forward of ζt under a time- and x-dependent smooth bi-jection ϕxt : Rd → Rd:
+
+ρt(z|x) := ( ϕxt )∗ζt(z) = ζt(y(z)) |det Dz y(z)| , (30) where y(z) := ( ϕxt )−1(z) and Dz y denotes the Jacobian. To satisfy conditions (i) and (iii), we assume that ϕxt is 
+
+C1 in t and satisfies 
+
+ϕx 
+
+> 0
+
+(y) = y, ϕx 
+
+> 1
+
+(y) = x. (31) The bijectivity of ϕxt is therefore required only for t < 1. Since the process is initialized at π, its marginal distribu-tion satisfies ζt = π for all t. Therefore, direct sampling from ρt(·| x) is straightforward: 
+
+Zxt = ϕxt (Yt), Yt ∼ ζt = π. (32) By employing the Itˆ o formula [9] to Eq. (32), the dif-ferentiation of Zxt = ϕxt (Yt) gives an SDE: 
+
+dZ xt = α(t, Z xt , x )dt + β(t, Z xt , x ) · dW t, Z x 
+
+> 0
+
+∼ ρ0(z|x),
+
+(33) where 
+
+α(t, z, x ) = ∂tϕxt (y(z)) + 12 γ(t)Dy ϕxt (y(z)) ∇y log π(y(z)) + ∇2 
+
+> y
+
+ϕxt (y(z)) ,
+
+(34) 
+
+β(t, z, x ) = pγ(t) Dy ϕxt (y(z)) . (35) Since the marginal distribution of this process is equal to 
+
+ρt in Eq. (30), this SDE connects the given {ρt}t∈[0 ,1] . To adopt this process as the reference process in Eq. (20), the diffusion coefficient β must be independent of x. A sufficient condition is that the bijection ϕxt take the fol-lowing functional form: 
+
+ϕxt (y) = ft(y + gt(x)) . (36) Here, gt : Rd → Rd, and ft : Rd → Rd is a smooth bijection. The derivation is given in Appendix C. Summarizing the above discussion, we obtain the fol-lowing prescription to realize simulation-free training with non-Gaussian priors: (i) Prepare a family of bijec-tions {ϕxt }t∈[0 ,1] ,x ∈Rd satisfying Eq. (36). (ii) Calculate Eqs. (34) and (35) with the prepared ϕxt (note that β is independent of x due to Eq. (36)). (iii) Substitute the resulting α and b = β into Eq. (23). 5 
+
+> V. RELATION TO PREVIOUS WORK
+
+We can interpret several existing methods from the viewpoint of our proposed framework. This perspective provides new insights into their underlying structures.  
+
+> A. Score matching
+
+In diffusion models, training is usually referred to as score matching [3], because the neural network sθ learns the score-dependent drift a in Eq. (11). As shown in Sec. II, the conventional construction specifies the refer-ence process in the data-to-prior direction, which is oppo-site to the direction of generation. Therefore, to evaluate 
+
+DKL (P∥Qθ ) by the Girsanov theorem, the reference SDE must be reversed in time. This time reversal introduces the score ∇x log pt into the drift, as shown in Eq. (9). DSM in Eq. (13) also inherits this explicit dependence on the score function. Our construction avoids this mechanism. As shown in Sec. III, we directly construct the reference process in the generation direction from the outset. Consequently, in Eq. (22), DKL (P∥Qθ ) can be written in terms of the drift a, without introducing the score through time re-versal. The simulation-free objective in Eq. (23) is also independent of the score introduced by time reversal. This perspective clarifies that score matching is not essential for diffusion-model training. In SBMs, conver-gence to the prior naturally fixes the reference process in the data-to-prior direction. However, our framework shows that such convergence is not needed to retain the simulation-free training advantage of SBMs. Thus, score matching is unavoidable for convergence-based models such as SBMs, but not for diffusion-model training itself.  
+
+> B. Conditional flow matching
+
+Conditional flow matching (CFM) [14] trains a deter-ministic flow from the prior to the empirical by regress-ing a vector field along prescribed conditional probability paths. It is close in spirit to our construction, because both methods prescribe tractable conditional distribu-tions rather than simulate a reference process. However, unlike our stochastic objective, the CFM objective does not have a direct path-space KL interpretation through the Girsanov theorem. The purpose of this subsection is to show that CFM is recovered as the small-noise limit of our construction. To make this connection explicit, recall the construc-tion in Sec. IV B and replace γ(t) by ϵγ (t) in Eq. (29) and denote the resulting conditional drift by α(t, z, x ; ϵ). Since Yt remains distributed according to the stationary distribution π, its marginal law remains ζt = π for any 
+
+ϵ > 0. Thus, this rescaling changes the noise level of the constructed dynamics, but not the prescribed condition-als ρt(·| x). For simplicity, we choose the bijection ϕxt so that the diffusion coefficient becomes b(t, z ; ϵ) = √ϵI d.From Eq. (35), it is sufficient to choose ϕxt to satisfy 
+
+Dy ϕxt = γ(t)−1/2Id. Then the simulation-free objective in Eq. (23) becomes 
+
+LSF (θ; ϵ)= 12nϵ 
+
+> n
+
+X
+
+> i=1
+
+Z 10
+
+dt EZ∼ρt(·| xi)
+
+h
+
+∥α(t, Z, x i; ϵ) − sθ (t, Z )∥2
+
+> Id
+
+i
+
+.
+
+(37) Since multiplying LSF by ϵ > 0 does not change its minimizer, we consider the limit of ϵLSF (θ; ϵ). In this limit, the stochastic contribution to the drift vanishes, and Eq. (34) converges to ¯α(t, z, x ) := lim  
+
+> ϵ→0
+
+α(t, z, x ; ϵ) = ∂tϕxt (y(z)) , (38) where y(z) := ( ϕxt )−1(z). Therefore, lim  
+
+> ϵ→0
+
+ϵLSF (θ; ϵ)= 12n
+
+> n
+
+X
+
+> i=1
+
+Z 10
+
+dt EZ∼ρt(·| xi)
+
+h
+
+∥¯α(t, Z, x i) − sθ (t, Z )∥2
+
+> Id
+
+i
+
+.
+
+(39) The vector field ¯ α satisfies the continuity equation for the prescribed conditional distributions: 
+
+∂tρt(z|x) = −∇ z · [¯ α(t, z, x )ρt(z|x)] . (40) Thus, the limiting objective is precisely the conditional flow-matching objective for the prescribed conditional probability path ρt (see Eqs. (9) and (14) in Ref. [14]). This derivation clarifies the relationship between CFM and diffusion-model training from the viewpoint of the path-space KL divergence. For every ϵ > 0, LSF (θ; ϵ) is derived from a KL divergence between the reference and generation processes. At ϵ = 0, however, the processes become deterministic, and the Girsanov-based derivation is no longer directly applicable. Therefore, the CFM objective should not be regarded as a direct path-space KL objective in the same sense as diffusion-model train-ing. Rather, our formulation provides a stochastic lift of CFM: the CFM objective emerges as the small-noise limit of a KL-based diffusion objective.  
+
+> C. Flow-based diffusion models
+
+The previous subsection showed that CFM is obtained as the small-noise limit of our stochastic construction. We now consider the opposite direction: starting from a deterministic path introduced in CFM and construct-ing a stochastic diffusion process that realizes the same conditional distributions. By employing this direction, a previous study [23] attempted to construct simulation-free and finite-time diffusion models. 6Let ¯ α be the conditional vector field of CFM, satisfying the continuity equation (40). By adding an arbitrary dif-fusion coefficient b′ : [0 , 1] × Rd → GL( d, R), the RHS of Eq. (40) with prescribed {ρt}t∈[0 ,1] can be reformulated to the FPE form: 
+
+∂tρt(z|x) = − ∇ z · [α′(t, z, x )ρt(z|x)] + 12
+
+X
+
+> i,j
+
+∂zi ∂zj [Γ ′(t, z )ρt(z|x)] , (41) where Γ ′ := b′b′⊤ and 
+
+α′(t, z, x ) := ¯ α(t, z, x )+ 12 ∇z · Γ′(t, z ) + 12 Γ′(t, z )∇z log ρt(z|x). (42) Here, we note that the score ∇z log ρt must appear in this reformulation. Once this conditional FPE is ob-tained, the construction in Sec. III immediately yields a simulation-free objective: 
+
+LFDM (θ) := 12n
+
+> n
+
+X
+
+> i=1
+
+Z 10
+
+dt EZ∼ρt(·| xi)
+
+h
+
+∥α′(t, Z, x i) − sθ (t, Z )∥2Γ′− 1(t,Z )
+
+i
+
+.
+
+(43) However, unlike our objective in Eq. (23), this ob-jective explicitly depends on the conditional score 
+
+∇z log ρt through α′. Therefore, this construction retains simulation-free training and finite-time generation, but it falls back into the score-matching formulation. Neural flow diffusion models (NFDMs) [23] are repre-sentative examples of this approach, but they lie outside the fixed reference process setting considered above in one important respect: the reference process is learned jointly with the generation process. However, this struc-ture is expected to be reinterpreted within our framework by adding the new parameters into the bijection ϕxt and learning them.  
+
+> D. Stochastic localization
+
+Stochastic localization (SL) [24, 25] is a sampling (i.e., generating) method from an explicitly given target distri-bution ptrue . From our viewpoint, SL can be interpreted as constructing and simulating a reference process that connects the prior π to the target ptrue , rather than to the empirical μ.To see this, consider the construction in Sec. III with μ
+
+replaced by ptrue . Choose a tractable conditional family 
+
+{ρt}t∈[0 ,1] and define pt, true (z) := R dx ρ t(z|x)ptrue (x). If this family satisfies the boundary conditions 
+
+p0,true (z) = π(z), p1,true (z) = ptrue (z), (44) then the construction in Sec. III yields a diffusion process that connects π and ptrue :
+
+dZ t = atrue (t, Z t)dt + b(t, Z t) · dW t, Z 0 ∼ π, (45) where 
+
+atrue (t, z ) := 
+
+Z
+
+dx α (t, z, x ) ρt(z|x)ptrue (x)
+
+pt, true (z) . (46) If this drift can be computed, simulating the resulting SDE generates samples from ptrue at t = 1. This repre-sents the sampling procedure of SL. One may try to compute atrue numerically. This com-putation must be performed for each pair ( t, z ) encoun-tered during the SDE simulation, and therefore the nu-merical evaluation itself can be costly. For this reason, practical implementations often rely on problem-specific analytical approximations, such as approximate message passing for the Sherrington–Kirkpatrick model [26].  
+
+> VI. NUMERICAL EXPERIMENTS
+
+In this section, we numerically test the proposed con-struction on two-dimensional toy datasets. These exper-iments are intended to demonstrate two points. First, the proposed framework well learns the datasets not only with the standard Gaussian prior, but also with a non-Gaussian prior. Second, unlike SBMs, our method does not require tuning a convergence timescale: the reference process connects π and μ over the fixed interval [0 , 1]. We used four two-dimensional synthetic datasets: an eight-component Gaussian mixture (gmm8), spiral, checkerboard, and two moons. For each dataset, we used 12 ,800 training samples. The drift network sθ was a fully connected residual network with three residual blocks, hidden width 256, and SiLU activations; each block contained three fully connected layers. The time variable was encoded using a 128-dimensional sinusoidal embedding. We trained the network using AdamW with a learning rate of 10 −3, batch size 128, and 50 ,000 it-erations. At each iteration, the time variable t was sampled uniformly from [0 , 0.99]. After training, sam-ples were generated by simulating the generation SDE with the Euler–Maruyama method using 100 uniform time steps. Code and checkpoints are open-sourced at https://github.com/kentarokaba/sfft-diffusion.  
+
+> A. Gaussian prior
+
+We first demonstrate the standard Gaussian prior case 
+
+π = N (0 , I ). We use the construction in Sec. IV A with 
+
+mt(x) = tx, σ(t) = 1 − t, (47) and λ(t) = σ(t)−1. With this choice, the diffusion coef-ficient becomes b(t, z ) = √1 − t I d. Using the reparame-terization trick Z = tx + (1 − t)ξ, the simulation-free ob-jective in Eq. (23) reduces to the following form, whose derivation is given in Appendix D 1: 7
+
+LSF (θ) = 12n
+
+> n
+
+X
+
+> i=1
+
+Et∼U[0 ,1) ,ξ ∼N (0 ,I d)
+
+"
+
+11 − t xi − 32 ξ − sθ (t, tx i + (1 − t)ξ)
+
+> 2
+> Id
+
+#
+
+. (48) Here, U [0 ,1) denotes a uniform distribution on [0 , 1). In implementation, t = 1 is not sampled because the ob-jective has a singular weight at t = 1, whereas genera-tion does not require evaluating the drift at the terminal time. This truncation avoids direct evaluation of quanti-ties that become singular or degenerate at t = 1.    
+
+> B. Johnson’s SUprior
+
+Next, we choose the prior as Johnson’s SU distribu-tion [27]: 
+
+π(y) := 1
+
+p2π(1 + y2) exp 
+
+
+
+− 12 (sinh −1 y)2
+
+
+
+. (49) This prior is heavy-tailed, is not sub-Gaussian, and dif-fers substantially from the standard Gaussian. Sampling from π is straightforward because it is the push-forward of the standard Gaussian under the componentwise map sinh: 
+
+Y = sinh ξ, ξ ∼ N (0 , I d). (50) We use the construction in Sec. IV B with a linear inter-polation: 
+
+ϕxt (y) = (1 − t)y + tx, (51) and γ(t) = (1 − t)−1. Indeed, this ϕxt satisfies the con-dition in Eq. (36) (see also Appendix C). Then b(t, z ) = √1 − t I d, as in the Gaussian-prior experiment. Using the reparameterization trick Z = tx + (1 − t) sinh ξ, we obtain the following objective; see Appendix D 2 for the derivation: 
+
+LSF (θ) = 12n
+
+> n
+
+X
+
+> i=1
+
+Et∼U[0 ,1) ,ξ ∼N (0 ,I d)
+
+"
+
+11 − t xi − sinh ξ − 12
+
+ξ + tanh ξ
+
+cosh ξ − sθ (t, tx i + (1 − t) sinh ξ)
+
+> 2
+> Id
+
+#
+
+, (52) where the hyperbolic functions are applied component-wise.  
+
+> C. Results
+
+For comparison, we also trained a standard variance-preserving SBM (VP-SBM) [3] based on the OU reference process: 
+
+dX t = 12 Xt dt + dW t, X0 ∼ N (0 , I d). (53) We used the same network architecture, optimizer, batch size, and number of training iterations as in our method. For the VP-SBM, the time horizon was set to T = 10, and both training and generation were performed on this interval. Generated samples were obtained by the Euler– Maruyama method with 100 uniform time steps. Figure 1 shows the training data and generated sam-ples on four two-dimensional toy datasets. The pro-posed method reproduces the qualitative structure of all datasets both with the standard Gaussian prior and with the Johnson’s SU prior. The VP-SBM with T = 10 also captures the overall structure of the datasets, but it requires choosing the time horizon T . As shown in Appendix E 1, inappropri-ate choices of T degraded sample quality in our setup. This reflects the SBM trade-off between convergence to the prior and the discretization accuracy of the Euler– Maruyama method. The advantage of our framework is that, without this time-horizon tuning, we can well ex-tract the qualitative structure from given datasets.  
+
+> VII. CONCLUSION
+
+We introduced a construction principle for the refer-ence process that combines simulation-free training with finite-time generation. Our construction first prescribes tractable time-dependent conditional distributions and then derives the corresponding SDE. This formulation yields an objective based on a path-space KL divergence that can be evaluated without simulating the reference SDE. In addition, defining the conditional distributions over the finite interval [0 , 1] ensures that the resulting process connects the prior and empirical distributions within finite time. The framework also provided a structural interpreta-tion of existing methods. It identifies time reversal of a data-to-prior process as the origin of score matching and recovers conditional flow matching as the small-noise 8
+
+FIG. 1. The visualization of 7,500 points in training datasets and 7,500 generated samples from trained models. The top row represents the training data. The second and third rows show samples from the proposed method with the standard Gaussian prior and the Johnson’s SU prior, respec-tively. The bottom row shows samples from the VP-SBM with T = 10. All generated samples were obtained using 100 Euler–Maruyama steps. 
+
+limit of our stochastic formulation. Numerical experi-ments demonstrated that the proposed construction with both Gaussian and non-Gaussian priors successfully learn the dataset. They further illustrated that time-horizon tuning required by SBMs is not needed in our construc-tion. Similar to our construction, Stochastic interpolants (SIs) [12] are known to be the model achieving both simulation-free training and finite-time generation simul-taneously. SIs yield finite-time probability paths from an explicitly prescribed random interpolation. For example, let X0 ∼ π, X1 ∼ μ, and ξ ∼ N (0 , I d) be independent random variables, and define 
+
+Zt = I(t, X 0, X 1) + γ(t)ξ, (54) where I(0 , X 0, X 1) = X0, I(1 , X 0, X 1) = X1, and γ(0) = 
+
+γ(1) = 0. The time-dependent distribution of Zt con-nects π and μ over the finite interval [0 , 1]. Its velocity and score fields can be evaluated through quadratic ob-jectives using direct samples of ( X0, X 1, ξ ). Moreover, the resulting probability path can be realized by both a deterministic flow and a family of diffusion processes with tunable diffusion coefficients. Clarifying the precise relation between SIs and our construction beyond these shared properties remains an important direction for fu-ture work. Another direction for future work is the systematic de-sign of the reference process. As demonstrated for sev-eral interpolation schedules for Gaussian priors in Ap-pendix E 2, the design of {ρt}t∈[0 ,1] affects generation quality even when the boundary distributions are un-changed. Accordingly, establishing principles for select-ing these functional form is necessary to improve training and generation performance. 
+
+ACKNOWLEDGMENTS 
+
+This work was supported by JST SPRING Grant No. JPMJSP2106 and the Cross-ministerial Strategic Innova-tion Promotion Program (SIP) from the Cabinet Office (No. 23836436). 
+
+Appendix A: Derivation of the simulation-free objective 
+
+Using Eq. (17), Eq. (22) can be written as 
+
+LDM (θ) = 12
+
+Z 10
+
+dt 
+
+Z
+
+dz p t(z)∥a(t, z ) − sθ (t, z )∥2Γ−1(t,z )
+
+= 12
+
+Z 10
+
+dt 
+
+Z
+
+dx 
+
+Z
+
+dz μ (x)ρt(z|x)
+
+× ∥ a(t, z ) − sθ (t, z )∥2Γ−1(t,z ). (A1) The integrand of Eq. (A1) is expanded as 
+
+∥a − sθ ∥2Γ−1
+
+= ∥α − sθ ∥2Γ−1 − ∥ a − α∥2Γ−1 + 2( a − α)⊤Γ−1(a − sθ ).
+
+(A2) Since α is defined by Eq. (21), the last term in Eq. (A2) vanishes after integration with respect to x:
+
+Z
+
+dx μ (x)ρt(z|x)
+
+× (a(t, z ) − α(t, z, x )) ⊤Γ−1(t, z )( a(t, z ) − sθ (t, z )) =
+
+
+
+pt(z)a(t, z ) −
+
+Z
+
+dx μ (x)ρt(z|x)α(t, z, x )
+
+⊤
+
+Γ−1(t, z )
+
+× (a(t, z ) − sθ (t, z )) = 0 . (A3) Therefore, the substitution of Eq. (A2) into Eq. (A1) can be calculated as 
+
+LDM (θ) = 12
+
+Z 10
+
+dt 
+
+Z
+
+dx 
+
+Z
+
+dz μ (x)ρt(z|x)
+
+× ∥ α(t, z, x ) − sθ (t, z )∥2Γ−1(t,z ).
+
+− 12
+
+Z 10
+
+dt 
+
+Z
+
+dx 
+
+Z
+
+dz μ (x)ρt(z|x)
+
+× ∥ a(t, z ) − α(t, z, x )∥2Γ−1(t,z ). (A4) Since the second term in Eq. (A4) is independent of θ,we define the first term as an effective objective: 
+
+LSF (θ) := 12
+
+Z 10
+
+dt EZ∼ρt(·| X),X ∼μ
+
+h
+
+∥α(t, Z, X ) − sθ (t, Z )∥2Γ( t,Z )−1
+
+i
+
+.
+
+(A5) 9Note that the following identity obviously holds arg min  
+
+> θ
+
+LDM (θ) = arg min  
+
+> θ
+
+LSF (θ). (A6) Thus, minimizing the path-space objective in Eq. (22) is equivalent to minimizing the simulation-free objective in Eq. (23). 
+
+Appendix B: Derivation of the reference SDE for the Gaussian priors 
+
+We derive Eqs. (27) and (28) under the assumption that b is independent of z and isotropic: b(t, z ) = c(t)Id
+
+where c : [0 , 1] → R>0 is arbitrary. Accordingly, the diffusion covariance is Γ( t) = c(t)2Id. (B1) The conditional distribution ρt in Eq. (24) is repre-sented as 
+
+ρt(z|x) = 1(2 πσ (t)2)d/ 2 exp 
+
+"
+
+− 12
+
+∥z − mt(x)∥2
+
+> Id
+
+σ(t)2
+
+#
+
+. (B2) To evaluate the conditional FPE (19), we first compute the derivatives of ρt:
+
+∂tρt(z|x)
+
+ρt(z|x) = −d ˙σ(t)
+
+σ(t) + (z − mt(x)) · ∂tmt(x)
+
+σ(t)2
+
++ ˙σ(t)
+
+σ(t)3 ∥z − mt(x)∥2 
+
+> Id
+
+, (B3) 
+
+∇z ρt(z|x)
+
+ρt(z|x) = − z − mt(x)
+
+σ(t)2 , (B4) 
+
+∇2 
+
+> z
+
+ρt(z|x)
+
+ρt(z|x) = ∥z − mt(x)∥2
+
+> Id
+
+σ(t)4 − dσ(t)2 . (B5) Since Γ( t) = c(t)2Id is independent of z, dividing the FPE (19) by ρt(z|x) gives 
+
+∂tρt
+
+ρt
+
+= −∇ z · α − α · ∇z ρt
+
+ρt
+
++ c(t)2
+
+2
+
+∇2 
+
+> z
+
+ρt
+
+ρt
+
+. (B6) Furthermore, the substitution of Eqs. (B3)–(B5) into Eq. (B6), we obtain the partial differential equation (PDE) for α:
+
+− ∇ z · α(t, z, x ) + z − mt(x)
+
+σ(t)2 · α(t, z, x )= −d ˙σ(t)
+
+σ(t) + (z − mt(x)) · ∂tmt(x)
+
+σ(t)2 + ˙σ(t)
+
+σ(t)3 ∥z − mt(x)∥2
+
+− 12
+
+c(t)2
+
+σ(t)4 ∥z − mt(x)∥2 
+
+> Id
+
++ d
+
+2
+
+c(t)2
+
+σ(t)2 . (B7) By solving this PDE (B7) under the boundary condition lim  
+
+> |z|→∞
+
+α(t, z, x )ρt(z|x) = 0 , (B8) we get 
+
+α(t, z, x ) = ∂tmt(x) + 
+
+ ˙σ(t)
+
+σ(t) − 12
+
+c(t)2
+
+σ(t)2
+
+
+
+(z − mt(x)) .
+
+(B9) Here, we note that c(t) is an arbitrary function. By scal-ing c(t) by σ(t) and defining λ(t) := c(t)2/σ (t)2, we get 
+
+α(t, z, x ) = ∂tmt(x) + 
+
+ ˙σ(t)
+
+σ(t) − 12 λ(t)
+
+
+
+(z − mt(x)) ,
+
+(B10) and 
+
+b(t) = pλ(t) σ(t)Id. (B11) These are Eqs. (27) and (28). 
+
+Appendix C: Condition for an x-independent diffusion coefficient 
+
+The diffusion coefficient in Eq. (35) is 
+
+β(t, z, x ) = pγ(t)Dy ϕxt (( ϕxt )−1(z)) , (C1) where Dy ϕxt denotes the Jacobian matrix. We required β to be independent of x: ∇xβ(t, z, x ) = 0. By the inverse function theorem, 
+
+Dy ϕxt
+
+ (ϕxt )−1(z) = [ Dz (ϕxt )−1(z)] −1. (C2) Hence, the condition above implies that Dz (ϕxt )−1(z) is independent of x. Fix an arbitrary x0 ∈ Rd and define a smooth bijection ft(y) := ϕx0 
+
+> t
+
+(y). Since the Jacobians of (ϕxt )−1 and f −1 
+
+> t
+
+with respect to z are identical, their dif-ference is independent of z. Thus, there exists a function 
+
+gt : Rd → Rd such that (ϕxt )−1(z) = f −1 
+
+> t
+
+(z) − gt(x). (C3) Setting y = ( ϕxt )−1(z) gives 
+
+ϕxt (y) = ft(y + gt(x)) . (C4) Conversely, suppose that 
+
+ϕxt (y) = ft(y + gt(x)) , (C5) where ft : Rd → Rd is a smooth bijection. By setting 
+
+z = ϕxt (y), we have 
+
+y + gt(x) = f −1 
+
+> t
+
+(z). (C6) Therefore, 
+
+Dy ϕxt (y) = Dy ft(y + gt(x)) = Dy ft(f −1 
+
+> t
+
+(z)) , (C7) which is independent of x. Consequently, 
+
+b(t, z ) = β(t, z, x ) = pγ(t)Dy ft(f −1 
+
+> t
+
+(z)) . (C8) 10 Thus, the family 
+
+ϕxt (y) = ft(y + gt(x)) (C9) yields an x-independent diffusion coefficient. The linear interpolation in Eq. (51) is included in this class. It is obtained by choosing 
+
+ft(y) = (1 − t)y, gt(x) = t
+
+1 − t x. (C10) Indeed, 
+
+ϕxt (y) = ft(y + gt(x)) = (1 − t)y + tx. (C11) 
+
+> Appendix D: Derivation of the practical objective functions
+
+We derive two objective functions used in Sec. VI as follows.  
+
+> 1. Gaussian prior
+
+By substituting Eq. (47) and λ(t) = σ(t)−1 into Eqs. (27) and (28), we obtain 
+
+α(t, z, x ) = x +
+
+
+
+− 11 − t − 1211 − t
+
+
+
+(z − tx )= x − 32
+
+z − tx 
+
+1 − t ,
+
+(D1) 
+
+b(t, z ) = √1 − t I d. (D2) By employing the reparameterization trick in Eq. (26) into the above equation, we get α as a function of ξ in-stead of z:
+
+α(t, tx + (1 − t)ξ, x ) = x − 32 ξ. (D3) Therefore, the expectation value in Eq. (23) can be rep-resented as 
+
+EZ∼ρt(·| xi)
+
+h
+
+∥α(t, Z, x i) − sθ (t, Z )∥2Γ−1(t,Z )
+
+i
+
+= Eξ∼N (0 ,I d)
+
+"
+
+11 − t x − 32 ξ − sθ (t, tx + (1 − t)ξ)
+
+> 2
+> Id
+
+#
+
+.
+
+(D4) Moreover, we approximately compute the time integral in Eq. (23) by Monte Carlo integration with a uniform distribution over [0 , 1). As a result, we get the objective function Eq. (48).    
+
+> 2. Johnson’s SUprior
+
+From the definition of the Johnson’s SU distribution Eq. (49), the gradient of its log-density is 
+
+∇y log π(y) = − sinh −1 y
+
+p1 + y2 − y
+
+1 + y2 . (D5) Substituting Eq. (51) and γ(t) = 1 /(1 − t) into Eqs. (34) and (35) gives 
+
+α(t, tx + (1 − t)y, x ) = x − y − 12
+
+sinh −1 y
+
+p1 + y2 + y
+
+1 + y2
+
+!
+
+.
+
+(D6) Also, b(t, z ) = √1 − tI d. Furthermore, the reparameteri-zation trick in Eq. (50) gives 
+
+α(t, tx + (1 − t) sinh ξ, x )= x − sinh ξ − 12
+
+ξ
+
+p1 + sinh 2 ξ + sinh ξ
+
+1 + sinh 2 ξ
+
+!
+
+= x − sinh ξ − 12
+
+ξ + tanh ξ
+
+cosh ξ . (D7) Following the same procedure as in the Gaussian-prior case, we obtain Eq. (52).  
+
+> Appendix E: Additional experiments 1. Effect of the time horizon in VP-SBM
+
+We examined the sensitivity of the VP-SBM to the time horizon T . Figure 2 shows generated samples for 
+
+T = 1 , 10 , 100, where the number of discretization steps (i.e. Euler–Maruyama steps) was fixed to 100 in all cases, as in the setting in Sec. VI. The results for different T reveal a trade-off between training and generation in SBMs. For T = 1, the first term in Eq. (11) remains nonzero because the initial dis-tribution of the reference process has not yet sufficiently approached the prior. Consequently, we never make the KL divergence sufficiently small (see Eqs. (4) and (11)). For T = 100, while the first term in Eq. (11) is negligible, discretization error is increasing. For a fixed number of discretization steps N , the size of each time step is pro-portional to T /N and therefore increases with T . There-fore, increasing T under the fixed discretization steps re-duces the accuracy of the SDE simulation, which causes the degradation of the quality of the generated samples. In contrast, for T = 10, this trade-off is mitigated. These results show that, in SBMs with a fixed number of discretization steps, the time horizon induces a trade-off between the training efficiency achieved through con-vergence to the prior and the numerical accuracy of gen-eration with the SDE simulation. It is therefore necessary to tune the time horizon to balance these two sources of error.  
+
+> 2. Effect of the interpolation schedule
+
+We demonstrate that the performance depends on the design of the reference process realizing the prescribed 11            
+
+> FIG. 2. The visualization of 7,500 training data and gen-erated samples from VP-SBMs. The top row represents the training data. The remaining rows show samples from the VP-SBM with T= 1 ,10 ,100, respectively. All generated sam-ples were obtained using 100 Euler–Maruyama steps. Small
+> Tleads to insufficient training, whereas large Tdegrades the SDE simulation for sampling.
+
+conditional distributions, even when those distributions are identical. The construction for Gaussian priors in Sec. IV A con-tains freedom in the time scheduling of the mean mt and the standard deviation σ(t). To examine the effect of this schedule, we parameterize both functions by a monotone function φ : [0 , 1] → [0 , 1]: 
+
+mt(x) = φ(t)x, σ(t) = 1 − φ(t). (E1) Here, to satisfy Eq. (25), φ satisfies φ(0) = 0 and φ(1) = 1. We consider the linear schedule φ(t) = t in Eq. (47) together with cubic and exponential families: 
+
+φ(t) = (1 − c)t + 3 ct 2 − 2ct 3, φ(t) = ect − 1
+
+ec − 1 , (E2) where c is an arbitrary parameter. The values of the parameter c are summarized in Table I, and the corre-sponding schedule curves are shown in Fig. 3. Substituting Eq. (E1) and λ(t) = σ(t)−1 into Eqs. (27) and (28), and using the reparameterization trick Z =
+
+φ(t)x + (1 − φ(t)) ξ, the simulation-free objective in Eq. (23) can be calculated as 
+
+LSF (θ) = 12n
+
+> n
+
+X
+
+> i=1
+
+Et∼U[0 ,1) ,ξ ∼N (0 ,I d)
+
+"
+
+11 − φ(t) ˙φ(t)xi −
+
+
+
+˙φ(t) + 12
+
+
+
+ξ − sθ (t, φ (t)xi + (1 − φ(t)) ξ)
+
+> 2
+> Id
+
+#
+
+. (E3) Although all schedules connect the same boundary distri-butions μ and π, they therefore define different training objectives and lead to different generation dynamics. As in the main experiments, the time variable was sampled uniformly from [0 , 0.99] in implementation. We trained the model with each interpolation schedule on the four datasets used in Sec. VI. Tables II and III report an average of the maximum mean discrepancy (MMD) [28] and sliced Wasserstein distance (SWD) [29] over 10 independent training runs with different random seeds, respectively. Lower values indicate better agree-ment between the generated and training distributions. The linear schedule achieved the lowest MMD and SWD on the Gaussian-mixture, spiral, and two-moons datasets. For the checkerboard dataset, the concave exponential schedule performed best under both met-rics. These results show that the intermediate condi-tional path can affect generation quality even when the boundary distributions are unchanged. The linear sched-ule provides a robust choice in the present experiments, whereas the checkerboard results suggest that a suitably chosen nonlinear schedule can be advantageous for some                      
+
+> TABLE I. Time schedules φ(t) used in the Gaussian-prior experiments. The table lists the functional form and param-eter cfor each schedule. All schedules satisfy φ(0) = 0 and
+> φ(1) = 1. Name φ(t)c
+> linear t
+> s curve
+> (1 −c)t+ 3 ct 2−2ct 3
+> 0.8
+> n curve −1
+> nn curve −1.8
+> concave ect −1
+> ec−1
+> −2
+> convex 2
+
+target distributions. A systematic characterization or learning of the interpolation schedule therefore consti-tutes an important direction for future work.  
+
+> [1] J. Sohl-Dickstein, E. Weiss, N. Maheswaranathan, and S. Ganguli, Deep unsupervised learning using nonequi-librium thermodynamics, in International Conference on
+
+12 
+
+FIG. 3. Interpolation schedules φ(t) used in the additional experiments. All schedules satisfy φ(0) = 0 and φ(1) = 1, but differ in their intermediate time dependence. TABLE II. The mean of MMD over 10 independent training runs with different random seeds for each dataset and curve. Values are reported in units of 10 −4. The best value is bold and underlined, and the second-best value is bold. Curve gmm8 spiral checker moon 
+
+linear 0.989 5.46 6.11 6.05 
+
+s curve 3.65 9.31 9.62 11.0 
+
+n curve 1.63 6.28 6.56 12.1 
+
+nn curve 3.47 7.00 7.53 16.1 
+
+concave 1.59 5.57 4.39 12.6 
+
+convex 2.19 9.07 8.42 10.3 
+
+Machine Learning (PMLR, 2015) pp. 2256–2265. [2] J. Ho, A. Jain, and P. Abbeel, Denoising diffusion prob-abilistic models, in Advances in Neural Information Pro-cessing Systems , Vol. 33 (Curran Associates, Inc., 2020) pp. 6840–6851. [3] Y. Song, J. Sohl-Dickstein, D. P. Kingma, A. Kumar, S. Ermon, and B. Poole, Score-based generative modeling through stochastic differential equations (2021). [4] F.-A. Croitoru, V. Hondru, R. T. Ionescu, and M. Shah, Diffusion models in vision: A survey, IEEE transactions on pattern analysis and machine intelligence 45 , 10850 TABLE III. The mean of SWD over 10 independent training runs with different random seeds for each dataset and curve. Values are reported in units of 10 −1. The best value is bold and underlined, and the second-best value is bold. Curve gmm8 spiral checker moon 
+
+linear 3.15 3.04 1.97 4.09 
+
+s curve 4.46 3.83 2.53 5.2 
+
+n curve 3.3 3.38 2.06 5.27 
+
+nn curve 4.27 3.27 2.11 6.08 
+
+concave 3.5 3.39 1.76 5.23 
+
+convex 3.49 3.57 2.29 5.14 
+
+(2023). [5] C. Zhang, C. Zhang, S. Zheng, M. Zhang, M. Qamar, S.-H. Bae, and I. S. Kweon, A survey on audio diffusion models: Text to speech synthesis and enhancement in generative ai, arXiv preprint arXiv:2303.13336 (2023). [6] Z. Xing, Q. Feng, H. Chen, Q. Dai, H. Hu, H. Xu, Z. Wu, and Y.-G. Jiang, A survey on video diffusion models, ACM Computing Surveys 57 , 1 (2024). [7] S. Nie, F. Zhu, Z. You, X. Zhang, J. Ou, J. Hu, J. Zhou, Y. Lin, J.-R. Wen, and C. Li, Large language diffusion models, Advances in Neural Information Processing Sys-tems 38 , 50608 (2026). [8] Y. Song, C. Durkan, I. Murray, and S. Ermon, Maxi-mum likelihood training of score-based diffusion models, Advances in Neural Information Processing Systems 34 ,1415 (2021). [9] C. Gardiner, Stochastic Methods: A Handbook for the Natural and Social Sciences , 4th ed., Springer Series in Synergetics, Vol. 13 (Springer, Berlin, Heidelberg, 2009). [10] P. Vincent, A connection between score matching and denoising autoencoders, Neural computation 23 , 1661 (2011). [11] V. De Bortoli, J. Thornton, J. Heng, and A. Doucet, Diffusion schr¨ odinger bridge with applications to score-based generative modeling, Advances in Neural Informa-tion Processing Systems 34 , 17695 (2021). [12] M. Albergo, N. M. Boffi, and E. Vanden-Eijnden, Stochastic interpolants: A unifying framework for flows and diffusions, Journal of Machine Learning Research 26 ,1 (2025). [13] K. Kaba, R. Shimizu, M. Ohzeki, and Y. Sughiyama, Schr¨ odinger bridge-type diffusion models as an extension of variational autoencoders, Physical Review Research 7,033213 (2025). [14] Y. Lipman, R. T. Q. Chen, H. Ben-Hamu, M. Nickel, and M. Le, Flow matching for generative modeling, in 
+
+The Eleventh International Conference on Learning Rep-resentations (2023). [15] H. H. Risken, The Fokker-Planck equation : methods of solution and applications , 2nd ed., Springer series in syn-ergetics No. v. 18 (Springer-Verlag, 1996). [16] T. M. Cover, Elements of information theory (John Wi-ley & Sons, 1999). [17] B. D. O. Anderson, Reverse-time diffusion equation mod-els, Stochastic Processes and their Applications 12 , 313 (1982). [18] B. Oksendal, Stochastic differential equations: an intro-duction with applications (Springer Science & Business Media, 2013). [19] E. Schr¨ odinger, Sur la th´ eorie relativiste de l’´ electron et l’interpr´ etation de la m´ ecanique quantique, Annales de l’institut Henri Poincar´ e 2, 269 (1932). [20] T. Chen, G. Liu, and E. A. Theodorou, Likelihood train-ing of schr¨ odinger bridge using forward-backward sdes theory, in The Tenth International Conference on Learn-ing Representations (ICLR, 2022). [21] A. Hyv¨ arinen and P. Dayan, Estimation of non-normalized statistical models by score matching., Journal of Machine Learning Research 6 (2005). [22] D. P. Kingma and M. Welling, Auto-encoding variational bayes, in 2nd International Conference on Learning Rep-resentations, ICLR 2014, Banff, AB, Canada, April 14-16, 2014, Conference Track Proceedings (2014). [23] G. Bartosh, D. Vetrov, and C. A. Naesseth, Neural flow 13 
+
+diffusion models: Learnable forward process for improved diffusion modelling, Advances in Neural Information Pro-cessing Systems 37 , 73952 (2024). [24] R. Eldan, Thin shell implies spectral gap up to poly-log via a stochastic localization scheme, Geometric and Functional Analysis 23 , 532 (2013). [25] A. Montanari, Sampling, diffusions, and stochastic local-ization, arXiv preprint arXiv:2305.10690 (2023). [26] A. El Alaoui, A. Montanari, and M. Sellke, Sampling from the sherrington-kirkpatrick gibbs measure via algo-rithmic stochastic localization, in 2022 IEEE 63rd An-nual Symposium on Foundations of Computer Science (FOCS) (IEEE, 2022) pp. 323–334. [27] N. L. Johnson, Systems of frequency curves generated by methods of translation, Biometrika 36 , 149 (1949). [28] A. Gretton, K. M. Borgwardt, M. J. Rasch, B. Sch¨ olkopf, and A. Smola, A kernel two-sample test, The journal of machine learning research 13 , 723 (2012). [29] N. Bonneel, J. Rabin, G. Peyr´ e, and H. Pfister, Sliced and radon wasserstein barycenters of measures, Journal of Mathematical Imaging and Vision 51 , 22 (2015).

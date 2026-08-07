@@ -18,77 +18,79 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-04
-- 运行时间：2026-08-04 21:36:54 UTC
+- 最新运行日期：2026-08-07
+- 运行时间：2026-08-07 02:09:22 UTC
 - 运行状态：成功
 - 本次总论文数：19
-- 精读区：7
-- 速读区：12
+- 精读区：8
+- 速读区：11
 
 ### 今日简报（AI）
-今日精读7篇，聚焦流匹配与扩散模型的数学统一，其中两篇获9.0高分。最值得深入的是《Mimicking diffusion processes》与《Flow Matching with Missing Data》，分别揭示微分方程模拟扩散的本质和缺失数据下的匹配框架。普通读者可优先关注《Meshy T2》和《StraightDP》，了解流匹配如何加速3D生成并兼顾隐私保护。
-- 详情：[/202608/04/README](/202608/04/README)
+今日精读聚焦两大9分突破：视频模型化身原生4D渲染器，以及从视频扩散潜变量直接生成6自由度物体轨迹，为动态三维生成开辟新路径。  
+最值得关注的方向是“视频即渲染器”的统一框架与轨迹生成中的潜空间解码，两者均展现了多模态生成与物理建模的深度融合。  
+普通读者可从这两篇入手感受AI对动态世界的理解力，后续再关注扩散模型在优化和气象同化中的轻量化应用。
+- 详情：[/202608/07/README](/202608/07/README)
 
 ### 精读区论文标签
-1. [Mimicking diffusion processes with differential equations](/202608/04/2607.25685v2-mimicking-diffusion-processes-with-differential-equations)  
+1. [Video Models as Native 4D Renderers: World-Grounded Conditioning from Animated Mesh](/202608/07/2608.00094v2-video-models-as-native-4d-renderers-world-grounded-conditioning-from-animated-mesh)  
    标签：评分：9.0/10、query:fm
-   evidence：扩散概率流ODE与概率模型的理论分析
-2. [Flow Matching with Missing Data](/202608/04/2607.28698v1-flow-matching-with-missing-data)  
+   evidence：使用预训练视频扩散模型作为渲染器
+2. [DreamTraj: Generating 6-DoF Object Trajectories by Reading Unrendered Video Diffusion Latents](/202608/07/2608.00486v1-dreamtraj-generating-6-dof-object-trajectories-by-reading-unrendered-video-diffusion-latents)  
    标签：评分：9.0/10、query:fm
-   evidence：带缺失数据的流匹配生成建模
-3. [Noise-Robust Conditional Flow Matching: Generating Clean Samples from Noisy Datasets](/202608/04/2608.00064v1-noise-robust-conditional-flow-matching-generating-clean-samples-from-noisy-datasets)  
+   evidence：用于轨迹生成的扩散概率模型
+3. [FlowPilot: Real-Time World-Action Modeling for Agile UAV Navigation](/202608/07/2608.00635v1-flowpilot-real-time-world-action-modeling-for-agile-uav-navigation)  
    标签：评分：9.0/10、query:fm
-   evidence：直接提出面向生成建模的噪声鲁棒条件流匹配方法
-4. [Hybrid-Domain Posterior Sampling for Inverse Problems via Latent Flow Matching](/202608/04/2608.00537v1-hybrid-domain-posterior-sampling-for-inverse-problems-via-latent-flow-matching)  
+   evidence：使用流匹配进行轨迹生成和深度去噪
+4. [Simulation-free and finite-time diffusion model](/202608/07/2608.03117v1-simulation-free-and-finite-time-diffusion-model)  
    标签：评分：9.0/10、query:fm
-   evidence：用于逆问题的潜在流匹配
-5. [One-Sided Quantile Coupling for Flow Matching](/202608/04/2608.00978v1-one-sided-quantile-coupling-for-flow-matching)  
+   evidence：条件流匹配作为小噪声极限
+5. [HyperbolicDiffusion: Sharp & Scalable Tiled Generation on the Hyperbolic Plane](/202608/07/2608.03422v1-hyperbolicdiffusion-sharp--scalable-tiled-generation-on-the-hyperbolic-plane)  
    标签：评分：9.0/10、query:fm
-   evidence：面向流匹配生成建模的单边分位数耦合
-6. [Computational and Statistical Guarantees of the \textit{c}-Rectified flow](/202608/04/2608.02487v1-computational-and-statistical-guarantees-of-the-textitc-rectified-flow)  
-   标签：评分：8.5/10、query:fm
-   evidence：为修正流提供计算与统计保证
-7. [S-Avatar: Diffusion-Guided Gaussian Head Avatars from a Single Image](/202608/04/2607.28164v1-s-avatar-diffusion-guided-gaussian-head-avatars-from-a-single-image)  
-   标签：评分：8.0/10、query:fm
-   evidence：扩散引导的单图高斯头部化身生成
+   evidence：双曲平面上的扩散概率模型生成
+6. [Discretization and Statistical Consistency of Functional Flow Matching](/202608/07/2608.04531v1-discretization-and-statistical-consistency-of-functional-flow-matching)  
+   标签：评分：9.0/10、query:fm
+   evidence：函数流匹配的离散化与统计一致性
+7. [UniWorld-View: Large-Baseline View Synthesis via Video Diffusion Models](/202608/07/2608.04701v1-uniworld-view-large-baseline-view-synthesis-via-video-diffusion-models)  
+   标签：评分：9.0/10、query:fm
+   evidence：用于大基线视图合成的视频扩散模型
+8. [Rethinking Pixel Mean Flows via Interval Denoiser](/202608/07/2608.04818v1-rethinking-pixel-mean-flows-via-interval-denoiser)  
+   标签：评分：9.0/10、query:fm
+   evidence：流匹配ODE与区间去噪器
 
 ### 速读区论文标签
-1. [Meshy T2: Fast Native Mesh Generation with Flow Matching](/202608/04/2607.28675v1-meshy-t2-fast-native-mesh-generation-with-flow-matching)  
+1. [Particle-based Generalised Stochastic Optimisation](/202608/07/2608.02844v1-particle-based-generalised-stochastic-optimisation)  
    标签：评分：8.0/10、query:fm
-   evidence：流匹配用于网格生成
-2. [WaiT for the Signal: Simple Frequency-Aware Flow-Matching](/202608/04/2607.28760v1-wait-for-the-signal-simple-frequency-aware-flow-matching)  
+   evidence：基于扩散的随机优化用于潜在变量模型
+2. [Intrinsic-Hybrid Latent Diffusion Models for Generative Modeling on Unknown Manifolds](/202608/07/2608.04827v1-intrinsic-hybrid-latent-diffusion-models-for-generative-modeling-on-unknown-manifolds)  
    标签：评分：8.0/10、query:fm
-   evidence：频率感知的流匹配图像生成
-3. [StraightDP: Geometry-Aware Differential Privacy for Rectified-Flow Transformers](/202608/04/2607.29100v1-straightdp-geometry-aware-differential-privacy-for-rectified-flow-transformers)  
+   evidence：未知流形上的潜扩散模型
+3. [Multimodal Spatiotemporal Atmospheric Data Assimilation with Latent Flow-matching](/202608/07/2608.05103v1-multimodal-spatiotemporal-atmospheric-data-assimilation-with-latent-flow-matching)  
    标签：评分：8.0/10、query:fm
-   evidence：用于生成建模的整流流变换器
-4. [Unleashing the Power of Text: Text-Guided Flow Matching for Image Fusion under Complex Degradations](/202608/04/2608.00530v1-unleashing-the-power-of-text-text-guided-flow-matching-for-image-fusion-under-complex-degradations)  
-   标签：评分：8.0/10、query:fm
-   evidence：文本引导的潜在空间流匹配用于图像融合
-5. [InstancePin: Instance-Addressable Layout-to-Image Diffusion via Coordinate Pinning](/202608/04/2608.00588v1-instancepin-instance-addressable-layout-to-image-diffusion-via-coordinate-pinning)  
-   标签：评分：8.0/10、query:fm
-   evidence：扩散概率模型用于实例可寻址布局到图像生成
-6. [Latent Flow Matching for Arbitrage-Aware Implied Volatility Surface Generation](/202608/04/2608.00616v1-latent-flow-matching-for-arbitrage-aware-implied-volatility-surface-generation)  
-   标签：评分：8.0/10、query:fm
-   evidence：使用VAE和潜在流匹配生成波动率曲面
-7. [Where Does Generative Difficulty Reside? An Empirical Study of Target Representations](/202608/04/2608.00626v1-where-does-generative-difficulty-reside-an-empirical-study-of-target-representations)  
-   标签：评分：8.0/10、query:fm
-   evidence：掩码自回归整流流模型中目标表示的实证研究
-8. [AURORA-LM: Autoencoding Unified Representation for Continuous-Latent Diffusion Language Modeling](/202608/04/2608.02602v1-aurora-lm-autoencoding-unified-representation-for-continuous-latent-diffusion-language-modeling)  
-   标签：评分：8.0/10、query:fm
-   evidence：连续潜扩散语言模型
-9. [Beyond Global Latents: Chunk-Based Sparse Grid VAE for Scalable 3D Modeling](/202608/04/2608.02016v1-beyond-global-latents-chunk-based-sparse-grid-vae-for-scalable-3d-modeling)  
+   evidence：潜流匹配数据同化
+4. [Scene2Sound: Auditory-Grounded Soundscape Generation for 3D Gaussian Worlds](/202608/07/2608.00463v1-scene2sound-auditory-grounded-soundscape-generation-for-3d-gaussian-worlds)  
    标签：评分：7.0/10、query:fm
-   evidence：ChunkVAE是一种用于3D建模的稀疏网格变分自编码器
-10. [Fourier-Latent Diffusion for Constrained Generation of Triply Periodic Minimal Surfaces](/202608/04/2608.02151v1-fourier-latent-diffusion-for-constrained-generation-of-triply-periodic-minimal-surfaces)  
+   evidence：为3DGS世界生成空间一致音景
+5. [SPARE: Structural Parameter-Free Affinity Regularization for Flow Matching](/202608/07/2608.01990v1-spare-structural-parameter-free-affinity-regularization-for-flow-matching)  
    标签：评分：7.0/10、query:fm
-   evidence：傅里叶潜在空间扩散模型用于TPMS生成
-11. [StructureGS: Structure-aware Gaussian Splatting for Articulated Object Reconstruction](/202608/04/2607.26889v1-structuregs-structure-aware-gaussian-splatting-for-articulated-object-reconstruction)  
+   evidence：流匹配正则化
+6. [A Unified Kullback--Leibler Divergence Analysis of Generative Diffusion Models via Entropy Production Rate](/202608/07/2608.02406v1-a-unified-kullback--leibler-divergence-analysis-of-generative-diffusion-models-via-entropy-production-rate)  
+   标签：评分：7.0/10、query:fm
+   evidence：扩散概率模型误差分析
+7. [Learning to Tessellate: Point Cloud Generation via Recursive Spectral Partitioning](/202608/07/2608.02432v1-learning-to-tessellate-point-cloud-generation-via-recursive-spectral-partitioning)  
+   标签：评分：7.0/10、query:fm
+   evidence：自回归点云生成
+8. [Convex Collision-Free Regions](/202608/07/2607.26901v1-convex-collision-free-regions)  
    标签：评分：6.0/10、query:dgs-physics
-   evidence：重建关节物体以支持物理交互
-12. [FillGS: Filling Observation Gaps in 4D Gaussian Splatting via Viewpoint-Time Selection and Generative Refinement](/202608/04/2607.29284v1-fillgs-filling-observation-gaps-in-4d-gaussian-splatting-via-viewpoint-time-selection-and-generative-refinement)  
+   evidence：变形体碰撞处理
+9. [Beyond Token-Level Cross-Entropy: Fréchet Distributional Post-Training for Autoregressive Image Generation](/202608/07/2608.00562v1-beyond-token-level-cross-entropy-frchet-distributional-post-training-for-autoregressive-image-generation)  
    标签：评分：6.0/10、query:fm
-   evidence：使用生成式细化填补4DGS观察空隙
+   evidence：自回归图像生成的后训练
+10. [PartMat: Material-Aware 3D Part Decomposition with a Single Global Latent](/202608/07/2608.01825v1-partmat-material-aware-3d-part-decomposition-with-a-single-global-latent)  
+   标签：评分：6.0/10、query:fm
+   evidence：单全局潜变量部件分解
+11. [STEP-OPD: Rethinking Output Targets and Internal Dynamics in On-Policy Distillation for Diffusion Models](/202608/07/2608.04887v1-step-opd-rethinking-output-targets-and-internal-dynamics-in-on-policy-distillation-for-diffusion-models)  
+   标签：评分：6.0/10、query:fm
+   evidence：生成扩散模型蒸馏
 
 
 <div class="dpr-home-promo-card dpr-home-panel">

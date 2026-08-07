@@ -1,0 +1,574 @@
+Title: Scene2Sound: Auditory-Grounded Soundscape Generation for 3D Gaussian Worlds
+
+URL Source: https://arxiv.org/pdf/2608.00463v1
+
+Published Time: Tue, 04 Aug 2026 00:27:12 GMT
+
+Number of Pages: 14
+
+Markdown Content:
+> 1
+
+# Scene2Sound: Auditory-Grounded Soundscape Generation for 3D Gaussian Worlds 
+
+Masaki Yoshida, Ren Togo, Takahiro Ogawa, and Miki Haseyama Hokkaido University 
+
+Abstract —3D Gaussian Splatting (3DGS) turns captured or generated imagery into photorealistic 3D world simulations that users can freely explore, yet these worlds remain silent. Because existing audio generation methods condition on a single image or viewpoint, their sound is tied to that observation and cannot stay consistent while a listener moves. We introduce the task of generating a spatially consistent soundscape for a given 3DGS world through auditory grounding, identifying which objects in the world should emit sound and anchoring each to a persistent 3D position, and present Scene2Sound, a training-free framework built on this grounding. From the input world alone, our pipeline selects viewpoints that jointly cover the scene, identifies sound-emitting objects with a vision-language model, and associates the multi-view detections into 3D instances through Gaussian set matching, which measures the overlap between the Gaussian sets that render each detection. Each source then receives generated audio that a standard object-based audio engine spatializes in real time at arbitrary listener poses. We further propose two spatial-consistency metrics, one testing whether rendered audio responds consistently to listener motion and one testing whether the claimed sources are supported by views held out from their placement. On a curated set of generated 3DGS worlds and on 3DGS scenes generated from real-world 360 ◦
+
+captures, Scene2Sound preserves the audio quality of strong per-viewpoint baselines while remaining spatially consistent where per-viewpoint and single-panorama pipelines do not, and auser study confirms the perceptual benefit. Project page: https: //masaki-lmd.github.io/scene2sound/. 
+
+Index Terms —3D Gaussian splatting, spatial audio, soundscape generation, auditory grounding, instance association, multimodal world simulation 
+
+I. I NTRODUCTION 
+
+3D Gaussian Splatting (3DGS) [1] has become a power-ful representation for photorealistic, real-time-renderable 3D scenes. It now underlies a broad class of navigable 3D world simulations: scenes reconstructed from captured imagery, as well as scenes generated from text or images by recent meth-ods [2], [3] and commercial systems [4], with growing work on scene understanding, editing, and physical simulation [5], [6]. Yet however obtained, such a world remains purely visual, carrying appearance and geometry but no sound. Truly immersive 3D worlds require convincing soundscapes 
+
+(collections of sounds that characterize an environment) [7], rendered as spatial audio that adapts in volume and direction as a listener freely navigates [8]. Recent visual-to-audio [9] and spatial-audio [10], [11] meth-ods synthesize high-quality and even multi-channel audio from images, but they operate per viewpoint without explicit 3D sound-source modeling. Systems that do attach audio to 3D scenes target transient impact sounds [12] or voice-driven co-creation [13] (Sec. II). The recent SonoWorld [14] outpaints “The ambient          
+
+> soundscape is…” “Soft melodic bird calls …” “Static noise from an old TV set …” “Continuous hum of afan spinning …”
+> Audio Engine
+> User Pose 3D Audio Scene with Soundscape
+> Fig. 1. Soundscape generation for 3DGS scenes. Given a pre-trained 3DGS scene, Scene2Sound automatically infers what sounds should be present and where they originate, producing an object-based audio configuration. Combined with a user pose and an audio engine, this enables spatially consistent 3D audio that adapts as users navigate through the scene.
+
+a single photograph into a panorama and generates an audio-visual scene anchored to that panoramic viewpoint. We instead target sound for an arbitrary, given 3DGS world, whether generated or reconstructed, that a listener can traverse freely: such a world cannot be summarized by a single panoramic observation; sound-emitting objects must therefore be discov-ered from multiple viewpoints and integrated into persistent 3D sources. What remains missing is a unified approach that automatically generates spatially consistent soundscapes across an entire navigable 3D environment. Two challenges follow. Such worlds often lack canonical reference camera positions, and it is not obvious how to ob-serve an expansive scene with sufficient coverage. Moreover, the detections collected across viewpoints must be organized into persistent instances. When a street contains several cars, observations of the same car from different viewpoints must merge into one source, while different cars must remain separate sources; failure of this multi-view correspondence di-rectly causes spatial inconsistency. We further require training-free operation on any pre-trained 3DGS. While recent 3DGS instance methods [15] advance segmentation through per-Gaussian optimization, they require retraining and do not address which objects should emit sound. To this end, we present Scene2Sound , a training-free frame-work that generates soundscapes for a given 3DGS world through auditory grounding (Fig. 1). It determines which objects should emit sound and anchors each to a persistent 3D position, so that the generated soundscape remains spatially consistent under free navigation. Because real-time spatial-ization at arbitrary viewpoints requires each source to carry a persistent 3D location, we adopt an object-based audio representation [16], in which each source is specified by its content and 3D position and an audio engine spatializes the sources relative to the listener at interactive rates. This formulation centers on source identification and 3D placement; arXiv:2608.00463v1 [cs.CV] 1 Aug 2026 2
+
+propagation effects such as reverberation and occlusion are not modeled in this work (Sec. VI). Scene2Sound resolves the two challenges above through multi-viewpoint association. We automatically select viewpoints that jointly cover the scene and identify sound events from the collected views. Observing the scene from multiple viewpoints inevitably yields overlapping detections of the same object, and these overlapping obser-vations share contributing Gaussians. We exploit this overlap through Gaussian set matching (GSM), which measures Jac-card similarity between the Gaussian sets that the rasterizer records as rendering each detected region, associating multi-view detections into consistent 3D instances without learned features or per-Gaussian parameters. Scene2Sound orches-trates VLMs [17], segmentation models [18], and text-to-audio models [19] within this pipeline. In summary, our contributions are as follows:  
+
+> •
+
+We formulate soundscape generation for a given 3DGS world as an auditory grounding problem, identifying sound-emitting objects and anchoring each to a view-consistent 3D position, and present Scene2Sound, atraining-free framework that realizes this on pre-trained 3DGS worlds without per-scene training.  
+
+> •
+
+We introduce Gaussian set matching (GSM), which asso-ciates cross-view detections into 3D instances via Jaccard similarity over the rasterizer’s tile–Gaussian sets, requir-ing no learned features, per-Gaussian parameters, or per-scene optimization. With automatic viewpoint selection, GSM forms the backbone of Scene2Sound, orchestrating vision-language, segmentation, and text-to-audio models.  
+
+> •
+
+We propose a two-axis evaluation of spatial consistency, pairing Listener-Motion Consistency (LMC), which tests response to listener motion, with Cross-View Grounding Consistency (CGC), which tests support from held-out views. We release SoundscapePLY, a curated testbed, and report transfer to real-world scenes. II. R ELATED WORK 
+
+A. Audio Generation 
+
+Our task requires generating the audio content that com-poses a soundscape. Recent generative audio models syn-thesize plausible waveforms from text or visual inputs at open-domain scale [19], [20]. Efficiency-oriented text-to-audio models such as AudioLCM [21], FlashAudio [22], and Tan-goFlux [23] reduce sampling cost, while Lumina-Next [24] is a general flow-based multimodal generation framework with an audio variant; video-to-audio models [25]–[27] such as MMAudio [28] strengthen temporal and semantic alignment with visual content. These approaches generate audio tied to the conditioning observation (a prompt, image, or video clip) rather than a reusable scene-level representation that supports re-rendering under viewpoint changes. Two lines of work are closer to our setting. Spatial audio generation methods directly produce immersive formats such as first-order ambisonics (FOA) [11], [29] or 5.1-channel surround [10], but their outputs are anchored to the condition-ing camera pose or equirectangular frame, giving viewpoint-locked waveforms. SonoWorld [14] reconstructs a 3D audio-visual scene from a single image and synthesizes ambisonic audio for it, sharing our goal of spatially grounded sound; it regenerates the scene from one panoramic view, whereas we ground sound in a given 3DGS world and associate detections across views into object-based, re-renderable 3D instances, and we compare against a re-implementation of its pipeline in Sec. IV. Soundscape-oriented generation instead produces coherent environmental audio from object- or layer-level com-ponents, including object-aware generation conditioned on visual cues [9]. While these directions provide strong generators or compo-sition paradigms, to our knowledge none associates multiple sound-emitting instances with persistent 3D anchors for con-sistent rendering under arbitrary listener motion; our pipeline supplies this authoring step. 
+
+B. Spatial Audio Rendering in 3D Scenes 
+
+Audio rendering in 3D scenes involves two questions: what sound is produced where, and how it propagates to the listener. Our work addresses the former, identifying and anchoring sound-emitting instances, and adopts object-based rendering for real-time playback. Propagation- and field-based approaches model how sound travels through a scene, via impulse responses [30], [31] or acoustic fields [32], [33]. These methods capture room acoustics accurately but assume known sources or require multiple reference acoustic measurements of the target scene, a fundamentally different problem setting from ours. Novel-view acoustic synthesis instead synthesizes audio from new listener viewpoints given recorded reference ob-servations [34], [35], including a material- and geometry-aware Gaussian representation [36] and a joint radiance– acoustic field informed by 3D scene structure [37]. These methods reproduce view-dependent audio well but rely on captured audio or per-scene acoustic supervision (e.g., room impulse responses) and neural waveform synthesis, which is inapplicable when audio must be generated from scratch and played back efficiently under interactive viewpoint changes, as with generated or freshly reconstructed 3DGS worlds. Object-based audio rendering instead represents a scene as a set of audio objects with associated metadata (source sig-nals, 3D positions, rendering parameters), enabling real-time playback in audio engines [38], [39]. Our approach follows this paradigm, generating audio assets and estimating instance-level 3D anchors for a reusable scene-level representation. Interactive authoring systems such as Sonora [13] share this paradigm but rely on user-in-the-loop specification rather than fully automatic, scene-grounded anchoring. 
+
+C. Object-Instance Retrieval in 3DGS Scenes 
+
+Our framework requires separating sound-emitting object instances and estimating their 3D positions from a pre-trained 3DGS scene. Most scene-segmentation methods [15], [40], [41] obtain instance-level structure by augmenting Gaussians with learnable parameters optimized from multi-view 2D su-pervision, using per-Gaussian embeddings, identity encodings, or object-centric formulations, and thus require additional 3Scene Understanding 
+
+> 3DGS Scene
+> Viewpoint Selection
+> Multi-view Panoramic Images
+
+SAM3  
+
+> grounding query Multi-view Masks
+
+Text-to-Audio 
+
+VLM         
+
+> Scene Understanding with Viewpoint Selection Audio Source Placement Audio Source Generation Object-based Audio Rendering
+> Audio Engine
+> Audio Source
+> audio prompt
+> Position: (x, y, z)
+> Gaussian Set Matching
+> “source_id ”“grounding query ”“audio prompt ”
+> Fig. 2. Framework overview. Our pipeline consists of three stages: (1) Scene Understanding with Viewpoint Selection renders multiple viewpoints from the 3DGS scene and infers sound events with their visual grounding using VLMs and segmentation models; (2) Audio Source Placement lifts 2D grounding regions into 3D via Gaussian set matching to produce spatially consistent instance associations; (3) Audio Source Generation synthesizes audio content for each placed source, yielding the object-based soundscape that an audio engine renders for the listener’s pose.
+
+training beyond the original 3DGS reconstruction; object-aware Gaussian representations have also been explored for robotic manipulation [42], under a different supervision set-ting. Since our scenario assumes a reconstructed 3DGS and favors lightweight deployment, we avoid further training. Training-free directions on 3DGS exist [43], [44] but are not tailored to audio-conditioned instance anchoring or to separating multiple instances under the same sound query. Lifting by Gaussians (LBG) [45] instead lifts 2D foundation-model signals into 3D, fusing masks and learned features to obtain instance-level predictions. We avoid feature learning or fusion and instead perform training-free instance association by measuring Gaussian set overlap across views with the Jaccard index, directly grouping observations into sound-source instances atop the original 3DGS representation. DC-SEG [46] uses Jaccard-based matching to assign 2D open-vocabulary semantic labels to class-agnostic 3D masks; we instead use Gaussian-set overlap as the primary cue for cross-view instance association under a fixed sound query. III. M ETHOD 
+
+As shown in Fig. 2, Scene2Sound addresses three chal-lenges: inferring what sounds should be present, determin-ing where each sound originates, and ensuring consistency across the navigable scene. We combine foundation models for perception and generation with algorithms that exploit 3DGS geometry to anchor sound sources in 3D. We de-compose soundscapes into ambient beds , providing global background atmosphere without spatial anchoring (e.g., wind, distant traffic), and point sources , spatially localized sounds tied to specific 3D positions (e.g., fountain, air conditioner). The decomposition follows from the rendering requirement: only sounds attributable to a 3D position can be spatialized relative to the listener, while atmosphere without a localizable origin is better rendered as a non-directional layer. The pipeline has five modules: Automatic Viewpoint Se-lection (Sec. III-B) selects observation cameras for scene coverage; Scene Understanding (Sec. III-C) uses a VLM to identify sound events; Audio Source Generation (Sec. III-D) synthesizes audio from text prompts; Audio Source Placement (Sec. III-E) lifts 2D grounding into 3D positions via Gaussian set matching; and Audio Rendering (Sec. III-F) integrates results into an audio engine for real-time playback. 
+
+A. Problem Formulation 
+
+Given a 3DGS scene G = {g1, . . . , g |G| } of |G| Gaussian primitives, where each gi is parameterized by its center 
+
+μi ∈ R3, opacity, and appearance attributes, we generate a soundscape 
+
+S = ( E, a amb ) = F (G), (1) where E = {ej } is a set of positioned audio events, each 
+
+ej = ( aj , pj ) pairing an audio signal aj with a 3D position 
+
+pj ∈ R3, and aamb is a non-directional ambient sound. Unlike channel- or ambisonics-based outputs, which are tied to the viewpoint at which they were produced, this object-based representation can be re-rendered for any listener pose via standard audio engines, making it suitable for free navigation. 
+
+B. Automatic Viewpoint Selection 
+
+For generated 3DGS scenes, unlike reconstructed scenes, no reference camera positions exist. We automatically select K
+
+camera positions {v1, . . . , vK } that jointly maximize visual quality (for robust VLM predictions) and scene coverage 
+
+(for comprehensive audio event detection), using only static Gaussian parameters before rendering. In typical navigable 3DGS scenes, Gaussians form sur-faces surrounding an open interior space through which users move; we assume this hollow structure and design viewpoint selection accordingly. We compute a robust, outlier-filtered scene center c, cast N uniformly distributed rays from c, and 4
+
+place one candidate camera per ray toward the scene shell. For each candidate vi, we identify contributing Gaussians 
+
+Gvis  
+
+> i
+
+⊆ G via differentiable-rendering visibility and evaluate visual quality qi with CLIP-IQA [47] (implementation details in the supplementary material). Let K ⊆ { 1, . . . , N } index the selected viewpoints; we greedily select K viewpoints maximizing quality-weighted Gaussian coverage: 
+
+Coverage( K) = 1
+
+|G| 
+
+> |G|
+
+X
+
+> j=1
+
+max 
+
+> i∈K
+
+h
+
+qi · wd(dij ) · 1j∈G vis 
+
+> i
+
+i
+
+, (2) where dij = ∥vi − μj ∥ is the distance from camera i to Gaussian j, and wd(·) is a distance weight decaying with distance (inverse-distance weighting; supplementary material). We use N =20 and K=5 . At each selected viewpoint, we ren-der equirectangular panoramic images for downstream scene understanding. 
+
+C. Scene Understanding 
+
+Once viewpoints are selected, we render panoramic images from the 3DGS scene and analyze them with a Vision-Language Model (VLM), Qwen2.5-VL-32B [17], to infer sound events, identifying both what sounds should be present and where they originate for subsequent audio generation and spatial grounding. We design a structured prompt instructing the VLM to distinguish two event types. Point sources are spatially local-ized sounds with identifiable visual sources (e.g., fountain, car engine) that require precise 3D placement. Ambient beds are global soundscape layers without specific spatial locations (e.g., wind, distant traffic) that contribute to overall atmosphere but do not require spatial grounding. For each point source, the VLM assigns a source id shared by observations of the same semantic sound event across viewpoints; distinct physical instances within an event are resolved later by Gaussian set matching (Sec. III-E). It also generates three fields: (1) a grounding query as a simple noun phrase for the segmentation model, (2) an audio prompt 
+
+providing a detailed description for text-to-audio synthesis, and (3) an estimated loudness (quiet, moderate, or loud) for audio rendering. For ambient beds, we specify only the audio prompt. The VLM jointly analyzes all selected viewpoints and outputs a unified scene-level event collection; the prompt schema and design rules are in the supplementary material. 
+
+D. Audio Source Generation 
+
+Given the VLM’s audio prompts, we synthesize waveforms using Stable Audio Open [19], a latent diffusion-based text-to-audio model trained on large-scale audio data, generating 30-second, 44 .1 kHz waveforms for all sources; point-source au-dio is converted to mono for 3D spatialization, while ambient-bed audio remains stereo for an immersive atmosphere. 
+
+E. Audio Source Placement 
+
+We next lift 2D visual observations into consistent 3D sound source positions that remain stable across viewpoints. 
+
+Visual Grounding via Segmentation. For each sound event, we perform visual grounding with a text-based segmentation model, SAM3 [18]: given the event’s grounding query, it outputs pixel-level masks with confidence scores, each pro-cessed individually as a separate observation. This produces a set of 2D masks {Mk,m }, where k indexes cameras and 
+
+m indexes masks within each view. We delegate localization to a dedicated segmentation model rather than the VLM’s own bounding boxes, since lifting to Gaussians requires pixel-accurate masks (a coarse box would sweep in Gaussians from surrounding geometry), and box predictions are unreliable on equirectangular panoramas under strong distortion. When a grounding query matches several same-class instances, each mask becomes a separate observation; the ambiguity is re-solved downstream, where Gaussian set matching merges only observations whose Gaussian sets overlap. 
+
+Meta-based Gaussian Identification. To lift 2D masks into 3D, we use tile-based rendering metadata from gsplat [48]: the rasterizer partitions the image plane into fixed-size screen-space tiles and records which Gaussians contribute to each tile during rendering. Since panoramic rendering uses oriented cubemaps aligned with each camera’s forward direction, we query tile-Gaussian mappings under the same orientation, giving consistent correspondence between masks and Gaussian sets. This yields the set of Gaussians Gk,m ⊆ G contributing to mask Mk,m ’s pixels. Because tiles are coarser than mask boundaries, the lifted set can include background primitives (e.g., walls behind the target); a one-sided depth-consistency gate, relative to the median rendered depth inside the mask, removes them (supplementary material). 
+
+Instance Association via Gaussian Set Matching (GSM). 
+
+A key challenge is determining whether observations from different viewpoints refer to the same physical sound source or to distinct instances; we exploit the fact that observations of the same object share overlapping sets of Gaussians in the 3DGS representation. This is also where the 3DGS representation supplies information that multi-view images plus per-view depth cannot: its shared, persistent set of scene primitives acts as a common index across views; correspondence can therefore be tested by set overlap directly, without feature matching, learned embeddings, or geometric reasoning about viewpoint changes. We first group observations by their source id 
+
+assigned in the scene understanding step (Section III-C). Within each group, we compute the Jaccard similarity between Gaussian sets from different cameras: 
+
+J(Gk,m , Gk′,m ′ ) = |G k,m ∩ G k′,m ′ ||G k,m ∪ G k′,m ′ | . (3) Observations from the same camera are treated as distinct instances by definition, since the segmentation model already separates them spatially within each view. Observations ex-ceeding a Jaccard threshold Jmin = 0 .15 across views are merged using Union-Find, yielding merged instance Gaussian sets 
+
+G′ 
+
+> j
+
+= [
+
+> (k,m )∈C j
+
+Gk,m , (4) where Cj is the set of observations clustered into instance j.5
+
+Position Estimation. For each instance, we compute the 3D position as a weighted centroid of the merged Gaussian set: 
+
+pj =
+
+P
+
+> i∈G ′
+> j
+
+wi · μi
+
+P
+
+> i∈G ′
+> j
+
+wi
+
+, (5) where μi ∈ R3 is the center of Gaussian gi and wi > 0 is the number of rendering tiles in which gi appears, automatically recorded by the rasterizer, scaled by the confidence of the segmentation mask that contributed gi.Instances sharing the same source id reuse the audio signal aj generated in Section III-D, completing the positioned audio events E = {ej = ( aj , pj )} defined in the problem formulation. 
+
+F. Audio Rendering 
+
+Generated audio signals and their 3D positions pass to an audio engine for real-time playback; as users navigate, the engine adjusts volume and spatialization from listener position and orientation. Base volume follows the VLM’s 
+
+estimated loudness ; instances sharing a source label are energy-normalized by 1/√n, with n the number of instances sharing the label, so that repeated objects contribute the label’s energy once rather than n times, and the ambient bed plays at a fixed gain below the loudest sources. We implement a lightweight object-based renderer following the standard web-audio spatialization node ( PannerNode ). Quantitative evalu-ations use power-law distance attenuation with azimuth-based stereo panning; the interactive demo and subjective-study stim-uli play positioned sources through the browser-native Pan-nerNode with head-related transfer function (HRTF) filtering for headphone playback. The representation is compatible with any audio engine supporting 3D spatialization. IV. E XPERIMENTAL SETUP 
+
+We assemble SoundscapePLY , a target-domain evaluation testbed of 24 3DGS scenes generated with Marble [4], curated to cover diversity in soundscape-related content (urban, indoor, and natural environments) and visual style; its generated nature lets us control this diversity, matching our generative-world setting. Each scene consists of a scene description (text prompt), a concept image used for generation, and the resulting 3DGS (PLY format); the paired description and image also serve as scene-level queries for semantic evaluation, which 3DGS assets collected from the web would not provide. Fur-ther details are in the supplementary material. To assess gen-eralization beyond generated content, we additionally evaluate on real-world 3DGS scenes reconstructed from 360 ◦ imagery (D-SAV360), reported as a transfer/robustness check in Sec. V; the protocol is detailed in the supplementary material. The full pipeline takes 222 s per scene on a single NVIDIA RTX A6000 (per-stage breakdown in the supplementary material). 
+
+Evaluation Metrics. We evaluate Scene2Sound from four perspectives: audio quality, semantic alignment, binaural cues, and spatial consistency. 
+
+Audio Quality. We report Fr´ echet Audio Distance (FAD) [49] with PANNs embeddings [50], [51]. For robustness, we eval-uate against two reference sets: DCASE 2024 Task 7 [52] (FAD D), a sound scene synthesis challenge whose domain closely matches our task, and Clotho [53] (FAD C), a standard reference in text-to-audio generation. All methods use 24 
+
+samples (one per scene); FAD from so few samples is noisy, and we therefore read it comparatively across methods under the identical protocol. 
+
+Semantic Alignment. ImageBind [54] (IB) measures image– audio cosine similarity; CLAP [55] measures text–audio co-sine similarity using the scene prompt. Methods that place sources in 3D are scored on the mixture rendered at each eval-uation viewpoint, averaged over viewpoints; single-waveform baselines are scored on their generated waveform. 
+
+Binaural Cues. We report two descriptive statistics of the rendered binaural audio: interaural decorrelation, computed as 1−IACC with IACC the windowed interaural cross-correlation coefficient, and the mean absolute Interaural Level Difference (ILD, dB). Both indicate the presence of binaural cues; neither is a quality score with a preferred direction (Sec. V). 
+
+Spatial Consistency. Spatial consistency under listener navi-gation is central to our task and is not captured by established metrics. We introduce and validate our metrics for this prop-erty in Sec. V-B. 
+
+Baselines. We compare against eleven methods in two groups. Non-spatial: For text-to-audio: AudioLDM2 [20], Tango2 [56], MMAudio T [28], and Stable Audio Open (SAO) [19], the T2A model used in our pipeline. For vision-to-audio: MMAudio V [28], Seeing&Hearing [57], and Im2Wav [58]. These methods generate audio directly from scene descriptions or images without 3D sound-source modeling; they serve as quality and semantic references for our object-based representation. Spatial audio: ViS-AGe [59] produces first-order ambisonics (FOA) from video, See2Sound [10] generates 5.1-channel surround via object-level composition from a single image, OmniAudio [11] synthesizes FOA from panoramic imagery, and the recent SonoWorld [14] generates a 3D audio-visual scene anchored to a single panorama. SonoWorld constructs its scene from a sin-gle panoramic viewpoint, whereas ours takes the 3DGS world itself as input; we re-implement its pipeline on our scenes using the scene-center view of our viewpoint selection as its panorama ( K=1 ), keeping its scene-understanding prompts, depth-weighted mask lifting, and MMAudio generator. The remaining components (VLM, segmenter, binaural engine, listener positions) match ours and all other methods, reducing differences due to interchangeable modules; implementation details are in the supplementary material. All methods are evaluated at the same set of viewpoints; vision-conditioned baselines receive the corresponding panoramic renderings, while text-to-audio baselines receive the scene text prompt. The published per-viewpoint baselines generate audio indepen-dently at each viewpoint without 3D sound-source modeling; the consequence of this for spatial-consistency evaluation is analyzed in Sec. V-B. 6
+
+TABLE I QUANTITATIVE COMPARISON ON SOUNDSCAPE PLY (24 SCENES ). BOLD : BEST AMONG SPATIAL AUDIO METHODS , THE PRIMARY COMPARISON TARGETS ; SHADING ( 1 ST , 2ND , 3RD ): RANK ACROSS ALL METHODS (DIRECTIONAL METRICS ONLY ; THE BINAURAL COLUMNS ARE DESCRIPTIVE STATISTICS , S EC . IV).                                                                                     
+
+> Audio Quality Semantic Binaural Method FAD D↓FAD C↓CLAP ↑IB ↑1−IACC ILD
+> Non-spatial
+> AudioLDM2 [20] 111.5 117.0 0.195 0.123 0.000 0.00 Tango2 [56] 94.2 95.2 0.173 0.146 0.000 0.00 SAO [19] 94.2 81.2 0.319 0.119 0.000 0.00 MMAudio T[28] 87.8 77.2 0.353 0.122 0.000 0.00 MMAudio V[28] 101.6 94.2 0.306 0.120 0.000 0.00 Seeing&Hearing [57] 100.7 102.2 0.137 0.116 0.000 0.00 Im2Wav [58] 93.8 98.5 0.034 0.062 0.000 0.00
+> Spatial  ViSAGe [59] 96.8 102.9 0.011 0.057 0.155 3.40 See2Sound [10] 99.7 95.9 0.066 0.037 0.615 7.04 OmniAudio [11] 94.7 90.5 0.205 0.110 0.458 6.74 SonoWorld [14] (re-impl.) 79.3 74.2 0.130 0.144 0.091 3.16 Scene2Sound (Ours) 83.8 77.5 0.320 0.128 0.254 6.24 Gaussians Merged Instance Instance Position Multi-view Masks
+
+Fig. 3. Instance association for a fan observed from four viewpoints. Per-view segmentation masks (left) are lifted to their corresponding Gaussian sets (middle-left), which are then merged into a single instance via Gaussian set matching (center). The resulting 3D instance position, projected back onto each view (right), consistently falls within the corresponding mask, illustrating how set overlap associates observations of one object across views. 
+
+Fig. 4. Instance association results across four representative scenes: projected 3D source positions on panoramic renderings, one representative marker per source label, with per-label instance counts in the legends. Bottom right: a failure case in which no sound-emitting object is grounded, so only the ambient bed is generated. 
+
+V. R ESULTS 
+
+A. Main Results 
+
+Table I presents quantitative comparisons on Soundscape-PLY. Bold marks the best among spatial audio methods, our primary comparison; shading ranks all methods, including the non-spatial quality references. Non-spatial methods are included as quality references, since they generate scene-level audio without object-based representation; the primary comparison is among spatial audio methods, and spatial con-sistency is evaluated in Sec. V-B. 
+
+Audio Quality and Semantic Alignment. Among spatial audio methods, Scene2Sound achieves the best CLAP and, apart from the re-implemented SonoWorld (analyzed below), the best FAD and IB, while decomposing audio into per-object sources rather than generating a single scene-level waveform. CLAP and IB score the mixture rendered at each viewpoint against the scene-level query. The binaural statistics ( 1−IACC, ILD) confirm that every spatial method produces interaural cues; beyond that, their magnitudes reflect rendering strategy rather than quality. Methods that generate binaural waveforms directly can synthesize arbitrarily strong interaural differences, while our renderer mixes a non-directional ambient bed into the panned sources, which lowers the mixed-signal statistics. The per-source signals retain strong interaural cues before am-bient mixing (supplementary material), and unlike a generated waveform can be re-spatialized at any listener pose. 
+
+SonoWorld. The audio-quality and semantic scores of the re-implemented SonoWorld partly reflect protocol effects. Its best pooled FAD reflects sparser mixes ( 3.9 placed sources vs. our 
+
+21 .0 instances per scene), and its weak binaural statistics trace to its MMAudio generator, a drop our own backend swap reproduces (Sec. V-E). 
+
+Real-World Scenes. On all 81 real-world 360 ◦ D-SAV360 [60] scenes, Scene2Sound attains the best FAD D/FAD C (65 .3/59 .3) among all methods, showing per-source audio quality transfers to 3DGS scenes generated from real captures. The re-implemented SonoWorld, applied to the same single capture position, is the closest spatial competitor on FAD but retains its weak semantic alignment (CLAP 0.080 ). Table II reports the comparison against spatial audio methods (full comparison, incl. non-spatial baselines, in the supplementary material); the spatial signal here is analyzed in Sec. V-B. 
+
+B. Evaluating the Spatial Consistency of Audio 
+
+Motivation. No measure in Table I captures spatial consis-tency under listener navigation: FAD, CLAP, and IB score 7
+
+TABLE II 
+
+QUANTITATIVE COMPARISON ON D-SAV360 (81 REAL -WORLD 360 ◦
+
+> SCENES
+
+), AMONG SPATIAL AUDIO METHODS ; FULL COMPARISON INCL .
+
+> NON
+
+-SPATIAL BASELINES IN THE SUPPLEMENTARY MATERIAL . BOLD : 
+
+> BEST
+
+(DIRECTIONAL METRICS ; THE BINAURAL COLUMNS ARE DESCRIPTIVE STATISTICS ); FAD DS USES D-SAV360’ S OWN RECORDINGS AS THE REFERENCE SET .                                            
+
+> Audio Quality Semantic Binaural Method FAD D↓FAD C↓FAD DS ↓CLAP ↑IB ↑1−IACC ILD
+> ViSAGe [59] 73.3 77.0 75.0 −0.004 0.141 0.291 4.48 See2Sound [10] 83.2 76.2 100.1 0.058 0.053 0.616 7.41 OmniAudio [11] 75.5 71.6 63.7 0.136 0.135 0.364 7.22 SonoWorld [14] (re-impl.) 67.6 64.2 73.6 0.080 0.129 0.577 8.65 Scene2Sound (Ours) 65.3 59.3 84.4 0.265 0.120 0.253 6.47
+
+TABLE III 
+
+SPATIAL CONSISTENCY ON BOTH AXES (S OUNDSCAPE PLY, 24 SCENES ). LISTENER AXIS : LMC ∈ [−1, 1] (CHANCE 0) WITH RESPONSIVENESS R;
+
+> GROUNDING AXIS
+
+: CGC (E Q. (7)) WITH PRECISION /RECALL . B EST PER COLUMN IN BOLD ; E EXPECTED UNDER INDEPENDENT PER -VIEWPOINT GENERATION (NOT MEASURED ). Method LMC ↑ R CGC ↑ Prec. ↑ Rec. ↑
+
+per-viewpoint baselines (Table I) ≈0e ≈1e — — —SonoWorld [14] (re-impl.) −0.214 0.96 0.065 0.124 0.063 
+
+Scene2Sound (Ours) +0.283 0.96 0.259 0.441 0.229 
+
+single-viewpoint audio, and the binaural statistics describe cues within one rendering. Consistency has two faces: audio must respond to listener motion consistent with scene geome-try, and claimed sources must be supported by visual evidence beyond the views used to place them. A smoothly varying but mislocalized renderer satisfies only the first, a well-placed but frozen soundscape only the second. We evaluate both axes. 
+
+Listener axis. Listener-Motion Consistency (LMC) measures whether audio tracks listener displacement. For each triplet 
+
+(pa, pn, pf ) with dspatial (pa, pn) < dspatial (pa, pf ), let 
+
+∆ = daudio (apa , a pf ) − daudio (apa , a pn ), where dspatial is the Euclidean distance between listener positions, ap is the audio at position p, and daudio the RMS distance between log-mel spectrograms. Over all valid triplets T ,
+
+LMC = 1
+
+|T | 
+
+X 
+
+> (pa,pn,pf)∈T
+
+ψ(∆) , ψ (∆) = 
+
+
+
++1 ∆ > ϵ 
+
+0 |∆| ≤ ϵ
+
+−1 ∆ < −ϵ, 
+
+(6) with a small tie tolerance ϵ, set relative to each evaluation set’s distance scale (supplementary material); LMC ranges over 
+
+[−1, 1] with chance level 0. LMC alone cannot distinguish two very different ways of scoring near zero; we therefore report it alongside responsiveness R, the fraction of triplets whose audio changes at all ( |∆| > ϵ ). A soundscape that transports one fixed waveform never changes, giving (LMC , R ) = (0 , 0) ;audio generated independently at each viewpoint changes constantly but without relation to listener geometry, giving 
+
+R ≈ 1 with LMC ≈ 0. A spatially consistent soundscape must do both: respond to motion ( R high) and respond in the direction the geometry dictates (LMC high). 
+
+Grounding axis. If the claimed sources are correctly 
+
+TABLE IV 
+
+LMC VALIDATION . REAL MULTI -POSITION RECORDINGS SCORE WELL ABOVE THE ZERO NULL , AND TRAINING AN ACOUSTIC -SYNTHESIS MODEL MOVES LMC FROM EXACTLY ZERO TO STRONGLY POSITIVE , SUPPORTING 
+
+LMC AS A MEASURE OF DISTANCE -DEPENDENT ACOUSTIC STRUCTURE .LMC ↑ R
+
+Real Acoustic Fields [61] (dense RIRs) +0 .310 1.00 
+
+Replay-NVAS [34] (recordings) +0 .207 0.95 
+
+ViGAS [34], random init. → trained 0 → +0 .455 0 → 1.00 
+
+grounded, each should reappear where the world itself shows the object, even in views that played no part in placing it. 
+
+Cross-View Grounding Consistency (CGC) turns this expec-tation into a held-out test. For each scene s with views Vs
+
+and each fold view v, we re-run association and placement on the remaining views, project the resulting sources into 
+
+v, and compare them with the object instances visible in v
+
+(its segmentation masks). A projected source is supported when it falls inside a visible object, each object supports at most one source, and sources whose 3D position is hidden behind geometry in v are excluded rather than penalized (the occlusion gate): 
+
+CGC = 1
+
+|D| 
+
+X
+
+> s∈D
+
+1
+
+|V s|
+
+X
+
+> v∈V s
+
+2 Hs,v 
+
+|Ps,v | + |Ms,v | , (7) where Ps,v are the sources placed without view v; Ms,v ,the mask instances of v; Hs,v , the number of supported one-to-one pairs; and D, the set of evaluated scenes. CGC is thus a held-out reprojection F1; its precision asks how many claimed sources are supported (penalizing duplicates and misplacements), and its recall asks how many visible objects are covered. The masks are a pseudo-reference, not ground truth; CGC ignores which audio a position carries; and since the VLM’s event inventory is built once from all views, CGC measures held-out placement consistency under a fixed inventory. Protocol and corruption tests are in the supplementary material. 
+
+Method comparison. Per-viewpoint baselines generate au-dio independently, giving responsive but inconsistent audio (LMC ≈ 0, R ≈ 1) and no 3D sources (Table III). SonoWorld places sources in 3D but scores below zero on the listener axis ( −0.214 , inverted audio-distance orderings) with weak held-out grounding (CGC 0.065 ). Scene2Sound attains 
+
+LMC = +0 .283 , CGC 0.259 , and the highest held-out preci-sion ( 0.441 ). The listener-axis contrasts are unambiguous (sign flips, zero-responsiveness nulls), and the CGC margin over SonoWorld is significant ( +0 .19 ; scene-level paired bootstrap, 95% CI [0 .10 , 0.29] ). 
+
+Real-scene transfer. On D-SAV360, the listener axis stays above the zero null under the single-capture-position regime, which precludes cross-position association; the transfer anal-ysis is in the supplementary material. 
+
+Validation. On two real-world multi-position datasets with known coordinates (Real Acoustic Fields [61], dense RIRs; Replay-NVAS [34], multi-microphone recordings), LMC is above the zero null (Table IV), and Scene2Sound’s +0 .283 
+
+falls within this real-data band. Training ViGAS [34] on 8                                                                                         
+
+> TABLE V ABLATION STUDY ON SOUNDSCAPE PLY. B EST IN BOLD . LMC/CGC/P REC .DEFINED IN SEC . V-B. “—” = NOT APPLICABLE BY CONSTRUCTION
+> (S CENE -LEVEL /F LAT MIX :NO 3D INSTANCES ,FIXED WAVEFORM ,LMC=0 ,R=0 ; S INGLE -VIEWPOINT : LMC NEEDS K≥3POSITIONS ). “ N.E.” = NOT EVALUATED (R ANDOM CAMERAS TARGETS GROUNDING ONLY ; 5-SCENE SUBSET ). †ORIGINAL PER -VARIANT AUDIO METRICS ;‡LMC RE -SCORED AT THE ADOPTED PLACEMENT CONFIGURATION WITH THE VARIANT ’S CACHED PRE -ADOPTION AUDIO ;ONLY THE SCENE 2S OUND ROW USES THE ADOPTED AUDIO PROMPTS AND GAIN NORMALIZATION .
+> Variant FAD ↓IB ↑ILD LMC ↑CGC ↑Prec. ↑Nsrc Ninst
+> Scene2Sound 83.8 0.128 6.24 +0.283 0.259 0.441 3.4 21.0 Scene-level 90.6 †0.110 †5.49 †0————Flat mix 81.4 †0.098 †2.90 †0————Single viewpoint 84.5 †0.112 †5.81 †—0.187 0.322 3.0 13.3 Random cameras n.e. n.e. n.e. n.e. 0.060 0.100 n.e. n.e. w/o inst. assoc. 84.3 †0.114 †7.31 †+0 .228 ‡0.259 0.302 3.4 66.9 w/o Ambient fold 82.8 †0.122 †6.43 †+0 .217 ‡0.256 0.424 5.2 21.4
+
+SoundSpaces-NVAS ( 71 clips), as a learning check, moves 
+
+(LMC , R ) from (0 , 0) (untrained, viewpoint-invariant) to 
+
+(+0 .455 , 1.00) (clip-level paired Wilcoxon, p< 10 −8): LMC rises with acquired spatial acoustic structure. Construct-validation controls (position corruptions for CGC, fixed-waveform/shuffle for LMC) behave as required; protocols are in the supplementary material. 
+
+C. Qualitative Results 
+
+Figure 3 illustrates instance association for a fan across four viewpoints: per-view masks are lifted to Gaussian sets and merged into a single instance whose re-projected 3D position falls within each original mask. Figure 4 shows instance association across four diverse scenes spanning the types SoundscapePLY covers. The bottom-right scene illustrates a failure case, where the seg-mentation model fails to ground any sound-emitting object and produces no point-source instances; the VLM still identifies ambient sound events, and Scene2Sound thus falls back to an ambient bed providing a plausible background atmosphere. Video results of generated soundscapes, with navigable binau-ral audio, are available on the project page. 
+
+D. Ablation Study 
+
+We ablate key components of Scene2Sound: Scene-level replaces per-source generation with one scene-wide clip from a VLM-produced prompt (cf. the SAO baseline in Table I); Flat mix mixes all source audio into flat stereo without spatial rendering; Single viewpoint uses one viewpoint ( K=1 )instead of multiple; Random cameras samples K=5 cameras uniformly within the scene bounding box instead of automatic viewpoint selection; w/o instance association removes cross-view Gaussian set matching, treating each observation as a separate instance; and w/o ambient fold disables ambient bed separation, treating all sounds as point sources. We report both spatial axes (LMC and CGC with its precision; Sec. V-B) for each variant, along with the mean number of detected source labels ( Nsrc ) and spatial instances ( Ninst ) per scene; neither is a ground-truth quantity, since Nsrc counts VLM-identified sources and Ninst counts instances remaining after Gaussian set matching. Table V shows the results: Scene-level and Flat mix both reduce to fixed-waveform playback ( LMC=0 , R=0 ), confirm-ing that object-level decomposition and 3D spatial rendering are both essential for navigation-consistent soundscapes. A single viewpoint detects fewer source labels ( Nsrc =3 .0 vs. 
+
+3.4) and fewer instances ( Ninst =13 .3 vs. 21 .0), since sound events visible only from certain perspectives are missed; without informed camera placement (Random cameras), held-out grounding collapses to CGC 0.060 on its 5-scene subset, though this ablates the entire camera-generation strategy; a milder raycast-random contrast is in the supplementary mate-rial. Removing instance association leaves CGC F1 essentially unchanged ( 0.2593 vs. 0.2589 before rounding) but triples the instances ( 66 .9 vs. 21 .0) and shifts the operating point from precision toward recall ( 0.302 /0.316 vs. our 0.441 /0.229 ); the precision difference is significant (paired 95% CI [0 .05 , 0.22] ), isolating the contribution of Gaussian set matching at afixed inventory. Descriptively, placed sources rest on 2.72 
+
+supporting views on average, and 65 .6% are observed from multiple views; most placed sources are thus corroborated by multiple views. Without ambient fold, Nsrc rises to 5.2 and the listener axis weakens ( +0 .253 → +0 .217 at the matched pre-normalization rendering; grounding nearly unchanged); the ambient/local distinction therefore matters for rendering rather than placement. 
+
+E. Robustness Analyses 
+
+Stage reliability. A modular pipeline risks error accumulation; we therefore measure each stage’s reliability on a manual annotation of all 124 VLM proposals over the 24 scenes: VLM source identification reaches 93 .5% proposal validity and 
+
+97 .0% element coverage; hallucinated/ungroundable sources are dropped when SAM3 grounding fails, and low-salience misses leave the ambient bed as the remaining background. Because sources are generated and rendered independently, an upstream error affects at most one source; full stage-wise diagnostics are in the supplementary material. 
+
+Foundation-model sensitivity. We vary the VLM and text-to-audio backend on a fixed 6-scene subset at the adopted config-uration (Table VI; absolute values are not comparable to the 24-scene tables). Swapping Qwen2.5-VL-32B for the smaller 7B model cuts detected sources to a third ( 3.2→1.2; one scene 9                                             
+
+> TABLE VI
+> SENSITIVITY TO FOUNDATION -MODEL CHOICE ON A FIXED 6-SCENE SOUNDSCAPE PLY SUBSET AT THE ADOPTED CONFIGURATION (NOT COMPARABLE TO THE 24-SCENE TABLES ): ( A) VLM SWAP , ( B)TEXT -TO -AUDIO BACKEND SWAP . B EST PER COLUMN IN BOLD IN (B). (a) VLM swap (T2A = Stable Audio Open) VLM #Src LMC ↑RFAD ↓CLAP ↑IB ↑
+> Qwen2.5-VL-32B-AWQ 3.2 +0 .256 1.00 106.6 0.349 0.126 Qwen2.5-VL-7B 1.2 +0 .189 0.83 103.4 0.308 0.115 (b) T2A swap (VLM = Qwen2.5-VL-32B-AWQ) T2A backend FAD ↓CLAP ↑IB ↑LMC ↑
+> Stable Audio Open 106.6 0.349 0.126 +0.256
+> TangoFlux 109.1 0.270 0.066 +0 .100
+> MMAudio 102.8 0.334 0.124 +0 .133 Preference Spatial
+> Congruency
+> Semantic
+> Congruency
+> 1
+> 2
+> 3
+> 4
+> 5
+> MOS (1 5)  Ours
+> See2Sound
+> OmniAudio
+> ViSAGe
+> Fig. 5. Subjective evaluation (MOS, 1–5 scale); error bars: standard error. The proposed method outperforms all baselines on all criteria.
+
+loses all point sources) and weakens both responsiveness ( R
+
+1.00 →0.83 ) and the listener axis ( +0 .256 → + 0 .189 ), while the audio-quality metrics barely register the impoverished soundscape. Replacing Stable Audio Open with TangoFlux or MMAudio keeps the listener axis positive throughout ( +0 .100 
+
+to +0 .256 ) and shifts mainly fidelity and semantics, since placement and geometry are held fixed: Scene2Sound is sensi-tive to its semantic front-end but robust to its interchangeable audio back-end. A 24-scene MMAudio re-run at the adopted prompts is consistent with this picture (FAD D 97 .9, IB 0.091 ); its mono output degrades the binaural statistics, and Stable Audio Open remains the normative backend. 
+
+F. Subjective Evaluation 
+
+Quantitative evaluations use fixed-viewpoint settings for fair comparison with baselines lacking viewpoint-dependent ren-dering; to assess perceptual benefits under viewpoint changes, we ran a subjective evaluation with moving viewpoints (proto-col and configuration note in the supplementary material): 19 self-reported normal-hearing participants rated the proposed method against three spatial audio baselines (See2Sound, OmniAudio, ViSAGe) on pre-rendered video clips with iden-tical visual content, each evaluating four of 24 scenes over headphones on a 1–5 MOS scale for Preference (overall quality), Spatial Congruency (sound location vs. visual cues), and Semantic Congruency (sound content vs. visual events). All four conditions produce spatialized binaural audio (cf. the binaural statistics in Table I); the method is therefore not trivially identifiable by spatial cues alone. A residual confound remains, since the conditions differ in how they track the moving viewpoint (ours adapts in full 6DoF via persistent 3D sources, OmniAudio follows head yaw only, ViSAGe re-infers audio from the recorded video), and a fully matched-cue study equalizing this is left as future work. Figure 5 summarizes the results: Scene2Sound consistently outperforms all baselines on all three criteria (Preference 
+
+3.77 , Spatial Congruency 3.57 , Semantic Congruency 3.75 
+
+vs. best-baseline MOS of 2.68 , 2.48 , 2.75 ; means over all ratings, per-scene statistics in the supplementary material). All nine pairwise comparisons (three baselines × three criteria) are significant under paired Wilcoxon signed-rank tests on participant–scene pairs with Bonferroni correction ( p < 0.001 ;effect sizes r=0 .55 –0.76 ). The largest margins appear in Spatial Congruency, consistent with Scene2Sound’s object-based binaural audio, which adapts dynamically as the listener moves, whereas the baselines lack explicit listener-position-dependent cues. VI. D ISCUSSION 
+
+Despite these results, several challenges remain. Because our setting is a static 3DGS, which supplies appearance, geometry, and a persistent primitive index but no dynamic state, sounds that depend on motion or interaction (a fan spinning up, collisions) reflect the object’s typical sound rather than its instantaneous state; coupling with dynamic or physics-aware scene representations is a natural next step. As a training-free pipeline orchestrating off-the-shelf foundation models, Scene2Sound’s final quality inherits the limitations of each component, and errors cascade through the pipeline: a missed VLM detection, inaccurate segmentation, or poor audio synthesis each propagates downstream. The cascade is most critical at viewpoint selection, where inadequate camera placement (e.g., when the hollow-structure assumption fails on large or complex scenes) makes downstream modules miss sources or fail cross-view association. Our method also does not model acoustic propagation effects such as reverberation or occlusion. Evaluation data are a further limitation: our real-scene check is confined to the single-view regime because, to our knowledge, no public dataset pairs multi-view real captures with environmental soundscapes and multi-instance source annotations, and assembling such a benchmark is an open need for this task. Relatedly, LMC and CGC test motion response and geometric support separately; neither verifies that the right sound is bound to the right instance, which would require annotated audio–object correspondences. Promising future directions include geometry-based RIR estimation or learned acoustic fields [35]–[37] to add propagation effects on top of our object-based representation, and joint optimization or iterative feedback across modules to mitigate error accu-mulation. VII. C ONCLUSION 
+
+We studied soundscape generation for a given 3DGS world through auditory grounding and proposed Scene2Sound, a 10 
+
+training-free framework that anchors generated sounds to view-consistent 3D instances via Gaussian set matching and renders them with a standard object-based audio engine. Across SoundscapePLY and 3DGS scenes generated from real-world 360 ◦ captures, Scene2Sound preserves per-viewpoint audio quality while remaining spatially consistent on both evaluation axes, and a user study confirms the perceptual benefit. The proposed metrics and the SoundscapePLY testbed support follow-up research on extending visual 3DGS worlds into multimodal world simulations. APPENDIX ADATASET DETAILS 
+
+SoundscapePLY contains 24 3DGS scenes generated with Marble [4], each comprising a structured text prompt, aconcept image, and the resulting 3D Gaussian splats, spanning urban, natural, indoor, historical, and stylized visual domains with distinct soundscape characteristics. 
+
+a) Generation pipeline.: Each prompt specifies scene identity (world type, canonical viewpoint), style, mood, layout (interior/exterior, spatial organization, depth cues), soundscape (ambient background and localized object sounds), and mate-rials/lighting. We generate a concept image per prompt with FLUX.2 [klein] 9B [62] and feed it to Marble to produce the final 3DGS scene. 
+
+b) Data availability.: All prompts, concept images, and 3DGS scenes were produced by the authors under Marble’s paid subscription plan, which permits redistribution; the full dataset will be released upon publication. APPENDIX BAUTOMATIC VIEWPOINT SELECTION 
+
+We select K panoramic viewpoints per scene by greedily maximizing the main paper’s objective Coverage( K), denoted 
+
+Coverage q below: candidates are cast via a Fibonacci-lattice raycast from a robust scene center toward the density shell and scored by visible-Gaussian coverage weighted by CLIP-IQA [47] and inverse viewing distance. Greedy selection reaches 0.772 raw coverage and 0.838 CLIP-IQA on average. 
+
+a) Evaluation.: Table VII compares candidate-sampling strategies and selection algorithms at K=5 over the 24 Sound-scapePLY scenes. Raycast sampling dominates ( Coverage q
+
+0.52 –0.59 vs. ≤ 0.141 for non-raycast) and greedy selection improves visual quality over random. Running the full pipeline with random camera placement drops held-out grounding to CGC 0.060 on its 5-scene subset (main-paper ablation). APPENDIX CAUDIO SOURCE PLACEMENT DETAILS 
+
+a) Depth-Consistency Gate for Background Removal.: 
+
+Tile-based rendering metadata returns all Gaussians contribut-ing to tiles that overlap the segmentation mask, including back-ground Gaussians ( e.g. , walls behind the target). We remove them with a one-sided, scale-relative depth-consistency gate: Gaussians farther from the camera than αd · dmed , with dmed 
+
+the median rendered depth inside the mask, are discarded. The gate is one-sided (tile overflow only adds primitives behind                                                                                                
+
+> TABLE VII
+> VIEWPOINT SELECTION COMPARISON ON SOUNDSCAPE PLY (24
+> SCENES ,K=5 ). Coverage qIS THE PRIMARY METRIC COMBINING
+> GAUSSIAN COVERAGE WITH VISUAL QUALITY . R AW COV .: UNWEIGHTED VISIBLE -G AUSSIAN COVERAGE .
+> Sampling Selection Coverage q↑Raw Cov. ↑CLIP-IQA ↑
+> AABB Uniform Random 0.084 ±0.062 0.334 ±0.151 0.469 ±0.098
+> AABB Uniform Greedy 0.141 ±0.061 0.542 ±0.202 0.698 ±0.115
+> Raycast Random 0.518 ±0.153 0.738 ±0.080 0.498 ±0.082
+> Raycast (Ours) Greedy 0.587 ±0.141 0.772 ±0.078 0.838 ±0.068
+> FPS Floor Greedy 0.087 ±0.091 0.284 ±0.294 0.762 ±0.075
+> Density Peak Greedy 0.124 ±0.087 0.549 ±0.159 0.656 ±0.098
+> Raycast (Fixed) Greedy 0.583 ±0.141 0.771 ±0.080 0.842 ±0.066
+> TABLE VIII SENSITIVITY OF INSTANCE ASSOCIATION TO THE JACCARD THRESHOLD
+> Jmin (24 SCENES ,HELD -OUT CGC PROTOCOL ). T HE ADOPTED VALUE IS MARKED IN BOLD .
+> Jmin 0.01 0.05 0.10 0.15 0.20 0.50 CGC ↑0.159 0.224 0.251 0.259 0.265 0.286 Prec. ↑0.320 0.410 0.440 0.441 0.443 0.396 LMC ↑+0.206 +0.211 +0.236 +0.253 +0.247 +0.244
+
+the object) and scale-relative (the tolerated spread grows with distance); αd=1 .5 is a fixed tolerance, and an emptied set falls back to the unfiltered one. The resulting set Gk,m and its weighted centroid then reflect the target object rather than surrounding structure. 
+
+b) Sensitivity to the Jaccard Threshold.: Table VIII sweeps the matching threshold Jmin on all 24 scenes under the held-out CGC protocol of the main paper, with other parameters at their adopted values. The adopted Jmin =0 .15 
+
+balances held-out F1, precision, and the listener axis; an earlier version of this work selected 0.05 under its in-sample reprojection score (legacy ILA; Sec. E). The final configuration (Jmin =0 .15 , no instance cap, scene-context audio prompts) comes from a pre-specified search with paired promotion gates on a fixed 8-scene panel; a final rendering revision (per-label instance-energy normalization, ambient bed 0.4), adopted after an author listening review, improves every audio metric and the listener axis. The sweep’s LMC row predates this revision (adopted column +0 .253 vs. +0 .283 in Table III). All reported results use the final configuration except the subjective study, which states its earlier one. 
+
+c) Co-Located Same-Class Instances.: A potential fail-ure mode of Jaccard-based matching is over-merging distinct same-class instances standing close together. Across the five scenes with same-label multi-instance sources ( 12 sources, 2–3
+
+instances each), every cross-camera observation pair belonging to different instances of the same label was checked: 0 of 
+
+16 ,284 pairs exceeded the adopted Jmin (no over-merge), including instances separated by as little as 0.23 m. This is structural: the segmentation model already separates same-class instances per image, thus Gaussian set matching resolves only cross-view correspondences of the same instance. 11 
+
+APPENDIX DVLM P ROMPT DESIGN 
+
+The system prompt sent to Qwen2.5-VL-32B for scene understanding instructs the model to design realistic spa-tial audio for the scene and to emit only JSON match-ing a fixed schema; the user message supplies K=5 
+
+panoramic images and requests up to 6 sound sources. Each source carries a source_type (point vs. ambient ), a short sound_label , an audio_prompt (temporal behav-ior and acoustic texture), visible_in_views , per-view 
+
+grounding_queries (1–3 word segmentable nouns for SAM3), and estimated_size /estimated_loudness .Point sources must be grounded to a specific visible ob-ject; ambient sources set visible_in_views to [] and are folded into the ambient bed. Core design rules require atmosphere-first source selection from the place, season, and weather; active sounds only, thus static materials (wood, stone, glass) stay silent; and grounding queries that name a spe-cific, view-unique, segmentable object ( e.g. , “ceiling fan”, not “landscape”). The estimated_size field sets each source’s reference distance and rolloff factor for distance attenuation, and estimated_loudness sets its base gain. Common violations of these rules (duplicated or overly generic queries, human-presence descriptions) are illustrated in Section G; the complete prompt, few-shot exemplars, and JSON schema ship with the code release. 
+
+a) Reliability of VLM Source Identification.: We man-ually verified all 124 sources proposed by the VLM on the 24 SoundscapePLY scenes against ground-truth key elements. Proposal validity is 93 .5% : 8 of 124 proposals are halluci-nations, following an urban prior ( e.g. , “traffic noise” in a flooded ruin). Element coverage is 97 .0% : 5 of 168 ground-truth elements lack a proposal, largely absorbed by the ambient bed. A proposal may cover several elements, thus the two rates use different matching units. Additionally, 25 /124 (20 .2% )proposed sources fail SAM3 grounding in all visible views: grounding correctly filters the hallucinations above and other non-segmentable proposals, but also misses small or fine-detail objects (e.g., area-noun queries such as “shoreline”), leaving the ambient bed as background. The dropout is localized to the affected source; surviving sources are unaffected. APPENDIX ESPATIAL -C ONSISTENCY METRIC DETAILS 
+
+a) LMC protocol.: daudio is the RMS distance between log-mel spectrograms ( 128 mel bins; 92 .9 ms window with 
+
+23 .2 ms hop at 22 .05 kHz) of mono-downmixed renders. The tie tolerance is ϵ = 10 −6 times the median pairwise audio distance in the evaluation set; responsiveness R is the fraction of triplets with |∆| > ϵ . LMC relates to the earlier POA formulation as LMC = 2 POA − 1 on tie-free data, with ties scored 0 deterministically. 
+
+b) CGC protocol.: For each scene ( K=5 rig views) and fold view v, we remove all observations from v before instance association, re-run clustering and position estimation on the remaining views, and project the resulting instances into v.A projected instance is evaluable only if unoccluded (camera distance at most 1.1× the rendered 3DGS depth at its pixel). Evaluable predictions are matched one-to-one to the held-out view’s mask instances via maximum bipartite matching on point-in-mask membership (same frozen mask bank for all methods). Per-view F1 is 2H/ (|P | + |M |), averaged over evaluable views then scenes, with scene-level bootstrap ( 1000 
+
+resamples) for confidence intervals, and paired method con-trasts use 10 ,000 scene-level resamples over the 23 mutually evaluable scenes; single-panorama methods use the rig views never used in their construction. CGC is an unlabeled-set metric measuring held-out geometric support, coverage, and duplicate control, invariant to which audio or label a position carries. The VLM event inventory and grounding queries are built once from all views (not re-run per fold), thus CGC evaluates held-out placement consistency conditioned on that fixed inventory; views with neither predictions nor masks are non-evaluable, and occlusion-gated predictions leave the precision pool. 
+
+c) Construct validation.: Both metrics were checked against controlled corruptions of our own outputs (run at the pre-adoption configuration; the gate validates metric behavior, not the method): rotating all source positions 90 ◦ collapses CGC ( 0.143 → 0.022 ); duplicating every source lowers preci-sion ( 0.350 → 0.188 ); deleting half the sources lowers recall (0.121 → 0.066 ); permuting ownership of a fixed position set leaves CGC unchanged, as required by its unlabeled-set definition; copying one waveform to all listener positions yields (LMC , R ) = (0 , 0) exactly; shuffling listener–audio assignments yields LMC ≈ 0 with R near 1.
+
+d) Real-recording and learning validation.: RAF [61] (dense RIRs, 100 groups of 8 receivers/transmitter) and Replay-NVAS [34] (natural 8-mic recordings, 41 scenes) both use known microphone coordinates and no renderer of ours, giving LMC = +0 .310 and +0 .207 , above the zero null (main paper, Table IV). For the learning check, we render the 71-clip SoundSpaces-NVAS protocol with the released ViGAS checkpoint and with random initialization (same clips, positions, script; bit-deterministic inference). The untrained network outputs near-constant, viewpoint-invariant audio, thus every triplet ties, (LMC , R ) = (0 , 0) ; the trained model reaches (+0 .455 , 1.00) (paired Wilcoxon p=9 .0×10 −9; scene-cluster bootstrap over 8 scenes, 95% CI [+0 .367 , +0 .559] ). 
+
+e) Legacy results.: Earlier versions reported the listener axis as POA and a mask-based score (ILA). POA maps to LMC via the relation above; ILA is retired since it verified predictions against the masks used to construct them and did not penalize misses, now corrected by CGC’s held-out protocol. APPENDIX FSUBJECTIVE EVALUATION DETAILS 
+
+Participants and environment. 19 participants (predomi-nantly graduate students in their 20s, self-reported normal hearing) evaluated remotely on personal headphones, reflecting the realistic personal-device use case for interactive 3DGS exploration. 
+
+Stimuli. We used pre-rendered 10-second video clips with author-designed camera trajectories (translation, rotation) to 12 
+
+exercise 6DoF cues, with strict visual parity so rating differ-ences are attributable to audio alone; stimuli were produced at an earlier pipeline configuration (placement cap 3, Jmin =0 .05 ,earlier audio-prompt template), while the object-based ren-dering mechanism evaluated is unchanged. Four conditions were generated per scene: (1) Scene2Sound (Ours) , object-based binaural audio via HRTF spatialization adapting to listener position/orientation in 6DoF; (2) See2Sound [10] ,5.1-channel surround from a single image downmixed to stereo (ITU coefficients), a fixed layout that cannot adapt to viewpoint; (3) OmniAudio [11] , FOA from a fixed panoramic image with per-frame yaw rotation, supporting head rota-tion but not translation; and (4) ViSAGe [59] , FOA re-inferred from the recorded moving-viewpoint video with the same yaw-rotation and binaural decoding, testing whether video-conditioned generation captures viewpoint-dependent cues. All conditions shared identical visual content, loudness-normalized to −23 LUFS (EBU R128). 
+
+Procedure. Each participant rated four assigned scenes on all four conditions using a 1–5 MOS scale for Preference, Spatial Congruency, and Semantic Congruency, order randomized per scene. Pairwise Wilcoxon tests ( n=76 /condition) show Scene2Sound outperforms every baseline on all three criteria (p < 0.001 , Bonferroni-corrected; r = 0 .55 –0.76 ). 
+
+Per-scene variability. The standard deviation of per-scene mean MOS over the 24 scenes is 0.95 –1.10 for Scene2Sound (Preference 3.73 ± 1.02 , Spatial Congruency 3.50 ± 0.95 ,Semantic Congruency 3.73 ± 1.10 ; unweighted means over per-scene means, hence slightly below the main paper’s rating-level means) and 0.69 –0.96 for the baselines, reflect-ing Scene2Sound’s dependence on upstream grounding: well-grounded scenes approach ceiling ratings, while grounding failures pull individual scenes down. The pairwise tests above use matched participant–scene pairs, thus significance already accounts for this variation. 
+
+Limitations of the protocol. Scene2Sound is the only condi-tion rendering object-dependent distance attenuation, thus part of the subjective gain may reflect the availability of 6DoF distance cues, a target capability rather than an artifact, though this study does not isolate it from method identity. Since all four conditions are spatialized binaural (cf. the binaural statistics in Table I of the main paper), the method is not identifiable merely by stereo cues; a matched study toggling distance attenuation within the same renderer would isolate this factor, left to future work. 
+
+a) Binaural cue analysis.: The moderate ILD of our final output (Table I of the main paper: 6.24 dB) is a design consequence of the ambient/point-source decomposition, not weak spatialization. Before ambient mixing, per-source object audio exhibits strong binaural cues: the median per-scene ILD over the 24 scenes is 7.32 dB (same STFT protocol as Table I), comparable to See2Sound’s mixed output ( 7.04 dB). Mixing in the deliberately omnidirectional ambient bed then softens the final value. APPENDIX GQUALITATIVE RESULTS : VLM S CENE UNDERSTANDING 
+
+Across the 24 SoundscapePLY scenes, the VLM reliably grounds object-specific point sources in visually distinctive settings ( e.g. , fireplace, candle, and lamp sounds in a Victorian study; fountain and wind-chime sounds in a marketplace). Two failure patterns recur: overly generic grounding queries ( e.g. ,“underwater” for a coral reef scene) name a non-segmentable area rather than an object, thus SAM correctly rejects the query; and scene descriptions occasionally evoke a nearby individual ( e.g. , “soft footsteps of visitors”), violating the human-presence exclusion rule of Section D. The complete qualitative gallery is provided as multimedia material. APPENDIX HD-SAV360 E VALUATION PROTOCOL 
+
+a) Dataset and Setup.: We use D-SAV360 [60], a curated collection of 85 real-world 360 ◦ video scenes with diverse soundscapes (urban streets, parks, restaurants, train stations). From each scene we extract a representative equirectangular frame and reconstruct a 3DGS with DreamScene360 [2], obtaining 81 scenes across five environment categories after excluding four failed reconstructions. Each scene originates from a single fixed-position 360 ◦ image, thus we skip view-point selection and observe from the original camera position alone, rendering three yaw-rotated panoramas ( 0◦/120 ◦/240 ◦)to reduce equirectangular distortion; Gaussian set matching associates detections only across these same-position render-ings, thus no cross-position association is possible. All other stages are unchanged; we compare against nine of the eleven main-paper baselines (SAO and SonoWorld are evaluated on SoundscapePLY only). 
+
+b) Metrics.: Audio quality uses dataset-level FAD (PANNs) against DCASE, Clotho, and D-SAV360’s ambisonic recordings downmixed to mono; semantic alignment uses ImageBind and CLAP; binaural statistics use interaural decor-relation ( 1−IACC) and mean absolute ILD (metric references in the main paper). For the listener axis (LMC) we sample 
+
+15 listener positions per scene via the same Fibonacci-sphere sampling as viewpoint candidate generation and evaluate over all valid triplets. LMC is reported for Scene2Sound only, since per-viewpoint baselines generate audio independently at each viewpoint; as a sanity check, ambient-only scenes yield 
+
+LMC = 0 exactly. 
+
+c) Grounding Statistics and Listener-Axis Transfer.: The VLM detected 4.8 source labels per scene on average, 4.2 grounded via SAM3. At least one label obtained a mask in 71 of 81 scenes, and 46 scenes yielded at least one anchored point source; the single-position setting limits grounding, since objects unseen from the capture position cannot be recovered from elsewhere. LMC is +0 .068 over all 81 scenes and +0 .120 on the 46 scenes with grounded point sources, above the zero null (one-sample t-test, p < 10 −6) but below the generated-scene +0 .283 ; the 35 scenes without grounded sources score exactly 0. Closing the gap to the generated-scene setting needs multi-position real captures, absent from public soundscape datasets. Table IX adds six non-spatial baselines omitted from the main paper’s table. 13 
+
+TABLE IX 
+
+FULL D-SAV360 COMPARISON INCLUDING NON -SPATIAL BASELINES (81 REAL -WORLD 360 ◦ SCENES ). BOLD : BEST AMONG SPATIAL AUDIO METHODS ; SHADING ( 1 ST , 2ND , 3RD ): RANK ACROSS ALL METHODS (DIRECTIONAL METRICS ONLY ; THE BINAURAL COLUMNS ARE DESCRIPTIVE STATISTICS ). FAD REFERENCE SETS : D = DCASE, C = C LOTHO , DS = D-SAV360.                                                                                          
+
+> Audio Quality (FAD ↓)Semantic Binaural Method FAD DFAD CFAD DS CLAP ↑IB ↑1−IACC ILD
+> Non-spatial
+> AudioLDM2 [20] 73.5 67.4 84.6 0.301 0.102 0.000 0.00 Tango2 [56] 72.2 73.4 67.4 0.251 0.153 0.000 0.00 MMAudio T [28] 74.1 63.2 82.7 0.410 0.163 0.000 0.00 MMAudio V [28] 78.3 66.8 80.4 0.424 0.183 0.000 0.00 Seeing&Hearing [57] 82.2 75.6 93.6 0.252 0.117 0.000 0.00 Im2Wav [58] 69.2 71.2 80.1 0.074 0.148 0.000 0.00
+> Spatial  ViSAGe [59] 73.3 77.0 75.0 −0.004 0.141 0.291 4.48 See2Sound [10] 83.2 76.2 100.1 0.058 0.053 0.616 7.41 OmniAudio [11] 75.5 71.6 63.7 0.136 0.135 0.364 7.22 SonoWorld [14] (re-impl.) 67.6 64.2 73.6 0.080 0.129 0.577 8.65 Scene2Sound (Ours) 65.3 59.3 84.4 0.265 0.120 0.253 6.47
+
+TABLE X 
+
+STAGE -WISE DIAGNOSTICS . MEASURED RELIABILITY OF EACH PIPELINE STAGE AND THE MECHANISM THAT LIMITS ITS ERRORS .                              
+
+> Stage Reliability Failure mode →containment
+> VLM source detection Proposal validity 93 .5% ,element coverage 97 .0% 8/124 hallucinations (urban prior) →rejected downstream by grounding; 5/168 missed elements →
+> absorbed by the ambient bed SAM grounding 99 /124 grounded ( 20 .2%
+> dropout) ungroundable queries (small objects, area nouns, hallucinations) →dropped independently; surviving sources unaffected GSM instance association held-out grounding CGC 0.259 ,precision 0.441 (main paper, Tables III and V) same-class over-merge →0/16 ,284 occurrences at the adopted threshold (Sec. C) Audio generation competitive FAD among spatial methods (Table I) per-source artifacts →per-source independence; ambient bed as scene-level fallback Rendering / listener axis LMC +0 .283 (generated),
+> +0 .068 (real) deterministic re-rendering given instance positions
+
+TABLE XI PER -STAGE INFERENCE TIME (MEAN ± STD OVER 24 SCENES ; NVIDIA RTX A6000). 
+
+Stage Time (s) % of total Rendering (3DGS → panoramas) 21 .3 ± 0.3 10% VLM scene analysis 112 .0 ± 22 .1 50% SAM grounding 12 .7 ± 0.8 6% Gaussian voting (tile metadata) 16 .0 ± 18 .3 7% Clustering (Jaccard / Union-Find) 0.5 ± 0.0 <1% Audio generation (SAO ×Nsrc ) 59 .7 ± 26 .2 27% Total 222 100% 
+
+APPENDIX ISONO WORLD RE-IMPLEMENTATION DETAILS 
+
+The SonoWorld baseline re-implements the pipeline shape 
+
+of SonoWorld from its released code, instantiated on our 3DGS worlds under module parity. Kept: the single-panorama regime ( K=1 , the scene-center view our viewpoint selection visits first), its scene-understanding prompt (verbatim), its depth-weighted mask-lifting formula ( mask concentration ,verbatim), and its MMAudio generator. Substituted where their component is closed or unreleased: GPT-4.1 → Qwen2.5-VL-32B (same VLM as ours, their prompt); MoGe depth → the scene’s rendered depth; their unreleased renderer → our bin-aural engine at the same listener positions. Over the 24 scenes (≈418 s/scene), the VLM proposed 136 foreground sources, of which SAM3 grounded 93 (68 .4% ; 3.9 placed/scene); held-out grounding follows the same CGC protocol as all other methods. On D-SAV360 the same re-implementation runs unchanged on the dataset’s single capture position, with depth from the same 3DGS reconstructions; in 4 of 81 scenes SAM3 grounds no source, leaving only the ambient bed (counted in the aggregate). APPENDIX JSTAGE -WISE DIAGNOSTICS 
+
+Table X details the per-stage diagnostics summarized in the Robustness Analyses of the main paper; the Jmin sweep and co-located-instance stress test of Section C probe the association stage directly. APPENDIX KRUNTIME ANALYSIS 
+
+Table XI reports the per-stage wall-clock breakdown over all 24 SoundscapePLY scenes on a single NVIDIA RTX A6000 (48 GB). VLM scene analysis dominates ( 112 s, 50% ;Qwen2.5-VL-32B, AWQ-quantized), followed by per-source audio generation ( 59 .7 s, 27% ; ≈12 s/source). The geometry-dependent stages (panoramic rendering, tile-based Gaussian voting, Jaccard clustering) take under 40 s combined, thus the 3DGS-side pipeline is lightweight. REFERENCES 
+
+[1] B. Kerbl, G. Kopanas, T. Leimkuehler, and G. Drettakis, “3D gaussian splatting for real-time radiance field rendering,” ACM Trans. Graph. , vol. 42, 2023. [2] S. Zhou, Z. Fan, D. Xu et al. , “DreamScene360: Unconstrained text-to-3D scene generation with panoramic gaussian splatting,” in Proc. ECCV , 2024. [3] H.-X. Yu, H. Duan, C. Herrmann et al. , “WonderWorld: Interactive 3D scene generation from a single image,” in Proc. CVPR , 2025. [4] World Labs, “Marble,” https://marble.worldlabs.ai/, 2025, accessed: Feb. 19, 2026. [5] Z. Wang, M. Li, and C. Tu, “AG2aussian: Anchor-graph structured gaussian splatting for instance-level 3D scene understanding and editing,” in Proc. ICCV ,2025. [6] H. Zhao, H. Wang, X. Zhao et al. , “PhysSplat: Efficient physics simulation for 3D scenes via MLLM-guided gaussian splatting,” in Proc. ICCV , 2025. [7] R. M. Schafer, The Soundscape: Our Sonic Environment and the Tuning of the World . Rochester, VT, USA: Destiny Books, 1993. [8] M. Naef, O. Staadt, and M. Gross, “Spatialized audio rendering for immersive virtual environments,” in Proc. VRST , 2002. [9] T. Li, B. Huang, X. Zhuang et al. , “Sounding that object: Interactive object-aware image to audio generation,” in Proc. ICML , 2025. [10] R. Dagli, S. Prakash, R. Wu, and H. Khosravani, “SEE-2-SOUND: Zero-shot spatial environment-to-spatial sound,” in Proc. ACM SIGGRAPH Posters , 2025. [11] H. Liu, T. Luo, Q. Jiang et al. , “OmniAudio: Generating spatial audio from 360-degree video,” in Proc. ICML , 2025. 14 [12] Y. Li, H. Kim, F. Zhan et al. , “Visual acoustic fields,” arXiv preprint arXiv:2503.24270 , 2025. [13] F. M. De La Torre, J. Hernandez, A. D. Wilson, and J. Amores, “Sonora: Human-AI co-creation of 3D audio worlds and its impact on anxiety and cognitive load,” in Proc. CHI , 2025. [14] D. Jin, X. Chen, M. C. Lin, and R. Gao, “SonoWorld: From one image to a 3D audio-visual scene,” in Proc. CVPR , 2026. [15] M. Ye, M. Danelljan, F. Yu, and L. Ke, “Gaussian grouping: Segment and edit anything in 3D scenes,” in Proc. ECCV , 2024. [16] C. Pike, R. Taylor, T. Parnell, and F. Melchior, “Object-based 3D audio production for virtual reality using the audio definition model,” in Proc. AES Int. Conf. Audio for Virtual and Augmented Reality , 2016. [17] S. Bai, K. Chen, X. Liu, J. Wang, W. Ge, S. Song, K. Dang, P. Wang, S. Wang, J. Tang et al. , “Qwen2.5-VL technical report,” arXiv preprint arXiv:2502.13923 ,2025. [18] N. Carion, L. Gustafson, Y.-T. Hu, S. Debnath, R. Hu, D. Suris, C. Ryali, K. V. Alwala, H. Khedr, A. Huang et al. , “SAM 3: Segment anything with concepts,” 
+
+arXiv preprint arXiv:2511.16719 , 2025. [19] Z. Evans, J. D. Parker, C. Carr et al. , “Stable audio open,” in Proc. ICASSP , 2025. [20] H. Liu, Y. Yuan, X. Liu et al. , “AudioLDM 2: Learning holistic audio generation with self-supervised pretraining,” IEEE/ACM Trans. Audio Speech Lang. Process. ,vol. 32, 2024. [21] H. Liu, R. Huang, Y. Liu et al. , “AudioLCM: Efficient and high-quality text-to-audio generation with minimal inference steps,” in Proc. ACM MM , 2024. [22] H. Liu, J. Wang, R. Huang et al. , “FlashAudio: Rectified flow for fast and high-fidelity text-to-audio generation,” in Proc. ACL , 2025. [23] C.-Y. Hung, N. Majumder, Z. Kong et al. , “TangoFlux: Super fast and faithful text to audio generation with flow matching and CLAP-ranked preference optimiza-tion,” in Proc. ICLR , 2026. [24] L. Zhuo, R. Du, H. Xiao et al. , “Lumina-Next: Making Lumina-T2X stronger and faster with Next-DiT,” arXiv preprint arXiv:2406.18583 , 2024. [25] S. Luo, C. Yan, C. Hu, and H. Zhao, “Diff-Foley: Synchronized video-to-audio synthesis with latent diffusion models,” in Proc. NeurIPS , 2023. [26] H. Liu, K. Luo, J. Wang et al. , “ThinkSound: Chain-of-thought reasoning in multimodal large language models for audio generation and editing,” in Proc. NeurIPS , 2025. [27] H. Liu, K. Luo, W. Wang et al. , “PrismAudio: Decomposed chain-of-thoughts and multi-dimensional rewards for video-to-audio generation,” arXiv preprint arXiv:2511.18833 , 2025. [28] H. K. Cheng, M. Ishii, A. Hayakawa et al. , “MMAudio: Taming multimodal joint training for high-quality video-to-audio synthesis,” in Proc. CVPR , 2025. [29] M. Heydari, M. Souden, B. Conejo, and J. Atkins, “ImmerseDiffusion: A gener-ative spatial audio latent diffusion model,” in Proc. ICASSP , 2025. [30] M. L. Wang, R. Sawata, S. Clarke et al. , “Hearing anything anywhere,” in Proc. CVPR , 2024. [31] A. Ratnarajah, S. Ghosh, S. Kumar et al. , “AV-RIR: Audio-visual room impulse response estimation,” in Proc. CVPR , 2024. [32] A. Luo, Y. Du, M. Tarr et al. , “Learning neural acoustic fields,” in Proc. NeurIPS ,vol. 35, 2022. [33] Z. Lan, C. Zheng, Z. Zheng, and M. Zhao, “Acoustic volume rendering for neural impulse response fields,” in Proc. NeurIPS , vol. 37, 2024. [34] C. Chen, A. Richard, R. Shapovalov et al. , “Novel-view acoustic synthesis,” in 
+
+Proc. CVPR , 2023. [35] S. Liang, C. Huang, Y. Tian et al. , “AV-NeRF: Learning neural fields for real-world audio-visual scene synthesis,” in Proc. NeurIPS , vol. 36, 2023. [36] S. Bhosale, H. Yang, D. Kanojia et al. , “AV-GS: Learning material and geometry aware priors for novel view acoustic synthesis,” in Proc. NeurIPS , 2024. [37] A. Brunetto, S. Hornauer, and F. Moutarde, “NeRAF: 3D scene infused neural radiance and acoustic fields,” in Proc. ICLR , 2025. [38] M. Geier, J. Ahrens, and S. Spors, “Object-based audio reproduction and the audio scene description format,” Organised Sound , vol. 15, 2010. [39] P. Coleman, A. Franck, J. Francombe et al. , “An audio-visual system for object-based audio: From recording to listening,” IEEE Trans. Multimedia , vol. 20, 2018. [40] J. Cen, J. Fang, C. Yang et al. , “Segment any 3D gaussians,” in Proc. AAAI , 2025. [41] J. Piekenbrinck, C. Schmidt, A. Hermans et al. , “OpenSplat3D: Open-vocabulary 3D instance segmentation using gaussian splatting,” in Proc. CVPR Workshops ,2025. [42] Y. Li and D. Pathak, “Object-aware gaussian splatting for robotic manipulation,” in ICRA 2024 Workshop on 3D Visual Representations for Robot Manipulation ,2024. [43] U. Jain, A. Mirzaei, and I. Gilitschenski, “GaussianCut: Interactive segmentation via graph cut for 3D gaussian splatting,” in Proc. NeurIPS , vol. 37, 2024. [44] S. Dai, Y. Qu, Z. Li et al. , “Training-free hierarchical scene understanding for gaussian splatting with superpoint graphs,” in Proc. ACM MM , 2025. [45] R. Chacko, N. Haeni, E. Khaliullin et al. , “Lifting by gaussians: A simple, fast and flexible method for 3D instance segmentation,” in Proc. WACV , 2025. [46] L. Wiedmann, L. Wiehe, and D. Rozenberszki, “DCSEG: Decoupled 3D open-set segmentation using gaussian splatting,” in Proc. CVPR Workshops , 2025. [47] J. Wang, K. C. Chan, and C. C. Loy, “Exploring CLIP for assessing the look and feel of images,” in Proc. AAAI , 2023. [48] V. Ye, R. Li, J. Kerr et al. , “gsplat: An open-source library for gaussian splatting,” 
+
+J. Mach. Learn. Res. , vol. 26, 2025. [49] K. Kilgour, M. Zuluaga, D. Roblek, and M. Sharifi, “Fr´ echet audio distance: A reference-free metric for evaluating music enhancement algorithms,” in Proc. Interspeech , 2019. [50] Q. Kong, Y. Cao, T. Iqbal et al. , “PANNs: Large-scale pretrained audio neural networks for audio pattern recognition,” IEEE/ACM Trans. Audio Speech Lang. Process. , vol. 28, 2020. [51] M. Tailleur, J. Lee, M. Lagrange et al. , “Correlation of Fr´ echet audio distance with human perception of environmental audio is embedding dependent,” in Proc. EUSIPCO , 2024. [52] M. Lagrange, J. Lee, M. Tailleur et al. , “Sound scene synthesis at the DCASE 2024 challenge,” arXiv preprint arXiv:2501.08587 , 2025. [53] K. Drossos, S. Lipping, and T. Virtanen, “Clotho: An audio captioning dataset,” in Proc. ICASSP , 2020. [54] R. Girdhar, A. El-Nouby, Z. Liu et al. , “ImageBind: One embedding space to bind them all,” in Proc. CVPR , 2023. [55] Y. Wu, K. Chen, T. Zhang et al. , “Large-scale contrastive language-audio pretrain-ing with feature fusion and keyword-to-caption augmentation,” in Proc. ICASSP ,2023. [56] N. Majumder, C.-Y. Hung, D. Ghosal et al. , “Tango 2: Aligning diffusion-based text-to-audio generations through direct preference optimization,” in Proc. ACM MM , 2024. [57] Y. Xing, Y. He, Z. Tian et al. , “Seeing and hearing: Open-domain visual-audio generation with diffusion latent aligners,” in Proc. CVPR , 2024. [58] R. Sheffer and Y. Adi, “I hear your true colors: Image guided audio generation,” in Proc. ICASSP , 2023. [59] J. Kim, H. Yun, and G. Kim, “ViSAGe: Video-to-spatial audio generation,” in 
+
+Proc. ICLR , 2025. [60] E. Bernal-Berdun, D. Martin, S. Malpica et al. , “D-SAV360: A dataset of gaze scanpaths on 360° ambisonic videos,” IEEE Trans. Vis. Comput. Graph. , 2023. [61] Z. Chen et al. , “Real acoustic fields: An audio-visual room acoustics dataset and benchmark,” in Proc. CVPR , 2024. [62] Black Forest Labs, “FLUX.2 [klein] 9B,” https://huggingface.co/black-forest-labs/ FLUX.2-klein-9B, 2026, Hugging Face model card, accessed 2026-02-15.

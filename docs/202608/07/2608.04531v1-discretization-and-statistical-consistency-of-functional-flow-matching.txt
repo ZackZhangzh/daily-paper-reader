@@ -1,0 +1,2151 @@
+Title: Discretization and Statistical Consistency of Functional Flow Matching
+
+URL Source: https://arxiv.org/pdf/2608.04531v1
+
+Published Time: Thu, 06 Aug 2026 00:35:20 GMT
+
+Number of Pages: 31
+
+Markdown Content:
+# Discretization and Statistical Consistency of Functional Flow Matching 
+
+Lennon J. Shikhman lshikhman3@gatech.edu 
+
+School of Computer Science, College of Computing Georgia Institute of Technology Atlanta, Georgia 30332, USA 
+
+Abstract 
+
+Functional flow matching is posed on distributions of functions but implemented from finitely many coefficients or point values. Under scattered or adaptive refinement, the resulting conditioning sigma-algebras need not be nested, so martingale convergence does not justify the sensor limit. We prove strong L2 convergence of finite conditional velocity targets for every strongly consistent sequence of finite-rank reconstructions, with quantitative bounds for orthogonal projections and a point-sensor extension through a regularity space. For learned flows, coupling directly to a population superposition path yields an end-to-end Wasserstein bound without assuming uniqueness of the population finite-dimensional ODE. We verify sensor-independent constants for a normalized quadrature neural operator, including globally Lipschitz activations through an explicit magnitude recurrence. A noncommuting trace-class Gaussian example gives boundary multiplier 0 under projected restriction and 0 .72 under exact conditioning. A spatial regularity–cubature certificate closes the operator-realization term, a Bernstein argument gives an eO(n−1) excess-risk term for fixed model dimension and envelopes, and an exactly realizable clipped Gaussian scaling specialization yields an explicit end-to-end rate. 
+
+Keywords: functional flow matching, neural operators, Hilbert-space probability flows, finite sensors, discretization consistency, conditional expectation, Wasserstein distance 
+
+1 Introduction 
+
+Scientific data such as velocity fields, climate states, and PDE solutions are naturally random functions; a grid is only one finite observation. Functional flow matching therefore learns a time-dependent velocity on a function space rather than on a fixed pixel array (Kerrigan et al., 2024). Yet every implementation observes finitely many coefficients or point values and integrates a finite-dimensional ODE. Parameter sharing across grids does not prove convergence to a common continuum flow. The unresolved step is the conditional target. For a stochastic interpolation Xt with velocity Ut, the population and implemented targets are 
+
+v⋆(t, X t) = E[Ut | Xt], v⋆m(t, A mXt) = E[AmUt | AmXt].
+
+The sigma-algebras σ(AmXt) generally change with the mesh and need not be nested for scattered, remeshed, or adaptive sensors. Thus neither AmXt → Xt nor a martingale theorem alone proves v⋆m → v⋆. This paper supplies that missing sensor limit and propagates it through population flows, statistical learning, and the implemented sampler. For literal sensors, conditioning on AmXt equals conditioning on SmXt under the same-information condition in Section 3.3.  
+
+> ©2026 Shikhman. License: CC-BY 4.0, see https://creativecommons.org/licenses/by/4.0/ .arXiv:2608.04531v1 [cs.LG] 5 Aug 2026 Shikhman
+
+Why projection is not conditioning. A two-dimensional calculation already exposes the issue. In the trace-class Gaussian model of Section 9.2, the last observed direction at level m is gm = ( e2m−1 + e2m)/√2 . At t = 1 /2, with endpoint variance ratios r+ = 4 and r− = 1 /4, the continuum conditional field has multipliers k+ = 1 .2 and k− = −1.2. Projecting this field onto gm therefore gives k = ( k+ + k−)/2 = 0. Conditioning after observation instead gives 
+
+κ = 1.5 − 0.375 1.25 + 0 .3125 = 0 .72 ,
+
+so the exact finite target contains 0 .72 ⟨z, g m⟩ gm. Thus restricting a continuum-trained field is not, in general, the finite flow-matching target. This order-one multiplier discrepancy is compatible with the target-consistency theorem: the affected direction moves into the trace-class tail, so the global L2 error still vanishes. Literal point evaluation is not continuous on L2, so point sensors require a regularity space and stable reconstruction. Also, a weak continuity equation yields a measure on characteristics, not automatically a unique flow map (Stepanov and Trevisan, 2017); the distinction matters below. 
+
+1.1 Contributions 
+
+1. Nonnested target consistency and a quantitative stress test. Strongly consistent, uniformly bounded finite-rank reconstructions imply 
+
+v⋆m(τ, A mXτ ) −→ v⋆(τ, X τ ) in L2( d t ⊗ P; H),
+
+without nested sigma-algebras. We give orthogonal tail bounds, a point-sensor version, and the noncommuting Gaussian model above. 2. Generated-law control without population uniqueness. Coupling the learned ODE to a population superposition path requires stability only of the learned field and separates all sensing, learning, numerical, and endpoint errors. 3. Mesh-uniform learning constants and a composed rate. A normalized quadrature neural operator has sensor-independent output, parameter, and state constants after an explicit nodal–function norm bridge. Spatial regularity, stable reconstruction, and W1
+
+cubature imply realization consistency; Bernstein localization gives a fast risk bound; and an exactly realizable clipped Gaussian scaling model yields an explicit rate. ReLU, GeLU, and SiLU are covered. 
+
+A boundary result for stability assumptions. We also construct a globally 1-Lipschitz continuum velocity whose finite conditional targets have no mesh-uniform Lipschitz envelope. Its finite flows nevertheless equal the projected continuum flow. The example delimits a sufficient hypothesis; it is not a failure-of-convergence result. 
+
+1.2 Scope 
+
+The results concern probability flows, not infinite-dimensional likelihoods, and require controlled reconstruction, realization, and stability constants. Arbitrary refinement and unseen-frequency extrapolation are not covered; likelihoods require separate quasi-invariance machinery (Bogachev, 1998). 
+
+> 2Statistical Consistency of Functional Flow Matching
+
+2 Related Work 
+
+Flow matching regresses conditional velocities along prescribed probability paths (Lipman et al., 2023); rectified flow and stochastic interpolants give closely related constructions (Liu et al., 2023; Albergo et al., 2025). Functional flow matching lifts this idea to random functions (Kerrigan et al., 2024). Functional Mean Flow extends one-step mean-flow gener-ation to infinite-dimensional Hilbert spaces, with both velocity- and endpoint-prediction formulations (Li et al., 2026). Subsequent work proves Hilbert-space marginal preservation by superposition, regularity of conditional drifts, and conditional-to-marginal objective equiv-alence (Zhang and Scott, 2026; Chen and Vanden-Eijnden, 2025; Li et al., 2026). Operator flow matching and infinite-dimensional probability-flow ODEs provide other function-space formulations (Shi et al., 2025; Na et al., 2025). Those continuum results do not settle conditional-target convergence under nonnested finite observations. Function-space diffusion models have dimension-aware approximation and multilevel convergence results (Pidstrigach et al., 2024; Hagemann et al., 2025). Flow matching adds a distinct difficulty because its target changes with the conditioning information. Scattered-data recovery requires regularity and stable reconstruction (Wendland, 2005; Narcowich et al., 2005); point values are continuous on Hs(D) only above the Sobolev threshold s > d/ 2 (Adams and Fournier, 2003). Neural operators share parameters across discretizations (Kovachki et al., 2023); FNO and DeepONet supply prominent realizations and approximation theories (Kovachki et al., 2021; Lu et al., 2021; Lanthaler et al., 2022). Sharing parameters is weaker than convergence of targets, norms, operator implementations, and flows. We verify these links for a normalized quadrature operator; a standard FNO still needs analogous Fourier-layer bounds and a realization estimate. Finite-dimensional flow-matching and neural-operator learning theory provide complementary statistical tools (Benton et al., 2024; Fukumizu et al., 2025; Reinhardt et al., 2026). Superposition principles connect weak continuity equations to distributions on charac-teristic curves (Ambrosio et al., 2008; Stepanov and Trevisan, 2017); ODE uniqueness is needed only where a deterministic map is claimed. 
+
+3 Setting and notation 
+
+Let H be a separable real Hilbert space. Write P2(H) for its Borel laws with finite second moment, equipped with 
+
+W 22 (μ, ν ) = inf 
+
+> π∈Π( μ,ν )
+
+Z
+
+> H×H
+
+∥x − y∥2 
+
+> H
+
+π( d x, dy).
+
+Conditional expectations are Bochner conditional expectations; vector fields are identified dt μ t( d x)-almost everywhere unless a representative is specified. 
+
+3.1 The stochastic interpolation 
+
+Fix T ∈ (0 , 1] and a complete probability space (Ω , A, P). 
+
+> 3
+
+Shikhman 
+
+Assumption 1 (Absolutely continuous interpolation) The map X : [0 , 1] × Ω → H
+
+is jointly measurable, almost every path is absolutely continuous, and its jointly measurable Bochner derivative Ut = ˙Xt satisfies 
+
+E ∥X0∥2 
+
+> H
+
+< ∞,
+
+Z 10
+
+E ∥Ut∥2 
+
+> H
+
+dt < ∞.
+
+The Bochner fundamental theorem gives Xt = X0 + R t 
+
+> 0
+
+Ur dr and 
+
+E sup 
+
+> 0≤t≤T
+
+∥Xt∥2 
+
+> H
+
+≤ 2E ∥X0∥2 
+
+> H
+
++ 2 T
+
+Z T
+
+> 0
+
+E ∥Ut∥2 
+
+> H
+
+dt < ∞. (1) Let μt = Law (Xt) for 0 ≤ t ≤ 1. All training risks and flow equations below are restricted to [0 , T ], while μ1 denotes the desired endpoint law. A standard example is the linear interpolation 
+
+Xt = (1 − t)X0 + tX 1, Ut = X1 − X0, (2) for square-integrable X0, X 1.Regard time as random: on Ω = [0 , T ] × Ω, let P = T −1L1|[0 ,T ] ⊗ P, τ (t, ω ) = t, and 
+
+G = σ(( t, ω ) 7 → (t, X t(ω))). Since H is separable, the Bochner conditional expectation 
+
+E[Uτ | G ] has a representation 
+
+v⋆(τ, X τ ) = E[Uτ | G ] P-almost surely (3) for a Borel function v⋆ : [0 , T ] × H → H. This follows from the factorization lemma because [0 , T ] × H is a standard Borel space (Kallenberg, 2021, Chapter 1). We abbreviate this as 
+
+v⋆(t, x ) = E[Ut | Xt = x]. For a Borel field w : [0 , T ] × H → H with w(τ, X τ ) ∈ L2(P; H), define the normalized population risk 
+
+L(w) = 1
+
+T
+
+Z T
+
+> 0
+
+E ∥w(t, X t) − Ut∥2 
+
+> H
+
+dt. (4) 
+
+3.2 Finite-rank reconstructed observations 
+
+Let Am ∈ L (H) have finite-dimensional range Hm = ran( Am) and satisfy 
+
+Amx −→ x in H for every x ∈ H. (5) The uniform boundedness principle implies 
+
+CA := sup 
+
+> m≥1
+
+∥Am∥L(H) < ∞. (6) Set 
+
+Xmt = AmXt, U mt = AmUt, μmt = ( Am)#μt,
+
+and 
+
+Gm = σ (t, ω ) 7 → (t, A mXt(ω)) .
+
+4Statistical Consistency of Functional Flow Matching 
+
+The finite-observation target is the Borel field v⋆m : [0 , T ] × Hm → Hm determined by 
+
+v⋆m(τ, A mXτ ) = E[AmUτ | G m]. (7) Its risk, for f : [0 , T ] × Hm → Hm, is 
+
+Lm(f ) = 1
+
+T
+
+Z T
+
+> 0
+
+E ∥f (t, A mXt) − AmUt∥2 
+
+> H
+
+dt. (8) The projected path AmXt is absolutely continuous with derivative AmUt.
+
+3.3 Point sensors and a regularity space 
+
+Literal point evaluation requires a refinement of this abstract setting. Let V be a separable Hilbert space continuously and densely embedded in H, and suppose X and U satisfy Assumption 1 with V in place of H. A sensor–reconstruction pair has the form 
+
+Sm ∈ L (V, Rdm ), Rm ∈ L (Rdm , V), Am = RmSm.
+
+We require sup 
+
+> m
+
+∥Am∥L(V,H) < ∞, ∥Amf − f ∥H −→ 0 (f ∈ V). (9) We additionally require σ(τ, S mXτ ) = σ(τ, A mXτ ). The identity SmRm = I is sufficient; for oversampled least squares it is enough that SmRm be injective on the almost-sure range of 
+
+SmXt. For a bounded Lipschitz domain D ⊂ Rd, the canonical example is 
+
+V = Hs(D; Rq), H = L2(D; Rq), s > d/ 2,
+
+for which point evaluation is continuous on V by Sobolev embedding (Adams and Fournier, 2003). More precisely, for any 0 < α ≤ 1 satisfying α < s − d/ 2, this choice also gives the embedding Hs(D; Rq) ,→ C0,α (D; Rq) used in Proposition 21. Local averages are a bounded alternative when no pointwise representative is desired. 
+
+4 Continuum background: probability flows and superposition 
+
+This section records the continuum background needed by the discretization arguments. The Wasserstein absolute-continuity and regression identities are standard Hilbert-space consequences of path coupling and conditional expectation. The superposition statement is a specialization of Stepanov and Trevisan (2017, Theorem 3.4), equivalently the Hilbert-space result of Zhang and Scott (2026). We state the exact hypotheses because the learned-law argument later uses measure-valued characteristics rather than assuming a unique population ODE; these background results are not claimed as contributions. The argument uses neither a density relative to an infinite-dimensional Lebesgue measure nor coordinatewise vector calculus. Here C1 
+
+> b
+
+(H) denotes the bounded, continuously Fr´ echet differentiable real functions on H
+
+whose derivatives are bounded and continuous. 
+
+Theorem 2 (Continuum flow-matching identities) Under Assumption 1, the follow-ing statements hold. 
+
+> 5Shikhman
+
+(i) The curve t 7 → μt belongs to AC 2([0 , T ]; P2(H)) and, for 0 ≤ s ≤ t ≤ T ,
+
+W2(μs, μ t) ≤  E ∥Xt − Xs∥2
+
+> H
+
+1/2 ≤
+
+Z ts
+
+ E ∥Ur∥2
+
+> H
+
+1/2 dr. (10) 
+
+(ii) The conditional field is square integrable and obeys 
+
+1
+
+T
+
+Z T
+
+> 0
+
+Z
+
+> H
+
+∥v⋆(t, x )∥2 
+
+> H
+
+μt( d x) d t ≤ 1
+
+T
+
+Z T
+
+> 0
+
+E ∥Ut∥2 
+
+> H
+
+dt. (11) 
+
+(iii) For every admissible w,
+
+L(w) = L(v⋆) + 1
+
+T
+
+Z T
+
+> 0
+
+E ∥w(t, X t) − v⋆(t, X t)∥2 
+
+> H
+
+dt. (12) 
+
+Hence v⋆ is the unique minimizer in L2( d t μ t; H).(iv) The pair (μt, v ⋆) satisfies the weak continuity equation: for every φ ∈ C1 
+
+> b
+
+(H) and 
+
+ζ ∈ C1 
+
+> c
+
+((0 , T )) ,
+
+Z T
+
+> 0
+
+Z
+
+> H
+
+ζ′(t)φ(x) + ζ(t) ⟨Dφ (x), v ⋆(t, x )⟩H
+
+ μt( d x) d t = 0 . (13) 
+
+Proof The coupling ( Xs, X t), the identity Xt − Xs = R ts Ur dr, and Minkowski give (10) and AC 2. Conditional Jensen gives (11) ; expanding the squared loss and conditioning the cross term on G gives (12) . Finally, the chain rule along the absolutely continuous path, followed by Fubini and conditioning on ( r, X r), gives 
+
+Eφ(Xt) − Eφ(Xs) = 
+
+Z ts
+
+Z
+
+> H
+
+⟨Dφ (x), v ⋆(r, x )⟩H μr( d x) d r. (14) Integration by parts in time proves (13) . All interchanges are justified by bounded Dφ and 
+
+U ∈ L1( d t ⊗ P; H). The regression problem determines only an equivalence class in L2( d t μ t; H), not a regular off-support extension. Classical ODE claims therefore assume a specified regular representative. 
+
+4.1 Superposition and deterministic flows Corollary 3 (Superposition representation) Under Assumption 1, there exists a Borel probability measure η on C([0 , T ]; H) such that 
+
+(et)#η = μt (0 ≤ t ≤ T ), et(γ) = γt,η is concentrated on absolutely continuous curves, and 
+
+˙γt = v⋆(t, γ t) for η-almost every γ and almost every t. (15) 
+
+> 6Statistical Consistency of Functional Flow Matching
+
+Proof Theorem 2 gives narrow continuity and the weak equation, while Cauchy–Schwarz and (11) give v⋆ ∈ L1( d t μ t). The Hilbert-space superposition theorem (Zhang and Scott, 2026, Theorem 16 and Corollary 17), equivalently Stepanov and Trevisan (2017, Theo-rem 3.4), therefore applies. Corollary 3 does not say that the curve through a given initial state is unique. The next result records a sufficient condition for that stronger conclusion. 
+
+Assumption 4 (Regular ODE representative) A specified Borel representative of v⋆
+
+is measurable in t for each x, continuous in x for almost every t, and there are L, g ∈ L1(0 , T )
+
+such that 
+
+∥v⋆(t, x ) − v⋆(t, y )∥H ≤ L(t) ∥x − y∥H , ∥v⋆(t, 0) ∥H ≤ g(t)
+
+for all x, y ∈ H and almost every t.
+
+Theorem 5 (Deterministic continuum flow) Under the interpolation and regular-ODE assumptions, the Carath´ eodory equation 
+
+˙Yt = v⋆(t, Y t), Y0 = x, (16) 
+
+has a unique global solution Φt(x) for every x ∈ H. Moreover, 
+
+∥Φt(x) − Φt(y)∥H ≤ exp 
+
+Z t
+
+> 0
+
+L(r) d r
+
+
+
+∥x − y∥H (17) 
+
+and 
+
+μt = (Φ t)#μ0, 0 ≤ t ≤ T. 
+
+Proof The Banach-space Carath´ eodory theorem gives a unique global solution, and Gr¨ onwall gives (17) . Disintegrating the measure in Corollary 3 over e0 and using uniqueness forces each conditional path law to be δΦ·(x); hence μt = ( et)#η = (Φ t)#μ0.A globally Lipschitz flow is invertible and need not reach a lower-dimensional endpoint from a full-support source; stopping at T < 1 retains the explicit bias W2(μT , μ 1). 
+
+5 Finite observations and conditional-target consistency 
+
+We first show that each reconstructed problem has the correct population interpretation, and then prove that its conditional regression target converges to the infinite-dimensional target. The convergence proof does not require nested grids. 
+
+Proposition 6 (Finite reconstructed continuity equation) Under Assumption 1, for every m:(i) v⋆m uniquely minimizes Lm in L2( d t μ mt ; Hm), and 
+
+Lm(f ) − L m(v⋆m) = 1
+
+T
+
+Z T
+
+> 0
+
+E ∥f (t, A mXt) − v⋆m(t, A mXt)∥2 
+
+> H
+
+dt. (18) 
+
+> 7Shikhman
+
+(ii) (μmt , v ⋆m) satisfies the weak continuity equation on Hm.(iii) There is a superposition measure ηm on C([0 , T ]; Hm) with (et)#ηm = μmt , concentrated on absolutely continuous solutions of ˙zt = v⋆m(t, z t).
+
+Proof The projected path AmXt is absolutely continuous with derivative AmUt, and 
+
+Z T
+
+> 0
+
+E ∥AmUt∥2 
+
+> H
+
+dt ≤ ∥ Am∥2
+
+> L(H)
+
+Z T
+
+> 0
+
+E ∥Ut∥2 
+
+> H
+
+dt < ∞.
+
+Apply Theorem 2 to this Hm-valued path. Its conditional velocity is exactly (7) , giving (i) and (ii). Corollary 3, now in the finite-dimensional Hilbert space Hm, gives (iii). 
+
+5.1 Qualitative and quantitative target convergence 
+
+We use the normalized product-space norm 
+
+∥Z∥L2 := 
+
+ 1
+
+T
+
+Z T
+
+> 0
+
+E ∥Zt∥2 
+
+> H
+
+dt
+
+1/2
+
+.
+
+Theorem 7 (Conditional-target consistency) Under the interpolation and reconstruc-tion assumptions, 
+
+∥v⋆m(τ, A mXτ ) − v⋆(τ, X τ )∥L2 −→ 0. (19) 
+
+The operators and their observation sigma-algebras need not be nested. 
+
+Proof Write V = v⋆(τ, X τ ) and Mm = E[V | G m] on the product probability space. Since 
+
+Gm ⊆ G , the tower property and commutation of a bounded linear operator with Bochner conditional expectation (verified by testing against continuous linear functionals) give 
+
+v⋆m(τ, A mXτ ) = AmE[Uτ | G m] = AmE[V | G m] = AmMm. (20) We claim that Mm → V in L2. Let ξm = ( τ, A mXτ ) and ξ = ( τ, X τ ). Strong convergence of Am gives ξm → ξ almost surely. Bounded continuous H-valued functions on [0 , T ] × H are dense in L2( Law (ξ); H) by regularity, Urysohn’s lemma, and simple-function approximation. Given ε > 0, choose such a function g with 
+
+∥V − g(ξ)∥L2 < ε. 
+
+Because g(ξm) is Gm-measurable and conditional expectation is the orthogonal projection onto L2(Gm; H), 
+
+∥V − Mm∥L2 ≤ ∥ V − g(ξm)∥L2 ≤ ε + ∥g(ξ) − g(ξm)∥L2 .
+
+The last term tends to zero by bounded convergence. Taking the limsup and then letting 
+
+ε ↓ 0 proves the claim. 
+
+> 8
+
+Statistical Consistency of Functional Flow Matching 
+
+Finally, (20) yields 
+
+∥AmMm − V ∥L2 ≤ CA ∥Mm − V ∥L2 + ∥(Am − I)V ∥L2 . (21) The first term tends to zero. The second tends to zero by pointwise strong convergence and dominated convergence, since ∥(Am − I)V ∥ ≤ (CA + 1) ∥V ∥ and V ∈ L2.
+
+Corollary 8 (Quantitative target bounds) In addition to the hypotheses of Theorem 7, suppose the chosen representative of v⋆ satisfies, for a measurable L : [0 , T ] → [0 , ∞),
+
+∥v⋆(t, x ) − v⋆(t, y )∥H ≤ L(t) ∥x − y∥H
+
+for all x, y and almost every t, and suppose 
+
+Z T
+
+> 0
+
+L(t)2E ∥AmXt − Xt∥2 
+
+> H
+
+dt < ∞
+
+for every m. Then 
+
+∥v⋆m(τ, A mXτ ) − v⋆(τ, X τ )∥L2
+
+≤ ∥ (Am − I)v⋆(τ, X τ )∥L2 + CA
+
+ 1
+
+T
+
+Z T
+
+> 0
+
+L(t)2E ∥AmXt − Xt∥2 
+
+> H
+
+dt
+
+1/2
+
+. (22) 
+
+If Am = Pm is an orthogonal projection, the sharper decomposition 
+
+∥v⋆(τ, X τ ) − v⋆m(τ, P mXτ )∥2
+
+> L2
+
+≤ ∥ (I − Pm)v⋆(τ, X τ )∥2 
+
+> L2
+
++ 1
+
+T
+
+Z T
+
+> 0
+
+L(t)2E ∥(I − Pm)Xt∥2 
+
+> H
+
+dt. (23) 
+
+Proof With V = v⋆(τ, X τ ) and Mm = E[V | G m], best approximation by the Gm-measurable variable v⋆(τ, A mXτ ) gives 
+
+∥Mm − V ∥L2 ≤ ∥ v⋆(τ, A mXτ ) − v⋆(τ, X τ )∥L2 .
+
+The Lipschitz bound and (21) prove (22). If Am = Pm, then 
+
+V − v⋆m(τ, P mXτ ) = ( I − Pm)V + Pm(V − Mm).
+
+This is an orthogonal sum. Since PmMm = E[PmV | G m], best approximation by the 
+
+Gm-measurable variable Pmv⋆(τ, P mXτ ) gives 
+
+EP ∥Pm(V − Mm)∥2 ≤ EP ∥Pm{v⋆(τ, X τ ) − v⋆(τ, P mXτ )}∥ 2
+
+≤ 1
+
+T
+
+Z T
+
+> 0
+
+L(t)2E ∥(I − Pm)Xt∥2 dt. 
+
+This proves (23). 
+
+9Shikhman 
+
+5.2 Marginal-law convergence Proposition 9 (Uniform convergence of reconstructed laws) Under Assumption 1 and (5) ,
+
+W2(μmt , μ t) ≤  E ∥AmXt − Xt∥2
+
+> H
+
+1/2 (24) 
+
+for every t, and 
+
+sup 
+
+> 0≤t≤T
+
+W2(μmt , μ t) −→ 0. (25) 
+
+Proof The pair ( AmXt, X t) is a coupling, proving (24) . Almost surely, the path image 
+
+Kω = {Xt(ω) : 0 ≤ t ≤ T } is compact in H. Strong convergence of the uniformly bounded linear operators Am is uniform on compact sets by a finite-net argument, so sup 
+
+> t
+
+∥AmXt − Xt∥ −→ 0 almost surely .
+
+It is dominated by ( CA + 1) sup t ∥Xt∥, whose square is integrable by (1) . Dominated conver-gence and (24) prove (25). 
+
+5.3 Point sensors and the finite-information limit 
+
+No finite observation can reconstruct the infinite-dimensional unit ball uniformly: for any linear S : H → Rd and arbitrary R,sup  
+
+> ∥f∥H≤1
+
+∥R(Sf ) − f ∥H ≥ 1.
+
+Indeed, take a unit h ∈ ker S and apply the triangle inequality to h, −h, which share observation zero. For fixed point sensors on an open D, the same bound holds over the 
+
+L2-unit ball in C∞ 
+
+> c
+
+(D) by choosing a smooth bump supported away from every sensor. Thus pointwise convergence for each regular function is compatible with, but cannot replace, a class-dependent estimate such as 
+
+∥Amf − f ∥H ≤ am ∥f ∥V , am ↓ 0.
+
+For scattered sensors, the value of am depends on fill distance, domain geometry, smoothness, and the reconstruction scheme (Wendland, 2005; Narcowich et al., 2005). 
+
+Corollary 10 (Point-sensor target consistency) In the regularity-space setting of Sec-tion 3.3, suppose (9) holds and σ(τ, S mXτ ) = σ(τ, A mXτ ). Define the continuum conditional expectation in V and the finite target in H. Then 
+
+v⋆m(τ, A mXτ ) −→ v⋆(τ, X τ ) in L2(P; H).
+
+Proof Let ι : V ,→ H denote the continuous injective embedding. Lusin–Souslin shows that viewing a V-valued variable in H does not change its sigma-algebra. On the product space define 
+
+V := EV[Uτ | G ] ∈ L2(P; V), Mm := EV[V | G m].
+
+> 10 Statistical Consistency of Functional Flow Matching
+
+Since bounded linear maps commute with Bochner conditional expectation, 
+
+ιV = EH[ιU τ | G ] = v⋆(τ, X τ ).
+
+Repeating the continuous-approximation argument in Theorem 7, now with ξm = ( τ, A mXτ ), 
+
+ξ = ( τ, ιX τ ) and V-valued approximants, gives Mm → V in L2(P; V). Bounded linear maps commute with Bochner conditional expectation, so the tower property gives 
+
+v⋆m(τ, A mXτ ) = AmEV[Uτ | G m] = AmMm.
+
+With CV H = sup m ∥Am∥L(V,H),
+
+∥AmMm − ιV ∥L2(H) ≤ CV H ∥Mm − V ∥L2(V) + ∥AmV − ιV ∥L2(H) .
+
+The first term vanishes by the preceding convergence and the second by (9) and dominated convergence. 
+
+6 From target consistency to flow consistency 
+
+Proposition 6 already gives a measure-valued finite-observation flow with the correct marginals. Convergence of unique deterministic flow maps is stronger and requires stability not supplied by conditional expectation alone. 
+
+Assumption 11 (Mesh-uniform population ODE stability) The continuum regular-ODE assumption holds. Every equivalence class v⋆m also admits a specified Carath´ eodory representative on Hm with 
+
+∥v⋆m(t, x ) − v⋆m(t, y )∥H ≤ Lm(t) ∥x − y∥H , sup 
+
+> m
+
+Z T
+
+> 0
+
+Lm(t) d t ≤ Λ < ∞,
+
+together with an integrable linear-growth bound sufficient for global existence. 
+
+Remark 12 (This is a substantive assumption) Lipschitz regularity of v⋆ does not au-tomatically imply uniform Lipschitz regularity of v⋆m. Conditional expectation over unresolved coordinates can create an irregular function of the observed coordinate. Assumption 11 must therefore be verified for the model at hand, not inferred from Corollary 8. 
+
+Theorem 13 (Failure of the mesh-uniform Gr¨ onwall condition) There exist an in-terpolation on H = ℓ2, a continuum target v⋆(x) = Bx with ∥B∥ = 1 , and the standard nested orthogonal projections Pm → I strongly such that every finite target admits a globally Lipschitz representative, but every choice evm of globally Lipschitz representatives satisfies 
+
+sup 
+
+> m
+
+Z T
+
+> 0
+
+Lip( evm(t, ·)) d t = ∞ (T > 0) . (26) 
+
+Thus even a linear, globally 1-Lipschitz continuum velocity does not imply Assumption 11. Nevertheless, for the canonical representatives constructed below, the finite and continuum flow maps obey 
+
+Φmt (PmX0) = PmΦt(X0) almost surely for every m and t ∈ [0 , T ]. (27) 
+
+> 11
+
+Shikhman 
+
+Hence this construction violates a sufficient hypothesis but not the desired flow-convergence conclusion. 
+
+Proof Let ( ej ) be the canonical basis, Bx = P 
+
+> k≥1
+
+x2ke2k−1, ak = 2 −k, Mk = 2 k, and 
+
+fk(a) = ak tanh( Mka/a k). For independent Zk ∼ Unif[ −1, 1], set 
+
+X0 = X
+
+> k≥1
+
+{akZke2k−1 + fk(akZk)e2k} , Xt = ( I + tB )X0.
+
+Since |fk| ≤ ak, the series is bounded in ℓ2. Also ∥B∥ = 1, B2 = 0, and Ut = BX 0 = BX t,hence v⋆(x) = Bx .Let Pm be the standard coordinate projection. At level m = 2 k − 1, write Ak = akZk
+
+and Fk,t (a) = a + tf k(a). Since f ′ 
+
+> k
+
+≥ 0, Fk,t is strictly increasing, and conditioning on the last observed coordinate Fk,t (Ak) gives, on the projected support, 
+
+v⋆
+
+> 2k−1
+
+(t, z ) = X
+
+> j<k
+
+z2j e2j−1 + gk,t (z2k−1)e2k−1, (28) 
+
+gk,t := fk ◦ F −1 
+
+> k,t
+
+.
+
+Composing gk,t with metric projection onto its compact support interval gives a globally Lipschitz extension jointly continuous in ( t, z ): the interval endpoints and F −1 
+
+> k,t
+
+depend continuously on t. Even-level targets are linear restrictions, so every finite target has such a representative. For any globally Lipschitz representative ev2k−1, Fubini and the positive density of Fk,t (Ak)imply that its last component agrees almost everywhere with gk,t after fixing almost every earlier pair. Continuity upgrades this to the whole support interval. Hence, for almost every 
+
+t,Lip( ev2k−1(t, ·)) ≥ g′
+
+> k,t
+
+(0) = Mk
+
+1 + tM k
+
+.
+
+Therefore Z T
+
+> 0
+
+Lip( ev2k−1(t, ·)) d t ≥ log(1 + T M k).
+
+This diverges with k, proving (26). Finally Φ t(x) = ( I + tB )x. Under the canonical finite representatives, the partially observed coordinate satisfies 
+
+z2k−1(t) = Fk,t (Ak), ˙z2k−1(t) = fk(Ak) = gk,t (z2k−1(t)) .
+
+The complete-pair coordinates are immediate, so for every m,Φmt (PmX0) = PmXt = PmΦt(X0) almost surely .
+
+12 Statistical Consistency of Functional Flow Matching 
+
+Remark 14 (Scope of the counterexample) The interpolation above is the determin-istic transport X1 = ( I + B)X0, not an interpolation between independent endpoints. Its steep finite targets arise when an observation splits a coupled coordinate pair without any independent-endpoint smoothing. The theorem does not show that the same Lipschitz diver-gence persists under an independent Gaussian endpoint; that requires a different construction. 
+
+Theorem 15 (Population-law flow convergence) Suppose the interpolation, contin-uum regularity, and mesh-uniform population stability assumptions hold. Let 
+
+Yt = Φ t(X0), ˙Y mt = v⋆m(t, Y mt ), Y m 
+
+> 0
+
+= AmX0.
+
+Define the three error terms 
+
+rm, 0 := ∥(Am − I)X0∥L2(P;H) ,rm, path := 
+
+Z T
+
+> 0
+
+Lm(t) ∥(Am − I)Yt∥L2(P;H) dt, rm, vel := 
+
+Z T
+
+> 0
+
+∥v⋆m(t, A mYt) − v⋆(t, Y t)∥L2(P;H) dt. 
+
+Then 
+
+E sup 
+
+> 0≤t≤T
+
+∥Y mt − Yt∥2
+
+> H
+
+!1/2
+
+≤ eΛ rm, 0 + rm, path + rm, vel 
+
+. (29) 
+
+Consequently, 
+
+Y m −→ Y in L2(Ω; C([0 , T ]; H)) .
+
+Moreover, Law( Y mt ) = μmt and Law( Yt) = μt for every t.
+
+Proof For almost every sample path, add and subtract v⋆m(t, A mYt) in the two integral equations. Assumption 11 gives 
+
+∥Y mt − Yt∥ ≤ ∥ AmX0 − X0∥
+
++
+
+Z t
+
+> 0
+
+Lm(r) ∥Y mr − AmYr∥ dr
+
++
+
+Z t
+
+> 0
+
+∥v⋆m(r, A mYr) − v⋆(r, Y r)∥ dr. 
+
+Because 
+
+∥Y mr − AmYr∥ ≤ ∥ Y mr − Yr∥ + ∥(I − Am)Yr∥ ,
+
+Gr¨ onwall’s inequality, followed by Minkowski’s integral inequality in L2(Ω), proves (29). Theorem 5 gives Law (Yt) = μt. Therefore the joint law of ( t, Y t) under normalized Lebesgue time and P is the same as that of ( t, X t). Theorem 7 consequently implies 1
+
+T
+
+Z T
+
+> 0
+
+E ∥v⋆m(t, A mYt) − v⋆(t, Y t)∥2 dt −→ 0.
+
+13 Shikhman 
+
+Cauchy–Schwarz makes the time integral in (29) tend to zero, while strong convergence and dominated convergence handle the initial term. They also give 
+
+sup 
+
+> t≤T
+
+∥(Am − I)Yt∥
+
+> L2(P)
+
+−→ 0 : each continuous path has compact image, the convergence Am → I is uniform on compact sets, and the ODE growth estimate makes sup t≤T ∥Yt∥ square integrable. Hence the middle term in (29) is bounded by Λ ∥sup t ∥(Am − I)Yt∥∥ L2 and also tends to zero. Finally, Proposition 6 supplies a superposition measure for ( μmt , v ⋆m). ODE uniqueness under Assumption 11, followed by the disintegration argument from Theorem 5, shows that 
+
+μmt is the pushforward of μm 
+
+> 0
+
+by the finite flow. This is exactly the law of Y mt .If the initial and uniform reconstructed-path errors are at most ϵm, and the normalized squared target error is at most ϵ2
+
+> m
+
+, then (29) and Cauchy–Schwarz give 
+
+E sup 
+
+> t≤T
+
+∥Y mt − Yt∥2
+
+!1/2
+
+≤ eΛ(1 + Λ + T )ϵm.
+
+The theorem gives the strongest pathwise mode of convergence considered in this paper. When Assumption 11 is unavailable, Proposition 9 still gives convergence of the reconstructed marginal curve, and the learned-law argument in Section 8 will require stability only of the learned field, not uniqueness of the population ODE. 
+
+7 Operator approximation and mesh-uniform learning 
+
+At level m, training uses i.i.d. copies of Zm = ( τ, A mXτ ) and Wm = AmUτ , with τ ∼
+
+Unif[0 , T ]. For a field class Fm,p , define 
+
+am,p = inf  
+
+> f∈F m,p
+
+{L m(f ) − L m(v⋆m)} = inf  
+
+> f∈F m,p
+
+E ∥f (Zm) − v⋆m(Zm)∥2 . (30) We call bvm ∈ F m,p an εopt -approximate empirical risk minimizer if 
+
+bLm,n (bvm) ≤ inf  
+
+> f∈F m,p
+
+bLm,n (f ) + εopt . (31) 
+
+7.1 Mesh-uniform statistical control Assumption 16 (Uniform parametrized class) For every m, let Fm,p = {fθ,m : θ ∈
+
+Θ} with nonempty Θ ⊆ { θ ∈ Rp : ∥θ∥2 ≤ R}. There are constants B, G ∈ [0 , ∞), independent of m, such that, on a single event of probability one, the following bounds hold simultaneously for all θ, θ ′ ∈ Θ:
+
+∥fθ,m (Zm)∥H ≤ B, ∥Wm∥H ≤ B, fθ,m (Zm) − fθ′,m (Zm) H ≤ G θ − θ′ 
+
+> 2
+
+.
+
+Here B is the common output–target magnitude envelope and G is parameter sensitivity. The assumption covers bounded or clipped fields; untruncated Gaussian data require moment-based or localized bounds. Proposition 31 quantifies the clipping cost. 
+
+14 Statistical Consistency of Functional Flow Matching 
+
+7.2 Verification for a quadrature neural operator 
+
+Let xm, 1, . . . , x m,d m have positive weights summing to one, and set ∥y∥2 
+
+> m
+
+= P 
+
+> j
+
+wm,j ∥yj ∥22.Consider 
+
+h0 
+
+> i
+
+= h0(t, x m,i , x i),hℓ+1  
+
+> i
+
+= σℓ
+
+Bℓ,θ hℓi + X
+
+> j
+
+wm,j κℓ,θ (xm,i , x m,j , t )hℓj + bℓ,θ (xm,i , t )
+
+ , (32) 
+
+fθ,m (t, x )i = CθhLi .
+
+Let Ym = ( Rq)dm and let ιm : Ym → Hm be a linear isomorphism realizing nodal vectors. To place the nodal recurrence in the same H norm as the risk, assume 0 < c mass ≤ Cmass < ∞, cmass ∥y∥m ≤ ∥ ιmy∥H ≤ Cmass ∥y∥m (y ∈ Y m), (33) independently of m. The components in (32) define fθ,m , with fθ,m (t, ι mx) = ιmfθ,m (t, x )and Wm = ι−1 
+
+> m
+
+Wm. Condition (33) is exact ( cmass = Cmass = 1) for cellwise realizations with cell-mass weights in the abstract coefficient/local-average setting, and is the usual stable finite-element mass-matrix equivalence. 
+
+Theorem 17 (Uniform operator constants) Assume h0 
+
+> m
+
+≤ H0 almost surely for a constant independent of m, and let h0 be independent of θ. For ℓ < L , suppose 
+
+∥Bℓ,θ ∥op ≤ Bℓ, Bℓ,θ − Bℓ,θ ′ op ≤ βℓ θ − θ′ 
+
+> 2
+
+,
+
+sup 
+
+> x,y,t
+
+∥κℓ,θ ∥op ≤ Kℓ, sup 
+
+> x,y,t
+
+κℓ,θ − κℓ,θ ′ op ≤ γℓ θ − θ′ 
+
+> 2
+
+,
+
+sup 
+
+> x,t
+
+bℓ,θ − bℓ,θ ′ 2 ≤ ηℓ θ − θ′ 
+
+> 2
+
+.
+
+Let σℓ be globally sℓ-Lipschitz. Starting from H0, suppose that, for every ℓ < L , one of the following two envelope conditions holds: (i) sup z ∥σℓ(z)∥2 ≤ Hℓ+1 ;(ii) for some Aℓ < ∞,
+
+sup 
+
+> θ∈Θ,x,t
+
+∥bℓ,θ (x, t )∥2 ≤ Aℓ,
+
+and, with cσ,ℓ = ∥σℓ(0) ∥2,
+
+Hℓ+1 = cσ,ℓ + sℓ{(Bℓ + Kℓ)Hℓ + Aℓ}. (34) 
+
+Assume also ∥Cθ∥op ≤ C and ∥Cθ − Cθ′ ∥op ≤ χ ∥θ − θ′∥2. With D0 = 0 and 
+
+Dℓ+1 = sℓ{(Bℓ + Kℓ)Dℓ + ( βℓ + γℓ)Hℓ + ηℓ}, (35) 
+
+one has, uniformly in m,
+
+∥fθ,m (Zm)∥H ≤ Cmass CH L, (36) 
+
+fθ,m (Zm) − fθ′,m (Zm) H ≤ Cmass (CD L + χH L) θ − θ′ 
+
+> 2
+
+. (37) 
+
+15 Shikhman 
+
+Hence Assumption 16 holds with 
+
+B = Cmass max {MU , CH L}, G = Cmass (CD L + χH L),
+
+whenever ∥Wm∥m ≤ MU almost surely. If, in nodal coordinates, h0(t, x ) − h0(t, x ′) m ≤ J0 ∥x − x′∥m and Jℓ+1 = sℓ(Bℓ +Kℓ)Jℓ,then 
+
+fθ,m (t, z ) − fθ,m (t, z ′) H ≤ Cmass 
+
+cmass 
+
+CJ L z − z′ 
+
+> H
+
+, z, z ′ ∈ Hm. (38) 
+
+Proof Normalized weights and Jensen give 
+
+P 
+
+> j
+
+wm,j κij rj 2 ≤ Kℓ(P 
+
+> j
+
+wm,j ∥rj ∥22)1/2.
+
+Under envelope condition (i), hℓ+1  
+
+> m
+
+≤ Hℓ+1 immediately. Under condition (ii), the same estimate gives 
+
+qℓ 
+
+> m
+
+≤ (Bℓ + Kℓ) hℓ 
+
+> m
+
++ Aℓ.
+
+Thus 
+
+hℓ+1  
+
+> m
+
+≤ cσ,ℓ + sℓ qℓ 
+
+> m
+
+≤ Hℓ+1 ,
+
+by (34). For parameters θ, θ ′, the preactivation difference is bounded by 
+
+{(Bℓ + Kℓ)Dℓ + ( βℓ + γℓ)Hℓ + ηℓ} θ − θ′ 
+
+> 2
+
+.
+
+Applying the activation and iterating proves (35) ; the output layer gives the corresponding nodal bounds. The same argument with fixed parameters gives the Jℓ recurrence. Finally, the upper mass bound transfers output and parameter estimates to H, while both mass bounds give 
+
+fθ,m (t, z ) − fθ,m (t, z ′) H ≤ Cmass CJ L ι−1 
+
+> m
+
+(z − z′) m ≤ Cmass 
+
+cmass 
+
+CJ L z − z′ 
+
+> H
+
+.
+
+For scalar activations applied componentwise, ReLU has sℓ = 1, while the exact GeLU 
+
+z 7 → zΦ( z) and SiLU z 7 → z/ (1 + e−z ) have bounded scalar derivatives and hence finite global Lipschitz constants. Differentiability everywhere is not required; the theorem uses the Lipschitz inequality itself. 
+
+Affine dictionaries. Let Tℓ,θ = T 0 
+
+> ℓ
+
++ P 
+
+> r≤p
+
+θrT rℓ be affine. Using the relevant uniform operator or Euclidean norm, set Γ T,ℓ = ( P 
+
+> r≤p
+
+∥T rℓ ∥2
+
+> ∗
+
+)1/2. Cauchy–Schwarz gives sup 
+
+> θ
+
+∥Tℓ,θ ∥∗ ≤ T 0  
+
+> ℓ∗
+
++ RΓT,ℓ , Tℓ,θ − Tℓ,θ ′ ∗ ≤ ΓT,ℓ θ − θ′ 
+
+> 2
+
+.
+
+Thus the theorem’s B, κ, b, C constants are sensor-independent. With MU , C, χ = O(1), fixed-depth order-one atoms give Bp = O(1) and Gp = O(pL/ 2) with bounded activations, and 
+
+Bp, G p = O(pL/ 2) under magnitude recurrence; if instead χ = O(√p), then Gp = O(p(L+1) /2). Normalized dictionaries restore Bp, G p = O(1). The weight normalization P 
+
+> j
+
+wm,j = 1 is essential to avoid sensor-count factors. 
+
+16 Statistical Consistency of Functional Flow Matching 
+
+Theorem 18 (Mesh-uniform fast oracle bound) Under Assumption 16, suppose bvm ∈Fm,p satisfies the approximate ERM condition (31) . For n ≥ 1 and 0 < δ < 1, set 
+
+qp,n,δ = p log(1 + 2 n) + log(2 /δ ).
+
+Then, with probability at least 1 − δ,
+
+Lm(bvm) − L m(v⋆m) ≤ 2am,p + 32 εopt + 10 BGR n + 80 B2qp,n,δ 
+
+n . (39) 
+
+No convexity, well-specification, or attainment of the infimum defining am,p is required. In the realizable case v⋆m ∈ F m,p , so that am,p = 0 , the last constant improves: 
+
+Lm(bvm) − L m(v⋆m) ≤ 32 εopt + 10 BGR n + 40 B2qp,n,δ 
+
+n . (40) 
+
+Proof Write P and Pn for population and empirical averages, put v = v⋆m, and choose bθ
+
+with bvm = fbθ,m . Define 
+
+gθ = ∥fθ,m (Zm) − Wm∥2 
+
+> H
+
+− ∥ v(Zm) − Wm∥2 
+
+> H
+
+, rθ = P g θ.
+
+Conditional Jensen and finite Pythagoras give ∥v(Zm)∥H ≤ B and 
+
+rθ = E ∥fθ,m (Zm) − v(Zm)∥2 
+
+> H
+
+.
+
+Since 
+
+gθ = ⟨fθ,m (Zm) − v(Zm), f θ,m (Zm) + v(Zm) − 2Wm⟩H .
+
+Thus 
+
+P g 2 
+
+> θ
+
+≤ 16 B2rθ, |gθ − P g θ| ≤ 8B2.
+
+The bounded-variable Bernstein inequality (Boucheron et al., 2013, Sections 2.7–2.8), in the form 
+
+P (Pn − P )Y ≥
+
+r 2( P Y 2)qn + bq 
+
+3n
+
+!
+
+≤ e−q
+
+for centered Y with |Y | ≤ b, together with 
+
+r 32 B2rθqn ≤ rθ
+
+3 + 24 B2qn
+
+bounds either one-sided deviation by rθ/3 + 80 B2q/ (3 n) with failure probability at most 
+
+e−q.An R/n -net of Θ has cardinality at most (1 + 2 n)p; the loss is 4 BG -Lipschitz in θ. A union bound over both deviation signs and transfer from the net give, simultaneously for all 
+
+θ,
+
+rθ ≤ 32 Pngθ + 40 B2qp,n,δ 
+
+n + 10 BGR n . (41) 
+
+17 Shikhman 
+
+For a deterministic η-minimizer rθη ≤ am,p + η, the opposite Bernstein tail and (31) give on the same event 
+
+Pngbθ ≤ Pngθη + εopt ≤ 43 rθη + 80 B2qp,n,δ 
+
+3n + εopt .
+
+Substitution in (41) yields 
+
+rbθ ≤ 2( am,p + η) + 32 εopt + 10 BGR n + 80 B2qp,n,δ 
+
+n .
+
+Letting a deterministic ηj ↓ 0 on this uniform event proves (39) . In the realizable case gθ⋆ = 0 pointwise, so direct comparison with θ⋆ removes the comparator deviation and proves (40) .
+
+Remark 19 (Statistical rate) For fixed p, B, G, R , the estimation contribution in (39) is 
+
+eO(n−1). In the realizable case with εopt = eO(n−1), this is also the total excess risk, giving a 
+
+eO(n−1/2) statistical contribution in Theorem 23. 
+
+7.3 Continuum realization and approximation Proposition 20 (Objective consistency) Let Θ be nonempty, let fθ be continuum fields, and let fθ,m be their realizations with Fm,p = {fθ,m : θ ∈ Θ}. Suppose 
+
+dm := sup 
+
+> θ
+
+∥fθ,m (τ, A mXτ ) − fθ(τ, X τ )∥L2 → 0, (42) 
+
+rm := ∥AmUτ − Uτ ∥L2 → 0, (43) 
+
+and M = sup θ ∥fθ(τ, X τ ) − Uτ ∥L2 < ∞. Then 
+
+sup 
+
+> θ
+
+|L m(fθ,m ) − L (fθ)| ≤ (dm + rm)(2 M + dm + rm) → 0. (44) 
+
+Moreover, with 
+
+em = ∥v⋆m(τ, A mXτ ) − v⋆(τ, X τ )∥L2 , a∞ 
+
+> p
+
+= inf  
+
+> θ
+
+∥fθ(τ, X τ ) − v⋆(τ, X τ )∥2 
+
+> L2
+
+,am,p ≤ (dm + pa∞ 
+
+> p
+
++ em)2. (45) 
+
+Proof Set Em = fθ,m (τ, A mXτ ) − AmUτ and E = fθ(τ, X τ ) − Uτ . Then ∥Em − E∥L2 ≤
+
+dm + rm and ∥Em∥L2 ≤ M + dm + rm. Cauchy–Schwarz applied to ∥a∥2 − ∥ b∥2 ≤∥a − b∥ (∥a∥ + ∥b∥) proves (44). Also, 
+
+∥fθ,m − v⋆m∥L2 ≤ dm + ∥fθ − v⋆∥L2 + em.
+
+Taking the infimum and squaring proves the second claim. 
+
+18 Statistical Consistency of Functional Flow Matching 
+
+Proposition 21 (Realization rate for the quadrature operator) Let D be a compact metric space with metric d. Let ν be a Borel probability measure on D, and work in the regularity-space setting of Section 3.3 with 
+
+H = L2(D, ν ; Rq), V ,→ C0,α (D; Rq), 0 < α ≤ 1.
+
+For an α-H¨ older function g, write 
+
+[g]α = sup  
+
+> ξ̸=η
+
+∥g(ξ) − g(η)∥2
+
+d(ξ, η )α .
+
+Let the point-sampling map be 
+
+Smg = ( g(xm, 1), . . . , g (xm,d m )) , Am = ιmSm, νm = X
+
+> i
+
+wm,i δxm,i .
+
+Assume ιm(Ym) = Hm ⊂ V and (33) , define 
+
+qm = W1,dα (νm, ν ),
+
+the 1-Wasserstein distance for the metric (ξ, η ) 7 → d(ξ, η )α, and suppose qm → 0. Suppose also that, for some ηm → 0,
+
+∥ιmSmg − g∥H ≤ ηm
+
+ ∥g∥∞ + [ g]α
+
+ (46) 
+
+for every Rq-valued α-H¨ older function g.Define the continuum realization of (32) by 
+
+h0
+
+> θ
+
+(t, ξ ; x) = h0(t, ξ, x (ξ)) ,hℓ+1  
+
+> θ
+
+(t, ξ ; x) = σℓ
+
+
+
+Bℓ,θ hℓθ(t, ξ ; x) + 
+
+Z
+
+> D
+
+κℓ,θ (ξ, η, t )hℓθ(t, η ; x) ν( d η) + bℓ,θ (ξ, t )
+
+
+
+,fθ(t, x )( ξ) = CθhLθ (t, ξ ; x).
+
+In addition to the operator and activation bounds of Theorem 17, suppose, uniformly in θ
+
+and t,
+
+κℓ,θ (ξ, η, t ) − κℓ,θ (ξ′, η ′, t ) op ≤ Kℓ, 1d(ξ, ξ ′)α + Kℓ, 2d(η, η ′)α,
+
+[bℓ,θ (·, t )] α ≤ Lb,ℓ ,
+
+∥bℓ,θ (·, t )∥∞ ≤ Aℓ.
+
+For (t, ω ) distributed according to P, set 
+
+H0 = h0(t, ·, X t(·)) ∞ , P0 = [ h0(t, ·, X t(·))] α,
+
+and assume H0, P0 ∈ L2(P). Recursively define 
+
+Hℓ+1 = cσ,ℓ + sℓ{(Bℓ + Kℓ)Hℓ + Aℓ},
+
+Pℓ+1 = sℓ{BℓPℓ + Kℓ, 1Hℓ + Lb,ℓ }, (47) 
+
+19 Shikhman 
+
+and 
+
+Em, 0 = 0 ,
+
+Em,ℓ +1 = sℓ
+
+(Bℓ + Kℓ)Em,ℓ + qm
+
+ KℓPℓ + Kℓ, 2Hℓ
+
+ . (48) 
+
+Then 
+
+dm ≤ C
+
+h
+
+Cmass ∥Em,L ∥L2(P) + ηm
+
+
+
+∥HL∥L2(P) + ∥PL∥L2(P)
+
+i 
+
+. (49) 
+
+In particular, dm → 0 at fixed depth whenever qm, η m → 0. Moreover, 
+
+sup 
+
+> θ
+
+∥fθ(τ, X τ )∥L2 ≤ C ∥HL∥L2(P) ,
+
+so the finiteness condition M < ∞ in Proposition 20 follows from Uτ ∈ L2(P; H).
+
+Proof The recurrences (47) follow by induction. The supremum estimate uses that ν
+
+is normalized and ∥κℓ,θ ∥op ≤ Kℓ. For the spatial seminorm, the local term contributes 
+
+BℓPℓ, variation of the first kernel argument contributes Kℓ, 1Hℓ, and the bias contributes 
+
+Lb,ℓ . Global sℓ-Lipschitzness of σℓ preserves the resulting H¨ older bound. For fixed ξ, the integrand 
+
+η 7 −→ κℓ,θ (ξ, η, t )hℓθ(t, η ; Xt)has H¨ older seminorm at most 
+
+KℓPℓ + Kℓ, 2Hℓ.
+
+Coupling νm and ν in the definition of W1,dα therefore bounds the vector-valued quadrature error by 
+
+qm(KℓPℓ + Kℓ, 2Hℓ).
+
+Comparing the discrete and continuum hidden states at the nodes, applying the normalized-kernel Jensen estimate from Theorem 17, and then applying the activation gives (48) . The initial nodal error is zero because ι−1 
+
+> m
+
+AmXt = SmXt.Finally, add and subtract ιmSmfθ(t, X t). Mass stability and (46) give, pointwise, 
+
+∥fθ,m (t, A mXt) − fθ(t, X t)∥H ≤ C [Cmass Em,L + ηm(HL + PL)] .
+
+Taking the L2(P) norm and the supremum over θ proves (49) . The final envelope follows directly from ∥Cθ∥op ≤ C.For cell-mass quadrature on cells of diameter hm and a stable reconstruction satisfying the standard C0,α interpolation estimate, qm, η m = O(hαm) and hence dm = O(hαm) at fixed depth. Thus the realization term is no longer an unverified appeal to “consistent quadrature”: input regularity implies layerwise spatial regularity, which controls cubature and reconstruction at every layer. Finally, a continuum Gaussian source on H must have trace-class covariance. In particular, spatial white noise with covariance I is not L2-valued because Tr (I) = ∞ (Da Prato and Zabczyk, 2014). 
+
+20 Statistical Consistency of Functional Flow Matching 
+
+8 An end-to-end generated-law bound 
+
+The finite population ODE need not be unique: its superposition measure suffices for comparison with the learned flow. We condition throughout on the training sigma-algebra 
+
+Dm,n ; all remaining randomness is fresh, and the bounds hold pathwise in the training data before imposing a high-probability risk event. 
+
+Assumption 22 (Stable learned field) The realized bvm is a Carath´ eodory field on Hm
+
+with an integrable linear-growth bound, and 
+
+∥bvm(t, x ) − bvm(t, y )∥H ≤ bLm(t) ∥x − y∥H ,
+
+Z T
+
+> 0
+
+bLm(t) d t ≤ bΛ,
+
+where bΛ is independent of m.
+
+Let bΦm,t be the unique learned ODE flow and define 
+
+bμm,t = ( bΦm,t )#μm 
+
+> 0
+
+.
+
+Theorem 23 (Excess risk controls the generated law) Under Assumption 22, 
+
+W2(bμm,T , μ mT ) ≤ T e bΛ [Lm(bvm) − L m(v⋆m)] 1/2 . (50) 
+
+Consequently, 
+
+W2(bμm,T , μ T ) ≤ ∥ AmXT − XT ∥L2(P;H) + T e bΛ [Lm(bvm) − L m(v⋆m)] 1/2 . (51) 
+
+Proof Draw Z from the superposition measure ηm of Proposition 6, and let bZ solve the learned ODE with bZ0 = Z0. Then Zt ∼ μmt and bZT ∼ bμm,T . Gr¨ onwall, Minkowski, and Cauchy–Schwarz give 
+
+bZT − ZT L2(ηm) ≤ ebΛ
+
+Z T
+
+> 0
+
+∥bvm(t, ·) − v⋆m(t, ·)∥L2(μmt ) dt
+
+≤ T e bΛ
+
+ 1
+
+T
+
+Z T
+
+> 0
+
+∥bvm(t, ·) − v⋆m(t, ·)∥2  
+
+> L2(μmt)
+
+dt
+
+1/2
+
+.
+
+The bracket is the excess risk by (18) ; the displayed coupling proves (50) . The triangle inequality and the canonical coupling ( AmXT , X T ) from (24) prove (51). 
+
+Remark 24 The Lipschitz constant in Theorem 23 belongs to the learned field, not the population field. Without some such stability, small L2( d t μ mt ) velocity error need not control trajectories that leave the region of small error (Benton et al., 2024). 
+
+21 Shikhman 
+
+8.1 Numerical and endpoint errors 
+
+Let eμm,T be the law produced by a numerical ODE solver. We make its required guarantee explicit rather than assigning an order that may hide mesh-dependent constants. 
+
+Assumption 25 (Coupled solver error) There is a coupling of the numerical endpoint 
+
+eZT and the exact learned-flow endpoint bZT such that 
+
+
+
+E[ eZT − bZT 
+
+> 2
+> H
+
+| D m,n ]
+
+1/2
+
+≤ εsol ,m (h), (52) 
+
+almost surely in the training data, where h denotes the numerical step or tolerance. 
+
+Define 
+
+bsens (m, T ) = ∥AmXT − XT ∥L2(P;H) , bend (T ) = W2(μT , μ 1).
+
+Theorem 26 (End-to-end error decomposition) Suppose Assumptions 22 and 25 hold and, with probability at least 1 − δ, the learned field has the excess-risk certificate 
+
+Lm(bvm) − L m(v⋆m) ≤ Rm,p,n (δ).
+
+Then, with the same probability, 
+
+W2(eμm,T , μ 1) ≤ bend (T ) + bsens (m, T ) + εsol ,m (h)+ T e bΛRm,p,n (δ)1/2. (53) 
+
+Under Assumption 16 and the approximate ERM condition (31) , Theorem 18 permits 
+
+Rm,p,n (δ) = 2 am,p + 32 εopt + 10 BGR n + 80 B2qp,n,δ 
+
+n . (54) 
+
+In the realizable case, one may instead use the right-hand side of (40) .
+
+Proof Apply the Wasserstein triangle inequality successively through bμm,T , μmT , and μT .Assumption 25, Theorem 23, and the canonical coupling bound the first three terms by 
+
+εsol ,m (h), T e bΛR1/2
+
+> m,p,n
+
+, and bsens (m, T ); the last is bend (T ). The fast choices follow from Theorem 18. 
+
+Corollary 27 (End-to-end bound for literal point sensors) Suppose the regularity-space setting of Section 3.3 holds, with bounded linear sensors and reconstructions satisfying 
+
+(9) and σ(τ, S mXτ ) = σ(τ, A mXτ ). If the learned-field, solver, and statistical assumptions of Theorem 26 hold in the inherited H norm on Hm, then (53) remains valid with 
+
+bsens (m, T ) = ∥RmSmXT − XT ∥L2(P;H) .
+
+Furthermore, 
+
+E sup 
+
+> t≤T
+
+∥RmSmXt − Xt∥2 
+
+> H
+
+−→ 0.
+
+22 Statistical Consistency of Functional Flow Matching 
+
+Proof Here Am = RmSm : V → H, so AmX is an absolutely continuous Hm-valued path with derivative AmU . Proposition 6’s construction applies with the V → H bound and U ∈ L2(V); the learned-law and statistical arguments apply in the inherited H norm. The canonical coupling gives the stated bsens . Almost every path has compact image in V, on which pointwise consistency plus uniform boundedness gives uniform convergence by a finite-net ar-gument. Domination by a constant times sup t≤T ∥Xt∥V proves the mean-square statement. 
+
+Remark 28 Corollary 27 does not automatically extend the strong population flow-map theorem. That extension additionally requires the continuum flow to preserve V and its trajectories to satisfy the corresponding V moment bounds. 
+
+For the linear interpolation (2), 
+
+bend (T ) ≤ ∥ XT − X1∥L2 = (1 − T ) ∥X1 − X0∥L2 . (55) Thus stopping before a potentially singular endpoint has a transparent, vanishing price. Consequently, on a common probability space, for training problems indexed by k, if 
+
+mk, n k → ∞ , hk → 0, possibly Tk ↑ 1, and 
+
+bend (Tk) → 0, bsens (mk, T k) → 0, εsol ,m k (hk) → 0, Rmk ,p k ,n k (δk) → 0,
+
+while bΛk remains bounded, then W2(eμmk ,T k , μ 1) → 0 in probability when δk → 0, and almost surely when P 
+
+> k
+
+δk < ∞, by Theorem 26 and Borel–Cantelli. 
+
+Remark 29 (Joint model–sample growth) Using (54) requires amk ,p k , ε opt ,k → 0 and 
+
+BkGkRk
+
+nk
+
+−→ 0, B2
+
+> k
+
+pk log(1 + 2 nk) + log(2 /δ k)
+
+nk
+
+−→ 0. (56) 
+
+At fixed depth, bounded Rk, and under the output/data controls stated after Theorem 17, if nk, p k, δ −1 
+
+> k
+
+are polynomially related, the bounded-activation estimates Bk = O(1) , Gk =
+
+O(pL/ 2 
+
+> k
+
+) make (56) follow from pmax {L/ 2,1} 
+
+> k
+
+log pk = o(nk). For the raw magnitude recurrence, 
+
+Bk, G k = O(pL/ 2 
+
+> k
+
+), and pL+1  
+
+> k
+
+log pk = o(nk) suffices; normalized dictionaries with Bk, G k =
+
+O(1) leave only the entropy condition. When pk grows, the right side of (49) , evaluated at (mk, p k), must also tend to zero. Thus nk, m k → ∞ alone proves neither statistical nor operator-realization consistency. 
+
+Proposition 20 makes the approximation term still more explicit: 
+
+√am,p ≤ dm
+
+|{z} 
+
+> operator realization
+
++ pa∞
+
+> p
+
+| {z } 
+
+> continuum approximation
+
++ em
+
+|{z} 
+
+> conditional-target refinement
+
+. (57) Together, (53) and (57) separate the errors due to sensing, target refinement, operator discretization, function-class approximation, finite samples, optimization, time integration, and endpoint truncation. No one of these terms is hidden behind the phrase “resolution invariant.” 
+
+23 Shikhman 
+
+Table 1: Certificates and controls for the end-to-end terms. 
+
+Term Certificate Primary control 
+
+bend (T ) endpoint coupling; (55) stopping time and interpolation 
+
+bsens (m, T ) canonical reconstruction coupling sensor geometry, reconstruction, and mdm Proposition 21 input regularity, cubature, and output reconstruction pa∞ 
+
+> p
+
+continuum approximation error architecture and model dimension pem Theorem 7 and its corollaries reconstruction tails and observation information (BGR + B2q)/n Theorem 18 n, p and the envelopes B, G, R εopt approximate ERM condition optimization accuracy 
+
+εsol ,m (h) Assumption 25 solver, tolerance, and mesh-uniform constants 
+
+ebΛ Theorem 23 learned-field Lipschitz control 
+
+9 Gaussian tests 
+
+Let H = ℓ2(N) with basis ( ek) and, for α > 1/2, let Ce k = ckek with ck = k−2α. Then C is positive, injective, and trace class. 
+
+9.1 A commuting baseline 
+
+Take independent X0 ∼ N (0 , C ) and X1 ∼ N (0 , ρ 2C), where ρ > 0, and define 
+
+Xt = (1 − t)X0 + tX 1, U = X1 − X0, q(t) = (1 − t)2 + ρ2t2.
+
+The pair ( U, X t) is jointly Gaussian with cross-covariance {ρ2t − (1 − t)}C and covariance 
+
+q(t)C, so U − a(t)Xt is independent of Xt for a(t) = {ρ2t − (1 − t)}/q (t). Since a = q′/(2 q), 
+
+v⋆(t, X t) = E[U | Xt] = a(t)Xt, Φt(x) = pq(t) x. (58) Thus (Φ t)#N (0 , C ) = Law (Xt) and E[PmU | PmXt] = a(t)PmXt. If Pm projects onto span {e1, . . . , e m} and μt = Law( Xt), then 
+
+W 22 (( Pm)#μt, μ t) = q(t) X
+
+> k>m
+
+k−2α, W2(( Pm)#μt, μ t) = 
+
+r q(t)2α − 1 m1/2−α{1 + O(m−1)}.
+
+(59) Indeed, orthogonality makes ( Xt, P mXt) an optimal coupling and the integral-test expansion of the spectral tail gives the final equality. 
+
+9.2 A noncommuting observation model 
+
+Write e+ 
+
+> k
+
+= e2k−1 and e− 
+
+> k
+
+= e2k. Fix r+ > r − > 0 and define 
+
+C0e± 
+
+> k
+
+= cke± 
+
+> k
+
+, C1e+ 
+
+> k
+
+= r+cke+ 
+
+> k
+
+, C1e− 
+
+> k
+
+= r−cke− 
+
+> k
+
+.
+
+For independent Xi ∼ N (0 , C i), set Xt = (1 − t)X0 + tX 1 and 
+
+Q± = (1 − t)2 + r±t2, D± = r±t − (1 − t), k± = D±/Q ±.
+
+24 Statistical Consistency of Functional Flow Matching 
+
+The continuum target is Ktx, where Kte± 
+
+> k
+
+= k±e± 
+
+> k
+
+. At level m, observe every earlier pair and only gm = ( e+ 
+
+> m
+
++ e−
+
+> m
+
+)/√2 in the boundary pair: 
+
+Gm = span {e+ 
+
+> k
+
+, e − 
+
+> k
+
+: k < m } ⊕ span {gm},
+
+with orthogonal projection Π m. Although Π m → I strongly, it does not commute with Cov( Xt) when Q+̸ = Q−.
+
+Proposition 30 (Exact noncommuting target) For z ∈ Gm,
+
+v⋆m(t, z ) = X
+
+> k<m
+
+{k+z+ 
+
+> k
+
+e+ 
+
+> k
+
++ k−z− 
+
+> k
+
+e− 
+
+> k
+
+} + κ(t) ⟨z, g m⟩ gm, κ(t) = D+ + D−
+
+Q+ + Q−
+
+. (60) 
+
+The projected restriction has boundary coefficient k = ( k+ + k−)/2, which generally differs from κ. Nevertheless, 
+
+Lip( v⋆m(t, ·)) ≤ L(t) := max {| k+(t)| , |k−(t)|} (61) 
+
+uniformly in m.Let Tm = P 
+
+> k>m
+
+ck and A(t) = D2+/Q + + D2
+
+> −
+
+/Q −. Then 
+
+Em(t) := E ∥KtXt − v⋆m(t, ΠmXt)∥2 (62) = TmA(t) + cm
+
+
+
+A(t) − (D+ + D−)2
+
+2( Q+ + Q−)
+
+
+
+,Em(t) ≤ Bm(t) := TmA(t) + cm
+
+2 A(t) + L(t)2 
+
+Tm + cm
+
+2
+
+
+
+(Q+ + Q−). (63) 
+
+For every fixed T > 0, both R T 
+
+> 0
+
+Em(t) d t and R T 
+
+> 0
+
+Bm(t) d t are Θ( m1−2α).
+
+Proof Complete pairs are observed exactly. In the boundary pair set s = ( ξ+ + ξ−)/√2and R = ( k+ξ+ + k−ξ−)/√2, where Var( ξ±) = cmQ±. Then Cov( R, s ) = cm
+
+2 (D+ + D−), Var( s) = cm
+
+2 (Q+ + Q−).
+
+so Gaussian conditioning gives (60) , and κ = ( Q+k+ + Q−k−)/(Q+ + Q−) is a convex combination of k+ and k−, proving (61). The error is the orthogonal sum of the unobserved boundary component, the conditional residual R − E[R | s], and the later pairs, with variances 
+
+cm
+
+2 A, cm
+
+2
+
+
+
+A − (D+ + D−)2
+
+Q+ + Q−
+
+
+
+, TmA, 
+
+respectively; their sum is (62). Also 
+
+E ∥(I − Πm)KtXt∥2 = TmA + cm
+
+2 A, E ∥(I − Πm)Xt∥2 =
+
+
+
+Tm + cm
+
+2
+
+
+
+(Q+ + Q−),
+
+and Corollary 8 gives (63). Finally Tm ∼ (2 α − 1) −1m1−2α and cm = O(m−2α). For α = 3 /2, r+ = 4, r− = 1 /4, and t = 1 /2, 
+
+k+ = 1 .2, k− = −1.2, k = 0 , κ = 0 .72 .
+
+Thus the natural projected restriction predicts zero boundary velocity while the exact conditional target is nonzero. 
+
+25 Shikhman 
+
+Table 2: Mean, sample standard deviation, and root-mean-square error (RMSE) of bκn
+
+relative to 0 .72 over 200 repetitions. 
+
+n Mean Sample SD RMSE 128 0.7061 0.0887 0.0896 512 0.7221 0.0425 0.0424 2048 0.7182 0.0214 0.0215 8192 0.7193 0.0099 0.0099 
+
+Finite-sample check. For each n, we performed 200 independent repetitions. In each repetition we drew n boundary pairs with ξ+ ∼ N (0 , 1.25) and ξ− ∼ N (0 , 0.3125) and fitted 
+
+bκn =
+
+Pni=1 siRi
+
+Pni=1 s2
+
+> i
+
+, si = ξi, + + ξi, −
+
+√2 , Ri = 1.2( ξi, + − ξi, −)
+
+√2 .
+
+Table 2 uses PCG64 seeds 0 , . . . , 199 and shows convergence to 0 .72; projected restriction remains zero. 
+
+9.3 Clipping and a bounded learning regime 
+
+For r > 0, let Tr be metric projection onto the closed radius-r ball. 
+
+Proposition 31 (Cost of radial Gaussian clipping) Let (G0, G 1) be any coupling of centered Gaussian elements with nonzero trace-class covariances C0, C 1. Define 
+
+Gri 
+
+> i
+
+= Tri (Gi), Xt = (1 − t)G0 + tG 1, Xr 
+
+> t
+
+= (1 − t)Gr0 
+
+> 0
+
++ tG r1 
+
+> 1
+
+,
+
+and ϵi(ri) = {E(∥Gi∥ − ri)2+}1/2. Then 
+
+∥Xr 
+
+> t
+
+∥ ≤ (1 − t)r0 + tr 1, W2(Law( Xr 
+
+> t
+
+), Law( Xt)) ≤ (1 − t)ϵ0 + tϵ 1, (64) 
+
+ϵi(ri)2 ≤ 2 ∥Ci∥op exp 
+
+"
+
+− (ri − √Tr Ci)2
+
+2 ∥Ci∥op 
+
+#
+
+(65) 
+
+whenever ri > √Tr Ci. If sup m ∥Am∥op ≤ CA, then 
+
+sup 
+
+> m
+
+∥Am(Gr1 
+
+> 1
+
+− Gr0 
+
+> 0
+
+)∥ ≤ CA(r0 + r1) almost surely . (66) 
+
+Proof Metric projection gives ∥Gi − Tri (Gi)∥ = ( ∥Gi∥ − ri)+, so the displayed coupling and Minkowski prove (64) . Integrating the Gaussian concentration bound P(∥Gi∥ > √Tr Ci+s) ≤
+
+e−s2/(2 ∥Ci∥op ) (Bogachev, 1998) gives (65). Finally, ∥Am(Gr1 
+
+> 1
+
+− Gr0 
+
+> 0
+
+)∥ ≤ CA(r0 + r1). 
+
+Proposition 32 (A simultaneous bounded regime) Let G ∼ N (0 , C ), Gr = Tr(G),
+
+ρ > 0, and 
+
+Xrt = sρ(t)Gr, U r = ( ρ − 1) Gr, sρ(t) = 1 + t(ρ − 1) .
+
+26 Statistical Consistency of Functional Flow Matching 
+
+For any strongly convergent finite-rank orthogonal projections Pm,
+
+v⋆(t, x ) = ℓρ(t)x, v⋆m(t, z ) = ℓρ(t)z, ℓρ(t) = ρ − 1
+
+sρ(t) ,
+
+and sup m
+
+R 10 Lip (v⋆m(t, ·)) d t = |log ρ|. For R ≥ 1, the class fθ,m (t, z ) = θℓ ρ(t)z, |θ| ≤ R, has 
+
+am, 1 = 0 , learned-field Lipschitz constant Rℓ max , and satisfies Assumption 16 with 
+
+B = max {| ρ − 1| r, Rℓ max smax r}, G = ℓmax smax r, 
+
+where smax = max {1, ρ } and ℓmax = |ρ − 1| / min {1, ρ }. Moreover, 
+
+W2(Law( ρG r), N (0 , ρ 2C)) ≤ ρ{E(∥G∥ − r)2+}1/2.
+
+Proof Because sρ(t) > 0, Gr = Xrt /s ρ(t), and the same identity holds after applying Pm;this proves the two conditional targets and the integrated Lipschitz constant. On the training support, ∥PmXrt ∥ ≤ smax r and ∥PmU r∥ ≤ | ρ − 1| r, which give the stated envelope and parameter-Lipschitz constants. The class contains the target at θ = 1. The final inequality couples ρG r with ρG .
+
+Corollary 33 (Explicit clipped-Gaussian rate) Let Ce k = k−2αek with α > 1/2, let 
+
+Pm project onto the first m coordinates, and use the clipped scaling model and class of Proposition 32, with R ≥ 1 and r > √Tr C. Let eμrm, 1 be the law returned by a solver satisfying Assumption 25, and write its certificate as ε(r)sol ,m (h). Set 
+
+bρ = max {| ρ − 1| , Rℓ max smax }, gρ = ℓmax smax ,
+
+Ψr,n (δ) = 32 εopt + 10 bρgρRr 2
+
+n + 40 b2
+
+> ρ
+
+r2
+
+n {log(1 + 2 n) + log(2 /δ )}.
+
+If bvm satisfies (31) , then with probability at least 1 − δ,
+
+W2
+
+ eμrm, 1, N (0 , ρ 2C) ≤ ρϵ (r) + ρ X
+
+> k>m
+
+k−2α
+
+!1/2
+
++ ε(r)sol ,m (h) + eR|log ρ|Ψr,n (δ)1/2, (67) 
+
+where 
+
+ϵ(r) := {E(∥G∥ − r)2+}1/2 ≤
+
+q
+
+2 ∥C∥op exp 
+
+"
+
+− (r − √Tr C)2
+
+4 ∥C∥op 
+
+#
+
+.
+
+If ε(r)sol ,m (h) ≤ Csol rh β with Csol independent of m and r, choose, for n ≥ 2,
+
+rn = √Tr C +
+
+q
+
+2 ∥C∥op log n, mn =
+
+l
+
+n1/(2 α−1) m
+
+,p = T = 1 , hn = n−1/(2 β), δn = n−2, εopt ,n = O((log n)2/n ).
+
+Then 
+
+W2
+
+eμrn
+
+> mn,1
+
+, N (0 , ρ 2C)
+
+
+
+= O((log n)/√n) (68) 
+
+with probability at least 1 − n−2, and eventually almost surely on a common probability space. 
+
+27 Shikhman 
+
+Proof Proposition 32 gives am, 1 = 0, B = bρr, G = gρr, and bΛ ≤ R |log ρ|. Since Gr is a scalar contraction, ∥(I − Pm)ρG r∥L2 ≤ ρ(P 
+
+> k>m
+
+k−2α)1/2. Apply Theorem 26 at T = 1 with (40) , then compare ρG r with ρG . For the schedule above, clipping and sensing are 
+
+O(n−1/2) and the solver error is O(√log n/ √n), while r2 
+
+> n
+
+= O(log n) makes the statistical term O((log n)/√n). Borel–Cantelli gives the last assertion. 
+
+Remark 34 This is a composition certificate for the exactly realizable clipped scaling coupling 
+
+Gr 
+
+> 1
+
+= ρG r
+
+> 0
+
+, so its generic statistical rate is conservative. It is not an independent-endpoint result: clipping destroys joint Gaussianity, and that drift needs separate stability and approx-imation bounds. 
+
+10 Discussion 
+
+The analysis separates three claims often grouped under “resolution invariance.” Information refinement reconstructs the same random function and is controlled by Theorem 7; mesh transfer evaluates a resolved operator with new quadrature and is certified by Proposition 21; frequency extrapolation asks for components absent from both data and hypothesis class and needs additional structure. Together with Theorem 26, these results make the targets converge strongly in L2 and the generated laws converge in W2, provided the reconstruction, realization, and stability constants are controlled. The qualifications are substantive. The pair-splitting example only shows that continuum Lipschitz regularity need not imply a mesh-uniform finite target envelope: its finite flows converge exactly, and persistence under independent Gaussian endpoint smoothing remains open. The learned-law theorem avoids population uniqueness but still requires learned-field stability. The quadrature result covers ReLU, GeLU, and SiLU through its magnitude recurrence, but a standard FNO still needs mesh-uniform normalized Fourier-layer bounds. Untruncated Gaussian data require moment-based rather than bounded-loss estimates; the clipped scaling model instead gives the explicit O((log n)/√n) certificate. The results control laws, not densities relative to a nonexistent infinite-dimensional Lebesgue measure, and do not justify unseen-frequency recovery. Natural extensions are moment-based fast rates, an independent-endpoint stability analysis, and weaker flow stability based on monotonicity or regular Lagrangian flows. Table 2 checks the conditioning mechanism only; a learned-operator benchmark would test realization and optimization effects. 
+
+> 28 Statistical Consistency of Functional Flow Matching
+
+References 
+
+[1] Robert A. Adams and John J. F. Fournier. Sobolev Spaces . Academic Press, Amsterdam, second edition, 2003. [2] Michael S. Albergo, Nicholas M. Boffi, and Eric Vanden-Eijnden. Stochastic interpolants: A unifying framework for flows and diffusions. Journal of Machine Learning Research ,26(209):1–80, 2025. URL https://www.jmlr.org/papers/v26/23-1605.html .[3] Luigi Ambrosio, Nicola Gigli, and Giuseppe Savar´ e. Gradient Flows in Metric Spaces and in the Space of Probability Measures . Birkh¨ auser, Basel, second edition, 2008. [4] Joe Benton, George Deligiannidis, and Arnaud Doucet. Error bounds for flow match-ing methods. Transactions on Machine Learning Research , 2024. URL https: //openreview.net/forum?id=uqQPyWFDhY .[5] Vladimir I. Bogachev. Gaussian Measures . American Mathematical Society, Providence, Rhode Island, 1998. [6] St´ ephane Boucheron, G´ abor Lugosi, and Pascal Massart. Concentration Inequalities: A Nonasymptotic Theory of Independence . Oxford University Press, Oxford, 2013. [7] Yifan Chen and Eric Vanden-Eijnden. Scale-adaptive generative flows for multiscale scientific data. arXiv preprint arXiv:2509.02971 , 2025. doi: 10.48550/arXiv.2509.02971. [8] Giuseppe Da Prato and Jerzy Zabczyk. Stochastic Equations in Infinite Dimensions .Cambridge University Press, Cambridge, second edition, 2014. [9] Kenji Fukumizu, Taiji Suzuki, Noboru Isobe, Kazusato Oko, and Masanori Koyama. Flow matching achieves almost minimax optimal convergence. In The Thirteenth International Conference on Learning Representations , 2025. URL https://arxiv. org/abs/2405.20879 .[10] Paul Hagemann, Sophie Mildenberger, Lars Ruthotto, Gabriele Steidl, and Nicole Tian-jiao Yang. Multilevel diffusion: Infinite dimensional score-based diffusion models for image generation. SIAM Journal on Mathematics of Data Science , 7(3):1337–1366, 2025. doi: 10.1137/23M1614092. [11] Olav Kallenberg. Foundations of Modern Probability . Springer, Cham, third edition, 2021. doi: 10.1007/978-3-030-61871-1. [12] Gavin Kerrigan, Giosue Migliorini, and Padhraic Smyth. Functional flow matching. In Sanjoy Dasgupta, Stephan Mandt, and Yingzhen Li, editors, Proceedings of the 27th International Conference on Artificial Intelligence and Statistics , volume 238 of Proceedings of Machine Learning Research , pages 3934–3942. PMLR, 2024. URL 
+
+https://proceedings.mlr.press/v238/kerrigan24a.html .[13] Nikola Kovachki, Samuel Lanthaler, and Siddhartha Mishra. On universal approximation and error bounds for Fourier neural operators. Journal of Machine Learning Research ,22(290):1–76, 2021. URL https://www.jmlr.org/papers/v22/21-0806.html .
+
+> 29 Shikhman
+
+[14] Nikola Kovachki, Zongyi Li, Burigede Liu, Kamyar Azizzadenesheli, Kaushik Bhat-tacharya, Andrew Stuart, and Anima Anandkumar. Neural operator: Learning maps between function spaces with applications to PDEs. Journal of Machine Learning Re-search , 24(89):1–97, 2023. URL https://www.jmlr.org/papers/v24/21-1524.html .[15] Samuel Lanthaler, Siddhartha Mishra, and George Em Karniadakis. Error estimates for DeepONets: A deep learning framework in infinite dimensions. Transactions of Mathematics and Its Applications , 6(1):tnac001, 2022. doi: 10.1093/imatrm/tnac001. [16] Kunpeng Li, Chenguang Wan, Zhisong Qu, Kyungtak Lim, Virginie Grandgirard, Xavier Garbet, Hua Yu, and Yew Soon Ong. Optimal-transport-guided functional flow matching for turbulent field generation in Hilbert space. arXiv preprint arXiv:2604.05700 , 2026. doi: 10.48550/arXiv.2604.05700. [17] Zhiqi Li, Yuchen Sun, Greg Turk, and Bo Zhu. Functional mean flow in hilbert space. In 
+
+Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 1928–1938, June 2026. [18] Yaron Lipman, Ricky T. Q. Chen, Heli Ben-Hamu, Maximilian Nickel, and Matt Le. Flow matching for generative modeling. In The Eleventh International Conference on Learning Representations , 2023. URL https://openreview.net/forum?id=PqvMRDCJT9t .[19] Xingchao Liu, Chengyue Gong, and Qiang Liu. Flow straight and fast: Learning to generate and transfer data with rectified flow. In The Eleventh International Conference on Learning Representations , 2023. URL https://openreview.net/forum? id=XVjTT1nw5z .[20] Lu Lu, Pengzhan Jin, Guofei Pang, Zhongqiang Zhang, and George Em Karniadakis. Learning nonlinear operators via DeepONet based on the universal approximation theorem of operators. Nature Machine Intelligence , 3:218–229, 2021. doi: 10.1038/ s42256-021-00302-5. [21] Kunwoo Na, Junghyun Lee, Se-Young Yun, and Sungbin Lim. Probability-flow ode in infinite-dimensional function spaces. 2025. URL https://arxiv.org/abs/2503.10219 .[22] Francis J. Narcowich, Joseph D. Ward, and Holger Wendland. Sobolev bounds on func-tions with scattered zeros, with applications to radial basis function surface fitting. Math-ematics of Computation , 74(250):743–763, 2005. doi: 10.1090/S0025-5718-04-01708-9. [23] Jakiw Pidstrigach, Youssef Marzouk, Sebastian Reich, and Sven Wang. Infinite-dimensional diffusion models. Journal of Machine Learning Research , 25(414):1–52, 2024. URL https://www.jmlr.org/papers/v25/23-1271.html .[24] Niklas Reinhardt, Sven Wang, and Jakob Zech. Statistical learning theory for neural operators. Journal of Machine Learning Research , 27(102):1–82, 2026. URL https: //jmlr.org/beta/papers/v27/25-0543.html .[25] Yaozhong Shi, Zachary E. Ross, Domniki Asimaki, and Kamyar Aziz-zadenesheli. Stochastic process learning via operator flow matching. In 
+
+> 30 Statistical Consistency of Functional Flow Matching
+
+Advances in Neural Information Processing Systems , volume 38, 2025. URL https://proceedings.neurips.cc/paper_files/paper/2025/hash/ 36ca6503f05da1b8ad4391775d55c9f5-Abstract-Conference.html .[26] Eugene Stepanov and Dario Trevisan. Three superposition principles: Currents, continu-ity equations and curves of measures. Journal of Functional Analysis , 272(3):1044–1103, 2017. doi: 10.1016/j.jfa.2016.10.025. [27] Holger Wendland. Scattered Data Approximation . Cambridge University Press, Cam-bridge, 2005. [28] Jianxin Zhang and Clayton Scott. Flow straight and fast in hilbert space: Functional rectified flow. In The Fourteenth International Conference on Learning Representations ,2026. URL https://openreview.net/forum?id=GWK8fm1r9y .

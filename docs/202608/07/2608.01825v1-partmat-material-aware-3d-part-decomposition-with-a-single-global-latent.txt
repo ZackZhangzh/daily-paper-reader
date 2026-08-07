@@ -1,0 +1,276 @@
+Title: PartMat: Material-Aware 3D Part Decomposition with a Single Global Latent
+
+URL Source: https://arxiv.org/pdf/2608.01825v1
+
+Published Time: Tue, 04 Aug 2026 02:25:48 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# PartMat: Material-Aware 3D Part Decomposition with a Single Global Latent 
+
+# Guangming Fu 1,2 ∗† , Jin Song 2†‡ , Yiyun Fei 2,Guoqiu Li 2, Ruigao Yang 2, Jianan Jiang 2
+
+> 1
+
+Nankai University, China 
+
+> 2
+
+Alibaba Group, China {fuguangming.fgm, songjin.song, yunhun.fyy, liguoqiu.lgq, ruigao.yrg, bingchen.jja}@alibaba-inc.com 
+
+Abstract 
+
+Part-level 3D generation has recently attracted increasing at-tention for producing structured and editable 3D assets. How-ever, existing methods typically decompose objects accord-ing to functional semantics rather than the editable material boundaries (e.g., fabric, wood, metal) required in practical 3D applications such as interior design. Additionally, current methods often generate parts independently, causing compu-tational costs to scale linearly with the part count. To address these limitations, we present PartMat, an efficient material-aware 3D part decomposition pipeline that represents multi-part geometry with a single global latent. Given a reference image and a single whole-object geometry, PartMat decom-poses the object into parts that follow material boundaries. First, we propose PartVAE to learn such a unified represen-tation and decode all material parts in a single forward pass, thereby decoupling inference cost from the number of parts. Second, with this representation, a diffusion model is trained for part generation and refined via reinforcement learning for accurate material assignment and overlap suppression. Fi-nally, to recover fine-grained geometric details, we introduce a sparse-voxel flow-matching model with part attention for ge-ometry post-processing. Extensive experiments demonstrate that PartMat significantly outperforms existing baselines in material-aware decomposition accuracy and achieves compa-rable geometric quality, while maintaining efficient inference. 
+
+# Introduction 
+
+Editability has become an essential requirement in image-to-3D generation. Rather than treating a generated asset as a single, undivided mesh, downstream applications require it to be decomposed into components that can be selected, re-placed, and assigned independent attributes. Existing meth-ods decompose objects by geometric structure and functional semantics, such as chair backs, seats, and legs. However, this organization does not account for material boundaries that determine appearance and physical behavior. Separating fabric, wood, metal, and glass regions enables independent editing in interior design and the assignment of distinct prop-erties, such as density, friction, and stiffness, for embodied 
+
+> ∗
+
+This work is done by Guangming Fu as an intern at Alibaba Group, supervised by Jin Song. 
+
+> †
+
+These authors contributed equally. 
+
+> ‡
+
+Corresponding author. 
+
+Figure 1: Functional vs. material-aware decomposition. 
+
+Functional parts follow structural roles, whereas our compo-nents follow editable material assignments, such as marble, painted wood, and brass. A material component may contain multiple disconnected surface regions. simulation and manipulation planning. Motivated by these requirements, we study material-aware 3D part decompo-sition : given a reference image and a single whole-object geometry mesh without part annotations, the goal is to de-compose the input geometry into parts whose boundaries fol-low editable material assignments. As illustrated in Figure 1, our decomposition follows material boundaries rather than conventional function-oriented semantics. Here, “material-aware” refers to the geometric decomposition; predicting PBR parameters or physical properties remains a downstream task. Existing part-level methods mainly follow either segmentation-based or part-native pipelines. Segmentation-based methods decompose an input mesh primarily accord-ing to geometric structure or functional semantics (Yang et al. 2025a; Yan et al. 2026). Because geometry alone pro-vides insufficient evidence for material boundaries, adapt-ing these methods to material-aware decomposition requires first generating textures or material attributes on the mesh and then performing material segmentation and component reconstruction. This cascaded process lengthens the pipeline and propagates errors from appearance generation to the final decomposition. Part-native methods instead learn multi-part representa-tions directly, but often encode or generate each component separately (Lin et al. 2025; Ding et al. 2025). Despite avoid-ing explicit segmentation, these methods have two main lim-itations. First, their representation size and decoding cost arXiv:2608.01825v1 [cs.CV] 3 Aug 2026 Figure 2: Material-Aware Part Decomposition Results. PartMat decomposes input 3D shapes into explicitly separated material-editable parts, each rendered in a distinct color for downstream PBR assignment and replacement. Left: A complex bedroom scene comprising various objects with rich materials. Middle: Material-aware decomposition of selected objects from the scene, as directly produced by our model. Right: Downstream applications enabled by our approach, demonstrating the decomposed assets seamlessly restyled with diverse PBR materials. grow with the number of components, leading to inefficient inference for objects with many material regions. Second, separate per-component representations can weaken global coordination across material regions. Moreover, latent flow matching supervises only the latent space and does not di-rectly enforce consistency in the decoded geometry. This can cause small regions to be misassigned, disconnected regions of the same material to be split across different components, and generated parts to be duplicated or overlap with one another. To address these challenges, we propose PartMat, a three-stage framework for image-guided material-aware decompo-sition. First, a global PartVAE encodes all material compo-nents into a single fixed-length latent and jointly decodes their signed-distance fields through a shared implicit back-bone. Consequently, neither the latent size nor the number of decoder passes grows with the number of parts. Second, a conditional PartDiT generates this latent from the refer-ence image and whole-object geometry. We then post-train PartDiT with direct-gradient reinforcement learning using differentiable rewards for component matching and over-lap suppression. Third, to improve the geometric fidelity of the compactly decoded components, we introduce a high-resolution geometry post-processing stage. Figure 2 demon-strates PartMat’s material-aware decompositions in an in-door scene. Experiments on approximately 300K material-annotated furniture and household objects show that PartMat achieves state-of-the-art material decomposition accuracy on our benchmark. 
+
+Contributions. Our main contributions are as follows: 
+
+• We introduce PartVAE, to the best of our knowledge, which is the first VAE to represent multi-component ge-ometry with a single global latent while decoupling the decoding latency from the number of parts. 
+
+• We propose PartMat, a three-stage framework that first employs direct-gradient reinforcement learning for pre-cise material decomposition and overlap suppression, and applies a part-aware sparse flow refiner to restore high-resolution geometry with seamless component bound-aries. 
+
+• Extensive experiments validate our method’s superior performance in part-level decomposition and generation. 
+
+# Related Work 
+
+3D Shape Representation 
+
+Single-shape VAEs primarily use vector-set latents for im-plicit geometry (Zhang et al. 2023; Chen et al. 2025c; Lai et al. 2026) or sparse-voxel structures for high-resolution re-construction (Ren et al. 2024; Wu et al. 2025; Xiang et al. 2026). Multi-part compression remains less explored. Uni-Part augments one holistic geometry latent with segmenta-tion labels (He et al. 2026), whereas PartPacker packs non-contacting parts into two shared volume latents without ded-icated per-part channels (Tang et al. 2025). PartMat instead compresses multiple explicit part geometries into one global latent. 
+
+Object-Level Shape Generation 
+
+Image-conditioned shape generation has progressed from transformer-based feed-forward reconstruction (Hong et al. 2024) to vector-set latent flow models trained at scale (Li et al. 2025; Zhao et al. 2025). Recent systems adopt sparse-structured latents and spatial sparse attention for efficient high-resolution geometry (Xiang et al. 2025, 2026; Wu et al. 2025), while LATTICE combines voxel structure with set-based modeling (Lai et al. 2026). Complementary to these latent shape representations, recent native mesh genera-tors directly model explicit polygonal topology: SpaceMesh learns continuous manifold connectivity, MeshFlow gener-ates continuous vertex-edge latents in parallel, and Nexus and LATO.2 factorize vertex and topology prediction (Shen et al. 2024; Li et al. 2026; Wang et al. 2026; Long et al. 2026). Despite improving geometric fidelity and scalability, these methods synthesize holistic assets without independently ed-itable material parts. In contrast, PartMat natively decom-poses shapes into independently editable material compo-nents, preserving high-frequency geometric details through a dedicated geometry refiner. 
+
+Part Segmentation 
+
+Classical geometry techniques (Golovinskiy and Funkhouser 2008; Shapira, Shamir, and Cohen-Or 2008) and supervised point networks (Qi et al. 2017a,b; Wang et al. 2019; Chen et al. 2019; Zhao et al. 2021) predict part labels but require hand-crafted cues or dense annotations. Recent methods lift 2D priors (Kirillov et al. 2023; Abdelreheem et al. 2023; Liu et al. 2023; Tang et al. 2024; Thai et al. 2024; Umam et al. 2024; Zhong et al. 2024), learn open-world or native 3D features (Yang et al. 2024; Liu et al. 2025; Ma et al. 2025), or support language-grounded localization (Ahmed et al. 2025). Nevertheless, lifting can be inconsistent across views and occlusions, and these methods segment observed surfaces rather than recover complete material parts. 
+
+Part-Level Shape Generation 
+
+Early structured models use primitives or shape grammars, with PartNet providing fine-grained annotations (Tulsiani et al. 2017; Li et al. 2017; Mo et al. 2019). Part123 and Part-Gen segment views before reconstruction (Liu et al. 2024; Chen et al. 2025a), while HoloPart and X-Part complete seg-mented 3D geometry (Yang et al. 2025a; Yan et al. 2026); both can propagate segmentation errors. PartCrafter and Full-Part model per-part geometry with costs that scale with part count (Lin et al. 2025; Ding et al. 2025). BANG enables con-trolled decomposition through exploded dynamics (Zhang et al. 2025), whereas AutoPartGen generates variable-length part sequences autoregressively (Chen et al. 2025b). Most existing approaches organize parts according to geometric structure or functional semantics. Material boundaries need not follow these definitions: one functional part may con-tain multiple materials, and disconnected regions may share one editable material assignment. PartMat directly generates material-aware parts from a single global latent, with each part represented by an explicit SDF field. 
+
+# Method 
+
+The architecture of PartMat is illustrated in Figure 3. Given a reference RGB image I and a single geometry mesh 
+
+Mg , such as one generated by an image-to-3D model, PartMat produces a material-decomposable 3D asset O := 
+
+{M k}Mk=1 . Each Mk = {Vk, Fk} is a separate mesh corre-sponding to one editable material component. All component meshes lie in the same object coordinate system as Mg , so they can be directly assembled into the complete object with-out additional transformations. PartMat has three stages: PartVAE jointly encodes and decodes all material components; PartDiT predicts the global latent from the image and input geometry and is further optimized using differentiable SDF rewards; and a part-aware sparse flow model refines the components at high resolution. 
+
+Stage I: PartVAE 
+
+Architecture. PartVAE follows the variational encoder– decoder Transformer of Hunyuan3D 2.1 ShapeVAE (Hun-yuan3D et al. 2025): surface points are encoded into a se-quence of latent tokens, from which spatial queries are de-coded into SDF values. We adapt this architecture to material decomposition by adding material-part conditioning to the encoder and replacing the single SDF output with multiple part channels decoded from one global latent. 
+
+Part-aware point encoder. Given an object with M ≤ K
+
+annotated material parts, where K is the maximum number of part channels, we sample N points from the union of its part surfaces, including uniform surface samples and samples around sharp edges. The encoder input is 
+
+P = {(xi, ni, m i, s i)}Ni=1 , (1) where xi, ni, mi, and si denote the position, normal, material part ID, and sharp-edge indicator of point i, respectively. Let 
+
+R = {rℓ}Lℓ=1 be voxel queries sampled from the occupied voxels of P. Our encoder Fourier-encodes the point and query coordinates, injects learned embeddings of mi into the point features, and uses the voxel queries to aggregate P through cross-attention and Transformer layers: 
+
+H = Encoder ϕ(P, R). (2) A linear pre-KL projection of H predicts the Gaussian pos-terior parameters μ and log σ2. The global latent is then sampled as 
+
+z = μ + σ ⊙ ϵ, ϵ ∼ N (0, I). (3) where z ∈ RL×d is the global latent shared by all parts. 
+
+Multi-channel SDF decoder. The decoder first maps z back to the Transformer width with a post-KL projection. A latent Transformer then produces the decoded latent zdec . For each spatial query q, the point-query decoder cross-attends to 
+
+zdec , and a K-channel linear head predicts all part SDFs: 
+
+hq = Dcross (Wsquery γ(q), zdec ) ,
+
+Fψ (q; z) = [ f1(q), . . . , f K (q)] = Wsdf hq + bsdf . (4) The final projection produces one SDF channel per part. Thus, for a fixed K, the decoding cost is independent of the actual part count M . We extract each valid part mesh from its zero level set using Marching Cubes (Lorensen and Cline 1987). 
+
+Training objective. Let Q = {qj }Nq 
+
+> j=1
+
+denote the sampled SDF query points. For each existing part k, fk(q) and gk(q)
+
+are respectively the predicted and ground-truth SDFs at q ∈Q. We use a ∈ { 0, 1}K to mark existing parts and define 
+
+V = {k | ak = 1 }. Channels in V are supervised by the Figure 3: PartMat overview. Stage I encodes a part-aware point cloud into a global part latent and jointly decodes the component SDFs. Stage II uses separate cross-attention to the reference image and full-geometry conditions to generate this latent, and aligns the decoded fields with matching and overlap rewards. Stage III conditions on the coarse components, global geometry, and reference image to produce refined meshes through global, part, and cross-attention. Snowflakes and flames denote frozen and trainable modules, respectively. reconstruction loss, while padding channels k / ∈ V are kept away from the zero level set by the suppression loss. The overall objective is 
+
+LVAE = Lrecon + Lsuppress + λKL LKL . (5) Let ek(q) = fk(q) − gk(q). The reconstruction term applies MSE and L1 losses to all valid parts: 
+
+Lrecon = X
+
+> k∈V
+
+X
+
+> q∈Q
+
+ek(q)2 + |ek(q)|. (6) For nonexistent parts, the suppression term constrains pre-dictions to the negative interval [slower , s upper ]:
+
+Lsuppress = X
+
+> k / ∈V
+
+X
+
+> q∈Q
+
+ ReLU( fk(q) − supper )2
+
++ ReLU( slower − fk(q)) 2,
+
+(7) where slower = −1.0 and supper = −0.1. Finally, LKL =
+
+DKL (qϕ(z | P )∥N (0, I)) .
+
+Stage II: PartDiT with RL Alignment 
+
+PartDiT architecture. We freeze PartVAE and train a con-ditional generator in its latent space. PartDiT follows the Hunyuan3D 2.1 DiT architecture (Hunyuan3D et al. 2025). DINOv2 encodes the reference image into tokens cI (Oquab et al. 2024). To obtain the full-geometry tokens zg , we reuse the frozen PartVAE encoder and treat the complete input mesh Mg as a single part. In each PartDiT block, the noisy part latent attends separately to cI and zg through two cross-attention layers. PartDiT is trained with flow matching in the frozen Part-VAE latent space. Let z1 be the target part latent, z0 ∼N (0, I), t ∼ U (0 , 1) , and zt = (1 − t)z0 + tz1. With 
+
+c = ( cI , zg ), the objective is 
+
+LFM = E
+
+h
+
+∥vθ (zt, t ; c) − (z1 − z0)∥22
+
+i
+
+.
+
+Differentiable SDF reward. To improve the decomposition accuracy of the PartDiT, a natural choice is RL post-training. Applying Flow-GRPO (Liu et al. 2026) with a mesh-IoU re-ward, however, requires explicitly decoding every sampled latent into component meshes before evaluation, resulting in high training cost. We instead compute a differentiable reward directly in the implicit SDF space of the frozen Part-VAE. For reward queries q ∈ Q R, the predicted and target fields are converted to soft occupancies Pi(q) = σ(fi(q)/τ s) and 
+
+Tj (q) = σ(gj (q)/τ s). Pairwise occupancy similarities Sij 
+
+are computed between all predicted and target channels. Be-cause the predicted and target part channels may follow dif-ferent orders, we use a differentiable soft assignment πij to match predicted channel i with target channel j. Weighting 
+
+Sij by these assignments yields the order-invariant reward 
+
+Rmatch . Meanwhile, Roverlap penalizes simultaneous occu-pancy by different predicted components: 
+
+Rmatch = X
+
+> i,j
+
+πij Sij ,Roverlap = − 1
+
+|Q R| K
+
+> 2
+
+ X
+
+> q∈Q R
+
+X
+
+> 1≤i<j ≤K
+
+Pi(q)Pj (q).
+
+(8) The combined SDF reward is 
+
+Rsdf = λmatch Rmatch + λoverlap Roverlap . (9) 
+
+Direct-gradient RL alignment. Following Lea-pAlign (Liang et al. 2026), we directly backpropagate the differentiable SDF reward to PartDiT. Let bz denote a generated part latent; the frozen PartVAE decoder converts it into part SDFs for reward evaluation. The alignment objective is 
+
+LRL = Emax  0, c − Rsdf (bz) , (10) where c is the reward margin. 
+
+Stage III: Part-Aware Sparse Geometry Refinement 
+
+PartVAE provides coherent component geometry, but its compact latent and coarse SDF extraction can smooth thin structures and material interfaces. We refine all parts jointly with a sparse latent flow model conditioned on the coarse parts, the whole geometry, and the reference image. 
+
+Sparse voxel. Diffusion on a dense 512 3 voxel grid is pro-hibitively expensive, whereas lowering the resolution loses surface detail; we therefore encode the coarse parts with a shape VAE and refine them on a fixed sparse voxel sup-port (Xiang et al. 2025). The global input geometry and coarse parts are projected into this aligned sparse space to form the condition U. Coordinate construction and feature lookup are detailed in the supplementary material. 
+
+Part attention. The refinement transformer must preserve part identity without processing every part in isolation. Let 
+
+Xk denote tokens with component index k. We define within-part attention as 
+
+PartAttn( X) = concat 1: k SelfAttn( Xk). (11) Each refinement block interleaves full self-attention over X,two part-attention layers, and cross-attention to the image. Part attention prevents features from losing their slot iden-tity; full attention communicates object-level context across adjacent material interfaces. 
+
+Sparse latent flow refinement. Let X1 be the target features on the sparse structure eC and X0 ∼ N (0, I). Following the rectified flow matching paradigm, we construct a linear interpolation path Xt = (1 − t)X0 + tX1 and train the part-aware sparse transformer with 
+
+LHR = E
+
+h
+
+∥Hω (Xt, t, cI , U) − (X1 − X0)∥22
+
+i
+
+. (12) At inference, we integrate the sparse flow on the fixed sup-port and decode the sampled features. The resulting meshes remain in the shared object coordinate system and inherit the material slots produced by PartDiT. GT Hunyuan3D PartCrafter Trellis2 PartPacker Ours 
+
+Figure 4: Qualitative comparison of material-aware 3D re-construction. PartVAE recovers complete geometry while preserving editable material-component labels, shown with distinct colors. 
+
+# Experiments 
+
+Experimental Setup 
+
+Training Data. We train PartMat on approximately 300K material-aware furniture and household-object shapes. Com-ponent labels are derived directly from the material slots as-signed to mesh faces, with each slot defining one material component. Detailed preprocessing and sampling configura-tions are provided in the supplementary material. 
+
+Baselines and Metrics. For VAE reconstruction, we com-pare against Hunyuan2.1 (Hunyuan3D et al. 2025), TREL-LIS2 (Xiang et al. 2026), PartCrafter (Lin et al. 2025), and PartPacker (Tang et al. 2025). All methods are evalu-ated at 512 3 resolution. We report Chamfer Distance (CD), F1-Score at threshold 0.01 (F1@0.01), average latent token count, and VAE decode latency for 1, 16, and 32 components. For image-conditioned generation, we compare against X-Part (Yan et al. 2026), PartCrafter (Lin et al. 2025), Part-Packer (Tang et al. 2025), HoloPart (Yang et al. 2025a), and 
+
+OmniPart (Yang et al. 2025b). We report CD and F1@0.01 for whole-geometry fidelity and Sem-IoU after optimal com-ponent matching for material decomposition accuracy. Fur-ther evaluation details are deferred to the supplementary ma-terial. 
+
+Implementation Details. PartVAE follows Hunyuan3D 2.1-VAE (Hunyuan3D et al. 2025) and jointly decodes K=32 
+
+material-component SDF channels. PartDiT uses the Hun-yuan3D 2.1 DiT backbone, and the geometry refiner aug-ments TRELLIS2 (Xiang et al. 2026) with part attention. Complete training schedules and hyperparameters are pro-vided in the supplementary material. All models are trained on NVIDIA H20 GPUs, while decoding latency is measured on a single NVIDIA RTX 3090 GPU. 
+
+Results 
+
+Material-Aware VAE Reconstruction Table 2 compares PartVAE against single-object and part-aware VAE base-lines at 512 3 resolution. Although TRELLIS2 achieves the Figure 5: Image-conditioned material-aware part generation comparison. Our method generates components with higher geo-metric quality, better material-region correspondence, and editable component IDs.                               
+
+> Method CD( ×10 4)↓F1@0.01 ↑Sem-IoU ↑
+> X-Part (Yan et al. 2026) 5.13 55.40 43.00 PartCrafter (Lin et al. 2025) 12.32 10.27 15.11 PartPacker (Tang et al. 2025) 6.06 38.77 30.62 HoloPart (Yang et al. 2025a) 5.78 55.31 32.47 OmniPart (Yang et al. 2025b) 5.60 30.38 29.75 PartMat 4.90 68.23 46.92 PartMat w/ RL 3.67 67.45 50.51
+> PartMat w/ geometry refine 2.83 69.59 49.19
+
+Table 1: Image-to-3D material-aware component generation comparison. Our PartMat significantly outperforms other methods on all metrics. Best results are marked in bold font. lowest CD, and Hunyuan2.1 obtains the highest F1@0.01, neither of them provide material-editable component chan-nels. PartCrafter preserves component identity but decodes each component independently, causing latency to grow with component count. PartPacker reduces this scaling cost with packed geometry, but uses twice the token budget and does not maintain one editable material slot per decoded chan-nel. In contrast, PartVAE maintains a compact token budget of 4,096 and exhibits nearly constant decode latency as the component count scales to 32, all while delivering editable 
+
+Figure 6: Qualitative ablation of RL alignment. We com-pare the supervised fine-tuning (SFT) against different RL configurations. The matching reward improves component correspondence, while the overlap penalty reduces spatial conflicts; combining both yields the decomposition closest to the ground truth. material parts and achieving geometric reconstruction com-petitive with these baselines. Figure 4 visualizes reconstruction results. PartVAE di-rectly decodes part-specific SDF fields with material-component IDs and obtains reconstruction quality compa-rable to Hunyuan2.1. Holistic VAEs do not expose editable regions, and per-component decoding baselines show higher latency cost as component count grows. 
+
+Image-to-3D Material-Aware Generation Leveraging the compact latent space of PartVAE, we train an efficient Method CD ( ×10 4) ↓ F1@0.01 ↑ Avg. Tokens Enc-Dec Time (s) ↓ Material Support 1 comp. 16 comps. 32 comps. Hunyuan2.1 2.179 75.8 4,096 3.572 – – ×                               
+
+> TRELLIS2 (Xiang et al. 2026) 1.690 73.7 2,149 0.154 ––×
+> PartCrafter (Lin et al. 2025) 2.340 74.4 49152 1.782 12.958 26.508 ✓per-component PartPacker (Tang et al. 2025) 2.270 74.7 8,192 13.674 10.617 11.628 †spatial
+> PartVAE (Ours) 2.140 75.2 4096 1.860 1.302 1.698 ✓material
+
+Table 2: VAE reconstruction and decode latency at 512 3 resolution (10K sample points, F1 threshold 0.01). Decode time is measured for 1, 16, and 32 material components on the same GPU. Lower CD / decode time is better; higher F1 is better. Material support: × = none, †= spatial only, ✓ = material-editable components. Best results are marked in bold font.           
+
+> Configuration CD( ×10 4)↓F1@0.01 ↑
+> Local-box 3.03 71.8 Packed-sem 2.87 72.4
+> Global multi-channel (Ours) 2.53 74.3
+
+Table 3: VAE architecture ablation for improving geometry. All variants use one global latent and up to K=32 material-component channels. Best results are marked in bold font. downstream generative model that jointly synthesizes all parts within this unified representation, enabling the decod-ing of all components in a single forward pass. Qualitative results are shown in Figure 5. Compared to prior methods, our RL alignment enables PartMat to produce sharper material boundaries and more accurate structural correspondences between the reference image and the 3D output. Meanwhile, the geometry refinement network further enhances fine ge-ometric details. Throughout this process, PartMat natively exposes editable component IDs for downstream material assignment. These visual advantages are quantitatively cor-roborated in Table 1. 
+
+Ablation Studies To rigorously validate our architectural choices, we conduct comprehensive ablations, deferring fur-ther algorithmic and implementation details to the supple-mentary material. First, we evaluate our VAE representation paradigm against two alternatives, with quantitative and qualitative re-sults detailed in Table 3 and Figure 7. The Local-box ap-proach decodes component SDFs within normalized local spaces and explicitly predicts their global assembly poses. However, this coupled pose-geometry optimization intro-duces severe training difficulty, particularly struggling to reconstruct thin structures. Alternatively, the Packed-sem 
+
+strategy compresses components into a few spatially non-overlapping groups and relies on an auxiliary semantic clas-sifier to disentangle them. This secondary classification fre-quently produces jagged material boundaries and destroys the continuous latent space strictly required by the down-stream PartDiT. In contrast, our global multi-channel strat-egy natively models seamless junctions and guarantees strict material disentanglement without secondary classification noise. Next, we further explore the specific contributions of our GT Packed-sem Local-box Global multi-channel 
+
+Figure 7: Qualitative comparison of VAE representation paradigms. Unlike the missing thin structures in Local-box and jagged boundaries in Packed-sem, our Global multi-channel strategy achieves complete geometry and strict ma-terial disentanglement. generative and refinement stages via the ablation experiments detailed in Table 1. As visualized in Figure 6, our direct-gradient RL alignment explicitly penalizes overlapping re-gions, effectively mitigating the blurred boundaries and spa-tial conflicts caused by purely supervised flow-matching. This facilitates more precise delineations between material regions. Finally, our sparse latent flow refinement restores high-frequency details lost in the compact global latent. This recovers sharp edges and micro structures crucial for photo-realistic downstream applications, as visualized in Figure 5. 
+
+# Conclusion 
+
+We proposed PartMat , an efficient framework for material-aware 3D part generation. Integrating a global PartVAE, an RL-aligned PartDiT for overlap suppression, and a sparse flow refiner, PartMat significantly outperforms existing base-lines. It uniquely maintains constant decoding latency regard-less of the part count while natively generating disentangled, high-fidelity parts for seamless downstream PBR material workflows. 
+
+Limitations. PartMat assumes a fixed component capac-ity ( K=32 ) and relies on high-quality material annotations, where weakly supervised alternatives may introduce bound-ary noise. Reconstructing tiny details remains challenging, requiring stronger refinement in future work. References 
+
+Abdelreheem, A.; Skorokhodov, I.; Ovsjanikov, M.; and Wonka, P. 2023. SATR: Zero-Shot Semantic Segmentation of 3D Shapes. In Proceedings of the IEEE/CVF International Conference on Computer Vision , 15166–15179. Ahmed, M.; Fei, J.; Ding, J.; Bakr, E. M.; and Elhoseiny, M. 2025. Kestrel: 3D Multimodal LLM for Part-Aware Grounded Description. In Proceedings of the IEEE/CVF International Conference on Computer Vision , 8973–8983. Chen, M.; Shapovalov, R.; Laina, I.; Monnier, T.; Wang, J.; Novotny, D.; and Vedaldi, A. 2025a. Partgen: Part-level 3d generation and reconstruction with multi-view diffusion models. In Proceedings of the Computer Vision and Pattern Recognition Conference , 5881–5892. Chen, M.; Wang, J.; Shapovalov, R.; Monnier, T.; Jung, H.; Wang, D.; Ranjan, R.; Laina, I.; and Vedaldi, A. 2025b. Au-toPartGen: Autoregressive 3D Part Generation and Discov-ery. In Advances in Neural Information Processing Systems .Chen, R.; Zhang, J.; Liang, Y.; Luo, G.; Li, W.; Liu, J.; Li, X.; Long, X.; Feng, J.; and Tan, P. 2025c. Dora: Sampling and benchmarking for 3d shape variational auto-encoders. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 16251–16261. Chen, Z.; Yin, K.; Fisher, M.; Chaudhuri, S.; and Zhang, H. 2019. BAE-NET: Branched autoencoder for shape co-segmentation. In Proceedings of the IEEE/CVF International Conference on Computer Vision , 8490–8499. Ding, L.; Dong, S.; Li, Y.; Gao, C.; Chen, X.; Han, R.; Kuang, Y.; Zhang, H.; Huang, B.; Huang, Z.; et al. 2025. FullPart: Generating each 3D Part at Full Resolution. arXiv preprint arXiv:2510.26140 .Golovinskiy, A.; and Funkhouser, T. 2008. Randomized cuts for 3D mesh analysis. In ACM SIGGRAPH Asia 2008 papers ,1–12. He, X.; Wu, Y.; Guo, X.; Ye, C.; Zhou, J.; Hu, T.; Han, X.; and Du, D. 2026. Unipart: Part-level 3d generation with unified 3d geom-seg latents. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,34227–34236. Hong, Y.; Zhang, K.; Gu, J.; Bi, S.; Zhou, Y.; Liu, D.; Liu, F.; Sunkavalli, K.; Bui, T.; and Tan, H. 2024. Lrm: Large recon-struction model for single image to 3d. In International Con-ference on Learning Representations , volume 2024, 50678– 50702. Hunyuan3D, T.; Yang, S.; Yang, M.; Feng, Y.; Huang, X.; Zhang, S.; He, Z.; Luo, D.; Liu, H.; Zhao, Y.; et al. 2025. Hunyuan3d 2.1: From images to high-fidelity 3d assets with production-ready pbr material. arXiv preprint arXiv:2506.15442 .Kirillov, A.; Mintun, E.; Ravi, N.; Mao, H.; Rolland, C.; Gustafson, L.; Xiao, T.; Whitehead, S.; Berg, A. C.; Lo, W.-Y.; et al. 2023. Segment Anything. In Proceedings of the IEEE/CVF International Conference on Computer Vision ,4015–4026. Lai, Z.; Zhao, Y.; Zhao, Z.; Liu, H.; Lin, Q.; Huang, J.; Guo, C.; and Yue, X. 2026. Lattice: Democratize high-fidelity 3d generation at scale. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,19982–19992. Li, J.; Xu, K.; Chaudhuri, S.; Yumer, E.; Zhang, H.; and Guibas, L. 2017. GRASS: Generative Recursive Autoen-coders for Shape Structures. ACM Transactions on Graphics ,36(4). Li, W.; Toisoul, A.; Monnier, T.; Shapovalov, R.; Ranjan, R.; Tan, P.; and Vedaldi, A. 2026. MeshFlow: Efficient Artistic Mesh Generation via MeshVAE and Flow-based Diffusion Transformer. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition .Li, Y.; Zou, Z.-X.; Liu, Z.; Wang, D.; Liang, Y.; Yu, Z.; Liu, X.; Guo, Y.-C.; Liang, D.; Ouyang, W.; et al. 2025. Triposg: High-fidelity 3d shape synthesis using large-scale rectified flow models. IEEE Transactions on Pattern Analysis and Machine Intelligence .Liang, Z.; Yang, T.; Wu, J.; Feng, C.; and Zheng, L. 2026. LeapAlign: Post-Training Flow Matching Models at Any Generation Step by Building Two-Step Trajectories. In Pro-ceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 23238–23248. Lin, Y.; Lin, C.; Pan, P.; Yan, H.; Yiqiang, F.; Mu, Y.; and Fragkiadaki, K. 2025. Partcrafter: Structured 3d mesh gen-eration via compositional latent diffusion transformers. Ad-vances in neural information processing systems , 38: 35387– 35415. Liu, A.; Lin, C.; Liu, Y.; Long, X.; Dou, Z.; Guo, H.-X.; Luo, P.; and Wang, W. 2024. Part123: Part-aware 3D reconstruc-tion from a single-view image. In ACM SIGGRAPH 2024 Conference Papers , 1–12. Liu, J.; Liu, G.; Liang, J.; Li, Y.; Liu, J.; Wang, X.; Wan, P.; Zhang, D.; and Ouyang, W. 2026. Flow-grpo: Training flow matching models via online rl. Advances in neural information processing systems , 38: 40783–40818. Liu, M.; Uy, M. A.; Xiang, D.; Su, H.; Fidler, S.; Sharp, N.; and Gao, J. 2025. Partfield: Learning 3d feature fields for part segmentation and beyond. In Proceedings of the IEEE/CVF International Conference on Computer Vision , 9704–9715. Liu, M.; Zhu, Y.; Cai, H.; Han, S.; Ling, Z.; Porikli, F.; and Su, H. 2023. PartSLIP: Low-Shot Part Segmentation for 3D Point Clouds via Pretrained Image-Language Models. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 21736–21746. Long, H.; Zhao, T.; Lin, J.; Zhang, Y.; Guo, H.; Liang, R.; Xu, J.; Hladký, J.; Nießner, M.; Hu, Y.; and Yang, W. 2026. LATO.2: Factorized 3D Mesh Generation with Vertex and Topology Flow. arXiv preprint arXiv:2607.10623 .Lorensen, W. E.; and Cline, H. E. 1987. Marching cubes: A high resolution 3D surface construction algorithm. In Pro-ceedings of the 14th Annual Conference on Computer Graph-ics and Interactive Techniques (SIGGRAPH) , 163–169. Ma, C.; Li, Y.; Yan, X.; Xu, J.; Yang, Y.; Wang, C.; Zhao, Z.; Guo, Y.; Chen, Z.; and Guo, C. 2025. P3-SAM: Native 3D Part Segmentation. arXiv preprint arXiv:2509.06784 .Mo, K.; Zhu, S.; Chang, A. X.; Yi, L.; Tripathi, S.; Guibas, L. J.; and Su, H. 2019. Partnet: A large-scale benchmark for fine-grained and hierarchical part-level 3d object under-standing. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 909–918. Oquab, M.; Darcet, T.; Moutakanni, T.; Vo, H. V.; Szafraniec, M.; Khalidov, V.; Fernandez, P.; Haziza, D.; Massa, F.; El-Nouby, A.; et al. 2024. DINOv2: Learning Robust Visual Features without Supervision. Transactions on Machine Learning Research .Qi, C. R.; Su, H.; Mo, K.; and Guibas, L. J. 2017a. Pointnet: Deep learning on point sets for 3d classification and segmen-tation. In Proceedings of the IEEE conference on computer vision and pattern recognition , 652–660. Qi, C. R.; Yi, L.; Su, H.; and Guibas, L. J. 2017b. Pointnet++: Deep hierarchical feature learning on point sets in a metric space. In Advances in neural information processing systems ,volume 30. Ren, X.; Huang, J.; Zeng, X.; Museth, K.; Fidler, S.; and Williams, F. 2024. Xcube: Large-scale 3d generative mod-eling using sparse voxel hierarchies. In Proceedings of the IEEE/CVF conference on computer vision and pattern recog-nition , 4209–4219. Shapira, L.; Shamir, A.; and Cohen-Or, D. 2008. Consis-tent mesh partitioning and skeletonisation using the shape diameter function. The Visual Computer , 24: 249–259. Shen, T.; Li, Z.; Law, M.; Atzmon, M.; Fidler, S.; Lucas, J.; Gao, J.; and Sharp, N. 2024. SpaceMesh: A Continuous Representation for Learning Manifold Surface Meshes. In 
+
+SIGGRAPH Asia 2024 Conference Papers , 1–11. Tang, G.; Zhao, W.; Ford, L.; Benhaim, D.; and Zhang, P. 2024. Segment Any Mesh: Zero-Shot Mesh Part Segmenta-tion via Lifting Segment Anything 2 to 3D. arXiv preprint arXiv:2408.13679 .Tang, J.; Lu, R.; Li, M.; Hao, Z.; Li, X.; Wei, F.; Song, S.; Zeng, G.; Liu, M.-Y.; and Lin, T.-Y. 2025. Efficient part-level 3d object generation via dual volume packing. Advances in Neural Information Processing Systems , 38: 27115–27137. Thai, A.; Wang, W.; Tang, H.; Stojanov, S.; Rehg, J. M.; and Feiszli, M. 2024. 3 × 2: 3d object part segmentation by 2d semantic correspondences. In European Conference on Computer Vision , 149–166. Springer. Tulsiani, S.; Su, H.; Guibas, L. J.; Efros, A. A.; and Malik, J. 2017. Learning shape abstractions by assembling volu-metric primitives. In Proceedings of the IEEE conference on computer vision and pattern recognition , 2635–2643. Umam, A.; Yang, C.-K.; Chen, M.-H.; Chuang, J.-H.; and Lin, Y.-Y. 2024. PartDistill: 3D Shape Part Segmentation by Vision-Language Model Distillation. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 3470–3479. Wang, H.; Liu, Y.-T.; Guo, Y.-C.; Feng, Q.-Y.; Zou, Z.-X.; Liang, D.; Zhang, B.; and Cao, Y.-P. 2026. Nexus: Na-tive Mesh Generation with Diffusion. ACM Transactions on Graphics (TOG) , 45(4): 1–14. Wang, Y.; Sun, Y.; Liu, Z.; Sarma, S. E.; Bronstein, M. M.; and Solomon, J. M. 2019. Dynamic graph cnn for learning on point clouds. ACM Transactions on Graphics (tog) , 38(5): 1–12. Wu, S.; Lin, Y.; Zhang, F.; Zeng, Y.; Yang, Y.; Bao, Y.; Qian, J.; Zhu, S.; Cao, X.; Torr, P. H. S.; and Yao, Y. 2025. Direct3d-s2: Gigascale 3d generation made easy with spatial sparse attention. Advances in Neural Information Processing Systems , 38: 170778–170804. Xiang, J.; Chen, X.; Xu, S.; Wang, R.; Lv, Z.; Deng, Y.; Zhu, H.; Dong, Y.; Zhao, H.; Yuan, N. J.; et al. 2026. Native and compact structured latents for 3d generation. In Proceed-ings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 14419–14429. Xiang, J.; Lv, Z.; Xu, S.; Deng, Y.; Wang, R.; Zhang, B.; Chen, D.; Tong, X.; and Yang, J. 2025. Structured 3d latents for scalable and versatile 3d generation. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 21469–21480. Yan, X.; Xu, J.; Li, Y.; Ma, C.; Yang, Y.; Wang, C.; Zhao, Z.; Lai, Z.; Zhao, Y.; Chen, Z.; et al. 2026. X-Part: High Fidelity And Structure Coherent Shape Decomposition And Completion. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 27062–27071. Yang, Y.; Guo, Y.-C.; Huang, Y.; Zou, Z.-X.; Yu, Z.; Li, Y.; Cao, Y.-P.; and Liu, X. 2025a. HoloPart: Generative 3D Part Amodal Segmentation. arXiv preprint arXiv:2504.07943 .Yang, Y.; Huang, Y.; Guo, Y.-C.; Lu, L.; Wu, X.; Lam, E. Y.; Cao, Y.-P.; and Liu, X. 2024. SAMPart3D: Segment Any Part in 3D Objects. arXiv preprint arXiv:2411.07184 .Yang, Y.; Zhou, Y.; Guo, Y.-C.; Zou, Z.-X.; Huang, Y.; Liu, Y.-T.; Xu, H.; Liang, D.; Cao, Y.-P.; and Liu, X. 2025b. Om-nipart: Part-aware 3d generation with semantic decoupling and structural cohesion. In Proceedings of the SIGGRAPH Asia 2025 Conference Papers , 1–12. Zhang, B.; Tang, J.; Niessner, M.; and Wonka, P. 2023. 3dshape2vecset: A 3d shape representation for neural fields and generative diffusion models. ACM Transactions On Graphics (TOG) , 42(4): 1–16. Zhang, L.; Zhang, Q.; Jiang, H.; Bai, Y.; Yang, W.; Xu, L.; and Yu, J. 2025. BANG: Dividing 3D assets via generative exploded dynamics. ACM Transactions on Graphics (TOG) ,44(4): 1–21. Zhao, H.; Jiang, L.; Jia, J.; Torr, P. H.; and Koltun, V. 2021. Point transformer. In Proceedings of the IEEE/CVF interna-tional conference on computer vision , 16259–16268. Zhao, Z.; Lai, Z.; Lin, Q.; Zhao, Y.; Liu, H.; Yang, S.; Feng, Y.; Yang, M.; Zhang, S.; Yang, X.; et al. 2025. Hunyuan3d 2.0: Scaling diffusion models for high resolution textured 3d assets generation. arXiv preprint arXiv:2501.12202 .Zhong, Z.; Xu, Y.; Li, J.; Xu, J.; Li, Z.; Yu, C.; and Gao, S. 2024. MeshSegmenter: Zero-Shot Mesh Semantic Seg-mentation via Texture Synthesis. In European Conference on Computer Vision , 182–199.

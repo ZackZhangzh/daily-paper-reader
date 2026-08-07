@@ -1,0 +1,3152 @@
+Title: Particle-based Generalised Stochastic Optimisation
+
+URL Source: https://arxiv.org/pdf/2608.02844v1
+
+Published Time: Wed, 05 Aug 2026 00:15:40 GMT
+
+Number of Pages: 38
+
+Markdown Content:
+# Particle-based Generalised Stochastic Optimisation 
+
+## Jiechen Jackie Zhang and O. Deniz Akyildiz Department of Mathematics, Imperial College London 
+
+> {jackie.zhang21, deniz.akyildiz}@imperial.ac.uk
+
+## August 5, 2026 
+
+Abstract 
+
+We develop a class of diffusion-based stochastic particle optimisation methods for loss functions with intractable gradients. Specifically, we consider problems in which the loss gradient is an integral with respect to a parameter-dependent distribution, a structure that includes training generative models, fine-tuning, and learning latent-variable models. We introduce mean-field dynamics and its interacting-particle approximations, which contain several existing algorithms as special cases and provides a route to constructing new methods. Under well-posedness and joint contractivity assumptions, we prove exponential convergence and show that the continuous-time particle system admits a non-asymptotic error bound. We illustrate it by developing momentum and higher-order Langevin variants and evaluating them on maximum marginal-likelihood estimation and energy-based-model training. 
+
+# 1 Introduction 
+
+Many problems in statistics and machine learning can be formulated as the optimisation of a loss function ℓ : Θ → R whose gradient takes the form of an expectation of a (stochastic gradient) function 
+
+F (θ, x ) with respect to an intractable parameter-dependent distribution πθ , i.e. ∇θ ℓ(θ) = Eπθ [F (θ, X )] .This structure arises in problems such as maximum-likelihood training of energy-based models ( EBM s) (Hinton, 2002; Nijkamp et al., 2019; Song and Kingma, 2021; Oliva et al., 2025), latent EBM s (Pang et al., 2020; Marks et al., 2026), maximum marginal likelihood estimation ( MMLE ) (Atchadé et al., 2017; De Bortoli et al., 2021; Kuntz et al., 2023; Lim et al., 2024; Akyildiz et al., 2025), and fine tuning (Marion et al., 2025). These problems are usually solved via generic first-order optimisation schemes where each iteration involves running Markov chain Monte Carlo ( MCMC ) to sample from πθ , resulting in a nested optimisation-sampling scheme (Younes, 1999; Andrieu and Vihola, 2014; Atchadé et al., 2017; De Bortoli et al., 2021). However, this is computationally expensive with delicate convergence properties dependent on various factors such as Markov-chain bias, mixing, and step-size selections. A number of algorithms have been developed in recent literature to avoid MCMC sampling via the use of interacting particles, see, e.g. Kuntz et al. (2023); Lim et al. (2024); Akyildiz et al. (2025) for MMLE in latent variable models, and Marion et al. (2025) for fine tuning of generative models. These methods construct joint sampling-optimisation procedures, typically with Langevin processes and gradient descent based optimisers. However, these methods are often developed for particular choices of optimisers and diffusions which are often inferior in performance to more sophisticated methods. In fact, practical applications of such methods often use modern optimisers such as Adam (Kingma and Ba, 2015), see, e.g., Kuntz et al. (2023); Marks et al. (2026) or preconditioned Langevin dynamics, see, e.g., Glyn-Davies et al. (2025); Wang et al. (2026); Marks et al. (2026). This raises the question of how to 1arXiv:2608.02844v1 [stat.ML] 3 Aug 2026 define principled, general purpose stochastic optimisation methods for loss functions with intractable gradients. In this work, we develop general diffusion-based particle optimisation methods based on a continuous mean-field dynamics. Specifically: (C1) We develop a general diffusion-based framework for stochastic optimisation of loss functions, accounting for general optimisation and sampling dynamics. This unifies and generalises several existing methods for general optimisation problems whose gradients involve parameter-dependent expectations and leads to the design of a novel class of algorithms. (C2) Under this general formulation, we establish exponential contraction of the mean-field system under a joint strong-monotonicity condition and finite-N error bounds for its particle approx-imation. Under an additional conservative, jointly strongly convex structure, the stationary parameter is the unique global minimiser of the loss. (C3) Using the general framework, we develop two novel algorithms, (i) a higher-order Langevin dynamics based MMLE algorithm, and (ii) a momentum-based algorithm for training EBM s. We show that these algorithms outperform existing methods in their respective applications. We also discuss how to develop novel algorithms for other applications, such as fine tuning of generative models, by instantiating the general framework with appropriate choices of optimisers and diffusions. The rest of the paper is organised as follows. In Section 2, we provide background on the optimisation problems we consider, and the sampling dynamics we use, together with a discussion of related work. In Section 3, we introduce our general mean-field system for stochastic optimisation. We then provide theoretical results on the convergence of the mean-field system and finite-particle error bounds in Section 4. Finally, we show the design of novel algorithms in Section 5 accompanied with numerical results and experiments. 
+
+## 1.1 Notation 
+
+We denote by P(Rd) the set of probability measures on Rd and use P2(Rd) for the set of probability measures with finite second moments. For a measure μ ∈ P (Rd) and a measurable function f : Rd → R,we write μ(f ) = R f (x)μ(d x). We write δx for the Dirac delta measure at x. For a function f : Rd → R,we write ∇f for the gradient of f , and ∇2f for the Hessian of f . For a vector v ∈ Rd, we write ∥v∥ for the Euclidean norm of v. For a matrix A ∈ Rd×d, we write ∥A∥ for the spectral norm of A. For two measures μ, ν ∈ P (Rd), we write W2(μ, ν ) for the 2-Wasserstein distance between μ and ν:
+
+W2(μ, ν ) = 
+
+
+
+inf 
+
+> γ∈Γ( μ,ν )
+
+Z
+
+∥x − y∥2γ(d x, dy)
+
+1/2
+
+,
+
+where Γ( μ, ν ) is the set of couplings of μ and ν. For a function f : Rd → R, we write ∥f ∥∞ =sup x∈Rd |f (x)| for the supremum norm of f . Lp(μ) denotes the space of functions where the integral R |f (x)|pμ(d x) is finite. We will denote various spaces belonging to optimiser, sampler, and auxiliary states using the letters 
+
+X, V, Θ, M. In all these cases, we assume that these spaces are Euclidean, i.e., X = Rdx , V = Rdv ,
+
+Θ = Rdθ , M = Rdm . Therefore, their tangent spaces are also Euclidean spaces of the same dimensions. We will keep this setting for clarity and simplicity, and our results can be extended to more general spaces. 22 Background 
+
+## 2.1 Stochastic Optimisation with Intractable Gradients 
+
+We are interested in the optimisation of an objective function ℓ : Θ → R over a set of parameters θ ∈ Θ
+
+where the gradient is of the form 
+
+∇θ ℓ(θ) = 
+
+Z
+
+> X
+
+F (θ, x )πθ (d x), (1) where F : Θ × X → Θ is a measurable function, F (θ, ·) ∈ L1(πθ ) for all θ ∈ Θ, and πθ is a parameter-dependent distribution on a space X. We assume that the distribution πθ admits a density with respect to the Lebesgue measure on X:
+
+πθ (x) = e−E(θ,x )/C θ , Cθ =
+
+Z
+
+> X
+
+e−E(θ,x )dx, (2) where 0 < C θ < ∞ is the unknown normalisation constant and the potential E : Θ × X → R is known pointwise. This setting encompasses a wide range of applications seen in the literature and we summarise some in the next section. 
+
+## 2.2 Related Work 
+
+We compare related methodologies which also solve the stochastic optimisation problem, with most directly related to objectives of the form in (1) . Classical approaches use the stochastic approximation (SA ) framework of Robbins and Monro (1951) with Markovian noise, where for each outer optimisation step on the parameters, an inner loop MCMC sampler is used to approximate samples from πθ and the resulting Monte Carlo ( MC ) average is plugged into a first-order update (Younes, 1999; Andrieu and Vihola, 2014; Atchadé et al., 2017). This includes Stochastic Optimization via Underdamped Langevin ( SOUL ) and its more general kernel counterparts ( SOUK ), where several Langevin or more general Markov-kernel steps are used per parameter update (De Bortoli et al., 2021). In EBM training, Contrastive Divergence ( CD -k) runs k short MCMC transitions, typically initialised from data, to approximate the negative-phase expectation (Hinton, 2002); Persistent Contrastive Divergence ( PCD )instead keeps a persistent particle cloud and usually applies one or a few transitions per parameter step, reducing the nested-loop cost at the price of non-equilibrium bias (Tieleman, 2008; Oliva et al., 2025). Related single-loop schemes make this persistence explicit. Implicit Diffusion ( ImpDiff ) couples the parameter dynamics with one sampler update step per optimisation step, so that particles and parameters evolve jointly (Marion et al., 2025). When the inner approximation is based on Sequential Monte Carlo ( SMC ), Cuin et al. (2026) maintain weighted particles. The problem of MMLE of a latent variable model pθ (x, y ) fits directly in the setting of (1) after applying Fisher’s identity to obtain an expectation under the posterior pθ (· | y). The classical Expectation-Maximisation ( EM ) algorithm alternates an E-step, which forms or approximates the posterior expectation, with an M-step in θ (Dempster et al., 1977). When the E-step is intractable, this leads to Monte Carlo, stochastic approximation, online, variational, and biased-MCMC variants of  
+
+> EM
+
+(Wei and Tanner, 1990; Delyon et al., 1999; Cappé and Moulines, 2009; Fort and Moulines, 2003; Gruffaz et al., 2024; Cuin et al., 2025). An alternate approach introduces a particle approximation to the optimisation dynamics and avoids separately equilibrating an inner Markov chain. For MMLE ,Particle Gradient Descent ( PGD ) performs a coupled continuous-time descent of the EM free energy introduced by Neal and Hinton (1998) over parameters and a variational posterior approximation, using Langevin dynamics on the particles for current posterior approximations (Kuntz et al., 2023). Momentum Particle Gradient Descent ( MPGD ) adds momentum to both the parameter and particle dynamics, yielding an underdamped extension of this coupled system (Lim et al., 2024). The Interacting Particle Langevin Algorithm ( IPLA ) instead injects noise into the parameter dynamics and interprets 3the full parameter-particle system as an interacting Langevin diffusion (Akyildiz et al., 2025), with kinetic variants such as kinetic interacting particle Langevin Monte Carlo ( KIPLMC ) extending this perspective to underdamped dynamics (Oliva and Akyildiz, 2024) and adaptations to latent energy-based models (Marks et al., 2026). Whilst these works are mostly developed for MMLE or closely related latent-variable problems, they illustrate the same continuous-time particle optimisation principle, replacing a costly inner MCMC loop with a persistent interacting particle system. Our contribution abstracts and generalises this perspective. Rather than fixing a particular optimiser, sampler, or problem, we formulate a continous-time mean-field optimisation-sampling system for general objectives with gradients of the form (1) . This includes existing particle methods such as  
+
+> PGD
+
+and MPGD as special cases, while also allowing more general optimiser dynamics and sampler diffusions. 
+
+# 3 Particle-based Stochastic Optimisation 
+
+## 3.1 A general mean-field dynamics for stochastic optimisation 
+
+We first describe a fully general framework for stochastic optimisation of loss functions with intractable gradients. Recall that we consider the problem of minimising a loss function ℓ : Θ → R where the gradient takes the form as in (1). In order to define general mean-field dynamics, we will consider a general optimiser state ϑt ∈ Θ × M.This notation allows the optimiser state to include auxiliary variables, such as momenta – i.e. it may contain only θt, or (θt, m t), or Adam-style auxiliary variables. Let Ψt : (Θ × M) × Θ → Θ × M be a function that gives the update direction for the optimiser state ϑt when it is supplied with a gradient estimate. Let Πθ (ϑt) = θt extract the parameter component. Similarly to the optimiser state, we will consider a general sampler state Zt ∈ X × V with dynamics that depend on the projected parameter state θt = Π θ (ϑt). Let Πx(Zt) = Xt extract the x-component of the sampler state. We will assume that the dynamics of Zt are such that, for frozen θ, the marginal distribution of Xt converges to πθ .Let B be a finite-dimensional noise space and let Bt be a Brownian motion on B. We write L(B, X × V)
+
+for the space of linear maps from B to X × V. We then consider the following coupled mean-field system 
+
+dϑt = Ψ t(ϑt, G νt (ϑt))d t, (3) 
+
+dZt = bΠθ (ϑt)(Zt)d t + σΠθ (ϑt)(Zt)d Bt, (4) where the drift bθ : X × V → X × V and diffusion coefficient σθ : X × V → L(B, X × V) are chosen such that the system (4) has invariant distribution νθ with X-marginal πθ and νt = Law (Zt) with the function Gνt (ϑt) defined as 
+
+Gνt (ϑt) := 
+
+Z
+
+> X×V
+
+F (Π θ (ϑt), Πx(z)) νt(d z).
+
+Next, we unpack the implications and possibilities provided by the generality of (3) –(4) . The generality of Ψt allows one to use optimisers whose optima are fixed points of the optimiser dynamics, including gradient descent and continuous-time analogues of RMSProp , ADAM , and related adaptive methods (Da Silva and Gazeau, 2020; Barakat and Bianchi, 2021; Heredia, 2024). Similarly, in (4) , one may choose a frozen sampler on the augmented space X × V whose invariant law νθ has X-marginal πθ .Inspired by Ma et al. (2015), we describe one sufficient Euclidean construction. Recall X = Rdx ,
+
+V = Rdv , write z = ( x, v ), and consider functions H : Θ × X × V → R and g : X × V → R such that 
+
+H(θ, z ) = E(θ, x ) + g(x, v ).
+
+where E is such that πθ (d x) = C−1 
+
+> θ
+
+exp (−E(θ, x )) d x. Assume also that Cg := R 
+
+> V
+
+exp (−g(x, v )) d v < ∞
+
+and independent of x. Then the measure νθ ∝ exp (−H(θ, x, v )) on X × V has X-marginal πθ . Next, 4consider the diffusion in (4) with drift and diffusion coefficients given by 
+
+bθ (z) = −[D θ (z) + Q θ (z)] ∇z H(θ, z ) + ξθ (z), (5) 
+
+σθ (z)σθ (z)⊤ = 2D θ (z). (6) where Dθ (z) ∈ R(dx+dv )×(dx+dv ) is symmetric positive semidefinite, Qθ (z) ∈ R(dx+dv )×(dx+dv ) is skew-symmetric, and both are continuously differentiable in z. The correction term is defined coordinatewise by 
+
+ξθ,i (z) := 
+
+> dx+dv
+
+X
+
+> j=1
+
+∂∂z j
+
+ Dθ,ij (z) + Q θ,ij (z), (7) where i = 1 , . . . , d x + dv . All derivatives here are with respect to the sampler variable z, with θ fixed. Assume additionally that e−H(θ, ·) is integrable, that the coefficients and H are sufficiently regular for the stationary Fokker–Planck equation, and that the relevant boundary/no-flux or decay conditions justify integration by parts. In this setting, the generalised Langevin dynamics with drift and diffusion given in (5) have stationary distribution νθ ∝ e−H(θ,z ) provided that the following identity is satisfied (Ma et al., 2015; Yao et al., 2025) 
+
+> dx+dv
+
+X
+
+> i,j =1
+
+∂2
+
+∂z i∂z j
+
+
+
+Qθ,ij (z)e−H(θ,z )
+
+= 0 .
+
+Under these conditions, the displayed identity holds automatically because Qθ is sufficiently smooth and skew-symmetric and mixed derivatives commute, hence νθ is invariant for the frozen sampler, and the preceding marginal condition gives (Π x)#νθ = πθ . We note that this construction can be generalised to arbitrary manifolds using the construction provided in Barp et al. (2021). Next, we provide a basic result that demonstrates the importance of our framework for a wide class of optimisers and samplers. We start with a well-posedness assumption for the mean-field system (3) –(4) .
+
+A1. For every ϑ0 ∈ Θ × M and every random variable Z0, independent of the driving Brownian motion, with law ν0 ∈ P 2(X × V), the mean-field system (3) –(4) admits a pathwise unique strong solution on every finite time interval. Moreover, νt := Law( Zt) ∈ P 2(X × V) for all finite t ≥ 0.
+
+Standard Lipschitz and linear-growth assumptions on the combined drift and diffusion coefficients provide sufficient conditions for Assumption A1. 
+
+A2. There exists an optimiser state ϑ⋆ ∈ Θ × M, with Πθ (ϑ⋆) = θ⋆, such that 
+
+∇θ ℓ(θ⋆) = 0 and Ψt(ϑ⋆, 0) = 0 for all t ≥ 0.
+
+Moreover, the frozen sampler at θ⋆ has an invariant measure νθ⋆ ∈ P 2(X × V) whose X-marginal is 
+
+πθ⋆ , i.e. 
+
+(Π x)#νθ⋆ = πθ⋆ .
+
+This assumption simply states that the optimiser map Ψt has a fixed point at ϑ⋆ which is generally satisfied by well-defined optimisation methods. Next we show that the mean-field system (3) – (4) has a stationary law at the optimiser–sampler pair (ϑ⋆, ν θ⋆ ).
+
+Theorem 1. Let A1 and A2 hold. Let 
+
+μ⋆ := δϑ⋆ ⊗ νθ⋆ .
+
+Then μ⋆ is a stationary law for the coupled mean-field system (3) –(4) : if the system is initialized from 
+
+μ⋆, its law remains μ⋆ for all t ≥ 0.
+
+5See Appendix A.1 for the proof. If Ψt ≡ Ψ is time-independent, then the coupled mean-field dynamics are time-homogeneous. In this case μ⋆ is an invariant measure in the usual semigroup sense. This formulation covers various algorithms in the literature as special cases and brings great flexibility to the design of diffusion-based stochastic optimisers. We first highlight some concrete examples from the literature below. 
+
+3.1.1 Existing literature as special cases PGD. Consider the problem of maximum marginal likelihood estimation ( MMLE ) given a model 
+
+pθ (x, y ) with fixed data y. The loss function cast as a minimisation is ℓ(θ) = − log pθ (y) and the gradient takes the form (1) with F (θ, x ) = −∇ θ log pθ (x, y ) and πθ (x) = pθ (x | y). Kuntz et al. (2023) proposed Particle Gradient Descent ( PGD ) to solve this problem, where the mean-field limit can be written as 
+
+dθt =
+
+Z 
+
+∇θ log pθt (x, y ) νt(d x)
+
+
+
+dt, 
+
+dXt = ∇x log pθ (Xt, y ) d t + √2 d Bt.
+
+This is a special case of (3) –(4) with Ψt(ϑt, G qt ) = −Gqt , ϑt = θt, Zt = Xt, Dθ (x) = Id, Qθ (x) = 0 , and 
+
+g(x, v ) = 0 in, so that the drift and diffusion coefficients are bθ (x) = ∇x log pθ (x, y ), and σθ (x) = √2Id.The sampler is an overdamped Langevin diffusion targeting πθ (x) = pθ (x | y). Using Theorem 1, we see that δθ⋆ ⊗ πθ⋆ is an invariant measure of the system for any stationary point θ⋆ of ℓ; in particular, for any minimiser, since ℓ ∈ C1 on Θ.
+
+Implicit diffusion. This is also the mean-field limit of the implicit diffusion framework (Marion et al., 2025, Section 4.1) which reads as 
+
+dθt = −εt
+
+Z
+
+F (θt, x )νt(d x)d t, 
+
+dXt = −∇ xE(θt, X t)d t + √2d Bt,
+
+for the optimisation of loss functions where ∇ℓ(θ) = Eπθ [F (θ, x )] . For any deterministic schedule t 7 → εt
+
+satisfying the regularity needed for well-posedness, this is a special case of (3) –(4) with Ψt(θ, g ) = −εtg,
+
+Zt = Xt, bθ = −∇ xE(θ, ·), and σθ = √2Idx . The choice εt ≡ 1 gives the time-homogeneous optimiser used in the PGD example. 
+
+MPGD. Accelerated methods were also proposed for the problem of MMLE which introduce auxiliary momentum variables and extend the PGD , which we term MPGD (Lim et al., 2024). This is again a special case of our framework with the loss choices identical to the previous case and with the auxiliary variables m ∈ M = Rdθ and v ∈ V = Rdv such that the optimiser state becomes ϑt = ( θt, m t) and the sampler state is Zt = ( Xt, V t). When Ψt is the time-homogeneous heavy-ball ODE, take dv = dx,
+
+g(x, v ) := 12Mx
+
+∥v∥2,
+
+D = 
+
+0 00 γxIdx
+
+
+
+, Q = 
+
+ 0 −Idx
+
+Idx 0
+
+
+
+.
+
+Then 
+
+bθ (x, v ) = 
+
+ vMx
+
+, −∇ xE(θ, x ) − γx
+
+Mx
+
+v
+
+
+
+,σθ σ⊤ 
+
+> θ
+
+= diag(0 , 2γxIdx ),
+
+so the sampler is precisely the mass-Mx underdamped Langevin diffusion used by MPGD (Lim et al., 2024). Theorem 1 therefore shows that 
+
+δθ⋆ ⊗ δ0 ⊗ πθ⋆ ⊗ N (0 , M xIdx )
+
+is stationary whenever ∇θ ℓ(θ⋆) = 0 .63.2 Space and time discretisations 
+
+In order to obtain an SDE that is amenable to discretisation and numerical implementation, we approximate the mean-field law by an empirical measure of N particles driven by mutually independent Brownian motions. Under the standard i.i.d. initialisation, the particles interact through their common optimiser state and therefore are exchangeable rather than independent. Their empirical gradient 
+
+GνNt (ϑNt ) is used as an approximation of the corresponding mean-field gradient. This gives the following finite-dimensional interacting SDE 
+
+dϑNt = Ψ t(ϑNt , G νNt (ϑNt ))d t, (8) 
+
+dZit = bΠθ (ϑNt )(Zit )d t + σΠθ (ϑNt )(Zit )d Bit , (9) where {Bit }Ni=1 are mutually independent Brownian motions on B and the empirical measure νNt is defined as νNt = (1 /N ) PNi=1 δZit and 
+
+GνNt (ϑNt ) := 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+F (Π θ (ϑNt ), ΠxZit ).
+
+Certain choices of Ψt and the drift and diffusion coefficients in (9) , together with suitable time-discretisation (e.g. Euler-Maruyama) schemes, give rise to practical algorithms. We leave the design of such algorithms to Section 5 where we develop applications. We next consider theoretical analysis of the general mean-field system and its interacting-particle approximation. 
+
+# 4 Analysis 
+
+We now study stability and finite-particle error for the general mean-field system (3) –(4) . In order to do this, given two solutions (ϑt, ν t), ( ˜ϑt, ˜νt), we define the distance metric (Caprio et al., 2025) 
+
+d(( ϑt, ν t), ( ˜ϑt, ˜νt)) := 
+
+q
+
+∥ϑt − ˜ϑt∥2 + W 22 (νt, ˜νt),
+
+and introduce the main assumptions required for our convergence results. 
+
+A3. Suppose that there exist symmetric positive definite matrices Dϑ and Dz , and a constant ρ > 0,such that, for every t ≥ 0, every ϑ, ˜ϑ ∈ Θ × M, every ν, ˜ν ∈ P 2(X × V), and every coupling Λ ∈ Γ( ν, ˜ν),the following inequality holds: 
+
+D
+
+ϑ − ˜ϑ, D ϑ
+
+h
+
+Ψt(ϑ, G ν (ϑ)) − Ψt( ˜ϑ, G ˜ν ( ˜ϑ)) 
+
+iE 
+
++
+
+Z h D 
+
+z − ˜z, D z
+
+h
+
+bΠθ (ϑ)(z) − bΠθ ( ˜ϑ)(˜ z)
+
+iE 
+
++ 12 D1/2
+
+> z
+
+h
+
+σΠθ (ϑ)(z) − σΠθ ( ˜ϑ)(˜ z)
+
+i 2HS 
+
+i
+
+Λ(d z, d˜ z)
+
+≤ − ρ
+
+
+
+∥ϑ − ˜ϑ∥2 
+
+> Dϑ
+
++
+
+Z
+
+∥z − ˜z∥2 
+
+> Dz
+
+Λ(d z, d˜ z)
+
+
+
+. (10) 
+
+A3 is the contractivity condition for the coupled optimiser–sampler system in the twisted metrics 
+
+∥ · ∥ 2 
+
+> Dϑ
+
+and ∥ · ∥ 2 
+
+> Dz
+
+. When Dϑ = Idθ +dm and Dz = Idx+dv , it reduces to the usual joint dissipativity condition in the product Euclidean metric. 
+
+Remark 1. A 3 is a genuinely joint contractivity condition: dissipativity of the exact-gradient optimiser and of each frozen sampler does not by itself suffice; Appendix B.1 gives a counterexample demonstrating this obstruction. Appendix B.2 gives a componentwise small-gain criterion that combines separate 7dissipativity and Lipschitz bounds for the optimiser response, gradient observation, sampler drift, and diffusion through a positive-definite cross-coupling matrix. Appendix B.3 instead gives a structured criterion based on strong monotonicity of the projected field Φ = ( F, ∇xE), or joint strong convexity of an underlying potential when this field is conservative, together with sufficient dissipation of the auxiliary variables. Finally, Appendix B.3.1 gives a concrete hypocoercive construction for a heavy-ball optimiser coupled to an underdamped sampler. ⋄
+
+Theorem 2. Suppose A1 and A3 hold with positive definite matrices Dϑ, D z and constant ρ > 0. Let 
+
+(ϑt, ν t) and ( ˜ϑt, ˜νt) be any two solutions of (3) –(4) with initial sampler laws in P2(X × V). Define 
+
+κ := λmax (diag( Dϑ, D z )) 
+
+λmin (diag( Dϑ, D z )) .
+
+Then, for every t ≥ 0,
+
+d(( ϑt, ν t), ( ˜ϑt, ˜νt)) ≤ √κ e −ρt d(( ϑ0, ν 0), ( ˜ϑ0, ˜ν0)) .
+
+If, in addition, A2 holds, define μt := δϑt ⊗ νt and μ⋆ := δϑ⋆ ⊗ νθ⋆ . Then, for every initial product law 
+
+μ0 = δϑ0 ⊗ ν0, with ν0 ∈ P 2(X × V),
+
+W2(μt, μ ⋆) ≤ √κ e −ρt W2(μ0, μ ⋆).
+
+Consequently, μ⋆ is the unique finite-second-moment stationary law among laws of the form δϑ ⊗ ν.For time-dependent Ψt, stationary means that initializing the dynamics from the law leaves the law unchanged for every t ≥ 0.
+
+See Appendix A.2 for the proof. We now consider the particle approximation and bound the error to the mean-field system. For this, we first introduce an auxiliary N -copy mean field system, which is a synchronously coupled copy of the interacting particle system. Let ¯ϑ0 be deterministic, and let ¯Z10 , . . . , ¯ZN 
+
+> 0
+
+be i.i.d. with common law 
+
+¯ν0 ∈ P 2(X × V), independently of the mutually independent Brownian motions (B1 
+
+> t
+
+, . . . , B Nt )t≥0. We define the system as 
+
+d ¯ϑt = Ψ t( ¯ϑt, G ¯νt ( ¯ϑt)) d t, (11) 
+
+d ¯Zit = bΠθ ( ¯ϑt)( ¯Zit ) d t + σΠθ ( ¯ϑt)( ¯Zit ) d Bit (12) where ¯νt = Law ( ¯Zit ) for i = 1 , . . . , N . Then ¯ϑt is deterministic and ¯Z1 
+
+> t
+
+, . . . , ¯ZNt are i.i.d. with common law ¯νt. Define 
+
+¯ν[N ] 
+
+> t
+
+:= 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+δ ¯Zit .
+
+We now state further assumptions that is required our our parameter error bound. 
+
+A4. Assume that Ψt is uniformly Lipschitz in its gradient argument: for all t ≥ 0, all ϑ ∈ Θ × M, and all g, ˜g ∈ Rdθ ,
+
+∥Ψt(ϑ, g ) − Ψt(ϑ, ˜g)∥ ≤ LΨ∥g − ˜g∥.
+
+A5. For the mean-field copy used in Theorem 3, assume that the stochastic gradient has uniformly bounded variance: 
+
+sup 
+
+> t≥0
+
+E
+
+h
+
+F (Π θ ( ¯ϑt), Πx( ¯Zt)) − G¯νt ( ¯ϑt) 2i
+
+≤ VF < ∞.
+
+A5 is a uniform variance bound for the stochastic-gradient integrand. It follows, for example, if 
+
+F (θ, ·) is globally Lipschitz with a Lipschitz constant uniform in θ and sup t≥0 E∥Πx( ¯Zt)∥2 < ∞. More generally, a linear-growth bound uniform along the optimiser path, together with the corresponding uniform second-moment bounds, is sufficient. 8Theorem 3 (Finite-particle interaction error) . Suppose A1, A3– A5 hold. Let (ϑNt , Z 1 
+
+> t
+
+, . . . , Z Nt ) solve the interacting particle system (8) –(9) with the same Brownian motions and the synchronous initial conditions ϑN 
+
+> 0
+
+= ¯ϑ0 and Zi 
+
+> 0
+
+= ¯Zi
+
+> 0
+
+. Let ( ¯ϑt, ¯Z1 
+
+> t
+
+, . . . , ¯ZNt ) solve the N -copy mean-field system (11) –(12) .Then, for every t ≥ 0,
+
+E
+
+h
+
+d
+
+ ϑNt , ν Nt
+
+ ,
+
+ ¯ϑt, ¯ν[N ]
+
+> t
+
+i 
+
+≤ LΨ
+
+> ρ
+
+q κV F
+
+> N
+
+ 1 − e−ρt  ,
+
+where κ is the condition number of diag( Dϑ, D z ).
+
+The proof is given in Appendix A.3. Using Theorems 2 and 3, we may provide a full parameter error bound of the particle system (8)–(9). 
+
+Theorem 4 (Parameter error bound of particle system) . Suppose A1– A5 hold. Assume that ϑN
+
+> 0
+
+is deterministic and that Z10 , . . . , Z N 
+
+> 0
+
+are i.i.d. with common law ν0, independently of the mutually independent Brownian motions. Then the expected parameter error satisfies 
+
+E θNt − θ⋆ ≤ √κ e −ρt d0 + LΨ
+
+> ρ
+
+q κV F
+
+> N
+
+ 1 − e−ρt  ,
+
+where d0 := d(( ϑN 
+
+> 0
+
+, ν 0), (ϑ⋆, ν θ⋆ )) is the initial distance from the stationary mean-field solution. Consequently, 
+
+lim   
+
+> N→∞
+
+lim sup 
+
+> t→∞
+
+E∥θNt − θ⋆∥ = 0 .
+
+The proof is given in Appendix A.4 and follows from Theorems 2–3. Theorem 4 concerns the continuous-time particle system. To describe at a high level how time discretisation would enter the bound, let h > 0, let tk := kh , and denote by bθN,h k the parameter iterate produced by a numerical discretisation of the particle dynamics. Suppose that the discretisation can be coupled to the continuous-time system so that, for some error function εdisc such that E∥bθN,h k − θNtk ∥ ≤ 
+
+εdisc (h, t k, N ), where εdisc (h, t k, N ) → 0 as h → 0 – for example, on each finite horizon T , one may have sup tk ≤T εdisc (h, t k, N ) ≤ CT hα for some α > 0. The triangle inequality would then give the end-to-end estimate 
+
+E∥bθN,h k − θ⋆∥ ≤ E∥θNtk − θ⋆∥ + εdisc (h, t k, N ).
+
+The first term can be bounded by Theorem 4. Thus the time-discretisation error simply adds to the finite-particle error. Establishing such sampler- and optimiser-specific discretisation rates, especially uniformly over an infinite time horizon, requires a separate stability and numerical-analysis argument. We leave this aspect to future work, since the primary aim of the present paper is to demonstrate the framework and establish its theoretical foundations. 
+
+# 5 New Algorithms and Numerics 
+
+In this section, we provide two instantiations to demonstrate the generality of our framework. We first tackle the MMLE problem by developing a higher-order proximal Langevin method, building on the proximal interacting particle Langevin methods of Encinar et al. (2025). Second, we provide a general momentum optimiser which generalises MPGD of Lim et al. (2024) for general purpose optimisation problems. We apply this method to training EBM s. 
+
+## 5.1 MMLE with Higher-Order Langevin Dynamics 
+
+To demonstrate applicability in a higher-dimensional setting, we consider a Bayesian image deblurring problem, following Encinar et al. (2025). Here we are given an information destroying blurring operator, 90 2000 4000 6000     
+
+> Iteration
+> 10 3
+> MSE
+> Particle-cloud MSE
+> 02000 4000 6000
+> Iteration
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> SSIM
+> Particle-cloud SSIM
+> MYPGD HOL-MYPGD
+
+Figure 1: Evolution of MSE (left) and SSIM (right) of the particle cloud mean across iterations, comparing methods MYPGD and HOL-MYPGD for setup A, with N = 20 particles and θ0 = −15 .
+
+B, acting on an image and the goal is to recover a latent clean image, x ∈ Rdx , from a noisy blurred observation y = Bx ⋆ + ϵ and ground-truth image x⋆ ∈ Rdx . Applying the anisotropic total-variation (TV ) prior, pθ (x) = C−1 
+
+> θ
+
+exp( −eθ TV( x)) we have the posterior, 
+
+πθ (x) ∝ exp 
+
+
+
+− 12σ2 ∥y − Bx ∥22 − eθ TV( x)
+
+
+
+,
+
+where the total variation is given by TV (x) := ∥∇ dx∥1, with ∇d the non-differentiable two-dimensional discrete gradient operator. We additionally assume Cθ < ∞ as a modelling assumption such that the prior is well-defined. Framed as the MMLE of pθ (y), we may write the loss function in the form of (1) with, 
+
+∇θ ℓ(θ) = EX∼πθ
+
+eθ TV( X) − dx
+
+ .
+
+Following Encinar et al. (2025) we introduce proximal techniques and Moreau-Yosida ( MY ) approxi-mations to deal with the non-differentiability of the total variation, which we discuss in Appendix C.1. We compare the baseline Moreau-Yosida particle gradient descent ( MYPGD ) against a higher-order Langevin scheme following the sampler dynamics introduced in Mou et al. (2021). Using gradient descent on the parameters we have the particle SDE: 
+
+dθt = − 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+F (θt, X it )d t, 
+
+dXit = U it dt, 
+
+dU it = −∇ xEλ(θt, X it )d t + γV it dt, 
+
+dV it = −γU it dt − αV it dt + √2αdBit ,
+
+(13) where we note that for MMLE we have F (θ, x ) = ∇θ E(θ, x ). We also replace the non-differentiable 
+
+x-gradient with Eλ, its MY approximation, to obtain a hybrid proximal scheme, which we refer to as Moreau-Yosida high-order Langevin particle gradient descent ( HOL-MYPGD ). Both methods share the same optimiser dynamics but differ in the choice of Langevin scheme for the sampler dynamics. We consider different setups A and B with different blur and noise levels, with full experimental details provided in Appendix C.1. Comparing MSE and SSIM between methods for setup A in Figure 1, we find superior performance with the high-order Langevin scheme; other ground-truth and blurring-operation examples for setup B are provided in the appendix. We also provide image reconstructions from particles in Figure 2 where we see HOL-MYPGD yields sharper reconstructions. 10 Original Image Blurred Image MYPGD HOL-MYPGD Figure 2: Ground truth (left), blurred image (middle-left), and comparisons to single particle recon-structions produced by methods MYPGD (middle-right) and HOL-MYPGD (right) for setup A. 
+
+## 5.2 A Momentum Particle Optimiser 
+
+We consider a particular choice of optimiser and sampler to model our system (3) –(4) , which may be viewed as a generalisation of MPGD (Lim et al., 2024). Here, both the optimiser and sampler dynamics involve momentum-acceleration, in the spirit of Polyak’s Heavy Ball and Nesterov’s Accelerated Gradient ( NAG ) (Nesterov, 1983). With m ∈ M = Rdθ , we model parameter dynamics with 
+
+dθt = mtdt, 
+
+dmt = −
+
+Z
+
+F (θt, x )πθt (d x)d t − γm tdt, (14) we see that (θ, m ) = ( θ⋆, 0) is a fixed point of (14) with θ⋆ such that ∇θ ℓ(θ⋆) = 0 . Using also Underdamped Langevin Diffusion ( ULD ) sampling dynamics with friction coefficient γ > 0, we have an invariant measure with πθ marginal for frozen θ. We present the momentum mean-field particle optimiser ( M-MFPO ) framework 
+
+dθt = mtdt, 
+
+dmt = −
+
+Z
+
+F (θt, x ) νt(d x, dv)d t − γm tdt, 
+
+dXt = Vtdt, 
+
+dVt = −∇ xE(θt, X t)d t − γV tdt + p2γdBt,
+
+(15) where v ∈ V = Rdx . Note that under a change of variables and time-rescaling, we can write the standard ULD dynamics in a form without an explicit mass coefficient. We may also marginalise νt
+
+and integrate over only the X-marginal of the full sampler law. In practice, we use the particle approximation to (15) in which we maintain a collection of {(Xit , V it )}Ni=1 
+
+each with the same dynamics as the mean-field (Xt, V t) with mutually independent Brownian motions and use these particles for MC estimations. The particle system can be written fully as: 
+
+dθt = mtdt, 
+
+dmt = − 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+F  θt, X it
+
+ dt − γm tdt, 
+
+dXit = V it dt, 
+
+dV it = −∇ xE(θt, X it )d t − γV it dt + p2γdBit .
+
+(16) We propose a splitting scheme discretisation for implementation, inspired by the OBABO scheme of Leimkuhler and Matthews (2013) and refer to Appendix C.2 for more details. 11 5.2.1 Training EBMs 
+
+Next we consider the problem of training EBM s on a collection of synthetic two-dimensional datasets given in Appendix C.2.3, all with closed form densities for performance evaluation. For each dataset, we parametrise the model energy with a neural network, which we train by minimising the negative log-likelihood of the data. We assume the model is normalisable of the form, 
+
+pθ (x) = Z−1 
+
+> θ
+
+e−E(θ,x ), Zθ =
+
+Z
+
+> Rdx
+
+e−E(θ,x )dx, 
+
+where E(θ, x ) is the energy function parametrised by θ ∈ Rdθ and Zθ is the normalisation constant. Given a dataset of M observations denoted {ym}Mm=1 , the gradient of the negative log-likelihood is given, 
+
+∇θ ℓ(θ) = Eπθ
+
+"
+
+−∇ θ E(θ, X ) + 1
+
+M
+
+> M
+
+X
+
+> m=1
+
+∇θ E(θ, y m)
+
+#
+
+,
+
+where the data-points {ym}Mm=1 are known as the positive samples and the particles {Xn}Nn=1 , used in the implementation and drawn from the model πθ to approximate the expectation, are known as the negative samples. Replacing the fixed data averaging with an expectation over an underlying data distribution pdata makes this equivalent to minimising the (forward) Kullback-Liebler ( KL ) divergence between the model distribution, πθ , and pdata with 
+
+ℓ(θ) = KL( pdata ∥πθ ). (17) 
+
+Figure 3: Comparison of Fisher divergence over iterations for the rings dataset (left), beads dataset (middle), and lattice dataset (right) for PCD and M-MFPO methods for N = 10 , 000 particles. Curves show the mean across 25 independent runs, with shaded bands indicating ±1 standard deviation across runs. Here, we can see the PCD algorithm is a special case of the ImpDiff framework. In this experiment, we tune each method separately to showcase a fair comparison of both methods using separately selected hyperparameters. We evaluate performance with respect to the number of outer iterations, which we recall is the same fixing the number of gradient back-propagations using our discretisation, and report the Fisher Divergence in figure 3. We note that even after tuning, there is a clear acceleration of  
+
+> M-MFPO
+
+in the logarithmic scale. We also report the learnt probability densities and freshly generated samples in figure 4 and see both methods produce models of visually similar qualities. 
+
+# 6 Conclusion 
+
+We introduced a general diffusion-based framework for stochastic optimisation when the loss gradient is an expectation under a parameter-dependent distribution. The framework couples an optimiser with 12 Data Distribution        
+
+> 0.000 0.018 0.036 0.054 0.072 0.090 0.108 0.126 0.144 0.162
+> Value
+> PCD M-MFPO −2−1012
+> −2
+> −1012Data Distribution
+> 0.00 0.12 0.24 0.36 0.48 0.60 0.72 0.84 0.96 1.08
+> Value
+> PCD M-MFPO −202
+> −2
+> −1012
+> Data Distribution
+> 0.00 0.16 0.32 0.48 0.64 0.80 0.96 1.12 1.28 1.44
+> Value
+> PCD M-MFPO
+
+Figure 4: Comparison of learnt densities and fresh samples from the model for the rings dataset (left), 
+
+beads dataset (middle), and lattice dataset (right). a continuously evolving sampler and accommodates overdamped, non-reversible, underdamped, and higher-order dynamics within a common mean-field formulation. Under well-posedness, existence of the stationary pair, and twisted joint strong monotonicity, the mean-field system contracts exponentially to that stationary solution. For the interacting particle system, we obtained an explicit N −1/2
+
+interaction-error bound and a parameter convergence bound. The experiments illustrate the practical flexibility of the framework. In Bayesian image deblurring, the higher-order Langevin variant improves the reported MSE and SSIM and produces sharper reconstructions than the proximal particle-gradient baseline. In the two-dimensional energy-based-model experiments, the momentum method reaches lower Fisher divergence more rapidly under the matched (gradient-evaluation) budget, while retaining comparable visual sample quality. 
+
+## 6.1 Limitations and Future Work 
+
+The theory relies on global contractivity and uniform-moment assumptions, which can be restrictive for the non-convex objectives encountered in large neural models. Moreover, the guarantees concern the continuous-time systems: establishing finite-step error and stability for the proposed splitting schemes requires a separate discretisation analysis. The time-dependent contraction result is conditional on verifying its monotonicity rate for each schedule. Future work should therefore develop local or non-convex guarantees, analyse discretisation and adaptive preconditioning. 
+
+# Acknowledgements 
+
+JJZ acknowledges support from EPRSC studentship. We acknowledge computational resources and support provided by the Department of Mathematics and the Imperial College Research Computing Service, DOI: 10.14469/hpc/2232. 
+
+References 
+
+Akyildiz, Ö. D., Crucinio, F. R., Girolami, M., Johnston, T., and Sabanis, S. (2025). Interacting particle Langevin algorithm for maximum marginal likelihood estimation. ESAIM: Probability and Statistics .Andrieu, C. and Vihola, M. (2014). Markovian stochastic approximation with expanding projections. 
+
+Bernoulli , 20(2):545–585. Atchadé, Y. F., Fort, G., and Moulines, E. (2017). On perturbed proximal gradient algorithms. Journal of Machine Learning Research , 18(10):1–33. Barakat, A. and Bianchi, P. (2021). Convergence and dynamical behavior of the Adam algorithm for nonconvex stochastic optimization. SIAM Journal on Optimization , 31(1):244–274. _eprint: https://doi.org/10.1137/19M1263443. 13 Barp, A., Takao, S., Betancourt, M., Arnaudon, A., and Girolami, M. (2021). A unifying and canonical description of measure-preserving diffusions. arXiv preprint arXiv:2105.02845 .Cappé, O. and Moulines, E. (2009). On-line expectation-maximization algorithm for latent data models. 
+
+Journal of the Royal Statistical Society: Series B (Statistical Methodology) , 71(3):593–613. Caprio, R., Kuntz, J., Power, S., and Johansen, A. M. (2025). Error bounds for particle gradient descent, and extensions of the log-Sobolev and Talagrand inequalities. Journal of Machine Learning Research , 26(103):1–38. Cuin, J., Carbone, D., and Akyildiz, O. D. (2025). Learning latent variable models via Jarzynski-adjusted Langevin algorithm. Advances in Neural Information Processing Systems , 38:106837–106876. Cuin, J., Carbone, D., Tang, Y., and Akyildiz, O. D. (2026). Efficient stochastic optimisation via sequential Monte Carlo. In Proceedings of the 43rd International Conference on Machine Learning ,Proceedings of Machine Learning Research. PMLR. Da Silva, A. B. and Gazeau, M. (2020). A general system of differential equations to model first-order adaptive algorithms. Journal of Machine Learning Research , 21(129):1–42. De Bortoli, V., Durmus, A., Pereyra, M., and Vidal, A. F. (2021). Efficient stochastic optimisation by unadjusted Langevin Monte Carlo. Statistics and Computing , 31(3):29. Delyon, B., Lavielle, M., and Moulines, E. (1999). Convergence of a stochastic approximation version of the EM algorithm. The Annals of Statistics , 27(1):94–128. Dempster, A. P., Laird, N. M., and Rubin, D. B. (1977). Maximum likelihood from incomplete data via the EM algorithm. Journal of the Royal Statistical Society. Series B (Methodological) , 39(1):1–38. Durmus, A., Moulines, E., and Pereyra, M. (2018). Efficient bayesian computation by proximal markov chain monte carlo: when langevin meets moreau. SIAM Journal on Imaging Sciences , 11(1):473–506. Encinar, P. C., Crucinio, F. R., and Akyildiz, O. D. (2025). Proximal interacting particle langevin algorithms. In Conference on Uncertainty in Artificial Intelligence , pages 1220–1265. PMLR. Fort, G. and Moulines, E. (2003). Convergence of the Monte Carlo expectation maximization for curved exponential families. The Annals of Statistics , 31(4):1220 – 1259. Glyn-Davies, A., Duffin, C., Kazlauskaite, I., Girolami, M., and Akyildiz, Ö. D. (2025). Statistical finite elements via interacting particle Langevin dynamics. SIAM/ASA Journal on Uncertainty Quantification , 13(3):1200–1227. Goldman, J. V., Sell, T., and Singh, S. S. (2022). Gradient-based markov chain monte carlo for bayesian inference with non-differentiable priors. Journal of the American Statistical Association ,117(540):2182–2193. Gruffaz, S., Kim, K., Durmus, A., and Gardner, J. (2024). Stochastic approximation with biased MCMC for expectation maximization. In International Conference on Artificial Intelligence and Statistics , pages 2332–2340. PMLR. Heredia, C. (2024). Modeling AdaGrad, RMSProp, and Adam with integro-differential equations. 
+
+arXiv preprint arXiv:2411.09734 .Hinton, G. (2002). Training products of experts by minimizing contrastive divergence. Neural Computation , 14:1771–1800. Kingma, D. P. and Ba, J. (2015). Adam: A method for stochastic optimization. In International Conference on Learning Representations (ICLR) .14 Kuntz, J., Lim, J. N., and Johansen, A. M. (2023). Particle algorithms for maximum likelihood training of latent variable models. In Ruiz, F., Dy, J., and van de Meent, J.-W., editors, Proceedings of The 26th International Conference on Artificial Intelligence and Statistics , volume 206 of Proceedings of Machine Learning Research , pages 5134–5180. PMLR. Leimkuhler, B. and Matthews, C. (2013). Robust and efficient configurational molecular sampling via Langevin dynamics. The Journal of Chemical Physics , 138(17):174102. Lim, J. N., Kuntz, J., Power, S., and Johansen, A. M. (2024). Momentum particle maximum likelihood. In International Conference on Machine Learning , pages 29816–29871. PMLR. Ma, Y.-A., Chatterji, N., Cheng, X., Flammarion, N., Bartlett, P., and Jordan, M. I. (2021). Is there an analog of Nesterov acceleration for gradient-based MCMC? Bernoulli , 27(3):1942–1992. Ma, Y.-A., Chen, T., and Fox, E. (2015). A complete recipe for stochastic gradient MCMC. In Cortes, C., Lawrence, N., Lee, D., Sugiyama, M., and Garnett, R., editors, Advances in Neural Information Processing Systems , volume 28. Curran Associates, Inc. Marion, P., Korba, A., Bartlett, P., Blondel, M., De Bortoli, V., Doucet, A., Llinares-López, F., Paquette, C., and Berthet, Q. (2025). Implicit diffusion: Efficient optimization through stochastic sampling. In International Conference on Artificial Intelligence and Statistics , pages 1999–2007. PMLR. Marks, J., Wang, T. Y. J., and Akyildiz, O. D. (2026). Learning latent energy-based models via interacting particle Langevin dynamics. In Proceedings of the Forty-Second Conference on Uncertainty in Artificial Intelligence .Mou, W., Ma, Y.-A., Wainwright, M. J., Bartlett, P. L., and Jordan, M. I. (2021). High-order Langevin diffusion yields an accelerated MCMC algorithm. Journal of Machine Learning Research ,22(42):1–41. Neal, R. M. and Hinton, G. E. (1998). A view of the EM algorithm that justifies incremental, sparse, and other variants. In Learning in graphical models , pages 355–368. Springer. Nesterov, Y. (1983). A method for solving the convex programming problem with convergence rate 
+
+o(1 /k 2). Proceedings of the USSR Academy of Sciences , 269:543–547. Nijkamp, E., Hill, M., Zhu, S.-C., and Wu, Y. N. (2019). Learning non-convergent non-persistent short-run MCMC toward energy-based model. Advances in Neural Information Processing Systems ,32. Oliva, P. F. V. and Akyildiz, O. D. (2024). Kinetic interacting particle Langevin Monte Carlo. arXiv preprint arXiv:2407.05790 .Oliva, P. F. V., Akyildiz, O. D., and Duncan, A. (2025). Uniform-in-time convergence bounds for persistent contrastive divergence algorithms. arXiv preprint arXiv:2510.01944 .Pang, B., Han, T., Nijkamp, E., Zhu, S.-C., and Wu, Y. N. (2020). Learning latent space energy-based prior model. Advances in Neural Information Processing Systems , 33:21994–22008. Robbins, H. and Monro, S. (1951). A stochastic approximation method. The Annals of Mathematical Statistics , 22(3):400 – 407. Song, Y. and Kingma, D. P. (2021). How to train your energy-based models. arXiv preprint arXiv:2101.03288 .Tieleman, T. (2008). Training restricted Boltzmann machines using approximations to the likelihood gradient. In Proceedings of the 25th international conference on Machine learning , pages 1064–1071. 15 Wang, T. Y. J., Kuntz, J., and Akyildiz, O. D. (2026). Training latent diffusion models with interacting particle algorithms. In The 29th International Conference on Artificial Intelligence and Statistics (AISTATS) .Wei, G. C. G. and Tanner, M. A. (1990). A Monte Carlo implementation of the EM algorithm and the poor man’s data augmentation algorithms. Journal of the American Statistical Association ,85(411):699–704. Yao, N., Ali, P., Tao, X., and Zhu, L. (2025). Accelerating langevin monte carlo sampling: A large deviations analysis. arXiv preprint arXiv:2503.19066 .Younes, L. (1999). On the convergence of Markovian stochastic algorithms with rapidly decreasing ergodicity rates. Stochastics: An International Journal of Probability and Stochastic Processes ,65(3-4):177–228. 
+
+# Appendix 
+
+# A Proofs of main results 
+
+## A.1 Proof of Theorem 1 
+
+Set ϑ0 = ϑ⋆ and Z0 ∼ νθ⋆ . We construct a solution to (3) –(4) with initial law δϑ⋆ ⊗ νθ⋆ and show that this law is preserved. Set ϑt ≡ ϑ⋆. Since Πθ (ϑ⋆) = θ⋆, let Zt solve the frozen sampler equation 
+
+dZt = bθ⋆ (Zt) d t + σθ⋆ (Zt) d Bt, Z0 ∼ νθ⋆ .
+
+By invariance of νθ⋆ , Law( Zt) = νθ⋆ for every t ≥ 0. Hence 
+
+Gνt (ϑt) = 
+
+Z
+
+> X×V
+
+F (Π θ (ϑt), Πx(z)) νt(d z)=
+
+Z
+
+> X×V
+
+F (θ⋆, Πx(z)) νθ⋆ (d z)=
+
+Z
+
+> X
+
+F (θ⋆, x ) πθ⋆ (d x) = ∇θ ℓ(θ⋆) = 0 ,
+
+where we used (Π x)#νθ⋆ = πθ⋆ . Assumption A2 gives Ψt(ϑ⋆, 0) = 0 , and therefore dϑt = 0 . Thus 
+
+(ϑt, Z t) solves the coupled system and has law δϑ⋆ ⊗ νθ⋆ for all t ≥ 0. By pathwise uniqueness in Assumption A1, this constructed solution is the unique solution with the prescribed initial data. This proves that μ⋆ is invariant. 
+
+## A.2 Proof of Theorem 2 
+
+Let (ϑt, ν t) and ( ˜ϑt, ˜νt) be two solutions. Choose an optimal coupling Λ0 ∈ Γ( ν0, ˜ν0), take (Z0, ˜Z0) ∼ Λ0,and drive the two sampler equations with the same Brownian motion: 
+
+dZt = bΠθ (ϑt)(Zt) d t + σΠθ (ϑt)(Zt) d Bt,
+
+d ˜Zt = bΠθ ( ˜ϑt)( ˜Zt) d t + σΠθ ( ˜ϑt)( ˜Zt) d Bt.
+
+By uniqueness, the marginal laws of Zt and ˜Zt are νt and ˜νt. Hence Λt := Law (Zt, ˜Zt) is a coupling of 
+
+νt and ˜νt.Define 
+
+Dt := ∥ϑt − ˜ϑt∥2 
+
+> Dϑ
+
++ E∥Zt − ˜Zt∥2 
+
+> Dz
+
+.
+
+16 For the optimiser states, 
+
+ddt ∥ϑt − ˜ϑt∥2 
+
+> Dϑ
+
+= 2 
+
+D
+
+ϑt − ˜ϑt, D ϑ
+
+ Ψt(ϑt, G νt (ϑt)) − Ψt( ˜ϑt, G ˜νt ( ˜ϑt)) E
+
+.
+
+For the sampler variables, Ito’s formula under the synchronous coupling gives 
+
+ddt E∥Zt − ˜Zt∥2 
+
+> Dz
+
+= E
+
+h
+
+2
+
+D
+
+Zt − ˜Zt, D z
+
+ bΠθ (ϑt)(Zt) − bΠθ ( ˜ϑt)( ˜Zt)E
+
++ D1/2
+
+> z
+
+ σΠθ (ϑt)(Zt) − σΠθ ( ˜ϑt)( ˜Zt) 2HS 
+
+i
+
+.
+
+Adding the two identities and applying (10) with Λ = Λ t yields 
+
+ddt Dt ≤ − 2ρD t ⇒ Dt ≤ e−2ρt D0
+
+by Gronwall’s lemma. Let λ− 
+
+> ϑ
+
+, λ + 
+
+> ϑ
+
+be the smallest and largest eigenvalues of Dϑ, and let λ− 
+
+> z
+
+, λ + 
+
+> z
+
+be the corresponding eigenvalues of Dz . Since Λ0 is optimal, 
+
+D0 = ∥ϑ0 − ˜ϑ0∥2 
+
+> Dϑ
+
++ E∥Z0 − ˜Z0∥2
+
+> Dz
+
+≤ max( λ+ 
+
+> ϑ
+
+, λ + 
+
+> z
+
+) ∥ϑ0 − ˜ϑ0∥2 + E∥Z0 − ˜Z0∥2
+
+= max( λ+ 
+
+> ϑ
+
+, λ + 
+
+> z
+
+) ∥ϑ0 − ˜ϑ0∥2 + W 22 (ν0, ˜ν0),
+
+and for every t ≥ 0,
+
+∥ϑt − ˜ϑt∥2 + W 22 (νt, ˜νt) ≤ ∥ ϑt − ˜ϑt∥2 + E∥Zt − ˜Zt∥2
+
+≤ 1min( λ− 
+
+> ϑ
+
+, λ − 
+
+> z
+
+)
+
+ ∥ϑt − ˜ϑt∥2 
+
+> Dϑ
+
++ E∥Zt − ˜Zt∥2
+
+> Dz
+
+
+
+we arrive at, 
+
+d(( ϑt, ν t), ( ˜ϑt, ˜νt)) 2 ≤ max( λ+ 
+
+> ϑ
+
+, λ + 
+
+> z
+
+)min( λ− 
+
+> ϑ
+
+, λ − 
+
+> z
+
+) e−2ρt d(( ϑ0, ν 0), ( ˜ϑ0, ˜ν0)) 2,
+
+proving the contraction result. Now assume in addition that A2 holds. By Theorem 1, (ϑ⋆, ν θ⋆ ) is a stationary solution. Moreover, for deterministic optimiser states, 
+
+W 22
+
+ δϑ ⊗ ν, δ ˜ϑ ⊗ ˜ν = ∥ϑ − ˜ϑ∥2 + W 22 (ν, ˜ν).
+
+Applying the preceding contraction with ( ˜ϑt, ˜νt) = ( ϑ⋆, ν θ⋆ ) proves 
+
+W2(μt, μ ⋆) ≤ √κ e −ρt W2(μ0, μ ⋆).
+
+Finally, let δϑ ⊗ ν be any other stationary law of the stated product form with finite second moment. Applying this estimate between that stationary law and μ⋆ gives, for every t ≥ 0,
+
+W2(δϑ ⊗ ν, μ ⋆) ≤ √κ e −ρt W2(δϑ ⊗ ν, μ ⋆).
+
+Letting t → ∞ shows that the left-hand side is zero. Hence δϑ ⊗ ν = μ⋆, proving uniqueness within the class asserted in the theorem. 17 A.3 Proof of Theorem 3 
+
+Set ∆ϑt := ϑNt − ¯ϑt, ∆Zit := Zit − ¯Zit ,ξNt := ∥∆ϑt∥2 + 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+∥∆Zit ∥2, bξNt := ∥∆ϑt∥2 
+
+> Dϑ
+
++ 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+∥∆Zit ∥2 
+
+> Dz
+
+.
+
+By Ito’s formula and the synchronous coupling, 
+
+ddt E[bξNt ] = E
+
+"
+
+2
+
+D
+
+∆ϑt, D ϑ
+
+h
+
+Ψt(ϑNt , G νNt (ϑNt )) − Ψt( ¯ϑt, G ¯νt ( ¯ϑt)) 
+
+iE 
+
++ 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+n
+
+2
+
+D
+
+∆Zit , D z
+
+h
+
+bΠθ (ϑNt )(Zit ) − bΠθ ( ¯ϑt)( ¯Zit )
+
+iE 
+
++ Dz 1/2 h
+
+σΠθ (ϑNt )(Zit ) − σΠθ ( ¯ϑt)( ¯Zit )
+
+i 2HS 
+
+o#
+
+.
+
+Add and subtract DϑΨt( ¯ϑt, G ¯ν[N ]
+
+> t
+
+( ¯ϑt)) . Applying Assumption A3 to the empirical coupling 
+
+ΛNt := 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+δ(Zit , ¯Zit )
+
+gives 
+
+ddt E[bξNt ] ≤ − 2ρ E[bξNt ]+ 2 E
+
+hD 
+
+∆ϑt, D ϑ
+
+h
+
+Ψt( ¯ϑt, G ¯ν[N ]
+
+> t
+
+( ¯ϑt)) − Ψt( ¯ϑt, G ¯νt ( ¯ϑt)) 
+
+iEi 
+
+.
+
+By Cauchy–Schwarz and Assumption A4, 
+
+E
+
+hD 
+
+∆ϑt, D ϑ
+
+h
+
+Ψt( ¯ϑt, G ¯ν[N ]
+
+> t
+
+( ¯ϑt)) − Ψt( ¯ϑt, G ¯νt ( ¯ϑt)) 
+
+iEi 
+
+≤ LΨ
+
+q
+
+λ+ 
+
+> ϑ
+
+E[bξNt ]1/2E
+
+
+
+G¯ν[N ]
+
+> t
+
+( ¯ϑt) − G¯νt ( ¯ϑt) 21/2
+
+,
+
+where λ+ 
+
+> ϑ
+
+is the largest eigenvalue of Dϑ. Since ¯ϑ0 is deterministic, ¯ϑt is deterministic. Moreover, because the sampler initial states are i.i.d. and independent of the mutually independent Brownian motions, the random vectors 
+
+Yi := F (Π θ ( ¯ϑt), Πx( ¯Zit )) − G¯νt ( ¯ϑt), i = 1 , . . . , N, 
+
+are independent and centred. Therefore, by Assumption A5, 
+
+E
+
+
+
+G¯ν[N ]
+
+> t
+
+( ¯ϑt) − G¯νt ( ¯ϑt) 2
+
+= E 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+Yi
+
+> 2
+
+= 1
+
+N 2
+
+> N
+
+X
+
+> i=1
+
+E∥Yi∥2 ≤ VF
+
+N .
+
+Therefore 
+
+ddt E[bξNt ] ≤ − 2ρ E[bξNt ] + 2 LΨ
+
+s
+
+λ+ 
+
+> ϑ
+
+VF
+
+N E[bξNt ]1/2.
+
+Writing ut := E[bξNt ]1/2, this implies 
+
+ddt ut ≤ − ρu t + LΨ
+
+s
+
+λ+ 
+
+> ϑ
+
+VF
+
+N .
+
+18 The synchronous initialisation gives u0 = 0 , and hence 
+
+ut ≤ LΨ
+
+ρ
+
+s
+
+λ+ 
+
+> ϑ
+
+VF
+
+N (1 − e−ρt ).
+
+Finally, 
+
+W 22 (νNt , ¯ν[N ] 
+
+> t
+
+) ≤ 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+∥Zit − ¯Zit ∥2,
+
+and 
+
+ξNt ≤ 1min( λ− 
+
+> ϑ
+
+, λ − 
+
+> z
+
+)
+
+bξNt .
+
+Thus 
+
+
+
+E
+
+h
+
+∥ϑNt − ¯ϑt∥2 + W 22 (νNt , ¯ν[N ] 
+
+> t
+
+)
+
+i 1/2
+
+≤ LΨ
+
+ρ
+
+s
+
+λ+ 
+
+> ϑ
+
+VF
+
+N min( λ− 
+
+> ϑ
+
+, λ − 
+
+> z
+
+) (1 − e−ρt ) ≤ LΨ
+
+ρ
+
+r κV F
+
+N (1 − e−ρt ),
+
+which, after applying Jensen’s inequality, is the desired estimate. 
+
+## A.4 Proof of Theorem 4 
+
+Construct the N -copy mean-field system and the interacting particle system with the coupling from Theorem 3: set ¯ϑ0 = ϑN 
+
+> 0
+
+, let the mean-field sampler copies have common initial law ν0, and use the same initial sampler states and Brownian motions in each particle–mean-field pair. Since every mean-field sampler copy has law ¯νt, the common optimiser path ¯ϑt is the optimiser path of the one-copy mean-field system started from (ϑN 
+
+> 0
+
+, ν 0).Write ¯θt := Π θ ( ¯ϑt). The triangle inequality and the fact that Πθ is a Euclidean coordinate projection give 
+
+E∥θNt − θ⋆∥ ≤ E∥θNt − ¯θt∥ + ∥¯θt − θ⋆∥≤ E
+
+h
+
+d
+
+
+
+(ϑNt , ν Nt ), ( ¯ϑt, ¯ν[N ] 
+
+> t
+
+)
+
+i 
+
++ d  ( ¯ϑt, ¯νt), (ϑ⋆, ν θ⋆ ) .
+
+By Theorem 3, the first term is bounded by 
+
+LΨ
+
+ρ
+
+r κV F
+
+N (1 − e−ρt ).
+
+By Theorem 1, (ϑ⋆, ν θ⋆ ) is a stationary mean-field solution. Therefore Theorem 2 gives 
+
+d  ( ¯ϑt, ¯νt), (ϑ⋆, ν θ⋆ ) ≤ √κ e −ρt d  ( ¯ϑ0, ν 0), (ϑ⋆, ν θ⋆ ) = √κ e −ρt d0,
+
+where ¯ϑ0 = ϑN 
+
+> 0
+
+. Combining the last three displays yields 
+
+E∥θNt − θ⋆∥ ≤ √κ e −ρt d0 + LΨ
+
+ρ
+
+r κV F
+
+N (1 − e−ρt ),
+
+which is the claimed parameter-error estimate. 
+
+# B Discussions on verifiable assumptions 
+
+This appendix explains the role and verification of A3. We first show why separate stability of the optimiser and frozen sampler is not sufficient. We then give two complementary sufficient-condition routes: a general small-gain criterion based on separate dissipativity and Lipschitz bounds, and a structured criterion for projected fields with auxiliary variables. The latter is illustrated by a concrete heavy-ball/underdamped construction. 19 B.1 Why joint cross-coupling control is necessary 
+
+Separate dissipativity of the exact-gradient optimiser and of each frozen sampler does not imply stability of the coupled dynamics. Consider the two-dimensional non-augmented system Zt = Xt. Let 
+
+a > 0, ω ∈ R, and 
+
+M := 
+
+a −ωω a
+
+
+
+.
+
+Define 
+
+ℓ(θ) := 12 ∥θ∥2, πθ := N (θ, a −1I2), F (θ, x ) := x, 
+
+and choose the time-independent optimiser map 
+
+Ψ( θ, g ) := −g, Ψ( θ, G ν (θ)) = −Eν [X], dXt = M (θt − Xt) d t + √2 d Bt.
+
+The gradient identity is valid because 
+
+Z
+
+F (θ, x ) πθ (d x) = Eπθ [X] = θ = ∇θ ℓ(θ).
+
+The exact-gradient optimiser is strongly dissipative: 
+
+D
+
+θ − ˜θ, Ψ( θ, ∇ℓ(θ)) − Ψ( ˜θ, ∇ℓ(˜θ)) 
+
+E
+
+= −∥ θ − ˜θ∥2.
+
+The frozen sampler drift is also strongly dissipative. Indeed, the skew-symmetric part of M contributes zero to its quadratic form, and hence 
+
+⟨x − ˜x, b θ (x) − bθ (˜ x)⟩ = −⟨ x − ˜x, M (x − ˜x)⟩
+
+= −a∥x − ˜x∥2.
+
+Moreover, πθ is the invariant law of the frozen sampler. Its mean is θ, and its covariance Σ = a−1I2
+
+solves 
+
+M Σ + Σ M ⊤ = a−1(M + M ⊤) = 2 I2.
+
+Nevertheless, with mt := E[Xt], the coupled first moments obey 
+
+˙θt = −mt, ˙mt = M (θt − mt),
+
+or equivalently 
+
+ddt
+
+ θt
+
+mt
+
+
+
+=
+
+ 0 −I2
+
+M −M
+
+  θt
+
+mt
+
+
+
+.
+
+If μ is an eigenvalue of M , the corresponding eigenvalues λ of this block system satisfy 
+
+λ2 + μλ + μ = 0 .
+
+For a = 1 /2 and ω = 1 , the eigenvalues of M are μ = 1 /2 ± i, and the block system has eigenvalues 
+
+0.1561565506 ± 1.4232893066 i, −0.6561565506 ± 0.4232893066 i. 
+
+Two eigenvalues have positive real part, so generic first moments grow exponentially. Thus A3 must control the optimiser–sampler cross-coupling; separate componentwise stability alone cannot provide the required contraction. 20 B.2 A general separated sufficient condition 
+
+We first give a general small-gain route to A3. Fix symmetric positive-definite matrices 
+
+Dϑ ∈ R(dθ +dm)×(dθ +dm), Dz ∈ R(dx+dv )×(dx+dv ).
+
+The following assumptions separate the optimiser response, the stochastic gradient observation map, and the frozen sampler. 
+
+A6. There exist constants ρΨ > 0 and LΨ ≥ 0 such that, for every t ≥ 0, every ϑ, ˜ϑ ∈ Θ × M, and every ν, ˜ν ∈ P 2(X × V),
+
+D
+
+ϑ − ˜ϑ, D ϑ
+
+h
+
+Ψt(ϑ, G ν (ϑ)) − Ψt( ˜ϑ, G ν ( ˜ϑ)) 
+
+iE 
+
+≤ − ρΨ∥ϑ − ˜ϑ∥2 
+
+> Dϑ
+
+,
+
+∥Ψt(ϑ, G ν (ϑ)) − Ψt(ϑ, G ˜ν (ϑ)) ∥ ≤ LΨ ∥Gν (ϑ) − G˜ν (ϑ)∥ .
+
+A7. There exists LF ≥ 0 such that, for every ϑ ∈ Θ × M and every z, ˜z ∈ X × V,
+
+∥F (Π θ (ϑ), Πx(z)) − F (Π θ (ϑ), Πx(˜ z)) ∥ ≤ LF ∥z − ˜z∥.
+
+A8. There exist constants ρb > 0 and Lb, L σ ≥ 0 such that, for every ϑ, ˜ϑ ∈ Θ × M and every 
+
+z, ˜z ∈ X × V,
+
+z − ˜z, D z
+
+bΠθ (ϑ)(z) − bΠθ (ϑ)(˜ z) ≤ − ρb∥z − ˜z∥2 
+
+> Dz
+
+,
+
+bΠθ (ϑ)(z) − bΠθ ( ˜ϑ)(z) ≤ Lb∥ϑ − ˜ϑ∥,
+
+σΠθ (ϑ)(z) − σΠθ ( ˜ϑ)(˜ z) HS 
+
+≤ Lσ
+
+q
+
+∥ϑ − ˜ϑ∥2 + ∥z − ˜z∥2.
+
+Corollary 1 (Separate sufficient conditions for A3) . Let 
+
+κ := λmax (diag( Dϑ, D z )) 
+
+λmin (diag( Dϑ, D z )) .
+
+Define 
+
+H := 
+
+ ρΨ − 12 κL 2 
+
+> σ
+
+− 12
+
+√κ(LΨLF + Lb)
+
+− 12
+
+√κ(LΨLF + Lb) ρb − 12 κL 2
+
+> σ
+
+
+
+.
+
+Under A6, A7, and A8, A3 holds if 
+
+2ρΨ − κL 2 
+
+> σ
+
+> 0,
+
+2ρb − κL 2 
+
+> σ
+
+> 0,
+
+(2 ρΨ − κL 2 
+
+> σ
+
+)(2 ρb − κL 2 
+
+> σ
+
+) > κ (LΨLF + Lb)2.
+
+(18) 
+
+More precisely, under (18) , H is positive definite and A3 holds with rate ρ = λmin (H) > 0. A simpler sufficient condition is 
+
+ρΨ > κL 2
+
+> σ
+
+2 +
+
+√κ
+
+2 (LΨLF + Lb), ρb > κL 2
+
+> σ
+
+2 +
+
+√κ
+
+2 (LΨLF + Lb). (19) 
+
+Consequently, if A1 also holds, Theorem 2 gives exponential contraction. 
+
+21 Proof. Fix arbitrary t ≥ 0, ϑ, ˜ϑ ∈ Θ × M, ν, ˜ν ∈ P 2(X × V), and Λ ∈ Γ( ν, ˜ν). Define 
+
+a := ∥ϑ − ˜ϑ∥Dϑ , b := 
+
+Z 
+
+∥z − ˜z∥2 
+
+> Dz
+
+Λ(d z, d˜ z)
+
+1/2
+
+.
+
+Also write 
+
+λ− := λmin (diag( Dϑ, D z )) , λ+ := λmax (diag( Dϑ, D z )) ,
+
+so that κ = λ+/λ −.For the optimiser term, add and subtract Ψt( ˜ϑ, G ν ( ˜ϑ)) . A6 bounds the same-measure term by −ρΨa2.For the remaining term, Cauchy–Schwarz in the Dϑ-metric gives 
+
+D
+
+ϑ − ˜ϑ, D ϑ
+
+h
+
+Ψt( ˜ϑ, G ν ( ˜ϑ)) − Ψt( ˜ϑ, G ˜ν ( ˜ϑ)) 
+
+iE 
+
+≤ apλ+ LΨ∥Gν ( ˜ϑ) − G˜ν ( ˜ϑ)∥.
+
+The coupling identity, A7, and Cauchy–Schwarz imply 
+
+∥Gν ( ˜ϑ) − G˜ν ( ˜ϑ)∥ ≤ LF
+
+Z 
+
+∥z − ˜z∥2 Λ(d z, d˜ z)
+
+1/2
+
+≤ LF
+
+pλ−
+
+b. 
+
+Therefore the full optimiser contribution is at most 
+
+−ρΨa2 + √κL ΨLF ab. 
+
+For the sampler drift, split 
+
+bΠθ (ϑ)(z) − bΠθ ( ˜ϑ)(˜ z) = bΠθ (ϑ)(z) − bΠθ (ϑ)(˜ z) +
+
+h
+
+bΠθ (ϑ)(˜ z) − bΠθ ( ˜ϑ)(˜ z)
+
+i
+
+.
+
+A8 and the same norm comparisons bound the integrated drift contribution by 
+
+−ρbb2 + √κL b ab. 
+
+The diffusion contribution satisfies 
+
+Z
+
+D1/2
+
+> z
+
+h
+
+σΠθ (ϑ)(z) − σΠθ ( ˜ϑ)(˜ z)
+
+i 2HS 
+
+Λ(d z, d˜ z) ≤ κL 2 
+
+> σ
+
+(a2 + b2).
+
+Including the factor 1/2 in (10), its left-hand side is therefore at most 
+
+−
+
+ab
+
+⊤
+
+H
+
+ab
+
+
+
+.
+
+The three inequalities in (18) are precisely the positive-diagonal and positive-determinant conditions for H. It is therefore positive definite. Since its smallest eigenvalue is ρ = λmin (H) > 0, the preceding display is at most −ρ(a2 + b2), which is A3. Under (19) , each diagonal entry is strictly larger than the absolute value of the off-diagonal entry, so strict diagonal dominance gives the simpler sufficient condition. 
+
+## B.3 A sufficient condition based on the projected field 
+
+For systems with position-like and auxiliary variables, the following route uses strong monotonicity of the projected (θ, x )-field and separate dissipation of the auxiliary coordinates. 22 A9. Assume 
+
+Θ = Rdθ , M = Rdm , X = Rdx , V = Rdv .
+
+Write ϑ = ( θ, m ), z = ( x, v ), and let Πθ (ϑ) = θ, Πx(z) = x. Assume that the potential-dependent force in the sampler is the score ∇x log πθ (x) = −∇ xE(θ, x ). Define the projected dissipative field by using the negative of this score in its x-component: 
+
+Φ( θ, x ) := 
+
+ F (θ, x )
+
+∇xE(θ, x )
+
+
+
+.
+
+Assume also that Φ has at most linear growth: there exists CΦ ≥ 0 such that 
+
+∥Φ( θ, x )∥ ≤ CΦ
+
+ 1 + ∥θ∥ + ∥x∥ for all (θ, x ) ∈ Rdθ × Rdx .
+
+In particular, Gν (ϑ) and the projected-field integrals used below are finite for laws in P2(X × V). There exists ρΦ > 0 such that, for every θ, ˜θ ∈ Rdθ and every x, ˜x ∈ Rdx ,
+
+D
+
+(θ, x ) − (˜θ, ˜x), Φ( θ, x ) − Φ( ˜θ, ˜x)
+
+E
+
+≥ ρΦ
+
+
+
+∥θ − ˜θ∥2 + ∥x − ˜x∥2
+
+.
+
+A10. Work under the decomposition in A9. There exist constants β > 0, Aθ , A x ≥ 0, and symmetric positive-definite matrices 
+
+Dϑ ∈ R(dθ +dm)×(dθ +dm), Dz ∈ R(dx+dv )×(dx+dv ),Dm ∈ Rdm×dm , Dv ∈ Rdv ×dv ,
+
+such that the following holds. For every t ≥ 0, every ϑ = ( θ, m ), ˜ϑ = ( ˜θ, ˜m), every ν, ˜ν ∈ P 2(X × V),and every Λ ∈ Γ( ν, ˜ν), define 
+
+RΛ := ∥θ − ˜θ∥2 +
+
+Z
+
+∥x − ˜x∥2 Λ(d z, d˜ z).
+
+Then 
+
+D
+
+ϑ − ˜ϑ, D ϑ
+
+h
+
+Ψt(ϑ, G ν (ϑ)) − Ψt( ˜ϑ, G ˜ν ( ˜ϑ)) 
+
+iE 
+
+≤ − β
+
+D
+
+θ − ˜θ, G ν (ϑ) − G˜ν ( ˜ϑ)
+
+E
+
+− ∥ m − ˜m∥2 
+
+> Dm
+
++ Aθ RΛ,
+
+(20) 
+
+and 
+
+Z D
+
+z − ˜z, D z
+
+h
+
+bΠθ (ϑ)(z) − bΠθ ( ˜ϑ)(˜ z)
+
+iE 
+
+Λ(d z, d˜ z) ≤ − β
+
+Z D
+
+x − ˜x, ∇xE(θ, x ) − ∇ xE(˜θ, ˜x)
+
+E
+
+Λ(d z, d˜ z)
+
+−
+
+Z
+
+∥v − ˜v∥2 
+
+> Dv
+
+Λ(d z, d˜ z) + AxRΛ.
+
+(21) 
+
+A9 controls the joint projected field in (θ, x ), whereas A10 requires the auxiliary coordinates (m, v )
+
+to dissipate strongly enough to absorb the cross terms generated by the twisted metrics. In the conservative case Φ = ∇(θ,x )φ, joint ρΦ-strong convexity of φ implies the required strong monotonicity. For MMLE , this applies when F = ∇θ E, so that φ = E is the negative joint log-density up to an additive constant independent of (θ, x ); see Kuntz et al. (2023); Akyildiz et al. (2025). 
+
+Corollary 2 (Projected-field sufficient condition for A3) . Suppose A9 and A10 hold, and suppose that σθ (z) is independent of (θ, z ). If 
+
+c := βρ Φ − Aθ − Ax > 0,
+
+23 define 
+
+Kϑ := 
+
+cI dθ 00 Dm
+
+
+
+, Kz := 
+
+cI dx 00 Dv
+
+
+
+,
+
+and 
+
+ρ := min 
+
+n
+
+λmin 
+
+
+
+D−1/2 
+
+> ϑ
+
+KϑD−1/2
+
+> ϑ
+
+
+
+, λ min 
+
+
+
+D−1/2 
+
+> z
+
+Kz D−1/2
+
+> z
+
+o 
+
+.
+
+Then ρ > 0 and A3 holds with the matrices Dϑ, D z and rate ρ. Consequently, if A1 also holds, Theorem 2 gives exponential contraction. Proof. Fix arbitrary t ≥ 0, ϑ, ˜ϑ ∈ Θ × M, ν, ˜ν ∈ P 2(X × V), and Λ ∈ Γ( ν, ˜ν). Write 
+
+∆ϑ := ϑ − ˜ϑ, ∆Ψ t := Ψ t(ϑ, G ν (ϑ)) − Ψt( ˜ϑ, G ˜ν ( ˜ϑ)) ,
+
+∆z := z − ˜z, ∆b := bΠθ (ϑ)(z) − bΠθ ( ˜ϑ)(˜ z).
+
+Because the diffusion coefficient is independent of (θ, z ), the diffusion-difference term in (10) is zero. Adding (20) and (21) gives 
+
+⟨∆ϑ, D ϑ∆Ψ t⟩ +
+
+Z
+
+⟨∆z, D z ∆b⟩ Λ(d z, d˜ z) ≤ − β
+
+D
+
+θ − ˜θ, G ν (ϑ) − G˜ν ( ˜ϑ)
+
+E
+
+− β
+
+Z D
+
+x − ˜x, ∇xE(θ, x ) − ∇ xE(˜θ, ˜x)
+
+E
+
+Λ(d z, d˜ z)
+
+− ∥ m − ˜m∥2 
+
+> Dm
+
+−
+
+Z
+
+∥v − ˜v∥2 
+
+> Dv
+
+Λ(d z, d˜ z) + ( Aθ + Ax)RΛ.
+
+The marginal identities for Λ imply 
+
+Gν (ϑ) − G˜ν ( ˜ϑ) = 
+
+Z h
+
+F (θ, x ) − F (˜θ, ˜x)
+
+i
+
+Λ(d z, d˜ z).
+
+The two terms multiplied by −β therefore combine into 
+
+−β
+
+Z D
+
+(θ, x ) − (˜θ, ˜x), Φ( θ, x ) − Φ( ˜θ, ˜x)
+
+E
+
+Λ(d z, d˜ z),
+
+which is at most −βρ ΦRΛ. Hence 
+
+⟨∆ϑ, D ϑ∆Ψ t⟩ +
+
+Z
+
+⟨∆z, D z ∆b⟩ Λ(d z, d˜ z)
+
+≤ − cR Λ − ∥ m − ˜m∥2 
+
+> Dm
+
+−
+
+Z
+
+∥v − ˜v∥2 
+
+> Dv
+
+Λ(d z, d˜ z)= −∥ ∆ϑ∥2 
+
+> Kϑ
+
+−
+
+Z
+
+∥∆z∥2 
+
+> Kz
+
+Λ(d z, d˜ z).
+
+By the definition of ρ,
+
+Kϑ ⪰ ρD ϑ, Kz ⪰ ρD z .
+
+Substitution into the preceding display gives exactly (10). 24 B.3.1 Application to momentum-enriched dynamics Proposition B.1 (A hypocoercive verification of A3) . Suppose A9 holds and that Φ is LΦ-Lipschitz. Take dm = dθ and dv = dx, and consider the unit-mass heavy-ball optimiser and underdamped sampler with a common friction coefficient γ > 0:
+
+Ψt(ϑ, G ν (ϑ)) = 
+
+ m
+
+−Gν (ϑ) − γm 
+
+
+
+, bθ (x, v ) = 
+
+ v
+
+−∇ xE(θ, x ) − γv 
+
+
+
+,
+
+with constant sampler diffusion 
+
+σθ (x, v ) = 
+
+ 0dx×dx√2γ I dx
+
+
+
+.
+
+If 
+
+γ > 
+
+√2 LΦ
+
+√ρΦ
+
+,
+
+then there exist symmetric positive-definite matrices Dϑ, D z and a rate ρ > 0 for which A3 holds. Proof. For a coupling Λ ∈ Γ( ν, ˜ν), set 
+
+∆θ := θ − ˜θ, ∆m := m − ˜m, ∆G := Gν (ϑ) − G˜ν ( ˜ϑ),
+
+and recall 
+
+RΛ = ∥∆θ∥2 +
+
+Z
+
+∥x − ˜x∥2 Λ(d z, d˜ z).
+
+The coupling identity, Jensen’s inequality, and Lipschitz continuity of Φ give 
+
+∥∆G∥2 =
+
+Z h
+
+F (θ, x ) − F (˜θ, ˜x)
+
+i
+
+Λ(d z, d˜ z)
+
+> 2
+
+≤ L2ΦRΛ.
+
+The strict friction condition allows us to choose 0 < ε < 1 such that 
+
+2L2Φ
+
+(1 − ε)γ2 < ρ Φ.
+
+Fix any β > 0, and set 
+
+δ := 2βγ , η := (1 − ε)β. 
+
+Choose the hypocoercive matrices 
+
+Dϑ =
+
+βγI dθ βI dθ
+
+βI dθ δI dθ
+
+
+
+, Dz =
+
+βγI dx βI dx
+
+βI dx δI dx
+
+
+
+.
+
+They are positive definite by the Schur-complement criterion because δ > β/γ .Direct multiplication gives 
+
+⟨∆ϑ, D ϑ∆Ψ t⟩ = −β⟨∆θ, ∆G⟩ − (δγ − β)∥∆m∥2 − δ⟨∆m, ∆G⟩.
+
+25 Young’s inequality yields 
+
+−δ⟨∆m, ∆G⟩ ≤ η∥∆m∥2 + δ2
+
+4η ∥∆G∥2.
+
+Since δγ − β = β, it follows that 
+
+⟨∆ϑ, D ϑ∆Ψ t⟩ ≤ − β⟨∆θ, ∆G⟩ − εβ ∥∆m∥2 + βL 2Φ
+
+(1 − ε)γ2 RΛ.
+
+Thus (20) holds with 
+
+Dm = εβI dθ , Aθ = βL 2Φ
+
+(1 − ε)γ2 .
+
+For the sampler, write 
+
+∆Hx := ∇xE(θ, x ) − ∇ xE(˜θ, ˜x).
+
+The same calculation gives, pointwise, 
+
+⟨∆z, D z ∆b⟩ ≤ − β⟨x − ˜x, ∆Hx⟩ − εβ ∥v − ˜v∥2
+
++ β
+
+(1 − ε)γ2 ∥∆Hx∥2.
+
+Because ∇xE is the second component of the LΦ-Lipschitz field Φ,
+
+∥∆Hx∥2 ≤ L2Φ
+
+
+
+∥θ − ˜θ∥2 + ∥x − ˜x∥2
+
+.
+
+After integration, (21) holds with 
+
+Dv = εβI dx , Ax = βL 2Φ
+
+(1 − ε)γ2 .
+
+Finally, 
+
+Aθ + Ax = 2βL 2Φ
+
+(1 − ε)γ2 < βρ Φ.
+
+Corollary 2 therefore verifies A3 in the displayed hypocoercive metrics. 
+
+# C Experimental Setting 
+
+## C.1 MMLE with Higher-Order Langevin Dynamics 
+
+Here we discuss the Bayesian image-deblurring experiments introduced in Section 5.1. Given a blurred and noisy observation y = Bx + ε, obtained through an ill-conditioned blurring operator B and 
+
+ε ∼ N (0 , σ 2), the goal is to recover clean latent images x. We equip this ill-conditioned inverse problem with a total-variation prior, with strength governed by an unknown scalar parameter θ.The hyper-parameter θ typically requires manual tuning but instead we estimate an optimal value by framing this as a high-dimensional MMLE problem. With the total-variation prior, we have a non-differentiable posterior over the latent image which closely follows the setup in Section 5.3 of Encinar et al. (2025) and the image reconstruction problems in Durmus et al. (2018); Goldman et al. (2022). 26 Let x⋆ ∈ Rdx denote the ground-truth image, with dimension dx = nw × nh. We consider the blurring operator B ∈ Rdx×dx following Encinar et al. (2025). In particular, B is a uniform local averaging operator taking the value of an interior pixel x⋆ij and replacing with the uniform average of a P × P
+
+neighbourhood of pixels, with truncation and renormalisation at the image boundaries. We equip the latent image x⋆ with the anisotropic total-variation log-prior, 
+
+pθ (x) = C(θ)−1 exp  −eθ TV( x) , C(θ) = 
+
+Z
+
+> Rdx
+
+exp  −eθ TV( x) dx. 
+
+Positive one-homogeneity of the total-variation function and a change of variables u = eθ x give the normalisation constant C(θ) ∝ edxθ which we assume to be finite for modelling purposes. The parameter 
+
+eθ > 0 controls the strength of this prior, which typically requires manual tuning (Durmus et al., 2018; Goldman et al., 2022). Note we exponentiate θ to ensure positivity. Here, TV (x) := ∥∇ dx∥1
+
+is the anisotropic total-variation, with ∇d the two-dimensional discrete gradient operator, which is non-differentiable, and ∥ · ∥ 1 is the ℓ1 norm. The full posterior is therefore of the form, 
+
+πθ (x) = pθ (x | y) ∝ exp 
+
+
+
+− 12σ2 ∥y − Bx ∥22 − eθ TV( x) + log C(θ)
+
+
+
+,
+
+where y is considered as fixed data. We may derive the gradient of the negative log-marginal likelihood using Fisher’s identity, 
+
+∇θ ℓ(θ) = −Ex∼πθ [∇θ log pθ (x, y )] .
+
+Since the log-likelihood 
+
+log p(y | x) = − 12σ2 ∥y − Bx ∥22 + constant is independent of θ, we have 
+
+∇θ log pθ (x, y ) = dx − eθ TV( x),
+
+and hence 
+
+∇θ ℓ(θ) = Ex∼πθ [eθ TV( x)] − dx.
+
+Thus the objective function is expressed as in (1) by an expectation over πθ with F (θ, x ) = eθ TV (x)−dx.
+
+C.1.1 Proximal Dynamics 
+
+Sampling from πθ for a fixed θ is challenging as the total-variation, TV (x), is non-differentiable. However, following Encinar et al. (2025), particle algorithms applicable to the MMLE problem may be extended to non-differentiable pθ (x, y ). In particular, letting 
+
+E(θ, x ) := 12σ2 ∥y − Bx ∥2 + eθ TV( x) − dxθ
+
+such that πθ (x) ∝ exp (−E(θ, x )) , we decompose E(θ, x ) = g1(θ, x ) + g2(θ, x ) with g1, g 2 convex lower-bounded functions, g1 differentiable and g2 proper and lower semi-continuous. We now replace g2 with the λ-MY approximation denoted by gλ 
+
+> 2
+
+and defined, 
+
+gλ 
+
+> 2
+
+(x) := min 
+
+> x′∈Rdx
+
+
+
+g2(x′) + 12λ ∥x′ − x∥2
+
+
+
+= g2
+
+ prox λg2 (x) + 12λ prox λg2 (x) − x 2 ,
+
+where prox λg2 (x) is the λ-proximity mapping or proximal operator function of g2 for any λ > 0. We denote the full MY approximation with Eλ(θ, x ) = g1(θ, x ) + gλ 
+
+> 2
+
+(θ, x ), which is always differentiable and converges pointwise to E(θ, x ) in the limit λ → 0. The gradient is given for all x ∈ Rd by 
+
+∇xEλ(θ, x ) = ∇xg1(x) + 1
+
+λ (x − prox λg2 (θ, x )) ,
+
+27 where we treat θ as fixed in the minimisation over Rdx . Since E(θ, x ) is continuously differentiable with respect to θ, we may take ∇θ E gradients directly. In our setting we have g1 = ∥y − Bx ∥22/2σ2 − dxθ
+
+and g2 = eθ TV (x). Now g1 is differentiable, while g2 is proper and lower semi-continuous, allowing us to write the explicit gradients, 
+
+∇xEλ(θ, x ) = 1
+
+σ2 BT (Bx − y) + 1
+
+λ
+
+ x − prox λeθ TV (θ, x ) , (22) 
+
+∇θ E(θ, x ) = eθ TV( x) − dx, (23) with 
+
+prox λeθ TV (θ, x ) = argmin 
+
+> x′∈Rdx
+
+
+
+eθ TV( x′) + 12λ ∥x′ − x∥2
+
+
+
+.
+
+Using these approximations and noting that for MMLE we have F (θ, x ) = ∇θ E(θ, x ), we may write the proximal versions of the PGD particle systems with, 
+
+dθNt = − 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+∇θ E(θNt , X it )d t, 
+
+dXit = −∇ xEλ(θt, X it )d t + √2d Bit ,
+
+which we substitute with the gradient expressions (22) –(23) . We discretise the system with a Lie-Trotter splitting of the parameter and sampling dynamics, running a forward Euler step for a parameter update followed by an Euler-Maruyama step for a sampling update. This is our MYPGD baseline as introduced in Encinar et al. (2025). Similarly, we obtain the proximal version of HOL-MYPGD ,
+
+dθt = − 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+∇θ E(θt, X it )d t, 
+
+dXit = U it dt, 
+
+dU it = −∇ xEλ(θt, X it )d t + γV it dt, 
+
+dV it = −γU it dt − αV it dt + √2αdBt,
+
+where α, γ > 0, and Brownian motions {Bi}Ni=1 are independent. We discretise the higher-order Langevin parts using the splitting scheme introduced in Mou et al. (2021) and discuss a full splitting scheme discretisation in the following section. We note that we apply the MY approximation only to the sampling dynamics, while the parameter update uses the original gradient ∇θ E(θ, x ). This yields the hybrid dynamics used by Encinar et al. (2025). For any finite λ, the parameter update is evaluated using particles approximating the smoothed law πλθ ∝ e−Eλ(θ, ·), and thus incurs a small smoothing bias. 
+
+C.1.2 HOL-MYPGD Discretisation 
+
+We consider a Lie-Trotter splitting between the parameter updates and the sampling updates like with the MYPGD implementation. In particular, at each iteration we sequentially step parameters using a forward Euler scheme followed by a sampling step following the discretisation scheme in Mou et al. (2021). This scheme splits the higher-order Langevin dynamics into an exactly solvable linear evolution followed by a high-order quadrature approximation of an integrated non-linear gradient term 
+
+∇xEλ. Introducing the time discretisation 0 = t0 < t 1 < · · · < t K = T with tk = kh and step-size 
+
+h = T /K we denote ( ˆXin, ˆU in, ˆV in) the discrete time approximations of (Xitn , U itn , V itn ). Then we have 28 the Gaussian update rule, 
+
+ˆθn+1 = ˆθn − hN
+
+> N
+
+X
+
+> i=1
+
+∇θ E(ˆθn, ˆXin),
+
+ˆXin+1 = ˆXin − h
+
+2 ∆Eλ ˆθn+1 , ˆXin, ˆU in
+
+
+
++ μ12 ˆU in + μ13 ˆV in + ξi, 1 
+
+> n
+
+,
+
+ˆU in+1 = −∆Eλ ˆθn+1 , ˆXin, ˆU in
+
+
+
++ μ22 ˆU in + μ23 ˆV in + ξi, 2 
+
+> n
+
+,
+
+ˆV in+1 = μ31 ∆Eλ ˆθn+1 , ˆXin, ˆU in
+
+
+
++ μ32 ˆU in + μ33 ˆV in + ξi, 3 
+
+> n
+
+,
+
+with ξin = ( ξi, 1 
+
+> n
+
+, ξ i, 2 
+
+> n
+
+, ξ i, 3 
+
+> n
+
+) ∼ N (0 , Σ) . The vector ∆Eλ(θ, x, u ) is chosen to be an approximation of the integral R h 
+
+> 0
+
+∇xEλ(θ, x + ut )dt . We note that in Mou et al. (2021), a Lagrange interpolation is used for a high order approximation with high-order mixing guarantees, however we choose to take the simple endpoint approximation, ∆Eλ(θ, x, u ) = h∇xEλ(θ, x ) for a fair comparison against MYPGD . We refer the reader to Section 3 of Mou et al. (2021) for a more detailed review and derivation of the scheme. The constants μ12 –μ33 are defined explicitly, 
+
+μ12 =
+
+
+
+1 + γ2
+
+> α2
+
+
+
+h − γ2 
+
+> 2α
+
+h2 − γ2
+
+> α3
+
+ 1 − e−αh  , μ13 = γα h − γα2
+
+ 1 − e−αh  ,μ22 = 1 + γ2
+
+> α2
+
+ 1 − αh − e−αh  , μ23 = γα
+
+ 1 − e−αh  ,μ31 = γα − γα2h
+
+ 1 − e−αh  , μ32 = γ3 
+
+> α2
+
+h + γ3 
+
+> α2
+
+he −αh −
+
+ 2γ3 
+
+> α3
+
++ γα
+
+  1 − e−αh  ,μ33 = e−αh 
+
+1 + γ2 
+
+> α
+
+h
+
+
+
+− γ2
+
+> α2
+
+ 1 − e−αh  ,
+
+and Σ = 
+
+σ11 Idx σ12 Idx σ13 Idx
+
+σ12 Idx σ22 Idx σ23 Idx
+
+σ13 Idx σ23 Idx σ33 Idx
+
+ with, 
+
+σ11 = 2γ2 
+
+> α3
+
+h − 2γ2 
+
+> α2
+
+h2 + 2γ2 
+
+> 3α
+
+h3 − 4γ2 
+
+> α3
+
+he −αh + γ2
+
+> α4
+
+ 1 − e−2αh  ,σ12 = γ2
+
+> α3
+
+ αh − 1 + e−αh 2 ,σ13 = − γ3 
+
+> α2
+
+h2  2e−αh + 1  +
+
+ 2γ3 
+
+> α3
+
+− γ3 
+
+> α3
+
+e−2αh − 4γ3 
+
+> α3
+
+e−αh − 2γα e−αh 
+
+h +
+
+ 3γ3 
+
+> 2α4
+
++ γα2
+
+  1 − e−2αh  ,σ22 = 2γ2 
+
+> α
+
+h − 4γ2
+
+> α2
+
+ 1 − e−αh  + γ2
+
+> α2
+
+ 1 − e−2αh  ,σ23 = γ3
+
+> α2
+
+ e−2αh − 2e−αh − 2 h + 3γ3
+
+> 2α3
+
+ e−2αh − 4e−αh + 3  + γα
+
+ 1 − e−αh 2 ,σ33 = − γ4 
+
+> α2
+
+h2e−2αh +
+
+
+
+− 2γ2 
+
+> α
+
+e−2αh + γ4
+
+> α3
+
+ −3e−2αh + 4 e−αh + 2 
+
+h
+
++ γ4
+
+> 2α4
+
+ −5e−2αh + 16 e−αh − 11  + γ2
+
+> α2
+
+ −3e−2αh + 4 e−αh − 1 + 1 − e−2αh .
+
+C.1.3 Image Deblurring Experimental Details 
+
+We present two distinct blurring setups A and B with different blur and noise severity. Setup A is a severe blurring with patch size P = 10 and added noise σ = 1 .0, whereas setup B is a less severe blurring with patch size P = 8 and σ = 0 .8. We apply the problem to a variety of black and white images of varying sizes, which we scale to approximately the same dimension dx.Across all setups we set N = 20 particles with independent initial states 
+
+Xi
+
+> 0
+> i.i.d
+
+∼ N (50 1dx , 30 2Idx ), i = 1 , . . . , N, 
+
+29 where each component is drawn from a Gaussian distribution with mean 50 and standard deviation 
+
+30 and set θ0 = −15 . We run K = 6000 iterations with a shared step-size h = 0 .04 and the Moreau-envelope parameter λ = 0 .4. We evaluate the proximal map using a Douglas-Rachford TV method from the proxTV package in Python. We report the evolution of the θ estimate, mean squared error ( MSE ), structural similarity index (SSIM ) between the averaged particle cloud and ground-truth images. To tune the hyper-parameters 
+
+α, γ for the HOL-MYPGD method, we perform a grid search to achieve the best SSIM after K
+
+iterations for setups A and B for an example test image. We report for setup A the best parameters 
+
+α = 4 .0, γ = 0 .6 and for setup B we take α = 4 .2, γ = 0 .7. We note that the hyper-parameters are not tuned for each image, but rather for a single image in each setup. In addition, we observed little run-to-run variability when changing seeds which we attribute to the particle averaging. We also note that the graphs in figures 1, 6, 8, and 10 are evaluated on the averaged particle cloud, whilst figures 2, 5, 7, and 9 are produced by a single particle. Original Image Blurred Image MYPGD HOL-MYPGD 
+
+Figure 5: Setup B deblurring image comparison 1. 0 2000 4000 6000        
+
+> Iteration
+> 14
+> 12
+> 10
+> 8
+> 6
+> 4
+> estimate
+> 02000 4000 6000
+> Iteration
+> 10 3
+> MSE
+> Particle-cloud MSE
+> 02000 4000 6000
+> Iteration
+> 0.2
+> 0.4
+> 0.6
+> SSIM
+> Particle-cloud SSIM
+> MYPGD HOL-MYPGD
+
+Figure 6: Setup B deblurring convergence comparison 1. Original Image Blurred Image MYPGD HOL-MYPGD 
+
+Figure 7: Setup B deblurring image comparison 2. 30 0 2000 4000 6000 
+
+> Iteration
+> 14
+> 12
+> 10
+> 8
+> 6
+> 4
+
+estimate    
+
+> 02000 4000 6000
+> Iteration
+> 10 3
+> MSE
+
+Particle-cloud MSE    
+
+> 02000 4000 6000
+> Iteration
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> SSIM
+
+Particle-cloud SSIM 
+
+MYPGD HOL-MYPGD Figure 8: Setup B deblurring convergence comparison 2. Original Image Blurred Image MYPGD HOL-MYPGD 
+
+Figure 9: Setup B deblurring image comparison 3. 0 2000 4000 6000 
+
+> Iteration
+> 14
+> 12
+> 10
+> 8
+> 6
+> 4
+
+estimate    
+
+> 02000 4000 6000
+> Iteration
+> 10 3
+> 10 4
+> MSE
+
+Particle-cloud MSE    
+
+> 02000 4000 6000
+> Iteration
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> SSIM
+
+Particle-cloud SSIM 
+
+MYPGD HOL-MYPGD 
+
+Figure 10: Setup B deblurring convergence comparison 3. 31 C.2 Momentum Mean-Field Particle Optimiser 
+
+Here, we discuss the M-MFPO algorithm in Section 5.2, motivate a discretisation and present details on the EBM training experiment. 
+
+C.2.1 M-MFPO Discretisation 
+
+We begin by constructing a discretisation to provide a concrete algorithm for our framework. A naive Euler-Maruyama discretisation of ULD can have poor stability and obscure the practical benefits of momentum; related limitations have been studied for underdamped samplers Ma et al. (2021). Indeed, preliminary experimental testing of the Euler-Maruyama discretisation yielded poor stability requiring small step-sizes and hence slow convergence. Instead we propose a splitting scheme inspired by the OBABO scheme of Leimkuhler and Matthews (2013) for the discretisation of the underdamped Langevin dynamics. We consider the following splitting of the particle dynamics (16) generator into, 
+
+
+
+dθ t
+
+dm t
+
+dX it
+
+dV it
+
+ =
+
+
+
+mtdt 
+
+000
+
+| {z }
+
+> A1
+
++
+
+
+
+0
+
+−N −1 PNi=1 F (θt, X it )dt 
+
+00
+
+| {z }
+
+> B1
+
++
+
+
+
+0
+
+−γm tdt 
+
+00
+
+| {z }
+
+> L
+
++
+
+
+
+00
+
+V it dt 
+
+0
+
+| {z }
+
+> A2
+
++
+
+
+
+000
+
+−∇ xE(θt, X it )dt 
+
+| {z }
+
+> B2
+
++
+
+
+
+000
+
+−γV it dt + √2γdB it
+
+| {z }
+
+> O
+
+.
+
+Here, L is linear and O is an Ornstein-Uhlenbeck part, which we know the solution exactly. The remaining parts A1 , A2 , B1 and B2 are deterministic and may be approximated with a forward Euler step. The frictionless exact-gradient parameter dynamics described by 
+
+dθt = mtdt, dmt = −∇ θ ℓ(θt)d t
+
+are Hamiltonian with 
+
+Hθ (θ, m ) = 12 ∥m∥2 + ℓ(θ),
+
+In the mean-field and particle systems, with corresponding A1 and B1 parts, the objective gradient is approximated and is not generally ∇θ ℓ(θ) away from sampler equilibrium. For frozen θ, the sampler dynamics, given by the A2 and B2 parts, is Hamiltonian for each (Xi, V i) and a full Hamiltonian is given by 
+
+HX,θ (X1, ..., X N , V 1, ..., V N ) = 12
+
+> N
+
+X
+
+> i=1
+
+∥V i∥2 +
+
+> N
+
+X
+
+> i=1
+
+E(θ, X it ).
+
+We note that the continuous time results in this paper do not establish any discretisation related guarantees, which we leave for future work. We now construct a Strang-splitting scheme by combining the exact solutions of the L and O
+
+parts with a forward Euler step for the remaining parts. We introduce the time discretisation 
+
+0 = t0 < t 1 < · · · < t K = T with tk = kh and step-size h = T /K . Defining η = exp 
+
+
+
+− γh 
+
+> 2
+
+
+
+and 32 ¯F  θ, X [N ] := 1
+
+> N
+
+PNi=1 F (θ, X i) for clarity, we opt for the following order of updates, 
+
+˜V in = η ˆV in + p1 − η2ξXi,1 
+
+> n
+
+, ˜mn = η ˆmn, (O,L )˜V in+ 12
+
+= ˜V in − h
+
+2 ∇xE
+
+ˆθn, ˆXin
+
+
+
+, ˜mn+ 12 = ˜ mn − h
+
+2 ¯F
+
+ˆθn, ˆX[N ]
+
+> n
+
+
+
+, (B)ˆXin+1 = ˆXin + h ˜V in+ 12
+
+, ˆθn+1 = ˆθn + h ˜mn+ 12 , (A)˜mn+1 = ˜ mn+ 12 − h
+
+2 ¯F
+
+ˆθn+1 , ˆX[N ]
+
+> n+1
+
+
+
+, ˜V in+1 = ˜V in+ 12
+
+− h
+
+2 ∇xE
+
+ˆθn+1 , ˆXin+1 
+
+
+
+, (B)ˆmn+1 = η ˜mn+1 , ˆV in+1 = η ˜V in+1 + p1 − η2ξXi,2 
+
+> n
+
+, (O,L )
+
+(24) where updates are read in order from left to right, top to bottom. We denote ˆθn, ˆmn, ˆXin, ˆV in the approximations of θtn , m tn , X itn , V itn respectively and ξXi,1 
+
+> n
+
+, ξ Xi,2 
+
+> n
+
+are independent standard Gaussian random variables. The order of updates is not unique and we may swap the orders of any update within each row without changing the scheme. The linear L flow is split symmetrically alongside the O
+
+flow. We note that (24) features alternating updates between the parameter and particles. Ignoring parameter updates, the sequential particle updates are exactly the OBABO scheme for the underdamped Langevin dynamics with frozen parameters; similarly, ignoring particle updates, the sequential parameter updates are exactly a Strang splitting scheme of the Heavy Ball dynamics with frozen particles. We note that discretisation may be viewed this way in special regimes when θ is close to a fixed point of the optimiser and Xi are close to equilibrium. However in general the coupling between the A,B parameter and particle dynamics cannot be reduced to a single Hamiltonian system and separated discretisation steps are needed. We show that both the continuous-time system generated by the A and B parts and the discrete-time system generated by the B1,A,B2 parts of the discretisation have volume preserving flows, which motivates our choice of discretisation scheme. 
+
+Lemma 1 (Volume preservation of schemes) . Consider the ODE obtained by taking the A, B parts of (16) . Assuming the associated flow is globally defined and the vector field in C1 is continuously differentiable, then the flow is volume preserving. In particular, let φt denote the flow generated by the ODE, then 
+
+det Dφ t(z) = 1 ,
+
+where D denotes the total derivative and for any z := ( θ, m, X, V ) and t > 0.Moreover, let Φh be the one-step map described by the B,A sections of the discretisation (24) . Then 
+
+Φh is also volume preserving. In particular, 
+
+det DΦh(z) = 1 ,
+
+for any z := ( θ, m, X, V ) and h the step-size. Proof. Using Liouville’s formula, it is a classical result that the ODE, ˙x = f (x), is volume preserving if and only if div( f ) ≡ 0. For our system (16), the A,B sub-system is given by, 
+
+dθt = mtdt, 
+
+dmt = − 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+F  θt, X it
+
+ dt, 
+
+dXit = V it dt, 
+
+dV it = −∇ xE(θt, X it )d t. 
+
+(25) From this it is clear the divergence of the vector-field is zero as each derivative is zero and the system is volume preserving. We now show the discretisation of the A,B subsystem in (24) is also volume 33 preserving. Given a one-step scheme, Φh : Rdθ +dm × (Rdx+dv )N → Rdθ +dm × (Rdx+dv )N approximating the true flow φh of (25) over a time interval of length h, assume that Φh is a C1-diffeomorphism. It is volume preserving if and only if 
+
+|det DΦh(θ, m, X, V )| = 1 
+
+for every (θ, m, X, V ). For the splitting maps considered below, the determinant is in fact equal to one. We show this by splitting the main flow into the composition of multiple sub-flows. From the chain rule, it is enough to check that each sub-flow is volume preserving. Taking Φh to be the one-step map associated with the B,A,B section of (24), we consider the composition, 
+
+Φh = Φ (1)  
+
+> h
+
+◦ Φ(2)  
+
+> h
+
+◦ Φ(1)  
+
+> h
+
+,
+
+with the one-step sub-maps, 
+
+Φ(1) 
+
+> h
+
+
+
+θmXi
+
+V i
+
+ =
+
+
+
+θm − h 
+
+> 2
+
+¯F  θ, X [N ]
+
+Xi
+
+V i − h 
+
+> 2
+
+∇xE(θ, X i)
+
+ , Φ(2) 
+
+> h
+
+
+
+θmXi
+
+V i
+
+ =
+
+
+
+θ + hm mXi + hV i
+
+V i
+
+ .
+
+Taking derivatives we see that DΦ(1)  
+
+> h
+
+and DΦ(2)  
+
+> h
+
+are both unit triangular matrices (up to row and column exchanges) and hence, det DΦ(1)  
+
+> h
+
+= det DΦ(2)  
+
+> h
+
+= 1 so each component of the composition is volume preserving and hence the A,B subsystem discretisation is also volume preserving. With a typical ULD in which the A,B parts describe a Hamiltonian system, whose generated flow is symplectic and integrators are designed to also be symplectic. In our case, the A,B parts no longer form a single Hamiltonian system, but the generated flow is still volume preserving and finding a discretisation scheme that is also volume preserving helps respect the underlying structure of the ODE. Other orderings of parameter and particle updates are also valid. For instance, one could alternate between a full step of the parameters and a full step of the particles. The reason we decide the interweaving updates in (24) is one of computational efficiency. The computational bottleneck in these schemes is usually the expensive computations and evaluations of the gradients of the energy and objective functions, with the cost of such gradient evaluations also scaling with the size of the model. We observe in (24) and other second order schemes that gradient evaluations are required twice in one iteration- once before the A step and once after. However this issue may be circumvented by saving the second gradient evaluation at the end of one iteration and re-using it for the first gradient evaluation at the start of the next iteration, essentially only requiring one gradient evaluation per iteration. Note that this is true provided the A1,A2 updates are sequential between the two sets of B1,B2 updates. This would not be possible if we were to naively update particles and parameters in series. We would also like to mention that our scheme admits other formulations such as using the BAOAB scheme with the same benefits as our proposed OBABO-like scheme and may also be written in the same way. Whilst other practical integrators for ULD are known and widely used, such as the (Euler) Exponential Integrator used in the MPGD discretisation (Lim et al., 2024), we found empirically that the OBABO-like splitting scheme to be the most stable and performative whilst admitting larger step-sizes. The 
+
+BAB sequence helps preserves the geometry and structure of the continuous-time dynamics and widely used to discretise Hamiltonian systems, in which we express a resemblance to. In the Hamiltonian setting the B1A1B1 system with fixed particles or the B2A2B2 system with fixed parameters is also more commonly known as the leap-frog algorithm and a key component of Hamiltonian Monte Carlo (HMC ). Even at the level of the full coupled system, the second-order full-system dynamics admits a natural decomposition into interpretable subcomponents that can be updated separately, which motivates the use of a splitting scheme. In particular the splitting of the OBABO scheme preserves this operator structure, respecting the position-momentum decomposition present. 34 C.2.2 Hyperparameter Tuning 
+
+The choices of friction γ and step size h are central to the stability and convergence of the algorithm; principled tuning remains open. Because the parameter and particle updates play different roles, an implementation may use separate values (γθ , h θ ) and (γX , h X ) for the two subsystems. In (24) , friction enters the split flows through the momentum coefficient γh . For fixed h > 0, the deterministic interwoven leapfrog scheme is obtained in the limit γ ↓ 0. Conversely, as γh → ∞ , one has η → 0: the particle momenta are replaced by independent standard Gaussian draws, whereas the parameter momentum is set to zero because the L flow has no noise. In this limit, 
+
+bXin+1 = bXin − h2
+
+2 ∇xE(bθn, bXin) + hξ Xi,1 
+
+> n
+
+, bθn+1 = bθn − h2
+
+2 ¯F (bθn, bX[N ] 
+
+> n
+
+).
+
+Thus the position and parameter updates reduce respectively to an Euler–Maruyama step for over-damped Langevin dynamics and a gradient-descent step, both with step size h2/2.
+
+C.2.3 2D EBM Training Experimental Details 
+
+Here we outline the details regarding the energy based model training. Given an EBM of the form, 
+
+pθ (x) = 1
+
+Cθ
+
+e−E(θ,x ), Cθ =
+
+Z
+
+e−E(θ,x )dx, (26) we consider the diffusion limit of the PCD algorithm given in Oliva et al. (2025) and adapt the system of equations for under-damped Langevin dynamics. After approximating the expectation 
+
+EX∼pθ [∇θ E(θ, X )] in the exact maximum likelihood gradient, we have the particle approximation, 
+
+∇θ ℓ ≈ − 1
+
+N
+
+> N
+
+X
+
+> n=1
+
+∇θ E(θ, X n) + 1
+
+M
+
+> M
+
+X
+
+> m=1
+
+∇θ E(θ, y m),
+
+with particles {Xn}Nn=1 and fixed data {ym}Mm=1 . In our framework, this may be written with 
+
+F (θ, X i) = −∇ θ E(θ, X i) + 1
+
+M
+
+> M
+
+X
+
+> m=1
+
+∇θ E(θ, y m).
+
+We parametrise the energy function used for training in the 2D synthetic datasets experiments with a 3 hidden-layer, 128-unit SiLU network. Throughout training we assume Cθ < ∞ such that the model is a valid density for every parameter value we visit. We pick three different synthetic datasets to train on. Each has closed form density functions and are described below, 
+
+Rings . We consider two concentric rings with different radii but sharing the same total densities along their circumferences. In polar coordinates we define the independent distributions, 
+
+pr (r) = 12 Ntr (r; r1, σ 2, [0 , ∞)) + 12 Ntr (r; r2, σ 2, [0 , ∞)) , r ≥ 0.
+
+where Ntr (· ; μ, σ, [0 , ∞)) is a truncated Gaussian with support on the non-negative reals [0 , ∞).Independently draw A ∼ Uniform (0 , 2π) and set x = r(cos A, sin A). The rings distribution is exactly the Cartesian parametrisation, 
+
+p(x) = 14π∥x∥
+
+ Ntr (∥x∥; r1, σ 2, [0 , ∞)) + Ntr (∥x∥; r2, σ 2, [0 , ∞))  .
+
+We note for large enough r1, r 2 and small enough σ, the truncation effects are negligible and we may simply write the distributions with regular Gaussians, giving us closed-form expressions for the score. Here, we take r1 = 1 , r 2 = 2 .5 and σ = 0 .2.35 Beads . We consider a mixture of isotropic Gaussians centred equiradially from the origin. For n
+
+Gaussians we define the density, 
+
+p(x) = 1
+
+n
+
+> n
+
+X
+
+> k=1
+
+N (x; lk, σ 2)
+
+with lk = (sin(2 πk/n ), cos(2 πk/n )) . Here we take n = 5 and σ = 0 .1.
+
+Lattice . We consider a mixture of isotropic Gaussians centred on the points of a n×n lattice. Denoting these points mk = ( ⌊k/n ⌋, k − n⌊k/n ⌋) for k = 0 , ..., n 2 − 1 we have the density, 
+
+p(x) = 1
+
+n2
+
+> n2−1
+
+X
+
+> k=0
+
+N (x; αm k, σ 2),
+
+where α is some scaling parameter. We take n = 3 and α = √2 and σ = √2/10 . These distributions can be sampled from exactly with built-in functions to create training datasets. We generate 10,000 samples for each dataset. To train the 2D synthetic datasets, we compare the different methods below, 
+
+• PCD - We implement persistent contrastive divergence as a baseline. Particles are updated with a ULA kernel step, whilst parameters are updated with gradient descent. 
+
+• M-MFPO - We accelerate by updating particles and parameters with under-damped Langevin using our proposed discretisation. For each method we use a set of 10 , 000 particles, matching the number of data-points, all initialised from i.i.d standard Gaussians. For M-MFPO , we initialise particle momenta from i.i.d standard Gaussians and initialise parameter momenta with zeros. For the performance metric, we estimate the Fisher divergence as it does not require computing the normalising constant of the learnt energy and we have access to the score of the data distribution. We compute the empirical Fisher divergence at each iteration with Meval = 10 , 000 samples from the data distribution, 
+
+bDF(θ) = 12Meval 
+
+> Meval
+
+X
+
+> m=1
+
+∥∇ x log pdata (zm) + ∇xE(θ, z m)∥2 , zm ∼ pdata .
+
+If the model family contains pdata and the usual score-identifiability and integrability conditions hold, the Fisher divergence shares the same zero at pθ = pdata with KL (pdata ∥pθ ). We do not claim that their minimisers coincide under model misspecification or that the minimising neural-network parameter is unique. We keep a fixed computational budget for each method, which for us is equivalent to a fixed number of training iterations since each iteration uses the same number of energy evaluations and gradient evaluations. We begin training with a shared step-size between parameter and particle updates for both PCD and M-MFPO . In practice M-MFPO employs larger step-sizes and hence greater training fluctuations. So we also design learning rate decay schedules on the parameter step-sizes that decrease over iterations. In particular for the lattice dataset, we use the linear decay, lr (t) = 
+
+
+
+h0 t ≤ L, h0
+
+ T −tT −L
+
+
+
++ hT
+
+ t−LT −L
+
+
+
+L < t < T, hT t ≥ T, 
+
+(27) where h0, h T are hyperparameters starting and ending step-sizes, L, T are times we pick to decay between. In general these are all hyperparameters but with the goal of damping the training fluctuations, 36 extensive tuning is not required. For the lattice dataset, we take hT = h0/10 , T = 400 , 000 to be the fixed number of training iterations and L = 6 , 000 to accommodate the fast convergence at the start. For the rings and beads datasets we do not use any learning rate decay and run for T = 100 , 000 
+
+iterations. We run the training 25 times on different seeds and report the average Fisher divergence with standard-deviation error envelopes across iterations. For the baseline PCD method, we only have step-size as a hyperparameter, whilst for M-MFPO we have both step-size and friction. When tuning, there is a trade-off between speed and accuracy, with smaller step-sizes typically yielding a lower Fisher divergence at the cost of slower convergence. We plot in figures 11 and 12 the effects of hyperparameters for training the beads dataset on both the speed of convergence, which we measure with the area under the curve ( AOC ) and the accuracy at the end of training, which we measure by an averaged final Fisher divergence ( F D ∞). We record the Fisher divergence every 1000 iterations over 100,000 iterations and evaluate the AOC as the sum and 
+
+F D ∞ as the average of the last 20 recordings. We seek the hyperparameters producing both the lowest 
+
+AOC and F D ∞.0.006 0.008 0.010 0.012 0.014   
+
+> Step Size
+> 10000 12000 14000 16000 18000 20000 AOC 246810 12 FD ∞020000 40000
+> Training Iterations
+> 0.006 0.008 0.010 0.012 0.014
+> Step Size
+> 1.57.513 .519 .525 .531 .537 .543 .5
+> FD
+
+Figure 11: Effect of step-size on convergence ( AOC ) and converged-value ( F D ∞) for PCD (left) and contour plot of Fisher divergence across iterations for a range of step-sizes (right) We see in figure 11 increasing step-size leads to a worse convergence and decreasing step-size leads to much slower convergence. There is a minor trade off between the AOC and F D ∞ if both are to be minimised and we take the step-size h = 0 .008 in the final comparison. We pick optimal 0.025 0.05 0.075 0.1 0.125 0.15 0.175 Step Size 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0 10.0 Friction 10874 6426 4696 3694 3944 5449 nan 13121 6455 4674 4140 3576 4169 nan 12969 7201 5202 4262 4047 5227 nan 15161 8181 5709 4530 4115 5031 nan 17531 9423 6466 5047 4437 5079 nan 19922 10689 7281 5636 4885 5339 nan 22258 11962 8107 6211 5329 5697 nan 24500 13208 8938 6769 5752 6027 nan 26510 14421 9746 7306 6152 6332 11144 0.025 0.05 0.075 0.1 0.125 0.15 0.175 Step Size 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0 10.0 Friction 2.29 1.52 1.35 1.16 1.85 5.05 nan 2.03 0.96 0.75 0.99 1.24 2.52 nan 2.14 1.32 1.07 1.13 1.61 4.06 nan 2.17 1.08 0.75 0.77 1.14 3.11 nan 2.38 1.17 0.73 0.70 0.96 2.51 nan 2.76 1.32 0.80 0.72 0.97 2.16 nan 3.32 1.47 0.89 0.75 0.98 2.17 nan 4.39 1.62 0.99 0.80 1.00 2.20 nan 8.67 1.76 1.09 0.84 1.03 2.22 6.87 
+
+Figure 12: Effect of step-size and friction on the AOC (left) and F D ∞ (right). Values in black are lower than the lowest observed corresponding value in the overdamped PCD across all step-sizes (lower is better). hyperparameters for both methods from the sweeps whilst also ensuring long-term stability of the training. These are summarised in table 1. 37 Table 1: List of hyperparameters used in the 2D EBM training experiments for PCD and M-MFPO 
+
+methods across different datasets. Note that we use a linear step-size schedule for the lattice dataset and the displayed step-size is the initial step-size. Dataset PCD M-MFPO 
+
+step-size step-size friction 
+
+rings 0.016 0.19 5.5 
+
+beads 0.01 0.1 8.0 
+
+lattice 0.004 0.075 6.0 38

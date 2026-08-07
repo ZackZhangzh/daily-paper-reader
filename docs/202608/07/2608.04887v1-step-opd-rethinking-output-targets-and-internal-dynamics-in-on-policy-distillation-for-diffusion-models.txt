@@ -1,0 +1,509 @@
+Title: STEP-OPD: Rethinking Output Targets and Internal Dynamics in On-Policy Distillation for Diffusion Models
+
+URL Source: https://arxiv.org/pdf/2608.04887v1
+
+Published Time: Thu, 06 Aug 2026 01:20:21 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# STEP-OPD: Rethinking Output Targets and Internal Dynamics in On-Policy Distillation for Diffusion Models 
+
+## Qingyan Wei 1∗, Guangzhao Li 1, 3 ∗, Xiaobing Tu 2, Yinggui Wang 2, Xiantao Zhang 2, Jinkui Ren 2,Xiaohong Liu 1, 3 , Linfeng Zhang 1†
+
+> 1
+
+Shanghai Jiao Tong University 2Alibaba Group 3Shanghai Innovation Institute 
+
+Homepage: https://stepopd.github.io 
+
+Abstract 
+
+On-policy distillation (OPD) has become an effective ap-proach for consolidating multiple task-specialized image gen-eration models into a single student. However, existing OPD methods optimize the student mainly to match the teacher’s output velocity, making the teacher the upper limit of the optimization objective. While output-level supervision alone leaves the student’s blockwise representation evolution under-constrained, which weakens the transfer of capabilities that must be progressively developed across layers. We propose 
+
+STEP-OPD , an on-policy distillation framework for image generation that extends the student’s learning target beyond the teacher and introduces explicit constraints on its internal representation evolution. Instead of treating the teacher as the final target, we use the velocity difference between each task-specific teacher and the shared base model as a direction for further learning and add a scaled version of this difference to the teacher velocity. In addition, we align the direction and magnitude of representation changes between the student and teacher, enabling the student to learn how representations are progressively transformed across network blocks. Experi-ments on compositional alignment, text rendering, and human preference show that our method consistently improves Stan-dard OPD methods. In particular, it increases the GenEval score of DiffusionOPD from 0.927 to 0.961 , while also im-proving OCR and all preference-based metrics. The resulting unified student surpasses the corresponding single-task teach-ers across all three capability groups, showing that output extrapolation enables beyond-teacher learning. And represen-tation change alignment provides complementary guidance for the student’s internal transformations. 
+
+## Introduction 
+
+On-policy distillation (OPD) (Agarwal et al. 2024; Song and Zheng 2026; Team et al. 2026; Zhou et al. 2026; Li et al. 2026; Fang et al. 2026) has recently emerged as an effective post-training approach for image generation. Recent studies show that the capabilities of multiple task-specialized diffu-sion or flow models can be consolidated into a single student model through supervision on the student’s own denoising trajectories. This paradigm separates expert training based on a single reward from multi task capability integration, thereby resolving reward conflicts and optimization imbal-ances (Chen et al. 2026). Moreover, by querying teachers at states visited by the student, OPD for image generation pro-vides dense supervision throughout the denoising process 
+
+> ∗
+
+These authors contributed equally. 
+
+> †
+
+Corresponding author. Loss    
+
+> Student=Teacher
+> Standard OPD
+> Student > Teacher
+> Output Extrapolation
+> Standard OPD
+> Ours
+> 0.927
+> 0.941
+> 0.959
+> 0.944
+> 0.961
+> 0.946
+> 0.905
+> 0.915
+> 0.925
+> 0.935
+> 0.945
+> 0.955
+> 0.965
+> Geneval OCR
+> DiffusionOPD DiffusionOPD+RCA Ours
+
+Figure 1: Motivation and overview of our method. Up-per Left: Standard OPD reaches its optimum at exact teacher matching, whereas output extrapolation shifts the learning target beyond the teacher. Lower Left: Representa-tion change alignment improves GenEval and OCR without changing the output supervision target, supporting the need for internal representation supervision. Right: Our method achieves the strongest overall performance across composi-tional alignment, text rendering, and human preference. and reduces the mismatch between training and inference trajectories. However, existing OPD for image generation still has two important limitations. First, it is limited to the objective of teacher matching. The student is optimized only to match the teacher’s velocity at each visited state, making the teacher itself the upper bound of learning. As illustrated in the upper-left panel of Fig. 1, for a fixed denoising state, the standard squared velocity-matching loss can be viewed as a quadratic function of the student’s relative position along the teacher-induced direction. Its ideal minimum is attained exactly when the student prediction matches the teacher prediction. Mov-ing beyond the teacher instead increases the loss and pushes the student back toward teacher matching. Therefore, stan-dard OPD does not provide an optimization target for further improvement beyond it. Even with perfect optimization, the student cannot surpass the teacher under this objective. Second, output velocity matching provides only an end-point signal. Since the final velocity aggregates the effects arXiv:2608.04887v1 [cs.CV] 5 Aug 2026 of all network blocks, deviations in the representation up-dates of different layers may offset each other in the final prediction (Yu et al. 2025; Yim et al. 2017). The student can therefore achieve a low output loss through this com-pensation without faithfully learning the teacher’s structured processing of visual tokens and conditioning information. This weakens the transfer of capabilities that must be pro-gressively developed across layers, such as attribute bind-ing, spatial composition, and text rendering. As shown in the lower-left panel of Fig. 1, adding representation change alignment to DiffusionOPD, substantially improves GenEval and OCR even when the output target remains unchanged. This controlled comparison supports our analysis that out-put matching alone leaves the student’s internal representa-tion evolution underconstrained, and that directly supervis-ing blockwise representation changes enables more effective transfer of the teacher’s compositional and text-rendering capabilities. To address these limitations, we propose STEP-OPD , an on-policy distillation framework for image generation that extends the student’s learning target beyond the teacher and provides direct supervision for how representations evolve inside the network. For the first limitation, we introduce out-put extrapolation. Instead of treating the teacher as the final learning target, our method uses the velocity difference be-tween each task teacher and the shared base model to define a direction for further learning, and constructs a target beyond the teacher along this direction by adding it to the teacher ve-locity. For the second limitation, we introduce representation change alignment, which matches the direction and magni-tude of hidden-state changes between consecutive blocks in the student and teacher. We conduct extensive experiments across compositional alignment, text rendering, and human preference. As shown in the right panel of Fig. 1, our method achieves the strongest overall capability profile compared with DiffusionOPD and the task-specialized teachers, with consistent advantages across compositional alignment, text rendering, and human preference. In particular, it increases the GenEval overall score of DiffusionOPD from 0.927 to 0.961, while also im-proving all human-preference metrics. More importantly, it surpasses the corresponding single-task teacher in each ca-pability category, demonstrating effective capability consol-idation and beyond-teacher performance. Our contributions are summarized as follows: 
+
+• We propose STEP-OPD , an on-policy distillation frame-work for image generation that enables the student to learn beyond teacher matching while transferring the teacher’s internal representation dynamics. 
+
+• We introduce output extrapolation, which adds a scaled difference between each task teacher and the shared base model to the teacher velocity, producing a learning target beyond the teacher. We further propose intermediate rep-resentation change alignment, which matches the direc-tion and magnitude of blockwise representation updates between the student and teacher. 
+
+• Extensive experiments show that our method significantly outperforms both DanceOPD and DiffusionOPD. In par-ticular, it increases the GenEval score of DiffusionOPD from 0.927 to 0.961 and enables the unified student to surpass the corresponding single-task teachers across all three capability categories. 
+
+## Related Work 
+
+On-Policy Distillation for Image Generation. On-policy distillation trains the student on its own denoising trajec-tories and queries the teacher at the states visited by the current student. Recent works have extended this paradigm to image generation: DiffusionOPD formulates OPD for dif-fusion processes, Flow-OPD applies it to multi-task align-ment of flow-matching models, DanceOPD distills multiple generative fields through task routing, and D-OPSD studies on-policy self-distillation for continually tuning few-step dif-fusion models (Li et al. 2026; Fang et al. 2026; Zhou et al. 2026; Jiang et al. 2026). These methods reduce the mis-match between training and inference trajectories and pro-vide dense supervision throughout generation. However, they mainly optimize the student to reproduce the teacher’s output field, whereas our method further constructs targets beyond the teacher and introduces representation-level supervision. 
+
+Guidance in Diffusion and Flow Models. Guidance meth-ods steer diffusion generation by modifying the predicted score or velocity field. Classifier guidance uses gradients from an external classifier, while classifier-free guidance combines conditional and unconditional predictions (Dhari-wal and Nichol 2021; Ho and Salimans 2022). Guided Flows extends classifier-free guidance to flow-matching models, Autoguidance constructs a guidance direction from a main model and a weaker version of itself, and subsequent work further studies guidance for flow matching (Zheng et al. 2023; Karras et al. 2024; Feng et al. 2025). These studies show that differences between prediction fields can provide useful di-rections for generation. Unlike inference-time guidance, our method uses the post-RL teacher–base velocity difference during training to construct improved on-policy distillation targets for a single student. 
+
+Representation-Level Distillation. Knowledge distillation was initially developed at the output level and was later extended to intermediate features, attention maps, and re-lations between representations (Hinton, Vinyals, and Dean 2015; Romero et al. 2015; Zagoruyko and Komodakis 2017; Park et al. 2019). For diffusion models, BK-SDM uses fea-ture distillation to train compact Stable Diffusion models, while KOALA emphasizes self-attention features for effi-cient text-to-image generation (Kim et al. 2024; Lee et al. 2024). OPRD further introduces hidden-state alignment on on-policy trajectories for language models (Yang et al. 2026). Unlike prior methods that directly match intermediate rep-resentations, our method aligns how representations evolve across the network by matching the direction and magnitude of inter-layer hidden-state changes between the student and teacher. �0 
+
+> �1
+> ��
+> ��+1
+> ��
+> …
+> …block  ��
+> block  ��
+> block  ��
+> block  ��+�
+> block  ��−�
+> block  ��
+> block  ��
+> block  ��
+> block  ��
+> block  ��+�
+> block  ��−�
+> block  ��
+> Teacher  ��Student  ��
+> ℎ��
+> ��
+
+Direction and Magnitude 
+
+Alignment  
+
+> ……
+> ……
+> ���,�
+> ���,�
+> ��,�
+> ���,�
+> Teacher velocity Base velocity
+
+Output Extrapolation        
+
+> ���,�
+> �풐� 
+> �
+> ���,�−��,�
+> 1Teacher and Base Outputs
+> 2Improvement
+> Direction
+> 3Extrapolated
+> Target
+> 4Match Student and Extrapolated
+> Velocity Target
+> ℎ��
+> ��
+> …
+
+Figure 2: Overview of STEP-OPD. The student generates an on-policy denoising trajectory, and a latent state zi is selected according to the underlying OPD query strategy. Left: Representation Change Alignment. The routed teacher and student process the same state, while STEP-OPD aligns the direction and magnitude of their hidden-state changes across selected adjacent blocks. Right: Task-Specific Output Extrapolation. The velocity difference between the teacher and shared base model defines a task-specific improvement direction, which is scaled and added to the base velocity to construct a beyond-teacher target. Together, the two objectives extend output learning beyond teacher matching while enabling the student to learn how internal representations progressively evolve across Transformer blocks. 
+
+## Method 
+
+Preliminaries 
+
+We consider a shared base model B, a student model Sθ ,and K task-specific teachers {Tk}Kk=1 , where each teacher is obtained by post-training B for a specific task. In on-policy distillation, the current student generates a de-noising trajectory τ = ( z0, . . . , zN ), and the routed teacher is evaluated at the same latent states visited by the student. Let 
+
+pθ (τ | c) and pTk (τ | c) denote the trajectory distributions of the student and teacher, respectively. The trajectory-level reverse KL objective can be decomposed into transition-level KL objectives along the student trajectory: 
+
+Ltraj OPD = Ek, c ∼D k [DKL (pθ (τ | c) ∥ pTk (τ | c))] = E k, c ∼D k   
+
+> τ∼pθ(τ|c)
+
+"N −1X
+
+> i=0
+
+DKL (qθ,i ∥ qTk ,i )
+
+#
+
+. (1) For diffusion and flow-based image generation, a one-step transition can be expressed as pM (zi+1 | zi, c ) = 
+
+N (μM (zi, t i, c ), Σi) , where M ∈ { Sθ , T k}, μM is the transition mean, and Σi is determined by the sampling sched-ule. When the student and teacher use the same schedule, their transition distributions share the same covariance. The transition-level KL therefore reduces to 
+
+DKL (pθ ∥ pTk ) = 12 ∥μSθ − μTk ∥2
+
+> Σ−1
+> i
+
+. (2) In the deterministic flow setting, the next state is fully determined by the predicted velocity field. For a solver step from ti to ti+1 , the transition mean is 
+
+μM (zi, t i, c ) = zi + ∆ ti vM (zi, t i, c ), (3) where vM is the conditional velocity predicted by model M
+
+and ∆ti = ti+1 − ti is the signed solver step size. Since the student and teacher are evaluated at the same state zi, their transition-mean difference satisfies 
+
+μSθ − μTk = ∆ ti (vSθ − vTk ) . (4) Consequently, deterministic transition matching like Dif-fusionOPD (Li et al. 2026) is equivalent to velocity match-ing like DanceOPD (Zhou et al. 2026) up to the known timestep-dependent factor (∆ ti)2. We absorb this factor, to-gether with any global normalization constant, into a non-negative timestep weight wi. To accommodate different teacher-query strategies, let ρk(i | c, τ ) be a distribution over the states of the current student trajectory, satisfying 
+
+ρk(i | c, τ ) ≥ 0, PN −1 
+
+> i=0
+
+ρk(i | c, τ ) = 1 . We addition-ally define ¯zi = sg( zi) as the stop-gradient student state. A query-general output-level OPD objective can be written as 
+
+Lρ 
+
+> OPD
+
+= Ek∼π, c ∼D k   
+
+> τ∼pθ(τ|c)
+
+"N −1X
+
+> i=0
+
+ρk(i | c, τ ) wi vSθ (¯ zi, t i, c )
+
+− sg [ vTk (¯ zi, t i, c )] 22
+
+#
+
+= E k∼π, c ∼D k     
+
+> τ∼pθ(τ|c), I ∼ρk(·| c,τ )
+
+"
+
+wI vSθ (¯ zI , t I , c )
+
+− sg [ vTk (¯ zI , t I , c )] 22
+
+#
+
+.
+
+(5) Here, sg( ·) denotes stop-gradient. The rollout is generated by the current student and refreshed during training, while gra-dients are not propagated through the trajectory-generation solver. The distribution ρk determines where the routed teacher is queried along the student trajectory, whereas wi
+
+determines the local contribution of each queried timestep. Under this formulation, DiffusionOPD is instantiated with the uniform query distribution ρk(i | c, τ ) = 1 /N and the transition-induced weight wi = (∆ ti)2/2, evaluating all N
+
+states along each trajectory. In contrast, DanceOPD uses a semantic query distribution ρk(i | c, τ ) = qsem (i) that as-signs greater probability to states in the low-noise region, sets wi = 1 , and samples a single index I ∼ qsem from each trajectory. This objective provides dense teacher supervision on the student’s own trajectory and reduces the mismatch between training and inference states. However, standard OPD limits the student’s optimization target to matching the teacher and relies only on output velocity supervision, providing insuffi-cient guidance on the internal transformations that produce the final prediction. Building on the same on-policy trajec-tory, we address these limitations through output extrapola-tion and intermediate representation change alignment. 
+
+Task-Specific Output Extrapolation 
+
+Since each task-specific teacher is obtained from the same base model, the difference between their velocity predictions reflects the change introduced by post-training. As illustrated in the right panel of Fig. 2, instead of using the teacher velocity as the final target, we treat this difference between the base model and the teacher as a direction for further learning. For task k, we construct the extrapolated velocity target as 
+
+evk,i (s) = vTk ,i + αk(s) ( vTk ,i − vB,i )= vB,i + (1 + αk(s)) ( vTk ,i − vB,i ) , (6) where all velocity predictions are evaluated at the same 
+
+(zt, t, c ), and αk(s) ≥ 0 is a fixed task-specific extrapo-lation coefficient. When αk(s) = 0 , the target reduces to the original teacher velocity and recovers standard OPD. When 
+
+αk(s) > 0, the target moves beyond the teacher along the base-to-teacher direction. The output objective is then defined as 
+
+Lρ 
+
+> out
+
+= E k∼π, c ∼D k     
+
+> τ∼pθ(τ|c), I ∼ρk(·| c,τ )
+
+"
+
+wI vSθ (¯ zI , t I , c )
+
+− sg [ evk,I (s)] 22
+
+#
+
+.
+
+(7) The base model and teachers remain frozen, and gradients are propagated only through the student. Because different tasks may support different extrapolation strengths, we use a separately selected coefficient for each task. To avoid using an aggressive target before the student has learned the teacher field, the effective coefficient is gradually activated during early training: 
+
+αk(s) = r(s)αmax  
+
+> k
+
+, r(s) ∈ [0 , 1] , (8) where s is the optimization step and r(s) increases linearly from zero to one during a short warm-up period. After warm-up, αk(s) remains fixed at αmax  
+
+> k
+
+.This design turns the teacher from a fixed learning end-point into a task-specific direction for further improvement. It strengthens the changes introduced by task-specific post-training without directly scaling the entire teacher prediction. As a result, the student receives explicit supervision beyond teacher matching without changing the original on-policy rollout and procedure. 
+
+Intermediate Representation Change Alignment 
+
+Output supervision specifies the velocity that the student should predict, but it does not directly constrain how rep-resentations are transformed across the network. We there-fore use the teacher’s intermediate representation changes to guide the student’s internal computation as shown in the left panel of Fig. 2. Let hlM,i ∈ RN ×D denote the hidden representation pro-duced by model M after Transformer block l at the i-th queried state, where N is the number of tokens and D is the hidden dimension. For an adjacent block pair p = ( l0, l 1),we define the inter-layer hidden-state change as 
+
+∆hpM,i = hl1 
+
+> M,i
+
+− hl0
+
+> M,i
+
+, M ∈ { Sθ , T k}. (9) Rather than matching absolute hidden states, this quantity describes how a pair of blocks updates the current repre-sentation. We use non-overlapping adjacent block pairs that jointly cover all Transformer blocks. We align both the direction and magnitude of these rep-resentation changes. Let Norm( ·) denote token-wise RMS normalization over the hidden dimension. The direction loss: 
+
+ℓk,i  
+
+> dir
+
+= 1
+
+|P| 
+
+X
+
+> p∈P
+
+MSE 
+
+
+
+Norm 
+
+
+
+∆hpSθ ,i 
+
+
+
+,
+
+sg 
+
+h
+
+Norm 
+
+
+
+∆hpTk ,i 
+
+i 
+
+.
+
+(10) where P is the set of selected adjacent block pairs. This loss encourages the student and teacher to update each token representation in similar directions. Model GenEval OCR PickScore Aesthetic HPSv2.1 ImgRwd Sing Two Cnt Col Pos C-Attr Overall 
+
+(a) Base Models 
+
+FLUX.1-Dev 0.778 0.427 0.628 0.649 0.068 0.253 0.467 0.496 22.648 5.737 0.292 0.796 SD3.5-L 0.703 0.389 0.525 0.628 0.140 0.265 0.442 0.635 21.973 5.299 0.264 0.688 SD3.5-M+CFG 0.869 0.495 0.569 0.715 0.148 0.355 0.525 0.559 22.398 5.389 0.280 0.853 
+
+(b) Single-Task Teachers 
+
+SD3.5-M+GenEval Teacher 0.994 0.952 0.944 0.923 0.962 0.833 0.935 0.401 22.069 5.247 0.249 0.614 SD3.5-M+OCR Teacher 0.872 0.472 0.594 0.723 0.145 0.355 0.527 0.938 22.282 5.256 0.272 0.918 SD3.5-M+Aes Teacher 0.744 0.422 0.588 0.676 0.163 0.323 0.486 0.576 24.031 6.220 0.346 1.504 
+
+(c) Diffusion/Flow RL and Multi-Objective OPD Methods 
+
+Flow-GRPO 1.000 0.972 0.950 0.924 0.965 0.845 0.943 0.924 23.500 5.922 0.321 1.346 DiffusionNFT 1.000 0.968 0.954 0.937 0.963 0.818 0.940 0.910 23.800 6.010 0.331 1.490 DanceOPD 0.975 0.939 0.934 0.904 0.940 0.803 0.916 0.943 23.836 6.159 0.328 1.423 
+
++ STEP-OPD(Ours) 1.000 0.960 0.950 0.941 0.970 0.845 0.944 0.957 23.994 6.297 0.344 1.518 DiffusionOPD 1.000 0.962 0.938 0.926 0.948 0.790 0.927 0.941 23.941 6.208 0.340 1.503 
+
++ STEP-OPD(Ours) 1.000 0.990 0.988 0.957 0.980 0.853 0.961 0.946 24.053 6.321 0.349 1.533 
+
+Table 1: Quantitative comparison results on compositional alignment, text rendering, and human preference. We com-pare STEP-OPD with representative base models, task-specific teachers, diffusion/flow RL methods and multi-objective OPD baselines at 512 × 512 resolution. STEP-OPD consistently improves both DanceOPD and DiffusionOPD across GenEval, OCR, and preference-based metrics, while also outperforming representative RL-based post-training methods. More importantly, it further surpasses the corresponding single-task teachers across all three capability groups. The best and second-best results are highlighted in bold and underline, respectively. To align the update scale, we define mpM = RMS(∆ hpM ),where the RMS is computed over the token and hidden di-mensions. The magnitude loss is 
+
+ℓk,i  
+
+> mag
+
+= 1
+
+|P| 
+
+X
+
+> p∈P
+
+"
+
+log 
+
+
+
+mpSθ ,i + ϵ
+
+
+
+− sg 
+
+h
+
+log 
+
+
+
+mpTk ,i + ϵ
+
+i #2
+
+.
+
+(11) where ϵ is a small constant for numerical stability. The hidden-state change objective is 
+
+ℓk,i  
+
+> hidden
+
+= ℓk,i  
+
+> dir
+
++ β ℓ k,i 
+
+> mag
+
+, (12) where β balances direction and magnitude alignment. We evaluate this objective at the same on-policy states selected by the underlying OPD query strategy. The resulting hidden-state objective is 
+
+Lρ 
+
+> hidden
+
+= Ek∼π, c ∼D k   
+
+> τ∼pθ(τ|c)
+
+"N −1X
+
+> i=0
+
+ρk(i | c, τ ) ℓk,i 
+
+> hidden
+
+#
+
+= E k∼π, c ∼D k     
+
+> τ∼pθ(τ|c), I ∼ρk(·| c,τ )
+
+h
+
+ℓk,I 
+
+> hidden
+
+i
+
+.
+
+(13) Importantly, the hidden-state changes are matched directly to the teacher and are not extrapolated using the base model. Thus, the output target is allowed to move beyond the teacher, while the student’s internal representation changes remain aligned with the teacher. The final training objective is 
+
+Lρ = Lρ 
+
+> out
+
++ λh Lρ
+
+> hidden
+
+, (14) where λh controls the contribution of hidden-state change alignment. We use the same λh for all tasks. 
+
+## Experiments 
+
+Experimental Setup 
+
+Models and Evaluation. Following the experimental setting of DiffusionOPD (Li et al. 2026), we use Stable Diffusion 3.5 Medium (SD3.5-M) (Esser et al. 2024) as the shared base model and student backbone, and train all models at a resolution of 512 × 512 . Three task-specific teachers, all derived from the same base model, are used for composi-tional alignment, text rendering, and human preference, re-spectively. For preference-oriented training, we use prompts from Pick-a-Pic (Kirstain et al. 2023). We evaluate composi-tional alignment on GenEval (Ghosh, Hajishirzi, and Schmidt 2023), reporting single object, two objects, counting, color, position, color attribution, and the overall score. Text ren-dering is evaluated using OCR accuracy. Human preference and visual quality are evaluated on DrawBench (Saharia et al. 2022) using PickScore (Kirstain et al. 2023), Aesthetic Score, HPSv2.1 (Wu et al. 2023), and ImageReward (Xu et al. 2023). All compared methods use the same evaluation prompts, ran-dom seeds, resolution, sampler, and guidance settings. 
+
+Baselines. We compare with three groups of baselines. First, we include representative pretrained image genera-tors, including FLUX.1-Dev (Labs 2024), SD3.5-Large, and SD3.5-Medium with classifier-free guidance (Ho and Sali-mans 2022). Second, we report the three specialized teach-SD3.5-M  
+
+> A cartoon of a cat with a thought bubble saying "this is so weird".
+> Geneval
+> Teacher
+> OCR
+> Teacher
+> Aesthetic
+> Teacher
+> Diffusion
+> OPD
+> STEP-OPD
+> (Ours)
+> The city of toronto as seen from an airplane, with a giant cn tower in the middle of the frame,
+> with the text "the cn tower" in comic sans.
+> A sketch of a skyscraper.
+> A gray tabby kitten is laying down on the back of a dark blue sofa.
+> Minimal desk setup.
+> New Zealand Mountains.
+> SD3.5-M Geneval
+> Teacher
+> OCR
+> Teacher
+> Aesthetic
+> Teacher
+> Diffusion
+> OPD
+> STEP-OPD
+> (Ours)
+
+Figure 3: Qualitative comparison of SD3.5-M, task-specific teachers, DiffusionOPD, and STEP-OPD. The selected prompts cover the three evaluated capability groups: compositional alignment, text rendering, and human preference. Each row presents outputs generated from the same prompt. Across these diverse settings, STEP-OPD effectively consolidates the strengths of specialized teachers, achieving more accurate prompt adherence and text rendering while maintaining strong visual quality.                               
+
+> Model GenEval OCR PickScore Aesthetic HPSv2.1 ImgRwd
+> DiffusionOPD 0.927 0.941 23.941 6.208 0.340 1.503 + RCA 0.959 0.944 23.980 6.217 0.343 1.516 + OE 0.957 0.943 24.046 6.312 0.348 1.530
+> + STEP-OPD(Ours) 0.961 0.946 24.053 6.321 0.349 1.533
+
+Table 2: Component ablation of STEP-OPD. OE de-notes output extrapolation, and RCA denotes representa-tion change alignment. The best and second-best results are shown in bold and underlined, respectively. ers to measure whether the unified student can surpass their task-specific capabilities. Third, we consider representative post-training methods for diffusion and flow models include Flow-GRPO (Liu et al. 2025) and DiffusionNFT (Zheng et al. 2026). We compare with DanceOPD (Zhou et al. 2026) and DiffusionOPD (Li et al. 2026), two representative OPD frameworks for image generation. We apply our method to both OPD baselines using the same student initialization, teacher models, and evaluation settings. 
+
+Implementation Details. All experiments are conducted at a resolution of 512 × 512 . The student generates 10 -step on-policy trajectories with a deterministic flow solver, and only LoRA (Hu et al. 2022) parameters are optimized. For a fair comparison, all methods are trained for 1000 epochs on 8 NVIDIA A100 GPUs. We use task-specific extrapolation coefficients of 0.01 , 0.06 , and 0.20 for GenEval, OCR, and aesthetics, with a short linear warm-up. Hidden-state change alignment is applied to 12 adjacent block pairs covering all 
+
+24 Transformer blocks, with λh = 0 .005 and β = 0 .1.
+
+Main Results 
+
+Quantitative Results. Table 1 presents the quantitative results on compositional alignment, text rendering, and human preference. STEP-OPD consistently improves both DanceOPD and DiffusionOPD across all three capability groups. When applied to DiffusionOPD, it increases the GenEval overall score from 0.927 to 0.961 and the OCR score from 0.941 to 0.946 , while also improving all four preference-based metrics. Both STEP-OPD variants further outperform the representative diffusion/flow RL methods, demonstrating consistent advantages over both OPD and RL based post-training methods. More importantly, the DiffusionOPD-based variant sur-passes all corresponding single-task teachers, achieving 
+
+0.961 versus 0.935 on GenEval, 0.946 versus 0.938 on OCR, and higher scores on all four preference metrics. This demon-strates that STEP-OPD generalizes across OPD frameworks and enables beyond-teacher learning. 
+
+Qualitative Comparison. Figure 3 compares SD3.5-M, three task-specific teachers, DiffusionOPD, and STEP-OPD on prompts covering compositional alignment, text ren-dering, and human preference. For compositional prompts, STEP-OPD more faithfully captures the requested objects, at-tributes, and spatial relations, as illustrated by the gray tabby kitten lying on the back of a dark blue sofa. For text-intensive prompts, it renders the specified phrases more accurately, as shown in the thought-bubble and CN Tower examples. It also produces more detailed, coherent, and visually appeal-ing results for preference-oriented prompts. Together with the quantitative and ablation results, they demonstrate effective capability consolidation and beyond-teacher learning. 
+
+Analysis 
+
+Component Ablation. Table 2 examines the contributions of output extrapolation and intermediate representation change alignment. Representation change alignment alone consis-tently improves compositional alignment and text render-ing, increasing GenEval from 0.927 to 0.959 and OCR from 
+
+0.941 to 0.944 . In contrast, output extrapolation brings larger w/o RCA w/ RCA w/o OE w/ OE (a) Ablation of Representation Change Alignment (b) Ablation of Output Extrapolation Figure 4: Qualitative ablation of representation change alignment (RCA) and output extrapolation (OE). Each pair is generated using the same prompt and random seed. 
+
+Figure 5: Representation change gap distributions with and without RCA. Compared with DiffusionOPD, adding RCA consistently shifts the discrepancy distributions toward lower values across GenEval, OCR, and Aesthetic. Anno-tations give the median paired relative reduction of Egap 
+
+under RCA. Lower values indicate closer alignment with the teacher’s internal representation changes. gains on the preference-based metrics while also improving GenEval and OCR, showing that a direct evidence that the extrapolated output target enables systematic beyond-teacher learning. Combining the two components enables the student to learn the preference-oriented capabilities while further im-proving compositional alignment, text rendering. Figure 4 provides complementary qualitative evidence: without RCA, the bowl exhibits spurious internal structures and inconsistent local geometry, whereas RCA produces a cleaner and more structurally coherent shape. Without OE, the coat shows weaker fabric texture and a flatter material appearance, while OE yields richer fine-grained details and stronger overall visual quality. 
+
+Effect of Extrapolation Strength. Table 3 shows that the preferred extrapolation strength varies across tasks. GenEval performs best at αG = 0 .01 , suggesting that compositional alignment is particularly sensitive to target displacement along the base-to-teacher direction, since aggressive extrap-olation may disrupt the balance among object identity, count, color, spatial relations, and attribute binding. OCR favors an intermediate coefficient of αO = 0 .06 , whereas the prefer-ence task benefits from a larger value of αA = 0 .20 , in-dicating that its broader perceptual improvement direction remains informative over a longer range. Performance gen-erally declines beyond the task-specific optimum, showing that extrapolation is effective within a reliable neighborhood                                                                                  
+
+> Coefficient GenEval OCR PickScore Aesthetic HPSv2.1 ImgRwd (a) GenEval extrapolation coefficient αG
+> 0.01 †0.961 0.946 24.053 6.321 0.349 1.533
+> 0.03 0.956 0.941 24.040 6.302 0.347 1.527 0.05 0.955 0.941 24.052 6.299 0.347 1.525 0.07 0.951 0.938 24.038 6.295 0.346 1.517
+> (b) OCR extrapolation coefficient αO
+> 0.02 0.956 0.939 24.040 6.300 0.347 1.526 0.04 0.959 0.942 24.041 6.316 0.347 1.532 0.06 †0.961 0.946 24.053 6.321 0.349 1.533
+> 0.08 0.959 0.945 24.036 6.297 0.347 1.531
+> (c) Aesthetic extrapolation coefficient αA
+> 0.10 0.957 0.940 24.024 6.265 0.345 1.514 0.15 0.959 0.942 24.047 6.281 0.346 1.528 0.20 †0.961 0.946 24.053 6.321 0.349 1.533
+> 0.25 0.960 0.943 24.033 6.320 0.348 1.532
+
+Table 3: Sensitivity analysis of the extrapolation coeffi-cients. Best results are shown in bold and second-best re-sults are underlined within each subsection. † denotes the task-specific coefficient adopted in all main experiments. of the teacher direction rather than improving monotonically with strength. These results support using task-specific coef-ficients instead of a single shared value. 
+
+Representation Change Gap Analysis. To verify that RCA improves the student’s internal transformations rather than merely acting as a regularizer, we measure the discrepancy between the student and teacher representation changes. For each matched prompt and seed pair, we compute Egap =
+
+Edir + 0 .1Emag over the selected adjacent block pairs and average it across the 10 -step on-policy trajectory. As shown in Figure 5, RCA shifts the gap distributions toward lower values, with median paired relative reductions of 96 .4% ,
+
+74 .2% , and 63 .5% on GenEval, OCR, and Aesthetic, re-spectively. This confirms that output-level velocity matching leaves blockwise representation evolution underconstrained, whereas RCA enables the student to learn the teacher’s inter-block transformation dynamics. Together with the gains in Fig. 1 and Table 2, these reduced gaps support more effective transfer of compositional and text-rendering capabilities. 
+
+## Conclusion 
+
+We presented STEP-OPD , an OPD framework for image generation that addresses the limitations of an objective re-stricted to teacher matching and output-only supervision. Our method constructs targets beyond the teacher by extrap-olating the velocity change from the shared base model to each task-specific teacher, while aligning the direction and magnitude of inter-layer representation changes to guide the student’s internal transformations. Experiments on composi-tional alignment, text rendering, and human preference show consistent improvements over standard OPD methods. The resulting unified student surpasses the corresponding single-task teachers across all three capability groups. References 
+
+Agarwal, R.; Vieillard, N.; Zhou, Y.; Stanczyk, P.; Ramos Garea, S.; Geist, M.; and Bachem, O. 2024. On-policy distillation of language models: Learning from self-generated mistakes. In International Conference on Learning Representations , volume 2024, 21246–21263. Chen, C.-Y.; Wang, Z.; Chen, Q.; Ye, Z.; Shi, M.; Zhao, Y.; Zhao, Y.; Qu, H.; Lin, W.-A.; Shen, Y.; Kale, A.; Essa, I.; and Shi, H. 2026. MapReduce LoRA: Advancing the Pareto Front in Multi-Preference Optimization for Generative Models. arXiv:2511.20629. Dhariwal, P.; and Nichol, A. 2021. Diffusion models beat gans on image synthesis. Advances in neural information processing systems , 34: 8780–8794. Esser, P.; Kulal, S.; Blattmann, A.; Entezari, R.; Müller, J.; Saini, H.; Levi, Y.; Lorenz, D.; Sauer, A.; Boesel, F.; et al. 2024. Scaling rectified flow transformers for high-resolution image synthesis. In Forty-first international conference on machine learning .Fang, Z.; Huang, W.; Zeng, Y.; Zhao, Y.; Chen, S.; Feng, K.; Lin, Y.; Chen, L.; Chen, Z.; Cao, S.; and Zhao, F. 2026. Flow-OPD: On-Policy Distillation for Flow Matching Mod-els. arXiv:2605.08063. Feng, R.; Yu, C.; Deng, W.; Hu, P.; and Wu, T. 2025. On the Guidance of Flow Matching. arXiv:2502.02150. Ghosh, D.; Hajishirzi, H.; and Schmidt, L. 2023. Geneval: An object-focused framework for evaluating text-to-image alignment. Advances in Neural Information Processing Sys-tems , 36: 52132–52152. Hinton, G.; Vinyals, O.; and Dean, J. 2015. Distilling the Knowledge in a Neural Network. arXiv:1503.02531. Ho, J.; and Salimans, T. 2022. Classifier-Free Diffusion Guidance. arXiv:2207.12598. Hu, E. J.; Shen, Y.; Wallis, P.; Allen-Zhu, Z.; Li, Y.; Wang, S.; Wang, L.; Chen, W.; et al. 2022. Lora: Low-rank adaptation of large language models. Iclr , 1(2): 3. Jiang, D.; Jin, X.; Liu, D.; Wang, Z.; Zheng, M.; Du, R.; Yang, X.; Wu, Q.; Li, Z.; Gao, P.; Yang, H.; and Hoi, S. 2026. D-OPSD: On-Policy Self-Distillation for Continuously Tuning Step-Distilled Diffusion Models. arXiv:2605.05204. Karras, T.; Aittala, M.; Kynkäänniemi, T.; Lehtinen, J.; Aila, T.; and Laine, S. 2024. Guiding a diffusion model with a bad version of itself. Advances in Neural Information Processing Systems , 37: 52996–53021. Kim, B.-K.; Song, H.-K.; Castells, T.; and Choi, S. 2024. Bk-sdm: A lightweight, fast, and cheap version of stable diffusion. In European Conference on Computer Vision ,381–399. Springer. Kirstain, Y.; Polyak, A.; Singer, U.; Matiana, S.; Penna, J.; and Levy, O. 2023. Pick-a-pic: An open dataset of user preferences for text-to-image generation. Advances in neural information processing systems , 36: 36652–36663. Labs, B. F. 2024. FLUX. https://github.com/black-forest-labs/flux. Lee, Y.; Park, K.; Cho, Y.; Lee, Y.-J.; and Hwang, S. J. 2024. Koala: Empirical lessons toward memory-efficient and fast diffusion models for text-to-image synthesis. Advances in Neural Information Processing Systems , 37: 51597–51633. Li, Q.; Yu, J.; Jiang, K.; Wei, Y.; Xing, Z.; Li, P.; Chu, R.; Zhang, S.; Liu, Y.; and Wu, Z. 2026. DiffusionOPD: A Unified Perspective of On-Policy Distillation in Diffusion Models. arXiv:2605.15055. Liu, J.; Liu, G.; Liang, J.; Li, Y.; Liu, J.; Wang, X.; Wan, P.; Zhang, D.; and Ouyang, W. 2025. Flow-GRPO: Training Flow Matching Models via Online RL. arXiv:2505.05470. Park, W.; Kim, D.; Lu, Y.; and Cho, M. 2019. Relational knowledge distillation. In Proceedings of the IEEE/CVF con-ference on computer vision and pattern recognition , 3967– 3976. Romero, A.; Ballas, N.; Kahou, S. E.; Chassang, A.; Gatta, C.; and Bengio, Y. 2015. FitNets: Hints for Thin Deep Nets. arXiv:1412.6550. Saharia, C.; Chan, W.; Saxena, S.; Li, L.; Whang, J.; Denton, E. L.; Ghasemipour, K.; Gontijo Lopes, R.; Karagol Ayan, B.; Salimans, T.; et al. 2022. Photorealistic text-to-image dif-fusion models with deep language understanding. Advances in neural information processing systems , 35: 36479–36494. Song, M.; and Zheng, M. 2026. A Survey of On-Policy Distillation for Large Language Models. arXiv:2604.00626. Team, C.; Xiao, B.; Xia, B.; Yang, B.; Gao, B.; Shen, B.; Zhang, C.; He, C.; Lou, C.; Luo, F.; Wang, G.; Xie, G.; Zhang, H.; Lv, H.; Li, H.; Chen, H.; Xu, H.; Zhang, H.; Liu, H.; Duo, J.; Wei, J.; Xiao, J.; Dong, J.; Shi, J.; Hu, J.; Bao, K.; Zhou, K.; Li, L.; Zhao, L.; Zhang, L.; Li, P.; Chen, Q.; Liu, S.; Yu, S.; Cao, S.; Chen, S.; Yu, S.; Liu, S.; Zhou, T.; Su, W.; Wang, W.; Ma, W.; Deng, X.; Mao, B.; Ye, B.; Cai, C.; Wang, C.; Zhu, C.; Ma, C.; Chen, C.; Li, C.; Zhu, D.; Xiao, D.; Zhang, D.; Zhang, D.; Liu, F.; Yang, F.; Shi, F.; Wang, G.; Tian, H.; Wu, H.; Qu, H.; Yi, H.; An, H.; Guan, H.; Zhang, X.; Song, Y.; Yan, Y.; Zhao, Y.; Lai, Y.; Gao, Y.; Cheng, Y.; Tian, Y.; Wang, Y.; Tang, Z.; Tang, Z.; Wen, Z.; Song, Z.; Zheng, Z.; Jiang, Z.; Wen, J.; Sun, J.; Li, J.; Xue, J.; Xia, J.; Fang, K.; Zhu, M.; Chen, N.; Tu, Q.; Zhang, Q.; Wang, Q.; Li, R.; Ma, R.; Zhang, S.; Wang, S.; Li, S.; Gu, S.; Ren, S.; Deng, S.; Guo, T.; Lu, T.; Zhuang, W.; Zhang, W.; Xiong, W.; Huang, W.; Yang, W.; Zhang, X.; Yong, X.; Wang, X.; Xie, X.; Jiang, Y.; Yang, Y.; He, Y.; Tu, Y.; Dong, Y.; Liu, Y.; Ma, Y.; Yu, Y.; Xiang, Y.; Huang, Z.; Lin, Z.; Xu, Z.; Chen, Z.; Deng, Z.; Zhang, Z.; and Yue, Z. 2026. MiMo-V2-Flash Technical Report. arXiv:2601.02780. Wu, X.; Hao, Y.; Sun, K.; Chen, Y.; Zhu, F.; Zhao, R.; and Li, H. 2023. Human Preference Score v2: A Solid Benchmark for Evaluating Human Preferences of Text-to-Image Synthesis. arXiv:2306.09341. Xu, J.; Liu, X.; Wu, Y.; Tong, Y.; Li, Q.; Ding, M.; Tang, J.; and Dong, Y. 2023. Imagereward: Learning and evaluating human preferences for text-to-image generation. Advances in Neural Information Processing Systems , 36: 15903–15935. Yang, S.; Zhu, G.; Song, B.; Wang, H.; Xia, M.; Zheng, X.; Ma, Y.; Chen, Z.; Wang, W.; Zhao, J.; and Chen, G. 2026. OPRD: On-Policy Representation Distillation. arXiv:2606.06021. Yim, J.; Joo, D.; Bae, J.; and Kim, J. 2017. A gift from knowl-edge distillation: Fast optimization, network minimization and transfer learning. In Proceedings of the IEEE conference on computer vision and pattern recognition , 4133–4141. Yu, S.; Kwak, S.; Jang, H.; Jeong, J.; Huang, J.; Shin, J.; and Xie, S. 2025. Representation Alignment for Generation: Training Diffusion Transformers Is Easier Than You Think. arXiv:2410.06940. Zagoruyko, S.; and Komodakis, N. 2017. Paying More Attention to Attention: Improving the Performance of Convolutional Neural Networks via Attention Transfer. arXiv:1612.03928. Zheng, K.; Chen, H.; Ye, H.; Wang, H.; Zhang, Q.; Jiang, K.; Su, H.; Ermon, S.; Zhu, J.; and Liu, M.-Y. 2026. Dif-fusionNFT: Online Diffusion Reinforcement with Forward Process. arXiv:2509.16117. Zheng, Q.; Le, M.; Shaul, N.; Lipman, Y.; Grover, A.; and Chen, R. T. Q. 2023. Guided Flows for Generative Modeling and Decision Making. arXiv:2311.13443. Zhou, W.; Zhu, X.; Xu, Z.; Dong, B.; Gong, L.; Liang, Y.; Chu, M.; Qu, L.; Kong, L.; Liu, W.; and Chua, T.-S. 2026. DanceOPD: On-Policy Generative Field Distillation. arXiv:2606.27377.
