@@ -1,0 +1,539 @@
+Title: Hierarchical Flow Matching for 3D Point Cloud Generation
+
+URL Source: https://arxiv.org/pdf/2608.05557v1
+
+Published Time: Fri, 07 Aug 2026 00:25:44 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+# Hierarchical Flow Matching for 3D Point Cloud Generation 
+
+# Linhao Wang 1, Qichang Zhang 2, Ye Su 1, Hao Wang 1,† 
+
+> 1
+
+# Shandong Normal University  
+
+> 2
+
+# University of Macau 
+
+# Abstract 
+
+Generating high-quality 3D point clouds requires cap-turing both global shape topology and local geometric de-tails. Existing flow-based methods rely on continuous nor-malizing flows (CNFs) that demand expensive ODE solving and trace estimation during training, while diffusion mod-els require hundreds of iterative denoising steps. Moreover, most approaches adopt single-level generation directly in point space, disregarding the hierarchical structure natu-ral to 3D shapes. We propose Hierarchical Flow Match-ing (HFM) that extends flow matching to bilevel structure for unconditional 3D point cloud generation. HFM decom-poses the task into two levels via optimal-transport flow matching: a Latent Flow Matching models the global shape manifold in a compact latent space, and a Conditional Point Flow Matching reconstructs detailed point clouds condi-tioned on the latent code. Both flows are trained with sim-ple MSE regression losses. The resulting straight OT paths enable efficient sampling with as few as 15 Euler steps per flow, while the structured latent space supports down-stream tasks including classification. Extensive experiments on ShapeNet and ModelNet benchmarks demonstrate that HFM achieves competitive or even best performance com-pared with prior state-of-the-art methods. 
+
+# 1. Introduction 
+
+3D point clouds are a fundamental representation in computer vision and graphics, with applications ranging from autonomous driving and robotics to virtual reality. Generative models for point clouds must address two core challenges: the permutation invariance of unordered point sets, and the multi-scale nature of geometric structures that spans global shape topology and local geometric details. A broad spectrum of generative models has been ex-plored for this task. GAN-based methods [1, 10, 11] suf-fer from training instability and mode collapse, while VAE-
+
+> †Corresponding Author
+
+based methods [10, 16] often produce oversmoothed out-puts. Diffusion-based methods [24, 27, 35, 40] achieve high generation quality but require hundreds of iterative de-noising steps and lack explicit structured latent representa-tions. Flow-based methods [15, 19, 39] leverage Normal-izing Flows [7, 8, 29] or Continuous Normalizing Flows (CNFs) [5] that offer principled density estimation through ODEs but incur substantial training cost, requiring for-ward and backward ODE solving along with trace estima-tion [12]. Beyond computational efficiency, some of them adopt single-level generation , neglecting the hierarchical structure inherent to 3D shapes, where global topology con-ditions local geometry. Some of the methods mentioned above recognized this principle. For instance, PointFlow first adopts a bilevel CNF design but suffers expensive ODE training, while DPM applies a similar decomposition within a diffusion framework yet inherits slow iterative sampling. In short, both of them realize the bilevel design at the cost of either expensive training (ODE solving) or sampling (many denoising steps). Another line of work [26, 28] addresses coarse-to-fine generation via autoregressive models that dis-cretize shapes into tokens and generate point clouds hierar-chically, yet rely on discrete tokenization and autoregressive decoding. Flow Matching (FM) [2, 22, 23] has recently emerged as a compelling alternative that overcomes both limita-tions simultaneously, replacing ODE-based training with simulation-free MSE regression. However, existing FM-based point cloud methods remain single-level: Point Straight Flow (PSF) [37] requires a three-stage pipeline (training, reflow, distillation) for one-step generation, while Not-So-Optimal Transport Flow [14] focuses on OT cou-pling efficiency, both operate directly in point space with-out hierarchical factorization. Consequently, the efficiency gains of FM have yet to be combined with a structured, bilevel design for point cloud generation. In this paper, we propose Hierarchical Flow Matching (HFM) , a framework that extends flow matching to bilevel structured generation for unconditional 3D point cloud gen-eration (Fig. 1). Inspired by PointFlow’s insight [39], we replace its computationally expensive CNF backbone with arXiv:2608.05557v1 [cs.CV] 6 Aug 2026 simulation-free flow matching, achieving hierarchy without the ODE burden. Our design is driven by two observations: (i) FM offers dramatically simpler training than CNFs using MSE regression with closed-form targets, no ODE solver or trace estimation; and (ii) hierarchical factorization naturally decomposes point cloud generation into two stages: global latent shape ( what shape? ) and conditional point model-ing ( where are the points? ). Concretely, HFM comprises two FM modules trained jointly with an entropy-regularized empirical prior over the latent space: • Latent Flow Matching models the global shape prior 
+
+p(z) via unconditional OT-CFM in a compact latent space. • Conditional Point Flow Matching models p(X|z), the point distribution conditioned on the latent code, via conditional OT-CFM. Both flows learn straight OT paths through simple MSE objectives, eliminating ODE solvers, trace estimation, and log-likelihood computation. The structured latent space supports downstream tasks including classification, and the model is trained end-to-end in a single stage without distil-lation or reflow [37]. Our contributions are three-fold: • Conceptually , we propose Hierarchical Flow Match-ing, a bilevel structured flow matching framework for unconditional 3D point cloud generation. This pro-vides a principled decomposition aligned with the nat-ural hierarchy of 3D shapes. • Methodologically , HFM retains a structured latent space, enabling downstream tasks such as classifica-tion while eliminating the need for ODE solvers and log-likelihood computation during training. The entire framework is trained end-to-end in a single stage with-out distillation or reflow. • Empirically , extensive experiments on ShapeNet and ModelNet benchmarks demonstrate that HFM achieves generation quality comparable with or sur-passing prior state-of-the-art methods. 
+
+# 2. Related Work 
+
+2.1. Point Cloud Generation 
+
+Point cloud generation has been extensively studied us-ing GANs [1], VAEs [10, 16], diffusion models [24, 25, 27, 32,35,40], and flow-based methods [15,39]. Diffusion mod-els achieve high generation quality but require hundreds of sampling steps. Flow-based methods using CNFs (Point-Flow [39], SoftFlow [15]) offer principled density estima-tion via neural ODEs at substantial training cost. Specially, PointFlow further extends this to a bilevel architecture with two CNFs. DPM [24] similarly adopts a bilevel decom-position within the diffusion framework by conditioning on a shape latent, yet inherits the slow iterative sampling of diffusion models. Autoregressive coarse-to-fine mod-els [26, 28] approach point cloud generation via discrete to-kenization and hierarchical decoding, which differs funda-mentally from our continuous flow matching formulation. Flow matching methods (PSF [37], Not-So-OT [14]) and MFM-point [28] provide efficient simulation-free training but remain single-level in point space. Similar to our work, ArticFlow [21] also proposes a two-stage flow matching ar-chitecture, targeting action-conditioned articulated mecha-nism generation. Our work differs by focusing on uncon-ditional point cloud generation with an entropy-regularized latent prior, achieving efficient sampling with straight OT paths, and supporting downstream tasks such as classifica-tion. 
+
+2.2. Flow-Based Generative Models 
+
+Normalizing Flows [8, 18, 33] construct complex dis-tributions through a sequence of invertible transforma-tions with tractable Jacobians, yet their discrete architec-tures limit expressiveness. Continuous Normalizing Flows (CNFs) [5, 12] generalize this to continuous-time dynamics via neural ODEs, enabling flexible density estimation at the cost of ODE solving and trace estimation during training. Flow Matching (FM) [22, 23] offers a simulation-free alter-native by regressing a vector field onto a closed-form con-ditional target, reducing training to simple MSE regression. Optimal transport (OT) paths [9, 30, 34] yield straight tra-jectories for efficient sampling. In this work, we extend the flow matching framework with a bilevel generative structure for point clouds. 
+
+# 3. Method 
+
+3.1. Overview 
+
+Hierarchical Flow Matching (HFM) decomposes point cloud generation into two levels via optimal-transport flow matching: a Latent Flow Matching for the distribution of global shape codes, and a Conditional Point Flow Matching 
+
+for the conditional distribution of point clouds given a shape code. Following the VAE framework [17], an encoder [31] maps X ∈ RN ×3 to a latent code z ∈ Rd, and both the prior p(z) and likelihood p(X|z) are modeled as OT flow matching modules (Fig. 1). 
+
+3.2. Preliminaries: Conditional Flow Matching 
+
+Flow Matching (FM) [2, 22, 23] learns a time-dependent vector field vθ : Rd × [0 , T ] → Rd that transports a noise distribution p0 to a data distribution pT via an ordinary dif-ferential equation. Directly regressing vθ onto the marginal PointNet++  
+
+> Encoder
+> Global Shape Latent Latent Flow Matching
+> Point Flow Matching
+
+# … …
+
+# … …    
+
+> 𝑧 !~𝒩 (𝜇 !,𝜎 !
+> ")𝑧 #~𝒩 (𝜇 #,𝜎 #
+> ")𝑧 $~𝒩 (0,1)
+
+Figure 1. Overview of the proposed Hierarchical Flow Matching (HFM) generation framework consisting of two processes: Training 
+
+and Sampling . During training ( →), the encoder q(z|X) maps a point cloud X to a global shape latent z, yielding both (i) a Latent Flow Matching objective Llatent that regresses the velocity field vψ (zt, t ) onto the straight OT path from z to noise, and (ii) a Point Flow Matching objective Lpoint that regresses vθ (xt, t, z ) onto the OT path from X to noise conditioned on z. During sampling ( →), Gaussian noise is first transported to a global shape latent by reversing the learned latent flow, and then a second noise sample is transported to a generated point cloud by reversing the point flow conditioned on z. Specifically, the thin gray lines represent the movement trajectories of the points. 
+
+vector field is intractable, but Conditional Flow Matching (CFM) circumvents this by conditioning on a data point 
+
+x1 ∼ q(x1).A particularly effective choice is the optimal transport (OT) path , which linearly interpolates between a noise sample x0 ∼ N (0 , I ) and a data point x1:
+
+xt =
+
+
+
+1 − tT
+
+
+
+x0 + tT x1, ut(x|x1) = x1 − x0
+
+T , (1) where T is the final time and t ∈ [0 , T ]. The CFM objective simplifies to a mean-squared error regression against this closed-form target: 
+
+LCFM = Et,x 0,x 1 vθ (xt, t ) − x1 − x0
+
+T
+
+> 2
+
+. (2) Training requires no ODE solver, log-likelihood computa-tion, or trace estimation—only a simple MSE loss. The straight OT paths also enable efficient sampling via Euler integration in reverse time: 
+
+xt−∆t = xt − vθ (xt, t ) ∆ t.  (3) 
+
+3.3. Latent Flow Matching 
+
+The Latent Flow Matching module models the prior dis-tribution p(z) over shape codes. Since the true prior over shape codes is complex and multi-modal (reflecting diverse categories and structures), we employ unconditional OT-CFM in the latent space to learn a flexible prior without restrictive parametric assumptions. 
+
+Latent representation. The encoder q(z|X) maps a point cloud X ∈ RN ×3 to the latent code z ∈ Rd via a Point-Net++ [31] backbone. This compact code captures global topology and category-level structure while delegating fine-grained details to the conditional point flow. Architectural details are provided in the appendix. 
+
+Optimal transport flow. Following the flow matching con-vention, the OT path interpolates between a shape code 
+
+z ∼ q(z|X) and Gaussian noise z0 ∼ N (0 , I ) over time: the interpolant departs from the data at t = 0 and reaches the noise at t = T , following a straight trajectory: 
+
+zt = (1 − τ )z + τ z 0, τ = t/T,  (4) with constant target velocity ut = ( z0 − z)/T , pointing from the data toward the noise. The straight OT paths are es-pecially suitable in latent space: the low-dimensional struc-ture of z means that straight interpolation already provides a near-optimal transport map, allowing the learned flow to ef-ficiently model the manifold of shape codes with few func-tion evaluations. 
+
+Objective. The latent velocity network vψ (zt, t ) is trained via MSE regression: 
+
+Llatent = Et,z 0,z vψ (zt, t ) − z0 − zT
+
+> 2
+
+. (5) 
+
+3.4. Conditional Point Flow Matching 
+
+The Conditional Point Flow Matching models p(X|z),the distribution of point clouds conditioned on a shape code. Given the global shape code z encoding coarse topology and category, this module generates the fine-grained geo-metric details that constitute the complete 3D shape. 
+
+Conditional flow formulation. We employ conditional OT-CFM where the velocity network receives the shape code z as conditioning context. Let X = {x(i)}Ni=1 ⊂ R3
+
+be a point cloud of N points. During training, each point 
+
+x(i) ∈ X interpolates toward an independent noise sample 
+
+x(i)0 ∼ N (0 , I ):
+
+x(i) 
+
+> t
+
+= (1 −τ )x(i)+τ x (i)0 , u(i) 
+
+> t
+
+= x(i)0 − x(i)
+
+T , τ = t/T, 
+
+(6) PointFlow PVD ShapeGF DPM SetVAE LION HFM (Ours) Figure 2. Visualization of our generation results (HFM) compared to baselines. 
+
+where all points share the same conditioning code z, pro-viding global context that coordinates their trajectories into a coherent shape. 
+
+Objective. The conditional velocity network is trained by regressing the OT target. The point velocity network 
+
+vθ (x(i) 
+
+> t
+
+, t, z ) operates on each point independently with a shared MLP conditioned on the global context c =[t, z ], guaranteeing permutation equivariance by construc-tion. The context c is formed by concatenating the scalar time t with the flattened shape code z, and fed into each layer of the MLP via AdaptiveConditionLinear modulation (detailed in the appendix). The objective is analogous to Eq. (5): 
+
+Lpoint = Et,x (i)0 ,x (i),z ∼q(z|X) vθ (x(i) 
+
+> t
+
+, t, z ) − x(i)0 − x(i)
+
+T
+
+> 2
+
+,
+
+(7) where the expectation implicitly samples i uniformly from 
+
+{1, . . . , N }. In practice, the loss is averaged over all N
+
+points in each cloud. 
+
+3.5. Training Objective 
+
+The complete training objective combines three terms: 
+
+Ltotal = Lpoint + Llatent + Lentropy , (8) where Lentropy = −λentropy · H [q(z|X)] . For the diagonal Gaussian encoder q(z|X) = N (z|μ, diag( σ2)) , the entropy is available in closed form: 
+
+H[q(z | X)] = 12
+
+> d
+
+X
+
+> i=1
+
+ log σ2 
+
+> i
+
++ 1  + const , (9) which encourages the encoder to maintain a non-degenerate posterior. We set λentropy = 10 −4 in all generation experi-ments. We consider two training configurations following [24, 39]. For generation task, the full objective in Eq. (8) is used: both flows are trained jointly end-to-end, and the latent flow learns a flexible prior over the latent space while the entropy penalty encourages the encoder to capture diverse shape variations. For auto-encoding task, we disable the latent flow and entropy terms ( λentropy = 0 , Llatent = 0 ), reduc-ing the objective to Ltotal = Lpoint . In this configuration, the model functions as a deterministic auto-encoder where the encoder is supervised solely through gradients from the point flow reconstruction loss, producing latent codes opti-mized for preserving shape information rather than for gen-eration. The pseudocode for the training procedure is sum-marized in the appendix. 
+
+3.6. Sampling and Inference 
+
+Given the learned velocity fields, sampling proceeds by reversing the learned flow: the velocity network vψ (and 
+
+vθ ) predicts the direction from data to noise during training, so during sampling we integrate in the opposite direction to transport noise back to data. Concretely, we apply reverse-time Euler integration from t = T to t = 0 :
+
+zt−| ∆t| = zt − vψ (zt, t ) |∆t|, (10) 
+
+xt−| ∆t| = xt − vθ (xt, t, z ) |∆t|, (11) where |∆t| = T /N = −∆t > 0 is the step size. We set 
+
+T = 0 .5 in all experiments. The minus sign ( −) reverses the data-to-noise direction learned during training, so the update moves from noise to data. We also evaluated the higher-order Heun integrator but observed negligible im-provement over Euler, confirming that the near-straight OT trajectories introduce minimal truncation error. The pseu-docode for sampling is detailed in the appendix. 
+
+# 4. Experiments 
+
+We evaluate HFM on three tasks: unconditional point cloud generation, auto-encoding, and unsupervised repre-sentation learning followed by ablation studies. More de-tailed results and discussion are shown in the appendix. Method Chair Airplane Car MMD ↓ COV(%) ↑ MMD ↓ COV(%) ↑ MMD ↓ COV(%) ↑
+
+CD EMD CD EMD CD EMD CD EMD CD EMD CD EMD r-GAN 2.57 12.80 33.99 9.97 0.261 5.47 42.72 18.02 1.27 8.74 15.06 9.38 l-GAN (CD) 2.46 8.91 41.39 25.68 0.239 4.27 43.21 21.23 1.55 6.25 38.64 18.47 l-GAN (EMD) 2.61 7.85 40.79 41.69 0.269 3.29 47.90 50.62 1.48 5.43 39.20 39.77 DPF-Net 2.54 – 44.71 48.79 0.264 – 46.17 48.89 1.13 – 45.74 49.43 PVD 2.62 – 48.84 50.60 0.224 – 48.88 52.09 1.10 – 41.19 50.56 GET3D – – 43.36 42.77 – – – – – – 15.04 18.38 SoftFlow 2.53 – 41.39 47.43 0.231 – 46.91 47.90 1.19 – 42.90 44.60 PointFlow 2.42 7.87 46.83 46.98 0.217 3.24 46.91 48.40 0.91 5.22 44.03 46.59 PC-GAN 2.75 8.20 36.50 38.98 0.287 3.57 36.46 40.94 1.12 5.83 23.56 30.29 LION – – 48.94 52.11 – – 47.16 49.63 – – 50.00 56.53 
+
+HFM (Ours) 2.34 7.82 49.34 52.14 0.209 3.12 48.91 51.14 0.88 5.13 50.18 53.97 
+
+Table 1. Generation results on Airplane, Car and Chair compared with baselines using MMD and COV. MMD-CD and MMD-EMD scores are multiplied by 10 3 and 10 2, respectively. 
+
+Figure 3. Visualization of multi-class results generated by our method. 
+
+4.1. Evaluation Metrics 
+
+Following the evaluation protocols established in prior work [35, 39, 40], we adopt the following metrics for gener-ation quality: 
+
+1-Nearest Neighbor Accuracy (1-NNA). The leave-one-out accuracy of a 1-NN classifier on the union of generated and reference sets. A score closer to 50% indicates better quality [39]. We report both Chamfer Distance (1-NNA-CD) and Earth Mover’s Distance (1-NNA-EMD). 
+
+Minimum Matching Distance (MMD). MMD measures the fidelity of generated point clouds by computing, for each reference shape, the distance to its nearest neighbor in the generated set, then averaging. 
+
+Coverage (COV). COV measures the fraction of reference shapes matched by at least one generated shape as their nearest neighbor. Higher coverage indicates better diver-sity. 
+
+Classification Accuracy. For representation learning, we train a linear SVM on the latent codes produced by our en-coder and report accuracy on ModelNet datasets. Method Airplane Car Chair CD EMD CD EMD CD EMD r-GAN 98.40 96.79 94.46 99.01 83.69 99.70 l-GAN (CD) 87.30 93.95 66.49 88.78 68.58 83.84 l-GAN (EMD) 89.49 76.91 71.16 66.19 71.90 64.65 PC-GAN 94.35 92.32 92.19 90.87 76.03 78.37 PointFlow 75.68 70.74 60.65 62.36 62.84 60.57 SoftFlow 76.05 65.80 62.35 54.48 59.21 60.05 DPF-Net 75.18 65.55 62.35 54.48 62.00 58.53 SetVAE 76.54 67.65 59.95 59.94 58.84 60.57 DPM 76.42 86.91 68.89 79.97 60.05 74.77 Shape-GF 80.00 76.17 63.20 56.53 68.96 65.48 CanonicalVAE 80.15 76.27 63.23 61.56 62.78 61.05 PVD 73.82 64.81 54.55 53.83 56.26 53.32 GET3D – – 75.26 72.49 75.26 72.49 PointGPT 74.85 65.61 55.91 54.24 57.24 55.01 PointNSP 72.24 63.29 52.17 51.85 54.54 52.85 PSF 71.11 61.09 57.19 56.07 58.92 54.45 LION 67.41 61.23 53.41 51.14 53.70 52.34 SALAD 73.90 71.10 59.20 57.20 57.80 58.40 NSOT 68.64 61.85 59.66 53.55 55.51 57.63 HFM (Ours) 66.61 60.79 53.37 51.04 53.62 51.98 
+
+Table 2. Generation results on Airplane, Car, and Chair compared with baselines using 1-NNA as the metric. Lower is better. 
+
+4.2. Baselines 
+
+We compare HFM with previous state-of-the-art meth-ods published at top-tier conferences. For point cloud generation, the baselines are reported in Table 1 and Table 2, which use complementary metrics: Table 2 reports 1-NNA, while Table 1 reports MMD and COV. We include GAN-based methods including raw-GAN (r-GAN) and latent-GAN (l-GAN) [1], PC-GAN [10] and GET3D [11]; VAE-based methods SetVAE [16], Canon-icalVAE [6] and ShapeGF [40]; Diffusion-based methods Method MN-10 (%) MN-40 (%) AtlasNet 91.9 86.6 l-GAN (CD) 95.4 84.5 l-GAN (EMD) 95.4 84.0 PointFlow 93.7 86.8 ShapeGF 90.2 84.6 DPM 94.2 87.6 HFM (Ours) 94.6 87.9            
+
+> Table 3. Comparison of representation learning in linear SVM classification accuracy.
+> Model Time (s) PointFlow 0.27 SoftFlow 0.12 DPM 22.8 PVD ( N= 1000 )29.9 PVD-DDIM( N= 100 )3.15 PSF 0.04
+> HFM (Ours) 0.05
+> Table 4. Sampling time comparisons with baselines.
+
+including DPM [24], SALAD [20], PVD [40], LION [35]; Flow-based methods such as PointFlow [39], SoftFlow [15] and DPF-Net [19]; Flow Matching-based methods PSF [37] and Not-So-OT [14]; Autoregressive-based methods Point-GPT [4] and PointNSP [26]. For auto-encoding and representation learning tasks, we compare against latent-GAN (l-GAN) [1], AtlasNet [13], PointFlow [39], and ShapeGF [40] and DPM [40]. Few methods are reported due to the computational costs from training on the whole ShapeNet datasets. 
+
+4.3. Point Cloud Generation 
+
+For unconditional generation, we employ the ShapeNet dataset [3] containing 51,127 shapes from 55 categories. Following [39], we train separate models on three represen-tative categories: airplane, chair and car. We sample 2,048 points for training and testing for each shape. 
+
+Qualitative comparisons. The qualitative results shown in Fig. 2 demonstrate the competitive quality generated by HFM compared to baseline methods. The visualization of prior methods is taken from LION [35]. Moreover, we also train our model on all 55 different categories from ShapeNet. Fig. 3 shows multi-class point clouds generated by HFM, demonstrating the generalizability of our model. 
+
+Quantitative comparisons. Table 1 and 2 report the full comparisons, and Table 4 reports the sampling time com-parison when the batch size is one [37]. While PSF is marginally faster than our method, it suffers from a com-plicated three-stage process. Our method strikes a favor- 
+
+> Figure 4. Visualization of our reconstruction results compared with baselines.
+
+able trade-off between efficiency and effectiveness. HFM is tested with 15 Euler steps per flow (30 total function evalu-ations). 
+
+4.4. Point Cloud Auto-Encoding 
+
+For auto-encoding, we train an auto-encoder (encoder + Conditional Point Flow Matching) on the full ShapeNet dataset (55 categories) without the latent flow prior. Fol-lowing [40], we evaluate reconstruction quality by encoding each test shape and reconstructing via the point flow with 15 reverse Euler steps from random noise. The reconstructed point clouds (2048 points) are compared against the ground truth reference using CD and EMD. 
+
+Qualitative comparisons. The qualitative comparisons are shown in Fig. 4, demonstrating competitive quality com-pared with prior state-of-the-art methods. The qualitative results of previous methods are taken from [24]. 
+
+Quantitative comparisons. As shown in Table 5, HFM achieves the best EMD (3.75) and competitive CD (5.21) compared to baselines. This demonstrates that the Con-ditional Point Flow Matching, trained with a simple MSE regression objective, can faithfully reconstruct fine-grained geometry from the latent code. 
+
+4.5. Unsupervised Representation Learning 
+
+We evaluate the encoder representations on the ModelNet-10 and ModelNet-40 datasets [38]. Following the protocol of [39,40], we encode each shape using 10,000 points, train a linear SVM on the training split, and evaluate on the test split. As shown in Table 3, our method achieves the best MN-40 accuracy (87.9%) and competitive MN-10 -0.4 -0.2 0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4 Figure 5. Visualization of interpolation and extrapolation in the latent space.                    
+
+> Model CD EMD AtlasNet 5.13 5.97 l-GAN (CD) 7.12 7.95 l-GAN (EMD) 8.85 5.26 PointFlow 7.54 5.18 ShapeGF 5.73 5.05 DPM 5.25 3.78 HFM(Ours) 5.21 3.75
+> Table 5. Auto-encoding performance evaluated by CD and EMD. CD and EMD scores are multiplied by 10 4and 10 2, respectively. Lower is better.
+
+accuracy (94.6%). Furthermore, we visualize the interpola-tion and extrapolation in the latent space shown in Fig. 5. 
+
+4.6. Ablation Studies 
+
+We conduct ablation studies to analyze the latent flow matching, inference steps and entropy coefficient λentropy on the Airplane category. 
+
+Inference Steps. We compare HFM with representative baselines: LION [35], PVD [40], PSF [37] without recti-fied flow by varying the number of inference steps N ∈{1, 5, 15 , 20 , 50 } on the Airplane category. Fig. 6 reports the 1-NNA-CD and 1-NNA-EMD results. As shown in Fig. 6, PVD, PSF and LION degrade under limited step budgets, whereas HFM maintains robust performance even with as few as 5–15 steps due to the almost straight OT tra-jectories learned by flow matching. 
+
+Latent Flow Matching. To quantify the contribution of the hierarchical decomposition, we ablate the Latent Flow Matching module on the Airplane category. We compare the full HFM model against a variant where the latent flow 
+
+> Figure 6. Comparison of 1-NNA across different numbers of sam-pling steps on Airplane category.
+
+is removed ( w/o latent flow ): the encoder still produces a shape code z, but during sampling z ∼ N (0 , I ) is drawn from a standard Gaussian instead of being generated by the learned latent prior. The point flow remains conditioned on 
+
+z in both cases. As shown in Table 6, the learned latent prior provides a better initialization for the conditional point flow compared to sampling z from an uninformative isotropic Gaussian, leading to improved generation quality. 
+
+Entropy Coefficient λentropy . We ablate the entropy co-efficient λentropy on the Airplane category. Fig. 7 reports Setting 1-NNA-CD 1-NNA-EMD w/o latent flow 78.43 74.32 HFM 66.61 60.79 
+
+Table 6. Ablation of the latent flow on Airplane (1-NNA ↓). 
+
+1-NNA-CD and 1-NNA-EMD under varying λentropy . The entropy penalty encourages the encoder to maintain a non-degenerate posterior; too small a value leads to posterior collapse (near-zero variance), while too large a value in-jects excessive noise that degrades the shape code. We find that λentropy = 10 −4 strikes the best balance, achieving the lowest 1-NNA on both metrics. 10 5 10 4 10 3
+
+> entropy
+> 55
+> 60
+> 65
+> 70
+> 75
+> 80
+> 85
+> Score (  )
+> 1-NNA-CD
+> 1-NNA-EMD
+
+Figure 7. Ablation of λentropy on Airplane (1-NNA ↓). 
+
+# 5. Conclusion 
+
+We proposed Hierarchical Flow Matching for point cloud generation. HFM is formulated as a Latent Flow Matching and a Conditional Point Flow Matching. With as few as 15 Euler steps per flow, HFM achieves generation quality comparable to or surpassing prior state-of-the-art on ShapeNet and ModelNet benchmarks. 
+
+# References 
+
+[1] Panos Achlioptas, Olga Diamanti, Ioannis Mitliagkas, and Leonidas Guibas. Learning representations and generative models for 3d point clouds. In International conference on machine learning , pages 40–49. PMLR, 2018. 1, 2, 5, 6 [2] Michael S Albergo and Eric Vanden-Eijnden. Building nor-malizing flows with stochastic interpolants. arXiv preprint arXiv:2209.15571 , 2022. 1, 2 [3] Angel X Chang, Thomas Funkhouser, Leonidas Guibas, Pat Hanrahan, Qixing Huang, Zimo Li, Silvio Savarese, Manolis Savva, Shuran Song, Hao Su, et al. Shapenet: An information-rich 3d model repository. arXiv preprint arXiv:1512.03012 , 2015. 6 [4] Guangyan Chen, Meiling Wang, Yi Yang, Kai Yu, Li Yuan, and Yufeng Yue. Pointgpt: Auto-regressively generative pre-training from point clouds. Advances in Neural Information Processing Systems , 36:29667–29679, 2023. 6 [5] Ricky TQ Chen, Yulia Rubanova, Jesse Bettencourt, and David K Duvenaud. Neural ordinary differential equa-tions. Advances in neural information processing systems ,31, 2018. 1, 2 [6] An-Chieh Cheng, Xueting Li, Sifei Liu, Min Sun, and Ming-Hsuan Yang. Autoregressive 3d shape generation via canon-ical mapping. In European Conference on Computer Vision ,pages 89–104. Springer, 2022. 5 [7] Laurent Dinh, David Krueger, and Yoshua Bengio. Nice: Non-linear independent components estimation. arXiv preprint arXiv:1410.8516 , 2014. 1 [8] Laurent Dinh, Jascha Sohl-Dickstein, and Samy Ben-gio. Density estimation using real nvp. arXiv preprint arXiv:1605.08803 , 2016. 1, 2 [9] Patrick Esser, Sumith Kulal, Andreas Blattmann, Rahim Entezari, Jonas M¨ uller, Harry Saini, Yam Levi, Dominik Lorenz, Axel Sauer, Frederic Boesel, et al. Scaling recti-fied flow transformers for high-resolution image synthesis. In Forty-first international conference on machine learning ,2024. 2 [10] Matheus Gadelha, Rui Wang, and Subhransu Maji. Multires-olution tree networks for 3d point cloud processing. In Pro-ceedings of the European Conference on Computer Vision (ECCV) , pages 103–118, 2018. 1, 2, 5 [11] Jun Gao, Tianchang Shen, Zian Wang, Wenzheng Chen, Kangxue Yin, Daiqing Li, Or Litany, Zan Gojcic, and Sanja Fidler. Get3d: A generative model of high quality 3d tex-tured shapes learned from images. Advances in neural infor-mation processing systems , 35:31841–31854, 2022. 1, 5 [12] Will Grathwohl, Ricky TQ Chen, Jesse Bettencourt, Ilya Sutskever, and David Duvenaud. Ffjord: Free-form con-tinuous dynamics for scalable reversible generative models. 
+
+arXiv preprint arXiv:1810.01367 , 2018. 1, 2 [13] Thibault Groueix, Matthew Fisher, Vladimir G Kim, Bryan C Russell, and Mathieu Aubry. A papier-mˆ ach´ e ap-proach to learning 3d surface generation. In Proceedings of the IEEE conference on computer vision and pattern recog-nition , pages 216–224, 2018. 6 [14] Ka-Hei Hui, Chao Liu, Chi-Wing Fu, Arash Vahdat, et al. Not-so-optimal transport flows for 3d point cloud genera-tion. In International Conference on Learning Representa-tions , volume 2025, pages 98748–98771, 2025. 1, 2, 6 [15] Hyeongju Kim, Hyeonseung Lee, Woo Hyun Kang, Joun Yeop Lee, and Nam Soo Kim. Softflow: Probabilis-tic framework for normalizing flow on manifolds. Advances in Neural Information Processing Systems , 33:16388–16397, 2020. 1, 2, 6 [16] Jinwoo Kim, Jaehoon Yoo, Juho Lee, and Seunghoon Hong. Setvae: Learning hierarchical composition for generative modeling of set-structured data. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 15059–15068, 2021. 1, 2, 5 [17] Diederik P Kingma. Auto-encoding variational bayes. arXiv preprint arXiv:1312.6114 , 2013. 2, 10 [18] Durk P Kingma and Prafulla Dhariwal. Glow: Generative flow with invertible 1x1 convolutions. Advances in neural information processing systems , 31, 2018. 2 [19] Roman Klokov, Edmond Boyer, and Jakob Verbeek. Discrete point flow networks for efficient point cloud generation. In 
+
+European Conference on Computer Vision , pages 694–710. Springer, 2020. 1, 6 [20] Juil Koo, Seungwoo Yoo, Minh Hieu Nguyen, and Minhyuk Sung. Salad: Part-level latent diffusion for 3d shape gen-eration and manipulation. In Proceedings of the ieee/cvf international conference on computer vision , pages 14441– 14451, 2023. 6 [21] Jiong Lin, Jinchen Ruan, and Hod Lipson. Articflow: Gener-ative simulation of articulated mechanisms via flow match-ing. arXiv preprint arXiv:2511.17883 , 2025. 2 [22] Yaron Lipman, Ricky TQ Chen, Heli Ben-Hamu, Maximil-ian Nickel, and Matt Le. Flow matching for generative mod-eling. arXiv preprint arXiv:2210.02747 , 2022. 1, 2 [23] Xingchao Liu, Chengyue Gong, and Qiang Liu. Flow straight and fast: Learning to generate and transfer data with rectified flow. arXiv preprint arXiv:2209.03003 , 2022. 1, 2 [24] Shitong Luo and Wei Hu. Diffusion probabilistic models for 3d point cloud generation. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition ,pages 2837–2845, 2021. 1, 2, 4, 6 [25] Quan Meng, Lei Li, Matthias Nießner, and Angela Dai. Lt3sd: Latent trees for 3d scene diffusion. In Proceedings of the Computer Vision and Pattern Recognition Conference ,pages 650–660, 2025. 2 [26] Ziqiao Meng, Qichao Wang, Zhiyang Dou, Zixing Song, Zhipeng Zhou, Irwin King, and Peilin Zhao. Pointnsp: Au-toregressive 3d point cloud generation with next-scale level-of-detail prediction. In Proceedings of the IEEE/CVF Con-ference on Computer Vision and Pattern Recognition , pages 31450–31461, 2026. 1, 2, 6 [27] Shentong Mo, Enze Xie, Ruihang Chu, Lanqing Hong, Matthias Niessner, and Zhenguo Li. Dit-3d: Exploring plain diffusion transformers for 3d shape generation. Advances in neural information processing systems , 36:67960–67971, 2023. 1, 2, 10 [28] Petr Molodyk, Jaemoo Choi, David W Romero, Ming-Yu Liu, and Yongxin Chen. Mfm-point: Multi-scale flow matching for point cloud generation. arXiv preprint arXiv:2511.20041 , 2025. 1, 2 [29] George Papamakarios, Eric Nalisnick, Danilo Jimenez Rezende, Shakir Mohamed, and Balaji Lakshminarayanan. Normalizing flows for probabilistic modeling and inference. 
+
+Journal of Machine Learning Research , 22(57):1–64, 2021. 1[30] Aram-Alexandre Pooladian, Heli Ben-Hamu, Carles Domingo-Enrich, Brandon Amos, Yaron Lipman, and Ricky TQ Chen. Multisample flow matching: Straight-ening flows with minibatch couplings. arXiv preprint arXiv:2304.14772 , 2023. 2, 10 [31] Charles Ruizhongtai Qi, Li Yi, Hao Su, and Leonidas J Guibas. Pointnet++: Deep hierarchical feature learning on point sets in a metric space. Advances in neural information processing systems , 30, 2017. 2, 3, 10 [32] Zhiyuan Ren, Minchul Kim, Feng Liu, and Xiaoming Liu. Tiger: Time-varying denoising model for 3d point cloud generation with diffusion process. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 9462–9471, 2024. 2, 10 [33] Danilo Rezende and Shakir Mohamed. Variational inference with normalizing flows. In International conference on ma-chine learning , pages 1530–1538. PMLR, 2015. 2 [34] Alexander Tong, Kilian Fatras, Nikolay Malkin, Guillaume Huguet, Yanlei Zhang, Jarrid Rector-Brooks, Guy Wolf, and Yoshua Bengio. Improving and generalizing flow-based generative models with minibatch optimal transport. arXiv preprint arXiv:2302.00482 , 2023. 2, 10 [35] Arash Vahdat, Francis Williams, Zan Gojcic, Or Litany, Sanja Fidler, Karsten Kreis, et al. Lion: Latent point dif-fusion models for 3d shape generation. Advances in neural information processing systems , 35:10021–10039, 2022. 1, 2, 5, 6, 7 [36] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszko-reit, Llion Jones, Aidan N Gomez, Łukasz Kaiser, and Illia Polosukhin. Attention is all you need. Advances in neural information processing systems , 30, 2017. 10 [37] Lemeng Wu, Dilin Wang, Chengyue Gong, Xingchao Liu, Yunyang Xiong, Rakesh Ranjan, Raghuraman Krishnamoor-thi, Vikas Chandra, and Qiang Liu. Fast point cloud genera-tion with straight flows. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition ,pages 9445–9454, 2023. 1, 2, 6, 7 [38] Zhirong Wu, Shuran Song, Aditya Khosla, Fisher Yu, Lin-guang Zhang, Xiaoou Tang, and Jianxiong Xiao. 3d shapenets: A deep representation for volumetric shapes. In 
+
+Proceedings of the IEEE conference on computer vision and pattern recognition , pages 1912–1920, 2015. 6 [39] Guandao Yang, Xun Huang, Zekun Hao, Ming-Yu Liu, Serge Belongie, and Bharath Hariharan. Pointflow: 3d point cloud generation with continuous normalizing flows. In Proceed-ings of the IEEE/CVF international conference on computer vision , pages 4541–4550, 2019. 1, 2, 4, 5, 6, 10 [40] Linqi Zhou, Yilun Du, and Jiajun Wu. 3d shape generation and completion through point-voxel diffusion. In Proceed-ings of the IEEE/CVF international conference on computer vision , pages 5826–5835, 2021. 1, 2, 5, 6, 7 6. Implementation Details 
+
+Architecture. The encoder adopts a PointNet++ [31] archi-tecture with three hierarchical Set Abstraction layers: the first downsamples to 512 points via FPS (radius 0.2, 32 neighbors, Conv 3 →64 →128), the second to 128 points (ra-dius 0.4, 64 neighbors, Conv 131 →256 →512), and the third performs global aggregation (Conv 515 →512 →1024), fol-lowed by a linear projection (1024 →512) with ReLU and batch normalization to produce a 128-dimensional latent code with diagonal Gaussian parameters (μ, σ ), consistent with PointFlow [39]. The point velocity network vθ consists of our proposed AdaptiveConditionLinear layers with 256 hidden units and Tanh activations. Given a context vector c = [ t, z shape ] (time step concatenated with the shape code), the layer first pre-dicts feature-wise scale α(c) and shift β(c) from the con-text, applies them to modulate the input ˜x = x ⊙ (1 + 
+
+α(c)) + β(c), then computes the linear transform W ˜x + b,and finally adds a context-dependent residual γ(c). This design conditions the velocity field on the shape code by modulating the input features, which provides two distinct conditioning pathways: feature recalibration via scale and offset before the weight matrix, and a direct residual con-nection from the context to the output. The latent velocity network vψ uses a similar architecture. 
+
+Settings. We use the Adam optimizer (lr = 10 −3, β1 = 0 .9,
+
+β2 = 0 .999 , no weight decay) with a linear learning rate schedule that decays to zero from the halfway point, batch size of 256, and train on 4 NVIDIA A800-80G GPUs un-der Linux (Ubuntu) with PyTorch 2.5.1 and CUDA 12.4. The training costs are summarized in Table 7. For the per-category setting, we train a separate model on each individ-ual category; the reported GPU hours are averaged across Airplane, Car, and Chair. For the full-dataset setting, we train a single model jointly on all 55 categories, i.e., the reported GPU hours are the total cost of one training run, rather than 55 separate runs. Note that full-dataset training is limited by computational constraints, so per-category ex-periments on Airplane, Car, and Chair are conducted as the primary benchmarks for comparison with prior works.              
+
+> Table 7. Training computational costs.
+> Setting Task Epochs GPU hours Per-category Generation ∼4.2k ∼9.8 Auto-encoding ∼4k ∼8.5 Full-dataset (55 categories) Generation ∼4.1k ∼102 Auto-encoding ∼4k ∼97
+
+Training Objective. Both Lpoint and Llatent receive gradi-ents with respect to the reparameterized latent code z [17], and thus backpropagate through z to the encoder parame-ters (μ, log σ) via the reparameterization trick [17]. This couples the encoder with both flow modules: the encoder is encouraged to produce latents that are not only informa-tive for point reconstruction (via Lpoint ) but also compatible with the latent flow prior (via Llatent ). 
+
+Pseudocode. We provide pseudocode for all four config-urations of HFM. Algorithm 1 summarizes the full train-ing procedure for the generation task, where the encoder, latent flow, and point flow are jointly optimized with the entropy-regularized objective. Algorithm 2 describes the auto-encoding training, where the latent flow and entropy terms are disabled, reducing the objective to Lpoint only. Algorithm 4 outlines the two-stage sampling procedure for generation. Algorithm 3 shows the reconstruction proce-dure for the auto-encoding setting, where z is obtained by encoding a given shape and only the point flow reverse is performed. 
+
+# 7. More Generation Results 
+
+We provide additional qualitative generation results for Airplane, Car, and Chair categories in Fig. 8, Fig. 9, and Fig. 10, respectively. 
+
+# 8. Limitations and Future Work 
+
+Point-wise independent OT coupling. In the current Con-ditional Point Flow Matching, each point independently fol-lows an OT path from noise to data, without explicit inter-point coupling beyond the shared shape code z. While this design is simple and effective, recent studies on minibatch OT coupling [30, 34] suggest that coupling noise across points within a shape could further improve local structure coherence and coverage. We leave exploration of such cou-pling strategies to future work. 
+
+MLP-based velocity network. Our current velocity network uses MLP with AdaptiveConditionLinear lay-ers, which processes each point independently. While permutation-equivariant and effective, MLPs are less ex-pressive than Transformer-based architectures [36] in cap-turing long-range dependencies across points. Recent work [27, 32] has demonstrated the benefits of Trans-former backbones for point cloud generation. Explor-ing Transformer-based velocity networks within the flow matching framework is a promising direction for further im-proving generation quality. Figure 8. Additional generation results on Airplane. 
+
+Figure 9. Additional generation results on Car. 
+
+Algorithm 1 HFM Training (Generation)  
+
+> 1:
+
+Input: Dataset D, encoder Enc, latent flow vψ , point flow vθ 
+
+> 2:
+
+for iteration = 1 to max iter do  
+
+> 3:
+
+Sample minibatch X ∼ D  
+
+> 4:
+
+μ, log σ ← Enc (X) 
+
+> 5:
+
+z ∼ N (μ, diag (σ2)) # reparameterize  
+
+> 6:
+
+H ← 12
+
+P(log σ2) + const # entropy  
+
+> 7:
+
+Sample t ∼ Uniform (0 , T ), z0 ∼ N (0 , I ) 
+
+> 8:
+
+zt ← (1 − t/T ) z + ( t/T ) z0 
+
+> 9:
+
+Llatent ← ∥ vψ (zt, t ) − (z0 − z)/T ∥2 
+
+> 10:
+
+Sample t ∼ Uniform (0 , T ), x0 ∼ N (0 , I ) 
+
+> 11:
+
+xt ← (1 − t/T ) X + ( t/T ) x0 
+
+> 12:
+
+Lpoint ← ∥ vθ (xt, t, z ) − (x0 − X)/T ∥2 
+
+> 13:
+
+L ← L point + Llatent − λentropy H 
+
+> 14:
+
+Backpropagate L 
+
+> 15:
+
+end for Algorithm 2 HFM Training (Auto-Encoding)  
+
+> 1:
+
+Input: Dataset D, encoder Enc, point flow vθ 
+
+> 2:
+
+for iteration = 1 to max iter do  
+
+> 3:
+
+Sample minibatch X ∼ D  
+
+> 4:
+
+μ, log σ = 0 ← Enc (X) 
+
+> 5:
+
+z ← μ # deterministic  
+
+> 6:
+
+Sample t ∼ Uniform (0 , T ), x0 ∼ N (0 , I ) 
+
+> 7:
+
+xt ← (1 − t/T ) X + ( t/T ) x0 
+
+> 8:
+
+Lpoint ← ∥ vθ (xt, t, z ) − (x0 − X)/T ∥2 
+
+> 9:
+
+Backpropagate Lpoint  
+
+> 10:
+
+end for Algorithm 3 HFM Reconstruction (Auto-Encoding)  
+
+> 1:
+
+Input: Data point X, encoder Enc, point flow vθ , steps 
+
+Np 
+
+> 2:
+
+μ, log σ = 0 ← Enc (X) # encode  
+
+> 3:
+
+z ← μ # deterministic  
+
+> 4:
+
+Sample x ∼ N (0 , I ) # point noise  
+
+> 5:
+
+for j = 1 to Np do  
+
+> 6:
+
+t ← T − j · T /N p 
+
+> 7:
+
+x ← x − vθ (x, t, z ) · T /N p # reverse point flow  
+
+> 8:
+
+end for  
+
+> 9:
+
+return xFigure 10. Additional generation results on Chair. 
+
+Algorithm 4 HFM Sampling (Generation)  
+
+> 1:
+
+Input: Latent flow vψ , point flow vθ , steps Nl, Np 
+
+> 2:
+
+Sample z ∼ N (0 , I ) # latent noise  
+
+> 3:
+
+for i = 1 to Nl do  
+
+> 4:
+
+t ← T − i · T /N l 
+
+> 5:
+
+z ← z − vψ (z, t ) · T /N l # reverse latent flow  
+
+> 6:
+
+end for  
+
+> 7:
+
+Sample x ∼ N (0 , I ) # point noise  
+
+> 8:
+
+for j = 1 to Np do  
+
+> 9:
+
+t ← T − j · T /N p 
+
+> 10:
+
+x ← x − vθ (x, t, z ) · T /N p # reverse point flow  
+
+> 11:
+
+end for  
+
+> 12:
+
+return x
