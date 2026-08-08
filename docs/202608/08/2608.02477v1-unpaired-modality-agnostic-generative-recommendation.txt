@@ -1,0 +1,506 @@
+Title: Unpaired Modality-Agnostic Generative Recommendation
+
+URL Source: https://arxiv.org/pdf/2608.02477v1
+
+Published Time: Tue, 04 Aug 2026 02:41:56 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# Unpaired Modality-Agnostic Generative Recommendation 
+
+Weihao Shen 1, Wei Chen 1, Fuwei Zhang 1, Meng Yuan 1, Yuqin Lan 1,Guojun Liu 2, Qingsong Hua 2, Wei Lin 2, Fuzhen Zhuang 1∗
+
+> 1
+
+Institute of Artificial Intelligence, Beihang University, Beijing, China 
+
+> 2
+
+Meituan, Beijing, China 
+
+Abstract 
+
+Generative Recommendation (GR) formulates recommenda-tion as autoregressive generation over discrete semantic identi-fiers (IDs). Although recent multimodal GR methods improve semantic ID construction with visual and textual information, they typically require item-level paired observations, restricting tokenization to the intersection of modality availability. More-over, incorporating unpaired observations is nontrivial because small representation shifts may cross quantization bound-aries and produce incompatible identifier sequences. To ad-dress this challenge, we propose Unpair ed Modality-Agnostic 
+
+Generative Recommendation (UnpairGR), which learns a uni-fied semantic-ID space from paired, image-only, and text-only observations. UnpairGR confines modality-specific processing to lightweight input projections while sharing the subsequent Transformer and residual codebooks across all observation conditions. Paired observations establish a reliability-guided cross-modal consensus, whereas unimodal observations di-rectly refine the same representations and codes. The learned tokenizer is then fixed to provide stationary targets for a sin-gle autoregressive recommender, without feature imputation, modality-specific codebooks, or fallback mappings. Extensive experiments on three benchmark datasets demonstrate that Un-pairGR consistently improves recommendation performance under both fully observed and incomplete-observation settings. 
+
+Code — https://github.com/Nevaeh7/UnpairGR 
+
+Introduction 
+
+Generative Recommendation (GR) formulates next-item rec-ommendation as autoregressive generation over discrete se-mantic identifiers (IDs) (Rajput et al. 2023; Hou et al. 2025a; Li et al. 2026). In this paradigm, each item is represented by a sequence of semantic tokens, and the recommender predicts the next item by generating its semantic ID from the user’s interaction history. The effectiveness of GR therefore largely depends on whether these IDs can faithfully encode item semantics. If the IDs are derived from limited signals, semantically related items may be assigned unrelated token sequences, making it difficult for the generative model to learn meaningful item relationships (Singh et al. 2024). To improve the quality of semantic IDs, recent multi-modal GR methods (Zhang et al. 2026; Chen et al. 2026) 
+
+> ∗
+
+Corresponding author. Paired Items Image-only Text-only Mixed Observations 
+
+… … …     
+
+> Boundary Crossing
+> Continuous Semantic Space Paired-only Tokenizer Discrete Codebook A6 B8 C2 D5 A9 B2 C1 D3 A8 B1 C3 D6
+> Shared Semantic Space One Tokenizer Shared Codebook A6 B8 C1 D6 A6 B8 C1 D3 A6 B8 C1 D2 Existing Multimodal GR (Paired-only) Modality-Agnostic GR (Mixed) SID Inconsistency Shared coarse prefix
+> Shared Quantization Cell
+
+Figure 1: Existing multimodal GR methods depend on paired image–text data to learn semantic IDs. However, such paired data is difficult to obtain and maintain in real catalogs, while many useful images and texts are available without clean item-level pairing. UnpairGR learns a shared tokenizer from both paired and unpaired data, producing compatible semantic IDs for a single generative recommender. incorporate multimodal content into ID construction. Im-ages capture appearance-level cues, whereas texts convey descriptive semantics, making them complementary sources for constructing more expressive semantic IDs. Despite these advantages, existing multimodal GR methods usually assume that the image and text used for semantic-ID learning are available as item-level pairs. In real recommenda-tion systems, however, visual and textual information is often generated through different operational pipelines. For exam-ple, product images may be uploaded by sellers, whereas titles and descriptions may be maintained through separate catalog-management processes. Since these modalities are collected and updated independently, their coverage and quality can become uneven across items: some items may have reliable images but noisy or missing textual descriptions, while others may contain detailed textual metadata but lack usable images. Even when both modalities are present, catalog evolution still arXiv:2608.02477v1 [cs.IR] 3 Aug 2026 calls for continuous filtering and synchronization to preserve clean item-level image–text pairs (Liu et al. 2025b). Existing methods can only use multimodal information when it appears in paired form. Useful images and useful texts that are not paired with each other cannot directly participate in learning the same semantic-ID tokenizer. This is undesirable because unpaired data still carries valuable item semantics: an image can reveal visual similarity, and a text description can reveal category, function, or usage semantics. The limitation is therefore not the lack of multimodal information, but the requirement that such information must be perfectly paired before it can be used. This motivates our central question: 
+
+Can multimodal GR directly learn expressive semantic IDs from unpaired visual and textual data? 
+
+However, exploiting unpaired data is particularly chal-lenging in GR, because the final supervision is imposed on discrete semantic IDs rather than continuous embeddings. While standard multimodal representation learning can align visual and textual signals in a shared continuous space, GR must further quantize item representations into discrete IDs before training the autoregressive recommender (van den Oord, Vinyals, and Kavukcuoglu 2017; Lee et al. 2022; Hou et al. 2023). This quantization makes semantic-ID learning sensitive to representation perturbations: a small shift in the latent space may cross a quantization boundary and pro-duce a different token assignment (Zhu et al. 2024). Such sensitivity is amplified when paired, image-only, and text-only data are encoded through separate transformations or modality-specific codebooks. Semantically related items may remain close in continuous feature space but still be assigned incompatible discrete IDs after quantization. Consequently, unpaired modalities cannot be simply incorporated through independent alignment modules; they must be used to shape the same discrete vocabulary as paired data. The key challenge is therefore to let paired and unpaired visual/textual evidence jointly define a unified semantic-ID space for GR. A seemingly direct solution is to train a semantic-ID tokenizer jointly on paired, image-only, and text-only obser-vations. As illustrated in Figure 1, the goal is not to construct separate modality-specific identifier systems or to recover the missing modality, but to map heterogeneous observations into the same semantic space and quantize them with a shared discrete vocabulary. However, mixed supervision alone is insufficient. If different observation conditions are processed by separate semantic transformations, even small represen-tation shifts may cross quantization boundaries and lead to incompatible identifier sequences. Effectively incorporating unpaired data therefore requires paired and unimodal obser-vations to share both the semantic transformation preceding quantization and the residual codebooks used for discrete assignment within a unified tokenizer. To realize this principle, we propose UnpairGR , short for 
+
+Unpair ed Modality-Agnostic Generative Recommendation. UnpairGR confines modality-specific processing to lightweight input projections, while sharing the subsequent Transformer and residual codebooks across paired, image-only, and text-only observations. Paired image–text obser-vations establish a reliability-guided cross-modal semantic consensus, whereas unpaired images and texts directly update the same representation model and discrete vocabulary. In this way, all available visual and textual evidence contributes to a unified semantic-ID space. After training, the tokenizer is frozen to provide stationary semantic-ID targets for a sin-gle autoregressive recommender, without feature imputation, modality-specific codebooks, or fallback mappings. Extensive experiments on three benchmark datasets demon-strate UnpairGR’s effectiveness across diverse settings. Semantic-ID diagnostics show that UnpairGR preserves com-patible symbolic neighborhoods across conditions, while cold-start, source-quality, efficiency, and ablation analyses validate the benefits of unpaired supervision, shared repre-sentation learning, and residual quantization. Our main contributions are summarized as follows: 
+
+• We identify the pairing bottleneck in multimodal GR and formulate learning from paired and unpaired observations as a unified semantic-ID space learning problem. 
+
+• We propose Unpaired Modality-Agnostic Generative Rec-ommendation, which enables paired, image-only, and text-only observations to jointly optimize a shared tokenization pathway and residual codebooks, allowing modality evi-dence to support a single generative recommender. 
+
+• We conduct extensive experiments on three widely used recommendation datasets, demonstrating that UnpairGR consistently outperforms state-of-the-art GR models. 
+
+Related Work 
+
+In this section, we review representative studies on sequential and generative recommendation, focusing on multimodal item modeling and semantic ID learning. 
+
+Sequential and Multimodal Recommendation 
+
+Sequential recommendation aims to capture the evolution of user preferences from interaction sequences. Early ap-proaches, such as GRU4Rec and NARM, employ recurrent neural networks to model short-term behavioral transitions and sequential dependencies (Hidasi et al. 2016; Li et al. 2017). Attention-based methods improve modeling of long-range user interests. SASRec adopts self-attention to identify informative interactions in user histories, while BERT4Rec introduces bidirectional sequence modeling through a Cloze prediction objective (Kang and McAuley 2018; Sun et al. 2019). FDSA and S 3-Rec respectively introduce feature-level attention and self-supervised pretraining (Zhang et al. 2019; Zhou et al. 2020). More recently, P5 reformulates rec-ommendation tasks within a unified text-to-text framework, demonstrating the potential of pretrained language models for recommendation (Geng et al. 2022). Multimodal recommen-dation incorporates visual and textual content to complement interaction supervision (Zhou and Shen 2023; Tao et al. 2023). MMGCN propagates modality-specific information over user– item graphs to improve preference modeling (Wei et al. 2019). MISSRec learns transferable multimodal sequence representa-tions through modality-aware pretraining (Wang et al. 2023b), while VIP5 extends prompt-based recommendation to multi-modal inputs within a unified generative framework (Geng et al. 2023). These methods demonstrate the value of mul-timodal content for preference modeling (Zhou et al. 2023, 2025; Wei et al. 2023a,b), but primarily operate on continuous representations rather than discrete item vocabularies. 
+
+Generative Recommendation 
+
+Generative Recommendation (GR) represents items with discrete semantic IDs and predicts the next item autoregres-sively (Yang et al. 2025; Zhai et al. 2024). TIGER estab-lishes this paradigm through hierarchical residual quanti-zation (Rajput et al. 2023). Subsequent methods improve identifier learning by incorporating collaborative semantics and enhancing codebook utilization, including LC-Rec and LETTER (Zheng et al. 2024; Wang et al. 2024). Recent methods study end-to-end tokenization (Liu et al. 2025a), multi-identifier pretraining (Zheng et al. 2025), and order-agnostic IDs (Lin et al. 2025). Parallel or long IDs (Hou et al. 2025a; Li et al. 2026) and differentiable assignments (Fu et al. 2026) broaden identifier capacity. Tokenizer analyses exam-ine design choices and scaling behavior (Ju et al. 2025; Hou et al. 2025b; Liu et al. 2026). Recent studies further extend GR with multimodal information. MMGRec integrates multi-modal content and collaborative signals through graph-based residual quantization (Liu et al. 2024), while MQL4GRec constructs a unified quantized language for multimodal and cross-domain transfer (Zhai et al. 2025). MACRec strengthens cross-modal interaction during quantization and generation, whereas SynGR promotes cross-modal synergy by suppress-ing dominant-modality shortcuts (Zhang et al. 2026; Chen et al. 2026). Recent tokenizers also explore mixture quan-tization (Xu et al. 2026), multimodal initialization (Wang et al. 2025), non-uniform visual codes (Wei et al. 2026), and complementary views (Kim et al. 2026). However, these methods rely on item-level paired observa-tions for cross-modal supervision (Zhang et al. 2026; Chen et al. 2026; Xu et al. 2026). Missing-modality approaches instead use feature reconstruction or alignment in continuous spaces (Kim et al. 2025; Wang et al. 2023a; Lee et al. 2023; Dai et al. 2025), without preserving discrete-ID compatibility after quantization. UnpairGR overcomes this limitation by jointly learning from paired, image-only, and text-only obser-vations through a shared Transformer and residual codebooks, yielding a unified semantic-ID space for recommendation. 
+
+Methodology 
+
+Unpaired Modality-Agnostic Generative Recommendation (UnpairGR) learns semantic IDs from paired, image-only, and text-only item collections, denoted by Dp, Dv , and Dt.Rather than maintaining separate tokenizers, it maps all observations into a shared representation space and quantizes them with common residual codebooks, yielding IDs for a single autoregressive recommender. As shown in Figure 2, the tokenizer learns shared representations, forms a cross-modal consensus for paired items, and applies the same residual quantizer to all observation types. After training, it is frozen to provide stationary targets for generative recommendation. 
+
+Modality-Agnostic Item Quantization 
+
+The objective of modality-agnostic item quantization is to construct a common semantic-ID space that can be indepen-dently accessed through visual, textual, or paired observations. This requires sharing not only the discrete codes but also the semantic transformation preceding quantization. Otherwise, unimodal observations may update isolated modality-specific representations and produce identifiers that are incompatible with those derived from paired inputs. UnpairGR therefore confines modality-specific processing to lightweight input pro-jections, while sharing the subsequent representation model and residual codebooks across all observation conditions. 
+
+Shared Representation across Modalities For an item 
+
+i, frozen modality encoders extract visual and textual fea-tures hvi ∈ Rdv and hti ∈ Rdt . Freezing the encoders stabi-lizes modality distributions during semantic-ID learning and prevents the shared quantizer from tracking independently evolving representation spaces (Radford et al. 2021). Because modalities differ in dimensionality and statistics, each feature is mapped by a lightweight projection Pm and then processed by a shared Transformer Φθ :
+
+zmi = Pm(hmi ) , rmi = Φ θ (zmi ) , m ∈ { v, t }. (1) The projections Pv and Pt absorb modality-specific discrep-ancies, while Φθ provides a shared semantic transformation before quantization. Consequently, image-only and text-only observations can update the same parameters without item-level counterparts, allowing unimodal evidence to more ef-fectively refine a coherent semantic space shared across heterogeneous observation conditions, rather than forming separate modality-specific representations. For paired items, 
+
+rvi and rti provide complementary views. Since direct aver-aging assumes equal reliability, UnpairGR instead forms a cross-modal consensus by estimating each representation’s confidence in the shared quantization space. 
+
+Cross-Modal Semantic Consensus For a paired item, vi-sual and textual representations may provide unequal semantic evidence, so direct averaging can let an ambiguous modality distort semantic ID construction. UnpairGR instead estimates modality reliability in a principled manner from assignment uncertainty in the shared quantization space. Let C(ℓ) = {e(ℓ) 
+
+> k
+
+}Kk=1 be the shared codebook at residual level ℓ, and let w(ℓ−1)  
+
+> i,m
+
+be the residual for modality m ∈ { v, t }.Its soft assignment over the shared codebook is 
+
+p(ℓ)
+
+> i,m
+
+(k) = exp 
+
+
+
+− w(ℓ−1)  
+
+> i,m
+
+− e(ℓ)
+
+> k
+> 22
+
+/τ 
+
+PKj=1 exp 
+
+
+
+− w(ℓ−1)  
+
+> i,m
+
+− e(ℓ)
+
+> j
+> 22
+
+/τ 
+
+ , (2) where τ controls assignment sharpness. We define modality reliability using the average normalized entropy: 
+
+κmi = 1 − 1
+
+L
+
+> L
+
+X
+
+> ℓ=1
+
+H
+
+
+
+p(ℓ)
+
+> i,m
+
+
+
+log K , (3) where H(p) = − P 
+
+> k
+
+p(k) log p(k). Lower entropy indicates more confident localization in the shared code space and Mixed 
+
+Paired Items Image-only Text-only 
+
+Pv
+
+Pt   
+
+> Modality-Specific Projection
+> Shared Transformer
+> Shared Parameters 𝜃
+> Transformer Trunk 𝚽 !
+> Transformer Trunk 𝚽 !
+
+…………               
+
+> Codebook Distances Soft Assignment Entropy 𝐻 𝑝 !,𝒗 ℓ
+> 𝑎 "#=𝜅 "#+ 𝜖 𝜅 "#+ 𝜅 "$+ 2𝜖 𝑎 "$=𝜅 "$+ 𝜖 𝜅 "#+ 𝜅 "$+ 2𝜖
+> Confidence
+> 𝜅 "$
+> Confidence
+> 𝜅 "#Soft Assignment Entropy 𝐻 𝑝 !,% ℓ
+> 𝐫 "%= 𝑎 "#𝐫 "#+𝑎 "$𝐫 "$
+
+… 
+
+> 𝐰 ",# (() 𝐰 ",# (*+,)
+
+𝐫 !"
+
+𝐫 !#         
+
+> A_2 B_5 C_9 D_9 A_6 B_8 C_1 D_2 A_9 B_2 C_5 D_8 Paired SID Image-only SID Text-only SID
+
+……
+
+> Shared Codebook Aware Modality Reliability Estimation
+> Modality Conditioned SID Mapping
+
+… ……
+
+- = - = + + =
+
+> 𝑔 !
+> Decoder
+
+𝐞 $!,# $ 
+
+> %
+
+𝐞 $!,% $
+
+> (')
+
+𝐞 $!,& $  
+
+> )
+> 𝐰 !,& '= 𝐫 !&
+> 𝑜 ∈ 𝑝, 𝑣, 𝑡
+
+……… +         
+
+> Modality Agnostic Encoding under Mixed Supervision
+> Shared Codebook
+> A_6 B_3 C_8 D_9 A_6 B_8 C_1 D_2 A_6 B_5 C_2 D_8 <P> item 1 <T> item 2 <V> item 3
+
+Transformer Encoder Transformer Decoder                        
+
+> <S> A_6 B_5 C_3 A_6 B_5 C_3 D_8 D_8 <E>
+> … …
+> Items : Paired + Image-only + Text-only
+> A_6 B_8 C_2 D_9 <P> item 4 A_2 B_8 C_5 D_6 A_1 B_6 C_7 D_3 A_3 B_9 C_0 D_6 A_4 B_2 C_3 D_8 SID Maps <P> item A <V> item B <T> item C <V> item D Modality Router
+> <P> <T> <V> Modality Conditioned SID Inference
+> Modality-Agnostic GR
+> User History Items Lookup Codebook Distances
+> Modality Shared Residual Quantization Paired Unpaired Unpaired
+> Modality-Agnostic Item Quantization
+> RQ RQ
+
+𝐳 !#
+
+𝐳 !" 
+
+> 𝐰 ",$ (() 𝐰 ",$ (*+,)
+
+𝐫 $!*
+
+𝐡 & !,* ,  
+
+> 𝐫 #"#
+> 𝐰 ",# %𝐰 ",# &𝐰 ",# '
+> 𝐰 ",# &
+> ST
+
+Figure 2: Overview of UnpairGR. Paired and unpaired data update the same tokenizer through thin modality-specific projections, a shared Transformer trunk, and shared residual codebooks, yielding semantic IDs in one shared discrete space. thus higher reliability. We normalize the scores as ami =(κmi + ϵ)/(κvi + κti + 2 ϵ), where ϵ > 0, and construct rpi =
+
+avi rvi + atirti. Its assignment p(ℓ)
+
+i,p follows Eq. (2) using the paired residual w(ℓ−1) 
+
+i,p . For unimodal items, the available representation is used directly without fusion. 
+
+Modality-Shared Residual Quantization Given an item representation roi under observation condition o ∈ { p, v, t },UnpairGR discretizes all observation types using the same L-level residual codebook {C (ℓ)}Lℓ=1 , where C(ℓ) = {e(ℓ)
+
+k }Kk=1 .Starting from w(0) 
+
+i,o = roi , residual quantization proceeds as 
+
+soi,ℓ = arg min 
+
+k∈[K]
+
+w(ℓ−1) 
+
+i,o − e(ℓ)
+
+k
+
+22
+
+. (4) 
+
+w(ℓ)
+
+i,o = w(ℓ−1) 
+
+i,o − e(ℓ)
+
+soi,ℓ 
+
+. (5) The selected indices form the semantic ID soi =(soi, 1, . . . , s oi,L ), with quantized representation broi =
+
+PLℓ=1 e(ℓ)
+
+soi,ℓ 
+
+. Sharing residual codebooks across paired, image-only, and text-only observations yields coarse-to-fine IDs in a common discrete space, allowing unimodal data to refine the same codes used by paired items. We apply nearest-code assignment uniformly and resolve collisions by deterministic suffix reassignment at the final levels. 
+
+Unpaired Semantic ID Learning 
+
+A shared representation model and residual codebooks es-tablish a common quantization space, but do not guarantee effective use of unimodal observations. UnpairGR therefore jointly learns from paired, image-only, and text-only data. Paired items provide cross-modal correspondence, while uni-modal items refine shared representations and codes directly from available content, without modality completion. 
+
+Mixed-Supervision Quantization UnpairGR jointly learns from paired, image-only, and text-only observations through a unified quantization objective. Let o ∈ { p, v, t } denote the observation condition, and let Mp = {v, t }, Mv = {v},and Mt = {t} specify the available modalities. Accord-ingly, paired observations are supervised to reconstruct both modalities, whereas unimodal observations reconstruct only their observed modality. Let ℓRQ (r) denote the resid-ual quantization loss defined in the Supplementary Ap-pendix, gm a training-only reconstruction head for modal-ity m, and sg[ ·] the stop-gradient operator. For observa-tion condition o, we employ the straight-through represen-tation eroi = roi + sg[ broi − roi ]. For each available modality 
+
+m ∈ M o, we denote the reconstructed modality feature by bhmi,o := gm(eroi ) and define the observation-specific re-construction loss as Roi = P
+
+m∈M o ∥bhmi,o − hmi ∥22. The mixed-supervision objective is 
+
+Lmix = X
+
+o∈{ p,v,t }
+
+Ei∼D o [ℓRQ (roi ) + Roi ] . (6) Although image-only and text-only observations lack item-level cross-modal correspondence, they directly optimize the same Transformer and residual codebooks as paired obser-vations. Unimodal evidence therefore contributes directly to semantic ID learning rather than serving as auxiliary fea-ture completion. During training, we draw balanced samples from Dp, Dv , and Dt to prevent any observation type from dominating code assignment. 
+
+Cross-Observation Semantic Regularization Shared pa-rameters encourage different observations to inhabit a com-mon space, but do not guarantee that they produce compati-ble semantic IDs. UnpairGR therefore enforces consistency both before and after quantization. For each paired item, we align its visual and textual representations through Lalign =
+
+Ei∼D p ∥rvi − rti∥22. We further define the assignment discrep-ancy at residual level ℓ as ∆(ℓ) 
+
+> i
+
+= P 
+
+> m∈{ v,t }
+
+DJS (p(ℓ) 
+
+> i,p
+
+∥p(ℓ)
+
+> i,m
+
+),where DJS denotes the Jensen–Shannon divergence, a sym-metric measure of discrepancy between two probability dis-tributions. The cross-observation consistency objective is 
+
+Lcons = Ei∼D p
+
+"
+
+1
+
+L
+
+> L
+
+X
+
+> ℓ=1
+
+ωℓ∆(ℓ)
+
+> i
+
+#
+
+. (7) Here, p(ℓ) 
+
+> i,p
+
+denotes the soft assignment of the paired consensus, while p(ℓ) 
+
+> i,m
+
+denotes its visual or textual counterpart. The coef-ficient ωℓ emphasizes earlier residual levels encoding coarser semantics. While Lalign reduces cross-modal discrepancy be-fore quantization, Lcons preserves assignment compatibility after quantization. Together, they prevent observations of the same item from producing inconsistent semantic IDs. 
+
+Balanced Code Allocation Mixed supervision may con-centrate assignments on a small subset of codes. To prevent code collapse, we regularize mini-batch code usage. Let ¯p(ℓ)
+
+be the mean soft assignment at residual level ℓ, and let uK
+
+denote the uniform distribution over K codes. We define 
+
+Luse = 1
+
+L
+
+> L
+
+X
+
+> ℓ=1
+
+KL 
+
+
+
+¯p(ℓ) ∥ uK
+
+
+
+. (8) This objective encourages broad coverage of the shared code-books without imposing uniform assignments on individual items. The complete tokenization objective is 
+
+Ltok = Lmix + λLalign + ηLcons + ξLuse . (9) We sample balanced mini-batches from Dp, Dv , and Dt to prevent any observation type from dominating optimization. Training proceeds in two stages. First, UnpairGR minimizes 
+
+Ltok and freezes the modality projections, shared Transformer, and residual codebooks to construct semantic IDs. Second, the autoregressive recommender is trained on these fixed IDs. Paired IDs are used when both modalities are available; otherwise, the corresponding unimodal IDs are used. 
+
+Semantic ID Generation under Heterogeneous Observa-tions After tokenization, all items are represented by seman-tic IDs within one semantic-ID space, regardless of their ob-servation conditions. For each interacted item i, paired obser-vations use the cross-modal consensus, whereas image-only and text-only observations use their corresponding unimodal representations. The resulting semantic ID is denoted by 
+
+si = ( si, 1, . . . , s i,L ). In Figure 2, ⟨P ⟩, ⟨V ⟩, and ⟨T ⟩ denote paired, image-only, and text-only tokenization routes, respec-tively, and are not included in the input sequence. For a user 
+
+u, the interaction history is formed by concatenating the se-mantic IDs of previously interacted items. Given the encoded history xu and the target semantic ID yu = ( y1, . . . , y L), the generative recommender is optimized with 
+
+Lrec = −
+
+> L
+
+X
+
+> ℓ=1
+
+log Pψ (yℓ | y<ℓ , xu) . (10) At inference, available content determines the tokenization route. Because all routes share the Transformer and residual codebooks, paired and unimodal observations are mapped into a common discrete ID space and handled by a single autoregressive recommender. Constrained beam search then generates valid semantic IDs and retrieves the items, without feature imputation or modality-specific fallback models. 
+
+Experiments 
+
+We address six research questions: RQ1: How effective is UnpairGR with complete inputs? RQ2: How robust is UnpairGR when modality incompleteness affects both training and evaluation? RQ3: Do different observations of the same item yield compatible semantic IDs? RQ4: Can it generalize to single-modality cold-start items? RQ5: Which components drive its effectiveness? RQ6: How efficient is it in training and inference? Datasets, baselines, protocols, implementation details, partial-pairing setup, hyperparameter analyses, and case studies are provided in the Supplementary Appendix. 
+
+Overall Recommendation Performance (RQ1) 
+
+Table 1 compares UnpairGR with representative sequential, multimodal, and generative recommendation methods under fully observed inputs. UnpairGR achieves the best results across all datasets and metrics, showing that paired and unimodal observations remain beneficial when complete mul-timodal information is available at inference. The gains are most pronounced at the highest-ranked positions. Compared with SynGR, UnpairGR improves HR@1 by 22 .86% on Arts and 17 .14% on Games, and NDCG@5 by 16 .17% on In-struments. The gains persist at larger cutoffs, although the margin on Instruments HR@10 is modest. This pattern indi-cates that UnpairGR more accurately identifies relevant items at the top of the ranking. UnpairGR also consistently out-performs conventional sequential recommenders and earlier semantic-ID-based generative methods. These results show that unpaired supervision improves both robustness to incom-plete observations and semantic ID construction under fully observed inputs. RQ5 examines component contributions. 
+
+Robustness to Incomplete Observations (RQ2) 
+
+We evaluate UnpairGR under matched modality incomplete-ness during training and evaluation, reporting HR@10 in Table 2 across text-only (TO), image-only (IO), and random single-modality (Random) conditions at varying missingness ratios. UnpairGR consistently performs best across datasets and conditions, with its advantage persisting as missingness increases. Strong performance under fully unimodal inputs further shows that image-only and text-only observations re-main compatible with the shared tokenizer and recommender. Model / Datasets Arts Games Instruments HR@1 HR@5 HR@10 N@5 N@10 HR@1 HR@5 HR@10 N@5 N@10 HR@1 HR@5 HR@10 N@5 N@10 GRU4Rec (ICLR’16) 0.0365 0.0817 0.1088 0.0602 0.0690 0.0140 0.0544 0.0895 0.0341 0.0453 0.0566 0.0975 0.1207 0.0783 0.0857 SASRec (ICDM’18) 0.0212 0.0951 0.1250 0.0610 0.0706 0.0069 0.0587 0.0985 0.0333 0.0461 0.0318 0.0946 0.1233 0.0654 0.0746 BERT4Rec (CIKM’19) 0.0289 0.0697 0.0922 0.0502 0.0575 0.0115 0.0426 0.0725 0.0270 0.0366 0.0450 0.0856 0.1081 0.0667 0.0739 FDSA (IJCAI’19) 0.0380 0.0832 0.1190 0.0583 0.0695 0.0163 0.0614 0.0988 0.0389 0.0509 0.0530 0.0987 0.1249 0.0775 0.0859 S3-Rec (CIKM’20) 0.0172 0.0739 0.1030 0.0511 0.0630 0.0136 0.0527 0.0903 0.0351 0.0468 0.0339 0.0937 0.1123 0.0693 0.0743 P5-CID (RecSys’22) 0.0421 0.0713 0.0994 0.0607 0.0662 0.0169 0.0532 0.0824 0.0331 0.0454 0.0512 0.0839 0.1119 0.0678 0.0704 VQ-Rec (WWW’23) 0.0408 0.1038 0.1386 0.0732 0.0844 0.0075 0.0408 0.0679 0.0242 0.0329 0.0502 0.1062 0.1357 0.0796 0.0891 MISSRec (MM’23) 0.0479 0.1021 0.1321 0.0699 0.0815 0.0201 0.0674 0.1048 0.0385 0.0499 0.0723 0.1089 0.1361 0.0797 0.0880 VIP5 (EMNLP’23) 0.0474 0.0704 0.0859 0.0586 0.0635 0.0173 0.0480 0.0758 0.0328 0.0418 0.0737 0.0892 0.1071 0.0815 0.0872 TIGER (NeurIPS’23) 0.0532 0.0894 0.1167 0.0718 0.0806 0.0166 0.0523 0.0857 0.0345 0.0453 0.0754 0.1007 0.1221 0.0882 0.0950 MQL4GRec (ICLR’25) 0.0672 0.1037 0.1327 0.0857 0.0950 0.0203 0.0637 0.1033 0.0421 0.0548 0.0833 0.1115 0.1375 0.0977 0.1060 MACRec (AAAI’26) 0.0685 0.1046 0.1329 0.0868 0.0953 0.0208 0.0671 0.1078 0.0435 0.0565 0.0819 0.1110 0.1363 0.0965 0.1046 SynGR (ICML’26) 0.0713 0.1145 0.1449 0.0919 0.1010 0.0245 0.0702 0.1092 0.0471 0.0596 0.0850 0.1321 0.1768 0.1045 0.1189 UnpairGR (Ours) 0.0876 0.1262 0.1550 0.1075 0.1168 0.0287 0.0753 0.1113 0.0523 0.0638 0.0954 0.1452 0.1769 0.1214 0.1315 
+
+Improv. (%) +22.86% +10.22% +6.97% +16.97% +15.64% +17.14% +7.26% +1.92% +11.04% +7.05% +12.24% +9.92% +0.06% +16.17% +10.60% 
+
+Table 1: Overall recommendation performance under fully observed inputs. N denotes NDCG. The best and second-best are highlighted in bold and underlined, respectively. Improv. reports the relative gain of UnpairGR over the strongest baseline, SynGR. 
+
+Dataset Method Full Missing 25% Missing 50% Missing 75% Missing 100% All TO IO Random TO IO Random TO IO Random TO IO Random Arts MQL4GRec 0.1327 0.1251 0.1086 0.1133 0.1256 0.1027 0.1095 0.1257 0.1083 0.1045 0.1253 0.1234 0.1050 MACRec 0.1329 0.1072 0.0979 0.0958 0.0977 0.0931 0.0969 0.0998 0.0914 0.0879 0.0911 0.0866 0.0888 SynGR 0.1449 0.1193 0.1194 0.1015 0.1192 0.0511 0.0856 0.1178 0.0515 0.0886 0.0675 0.0755 0.1171 UnpairGR 0.1550 0.1281 0.1239 0.1202 0.1277 0.1169 0.1180 0.1273 0.1170 0.1109 0.1321 0.1281 0.1202 
+
+Improv. (%) +6.97% +2.40% +3.77% +6.09% +1.67% +13.83% +7.76% +1.27% +8.03% +6.12% +5.43% +3.81% +2.65% 
+
+Games MQL4GRec 0.1033 0.0935 0.0775 0.0854 0.0930 0.0739 0.0746 0.0931 0.0839 0.0717 0.0932 0.0942 0.0699 MACRec 0.1078 0.0689 0.0648 0.0568 0.0727 0.0643 0.0670 0.0659 0.0665 0.0689 0.0659 0.0623 0.0674 SynGR 0.1092 0.0907 0.0364 0.0704 0.0895 0.0906 0.0635 0.0443 0.0426 0.0737 0.0436 0.0553 0.0894 UnpairGR 0.1113 0.0948 0.0904 0.0925 0.0931 0.0937 0.0969 0.0947 0.0865 0.0969 0.0967 0.0952 0.0969 
+
+Improv. (%) +1.92% +1.39% +16.65% +8.31% +0.11% +3.42% +29.89% +1.72% +3.10% +31.48% +3.76% +1.06% +8.39% 
+
+Instruments MQL4GRec 0.1375 0.1342 0.1211 0.1227 0.1328 0.1238 0.1197 0.1346 0.1235 0.1219 0.1353 0.1344 0.1127 MACRec 0.1363 0.1126 0.1184 0.1106 0.1156 0.1149 0.1149 0.1148 0.1137 0.1124 0.1082 0.1110 0.1135 SynGR 0.1768 0.1311 0.0640 0.0953 0.1293 0.0828 0.0821 0.1308 0.1022 0.1040 0.0913 0.1088 0.0676 UnpairGR 0.1769 0.1378 0.1359 0.1236 0.1352 0.1244 0.1280 0.1354 0.1268 0.1229 0.1358 0.1398 0.1209 
+
+Improv. (%) +0.06% +2.68% +12.22% +0.73% +1.81% +0.48% +6.93% +0.59% +2.67% +0.82% +0.37% +4.02% +6.52% 
+
+Table 2: Recommendation robustness under matched train–test modality incompleteness, with three multimodal GR baselines adapted for mixed observations. HR@10 is reported for text-only (TO), image-only (IO), and random single-modality (Random) conditions. Improv. is the gain over the strongest baseline; NDCG@10 is in Supplementary Table A1. Overall, mixed supervision yields a coherent discrete space robust to heterogeneous modality availability. 
+
+Cross-Observation Semantic-ID Consistency (RQ3) 
+
+To verify that UnpairGR learns a shared discrete vocabu-lary rather than merely improving accuracy, we test whether observations of the same item yield compatible semantic IDs. Table 3 compares text-only and image-only IDs with paired references using exact agreement, prefix agreement, and normalized Hamming distance against random permu-tations. UnpairGR achieves much higher prefix agreement and lower Hamming distance across all datasets. Although exact matches are less frequent, early codes remain highly consistent, indicating shared coarse-grained semantics with variation mainly in later codes. This pattern is consistent with the coarse-to-fine structure of residual quantization, where earlier codes capture broad semantics and later codes encode finer item-specific details. This directly supports the use of one semantic-ID space for paired and unimodal observations. 
+
+Single-Modality Cold-Start Generalization (RQ4) 
+
+We evaluate whether semantic IDs derived from a single modality can support cold-start recommendation (Zhao et al. 2026; Zheng et al. 2026). Here, Pure denotes the standard Dataset Setting Text-only ID Image-only ID Exact P1 ↑ P2 ↑ Dist. ↓ Exact P1 ↑ P2 ↑ Dist. ↓                                                                    
+
+> Arts Observed 0.124 0.863 0.549 0.461 0.124 0.860 0.528 0.467
+> Random 0.000 0.070 0.002 0.976 0.000 0.064 0.002 0.978 Games Observed 0.136 0.877 0.579 0.444 0.115 0.866 0.508 0.488
+> Random 0.000 0.103 0.002 0.969 0.000 0.103 0.004 0.969 Instruments Observed 0.146 0.889 0.608 0.428 0.126 0.880 0.570 0.452
+> Random 0.000 0.143 0.005 0.957 0.000 0.140 0.005 0.958 All Observed 0.134 0.875 0.576 0.446 0.120 0.867 0.528 0.474
+> Random 0.000 0.101 0.003 0.969 0.000 0.098 0.003 0.969
+
+Table 3: Cross-observation semantic-ID consistency. Random denotes within-dataset permutations; Dist. is normalized Hamming distance; All is item-weighted. !#" " "#!$#"       $!      !#" " "#!$#"       $!       
+
+> 4.7% 22.2% 6.1%
+> 5.9%
+> 21.4%
+> 4.5%
+
+Figure 3: Cold-start mechanism analysis for UnpairGR. HR@10 and NDCG@10 compare the Pure route with validation-selected Cold-R50 and Cold-R90 routes under deterministic target-side single-modality masks. route, while Cold-R50 and Cold-R90 apply deterministic single-modality masking to 50% and 90% of target items, respectively. Figure 3 compares these three routes. Both cold-start configurations consistently outperform the Pure route across the three datasets, with the largest gains observed on Games. These results show that single-modality semantic IDs remain compatible with the same autoregressive recom-mender, enabling cold-start recommendation without feature imputation or a separate fallback model. 
+
+Component Analysis (RQ5) 
+
+We evaluate three UnpairGR variants: w/o ST replaces the shared Transformer with modality-specific transformations, 
+
+w/o SC replaces the shared residual codebooks with modality-specific codebooks, and w/o UP excludes unpaired super-vision. As shown in Figure 4, removing any component degrades performance across all three datasets. The largest decline occurs without the shared Transformer, reducing the macro-averaged HR@10 and NDCG@10 from 0.1477 
+
+and 0.1040 to 0.1170 and 0.0813 , respectively. This pro-nounced degradation indicates that a shared pre-quantization transformation is critical for aligning heterogeneous observa-tions within a coherent semantic space. Replacing the shared codebooks with modality-specific ones or unpaired super-vision also causes substantial drops. These results confirm that shared representation learning, shared quantization, and unpaired supervision play complementary roles in UnpairGR. 
+
+Efficiency and Convergence Analysis (RQ6) 
+
+Figure 5 compares UnpairGR with MACRec and SynGR under the same measurement protocol. Relative to SynGR,         
+
+> 
+>       
+>  
+>      
+> 
+>                         
+
+
+
+>       
+
+ 
+
+>      
+
+  
+
+>                   
+
+    
+
+Figure 4: Core component ablation study on Arts, Games, and Instruments. The full UnpairGR model is compared with variants that remove the shared trunk (w/o ST), shared codebooks (w/o SC), or unpaired objective (w/o UP). MACRec SynGR UnpairGR       
+
+> Training Time Inference Time
+> Arts Instruments
+> Convergence Point Convergence Point 18% 42% 8% 21%
+> UnpairGR MACRec SynGR
+
+Figure 5: Efficiency and convergence on Arts and Instruments. Training time, inference latency, and loss trajectories compare UnpairGR, MACRec, and SynGR under a shared protocol. Efficiency is measured using six NVIDIA RTX 4090 GPUs. UnpairGR reduces training time by 18% on Arts and 42% on Instruments, while lowering inference latency by 8% and 21% ,respectively. The larger gains on Instruments suggest that the shared architecture scales favorably as the recommendation task becomes more demanding. UnpairGR also converges earlier and reaches a lower final loss on both datasets, indi-cating stable and efficient optimization. These results show that jointly learning from paired and unimodal observations does not incur prohibitive overhead; instead, the shared Trans-former and residual codebooks enable efficient training and inference while preserving optimization behavior. 
+
+Conclusion 
+
+Missing modalities expose a weakness in multimodal genera-tive recommendation: pre-quantization errors can alter seman-tic identifier sequences. UnpairGR addresses this by making the tokenizer modality-agnostic. With modality-specific pro-jections, a shared Transformer and shared residual codebooks, and paired/unpaired training, UnpairGR learns a discrete vocabulary that remains usable under incomplete observa-tion while preserving strong fully observed performance and practical training/inference efficiency. Component ablations show that the gains arise not from any auxiliary objective, but from the interaction of a shared continuous manifold, shared discrete vocabulary, and unpaired single-modality coverage. References 
+
+Chen, W.; Guo, X.; Li, S.; Zhang, F.; Yuan, M.; Fan, J.; Zhang, Z.; Wang, D.; and Zhuang, F. 2026. SynGR: Un-leashing the Potential of Cross-Modal Synergy for Gen-erative Recommendation. In ICML .Dai, R.; Li, C.; Yan, Y.; Mo, L.; Qin, K.; and He, T. 2025. Unbiased Missing-Modality Multimodal Learning. In ICCV .Fu, J.; Ge, X.; Karatzoglou, A.; Arapakis, I.; Verberne, S.; Jose, J. M.; and Ren, Z. 2026. Differentiable Semantic ID for Generative Recommendation. In SIGIR .Geng, S.; Liu, S.; Fu, Z.; Ge, Y.; and Zhang, Y. 2022. Recom-mendation as Language Processing (RLP): A Unified Pretrain, Personalized Prompt & Predict Paradigm (P5). In RecSys .Geng, S.; Tan, J.; Liu, S.; Fu, Z.; and Zhang, Y. 2023. VIP5: Towards Multimodal Foundation Models for Rec-ommendation. In EMNLP Findings .Hidasi, B.; Karatzoglou, A.; Baltrunas, L.; and Tikk, D. 2016. Session-based Recommendations with Recurrent Neural Networks. In ICLR .Hou, Y.; He, Z.; McAuley, J.; and Zhao, W. X. 2023. Learn-ing Vector-Quantized Item Representation for Transferable Sequential Recommenders. In WWW .Hou, Y.; Li, J.; Shin, A.; Jeon, J.; Santhanam, A.; Shao, W.; Hassani, K.; Yao, N.; and McAuley, J. 2025a. Generating Long Semantic IDs in Parallel for Recommendation. In KDD .Hou, Y.; Zhang, A.; Sheng, L.; Wu, J.; Wang, X.; Chua, T.-S.; and McAuley, J. 2025b. Towards Large Generative Recommendation: A Tokenization Perspective. In CIKM .Ju, C. M.; Collins, L.; Neves, L.; Kumar, B.; Wang, L. Y.; Zhao, T.; and Shah, N. 2025. Generative Recommendation with Semantic IDs: A Practitioner’s Handbook. In CIKM .Kang, W.-C.; and McAuley, J. 2018. Self-Attentive Se-quential Recommendation. In ICDM .Kim, J.; Kang, H.; Kim, S.; Kim, K.; and Park, C. 2025. Dis-entangling and Generating Modalities for Recommendation in Missing Modality Scenarios. In SIGIR .Kim, T.; Yoon, S.; Kang, S.; Yeo, J.; and Lee, D. 2026. MVIGER: Multi-View Variational Integration of Comple-mentary Knowledge for Generative Recommender. In SIGIR .Lee, D.; Kim, C.; Kim, S.; Cho, M.; and Han, W.-S. 2022. Autoregressive Image Generation using Residual Quantization. In CVPR .Lee, Y.-L.; Tsai, Y.-H.; Chiu, W.-C.; and Lee, C.-Y. 2023. Multimodal Prompting With Missing Modalities for Vi-sual Recognition. In CVPR .Li, J.; Ren, P.; Chen, Z.; Ren, Z.; Lian, T.; and Ma, J. 2017. Neural Attentive Session-based Recommendation. In CIKM .Li, Z.; Qi, F.; Xu, C.; Zhang, T.; Huo, C.; and Zhang, P. 2026. LSIG: Long Semantic IDs for Generative Rec-ommendation. In WWW .Lin, X.; Shi, H.; Wang, W.; Feng, F.; Wang, Q.; Ng, S.-K.; and Chua, T.-S. 2025. Order-agnostic Identifier for Large Lan-guage Model-based Generative Recommendation. In SIGIR .Liu, E.; Zheng, B.; Ling, C.; Hu, L.; Li, H.; and Zhao, W. X. 2025a. Generative Recommender with End-to-End Learnable Item Tokenization. In SIGIR .Liu, H.; Wei, Y.; Song, X.; Guan, W.; Li, Y.-F.; and Nie, L. 2024. MMGRec: Multimodal Generative Recommen-dation with Transformer Model. arXiv .Liu, J.; Collins, L.; Tang, J.; Zhao, T.; Shah, N.; and Ju, C. M. 2026. Understanding Generative Recommendation with Semantic IDs from a Model-scaling View. In KDD .Liu, Q.; Hu, J.; Xiao, Y.; Zhao, X.; Gao, J.; Wang, W.; Li, Q.; and Tang, J. 2025b. Multimodal Recommender Systems: A Survey. CSUR .Radford, A.; Kim, J. W.; Hallacy, C.; Ramesh, A.; Goh, G.; Agarwal, S.; Sastry, G.; Askell, A.; Mishkin, P.; Clark, J.; Krueger, G.; and Sutskever, I. 2021. Learning Transferable Visual Models From Natural Language Supervision. In ICML .Rajput, S.; Mehta, N.; Singh, A.; Keshavan, R. H.; Vu, T.; Heldt, L.; Hong, L.; Tay, Y.; Tran, V. Q.; Samost, J.; Kula, M.; Chi, E. H.; and Sathiamoorthy, M. 2023. Recommender Systems with Generative Retrieval. In NeurIPS .Singh, A.; Vu, T.; Mehta, N.; Keshavan, R. H.; Sathi-amoorthy, M.; Zheng, Y.; Hong, L.; Heldt, L.; Wei, L.; Tandon, D.; Chi, E. H.; and Yi, X. 2024. Better Gen-eralization with Semantic IDs: A Case Study in Ranking for Recommendations. In RecSys .Sun, F.; Liu, J.; Wu, J.; Pei, C.; Lin, X.; Ou, W.; and Jiang, P. 2019. BERT4Rec: Sequential Recommendation with Bidirec-tional Encoder Representations from Transformer. In CIKM .Tao, Z.; Liu, X.; Xia, Y.; Wang, X.; Yang, L.; Huang, X.; and Chua, T.-S. 2023. Self-Supervised Learning for Mul-timedia Recommendation. TMM .van den Oord, A.; Vinyals, O.; and Kavukcuoglu, K. 2017. Neural Discrete Representation Learning. In NeurIPS .Wang, H.; Chen, Y.; Ma, C.; Avery, J.; Hull, L.; and Carneiro, G. 2023a. Multi-Modal Learning With Missing Modality via Shared-Specific Feature Modelling. In CVPR .Wang, J.; Zeng, Z.; Wang, Y.; Wang, Y.; Lu, X.; Li, T.; Yuan, J.; Zhang, R.; Zheng, H.-T.; and Xia, S.-T. 2023b. MISSRec: Pre-training and Transferring Multi-modal Interest-aware Sequence Representation for Recommendation. In ACM MM .Wang, W.; Bao, H.; Lin, X.; Zhang, J.; Li, Y.; Feng, F.; Ng, S.-K.; and Chua, T.-S. 2024. Learnable Item Tokenization for Generative Recommendation. In CIKM .Wang, Y.; Pan, J.; Li, X.; Wang, M.; Wang, Y.; Liu, Y.; Liu, D.; Jiang, J.; and Zhao, X. 2025. Empowering Large Language Model for Sequential Recommendation via Mul-timodal Embeddings and Semantic IDs. In CIKM .Wei, W.; Huang, C.; Xia, L.; and Zhang, C. 2023a. Multi-Modal Self-Supervised Learning for Recommenda-tion. In WWW .Wei, Y.; Liu, W.; Liu, F.; Wang, X.; Nie, L.; and Chua, T.-S. 2023b. LightGT: A Light Graph Transformer for Mul-timedia Recommendation. In SIGIR .Wei, Y.; Wang, X.; Nie, L.; He, X.; Hong, R.; and Chua, T.-S. 2019. MMGCN: Multi-modal Graph Convolution Network for Personalized Recommendation of Micro-video. In ACM MM .Wei, Y.; Zou, J.; Zhang, P.; Ao, X.; Guo, W.; Ma, Z.; and Yang, Y. 2026. CARD: Non-Uniform Quantization of Visual Semantic Unit for Generative Recommendation. In SIGIR .Xu, Y.; Zhang, M.; Li, C.; Liao, Z.; Xing, H.; Deng, H.; Hu, J.; Zhang, Y.; Zeng, X.; and Zhang, J. 2026. MMQ: Multi-modal Mixture-of-Quantization Tokenization for Semantic ID Generation and User Behavioral Adaptation. In WSDM .Yang, Y.; Ji, Z.; Li, Z.; Li, Y.; Mo, Z.; Ding, Y.; Chen, K.; Zhang, Z.; Li, J.; Li, S.; and Lin, L. 2025. Sparse Meets Dense: Unified Generative Recommendations with Cascaded Sparse-Dense Representations. In NeurIPS .Zhai, J.; Liao, L.; Liu, X.; Wang, Y.; Li, R.; Cao, X.; Gao, L.; Gong, Z.; Gu, F.; He, J.; Lu, Y.; and Shi, Y. 2024. Actions Speak Louder than Words: Trillion-Parameter Sequential Transducers for Generative Recommendations. In ICML .Zhai, J.; Mai, Z.-F.; Wang, C.-D.; Yang, F.; Zheng, X.; Li, H.; and Tian, Y. 2025. Multimodal Quantitative Language for Generative Recommendation. In ICLR .Zhang, F.; Liu, X.; Xi, D.; Yin, J.; Chen, H.; Yan, P.; Zhuang, F.; and Zhang, Z. 2026. Multi-Aspect Cross-Modal Quan-tization for Generative Recommendation. In AAAI .Zhang, T.; Zhao, P.; Liu, Y.; Sheng, V. S.; Xu, J.; Wang, D.; Liu, G.; and Zhou, X. 2019. Feature-level Deeper Self-Attention Network for Sequential Recommendation. In IJCAI .Zhao, Q.; Sun, Z.; Zheng, X.; Guo, X.; Wang, S.; Liang, Z.; Peng, M.; Chen, B.; and Lei, C. 2026. COINS: Semantic IDs Enhanced Cold Item Representation for Click-through Rate Prediction in E-commerce Search. In WWW .Zheng, B.; Hou, Y.; Lu, H.; Chen, Y.; Zhao, W. X.; Chen, M.; and Wen, J.-R. 2024. Adapting Large Lan-guage Models by Integrating Collaborative Semantics for Recommendation. In ICDE .Zheng, B.; Liu, E.; Chen, Z.; Ma, Z.; Wang, Y.; Zhao, W. X.; and Wen, J.-R. 2025. Pre-training Generative Recommender with Multi-Identifier Item Tokenization. arXiv .Zheng, B.; Lu, H.; Chen, Y.; Zhao, W. X.; and Wen, J.-R. 2026. Universal Item Tokenization for Transferable Gen-erative Recommendation. In SIGIR .Zhou, K.; Wang, H.; Zhao, W. X.; Zhu, Y.; Wang, S.; Zhang, F.; Wang, Z.; and Wen, J.-R. 2020. S3-Rec: Self-Supervised Learning for Sequential Recommendation with Mutual In-formation Maximization. In CIKM .Zhou, P.; Liu, C.; Ren, J.; Zhou, X.; Xie, Y.; Cao, M.; Rao, Z.; Huang, Y.-L.; Chong, D.; Liu, J.; Kim, J. B.; Wang, S.; Wong, R. C.-W.; and Kim, S. 2025. When Large Vision Language Models Meet Multimodal Sequential Recommen-dation: An Empirical Study. In WWW .Zhou, X.; and Shen, Z. 2023. A Tale of Two Graphs: Freezing and Denoising Graph Structures for Multimodal Recommendation. In ACM MM .Zhou, X.; Zhou, H.; Liu, Y.; Zeng, Z.; Miao, C.; Wang, P.; You, Y.; and Jiang, F. 2023. Bootstrap Latent Representations for Multi-modal Recommendation. In WWW .Zhu, J.; Jin, M.; Liu, Q.; Qiu, Z.; Dong, Z.; and Li, X. 2024. CoST: Contrastive Quantization based Semantic Tokenization for Generative Recommendation. In RecSys .
