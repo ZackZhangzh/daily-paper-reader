@@ -1,0 +1,1521 @@
+Title: Beckmann Transport Models: From Autonomous Flows to One-Step Maps
+
+URL Source: https://arxiv.org/pdf/2608.01692v1
+
+Published Time: Tue, 04 Aug 2026 02:14:53 GMT
+
+Number of Pages: 26
+
+Markdown Content:
+# Beckmann Transport Models: From Autonomous Flows to One-Step Maps 
+
+Lee Cheuk Kit ∗ Florentin Coeurdoux † Peter Potaptchik ‡
+
+Yilun Du § Michael Albergo ¶ Eric Vanden-Eijnden ∥
+
+## Abstract 
+
+We propose an instantiation of flow matching that relies on a time-independent velocity field (an autonomous flow ) to exactly map between two distributions, so long as the target is singular, i.e. supported on a lower-dimensional data manifold. We also show that the one-step generative map associated with this flow is the unique solution of a simple conservation equation, which can be used to learn the map directly from samples. These autonomous flows and maps give a dynamical meaning to the flux constraint of Beckmann’s transportation problem. Their con-struction provides a unifying framework that recovers, for instance, the closed-form Poisson-flow generative model and equilibrium matching with a quadratic flow-matching regression loss. We illustrate how this theory corrects inconsistencies in existing methods and demonstrate the effectiveness of the autonomous flow and the one-step map on ImageNet 256x256. 
+
+## 1 Introduction 
+
+Standard flow matching [Lipman et al., 2023, Albergo and Vanden-Eijnden, 2023, Liu et al., 2023] and diffusion models [Ho et al., 2020, Song et al., 2021] drive generation by transporting samples from a base distribution μ0 to a target distribution μ1 using a time-dependent velocity field (or drift )learned by quadratic regression. An intriguing alternative is to constrain the drift to be time-independent : minimize the same regression loss over fields b : Rd → Rd that do not depend on t and perform generation using the autonomous 
+
+equation ˙Xt = b(Xt) solved with initial X0 ∼ μ0. This is essentially the construction proposed by Wang and Du [2025] under the name Equilibrium Matching (EM) and it is appealing because it simplifies both the neural network architectures needed for generative models based on dynamical transport and the dynamical system itself. However, it raises an immediate question: does the autonomous flow with this time-independent drift actually transport μ0 to μ1? The original EM paper does not prove that it does, and uses a loss whose minimizer turns out not to enforce correct transport. This paper provides the missing justification, and uses it to derive new results. We show that when μ1
+
+is supported on a lower-dimensional manifold M1 ⊂ Rd, the time-independent flow matching drift defines a valid transport: trajectories of the autonomous flow converge to M1, and the resulting map pushes μ0 forward to μ1. The proof rests on a divergence equation satisfied by the drift, and uncovers a general framework: for example, we recover the closed-form Poisson Flow generative model       
+
+> ∗Harvard University. Email: brianlee.lck@gmail.com
+> †Capital Fund Management (CFM). Email: coeurdoux.florentin@gmail.com
+> ‡University of Oxford. Email: peter.potaptchik@stats.ox.ac.uk
+> §Harvard University. Email: ydu@seas.harvard.edu
+> ¶Harvard University. Email: malbergo@fas.harvard.edu
+> ∥New York University and Capital Fund Management (CFM). Email: eve2@cims.nyu.edu
+> Preprint. arXiv:2608.01692v1 [cs.LG] 3 Aug 2026 May 5, 2026 1
+
+Figure 1: Overview of autonomous flow matching. When μ1 is supported on a lower-dimensional manifold M1, the autonomous flow ˙Xt = b(Xt) transports every initial X0 to M1 at hitting time 
+
+τ , defining the transport map T = Xτ that pushes μ0 forward to μ1. The map T is constant along the trajectories, (d/dt )T (Xt) = 0 , implying the conservation equation b · ∇ T = 0 that uniquely characterizes T and motivates an objective function to directly learn it. [Xu et al., 2022] as a different instance of the same principle. This framework also identifies the correct loss for EM (which differs from the loss originally proposed) and yields a simple conservation equation for the one-step transport map T from μ0 to μ1. This equation can be used to train T directly from samples and allows us to replace ODE integration with a single forward pass at inference. At a structural level, these autonomous flows and maps give a dynamic interpretation of the flux constraint of Beckmann’s transportation problem [Beckmann, 1952, Santambrogio, 2015], a formulation of optimal transport that, until now, lacked a dynamic interpretation analogous to Benamou–Brenier’s [Benamou and Brenier, 2000] of Monge–Kantorovich. As a byproduct, we show that the transport cost of the autonomous flow is always bounded by that of the original, time-dependent flow. We refer to constructions of this kind collectively as Beckmann Transport Models (BTM). Summarizing, our main contributions are: • We prove that, if μ1 has singular support, the time-independent FM drift defines a valid transport: the minimizer of the FM regression loss over time-independent fields b generates a flow ˙Xt = b(Xt)
+
+that pushes μ0 to μ1 (Proposition 1). This recovers Equilibrium Matching [Wang and Du, 2025], up to a correction in the originally-proposed loss. • More generally, we show that given any positive weight ν, a drift b satisfying the divergence equation ∇ · (νb ) = μ0 − μ1 defines a valid autonomous transport (Theorem 1). The weight ν
+
+acts as a genuine design knob: the FM case corresponds to ν being the time-averaged interpolant distribution, and ν ≡ 1 recovers the closed-form Poisson Flow generative model [Xu et al., 2022]. • We provide a conservation equation for the one-step map T that fulfills the transport, given by 
+
+b · ∇ T = 0 with boundary condition T = id on M1 (Theorem 2). • We characterize the autonomous flow Xt as the solution of an Eulerian equation ∂tXt = b · ∇ Xt
+
+(Proposition 2). Discretizing this equation in optimization time yields a residual loss for learning 
+
+T directly from FM samples (Theorem 3), enabling one-step or iterative inference. We validate these results on 2D atomic targets and on the image benchmarks of Wang and Du [2025], and show that the corrected autonomous flow associated to equilibrium matching improves performance, and that the map associated to these transports are directly learnable. A detailed discussion of related work (including flow matching and diffusion, OT formulations, and the recent literature on one-step generation) is deferred to Appendix A. 22 Autonomous transports and their associated maps 
+
+Standard flow matching [Lipman et al., 2023, Albergo and Vanden-Eijnden, 2023, Liu et al., 2023] constructs a stochastic interpolant 7
+
+Is = αsx0 + βsx1, x0 ∼ μ0, x1 ∼ μ1, s ∈ [0 , 1] , (1) where αs and βs satisfy the boundary conditions α0 = β1 = 1 , α1 = β0 = 0 so that the law of Is
+
+bridges between the base μ0 at time s = 0 and the target μ1 at time s = 1 . The main result of the framework is that, at each time s ∈ [0 , 1] , the probability distribution μs of Is coincides with that of the solution to the probability flow ODE 
+
+˙Ys = bs(Ys), Y0 ∼ μ0, (2) provided that the time-dependent drift bs is the minimizer of the FM loss: 
+
+bs(x) = arg min 
+
+> ˆbs
+
+Es∼U [0 ,1] ,x 0,x 1
+
+|ˆbs(Is) − ˙Is|2. (3) In particular, Y1 ∼ μ1, thereby offering a way to perform inference by integrating (2) on s ∈ [0 , 1] 
+
+after learning bs by minimizing (3). Importantly, the pair (μs, b s) satisfy the continuity equation 
+
+∂sμs + ∇ · (bsμs) = 0 , μs=0 = μ0, (4) such that μs=1 = μ1.
+
+2.1 Autonomous flow matching 
+
+Suppose that we constrain the minimization of the FM loss to time-independent fields, i.e. define 
+
+b(x) = arg min 
+
+> ˆb
+
+Es∼U [0 ,1] ,x 0,x 1
+
+|ˆb(Is) − ˙Is|2, (5) and consider the autonomous ODE associated with this minimizer: 
+
+˙Xt(x0) = b(Xt(x0)) , X0(x0) = x0. (6) This ODE defines a different flow than (2) since it involves a different drift: optimizing the FM loss over time-dependent drift gives bs(x) = Ex0,x 1 [ ˙Is|Is = x] where the expectation is taken over x0, x 1
+
+at fixed s ∈ [0 , 1] , conditional on Is = x, whereas optimizing this loss over autonomous drifts gives 
+
+b(x) = Ex0,x 1,s [ ˙Is|Is = x] where the expectation is taken over x0, x 1 and s ∼ U ([0 , 1]) , conditional on Is = x. A natural question is therefore whether (6) still transports μ0 to μ1. Surprisingly, the answer is yes, provided that we make some structural assumption on the base μ0 and the target μ1:
+
+Assumption 1 (Setup) . The base distribution μ0 is absolutely continuous on Rd with a pos-itive density ρ0. The target distribution μ1 is supported on a closed k-dimensional smooth submanifold M1 := supp( μ1) ⊂ Rd with 0 ≤ k < d .
+
+Note that the assumption on the target can always be satisfied since any μ1 on Rd1 embeds into 
+
+Rd1+d2 by zero-padding, as in [Xu et al., 2022]; this places M1 on a d1-dimensional affine subspace of Rd, satisfying the singular-target constraint. Note also that the atomic case μ1 = P  
+
+> j∈[N]
+
+pj δxj is included as k = 0 with M1 = {xj }j∈[N ].
+
+Proposition 1 (Time-independent FM transport) . Under Assumption 1, for μ0-almost every 
+
+x0 ∈ Rd, the trajectory Xt(x0) solving the autonomous flow (6) converges to a point of M1.The hitting time 
+
+τ (x0) := inf {t ≥ 0 : Xt(x0) ∈ M1} ∈ [0 , +∞] (7)     
+
+> 7We use sfor the interpolant time to avoid confusion with the time tin the autonomous-flow introduced later.
+
+3is finite if ˙I1̸ = 0 (transverse crossing) and infinite if ˙I1 = 0 (asymptotic approach). In both cases, the limit 
+
+T (x0) := lim   
+
+> t↑τ(x0)
+
+Xt(x0) ∈ M1 (8) 
+
+defines a map T : Rd → M1 that pushes μ0 forward to μ1, i.e. T♯μ0 = μ1.Proof sketch. Recall that the probability distribution μt of the interpolant satisfies the continuity equation (4) with the time-dependent FM drift bt. Integrating this equation from t = 0 to t = 1 
+
+gives ∇ · j = μ0 − μ1 where we define the averaged current j = R 10 btμtdt . A direct calculation shows that the minimizer b of the FM loss (5) over time-independent fields satisfies j = νb where 
+
+ν = R 10 μtdt > 0 is the time-averaged interpolant distribution (aka occupation measure). The pair 
+
+(ν, b ) therefore satisfies a divergence condition that encodes μ0 and μ1 as source and sink for the current j = νb and guarantees that the flow lines of b converge to the target support M1 of μ1:
+
+Divergence condition: ∇ · (νb ) = μ0 − μ1 (9) Hence, the map T defined in (8) sends each x0 ∈ Rd to a point T (x0) ∈ M1. Next, we show that T♯μ0 = μ1. To this end, pick any μ1-measurable set A ⊆ M1, consider its basin of attraction 
+
+BA = T −1(A) ≡ { x0 ∈ Rd : Xτ (x0)(x0) ∈ A}, and integrate (9) over BA \ A. By the divergence theorem this gives μ0(BA) = μ1(A) since the outer boundary of BA is a stable manifold of the flow (νb · ˆn = 0 ) and contributes nothing, while the singular flux of νb across the inner boundary near A
+
+recovers μ1(A).The full details of the proof are in Appendix B. The role of the singularity assumption is now visible from the divergence equation (9) since only a singular μ1 creates the localized sink that the autonomous flow can converge to. 
+
+Remark 1 (The autonomous clock) . We stress that the autonomous flow (6) runs on a different clock than the interpolant It and the solution of the original, time-dependent flow ˙Yt = bt(Yt). In particular, 
+
+Xt(x0) reaches M1 at time t = τ (x0), with τ (x0)̸ = 1 , and this time is trajectory-dependent. As a result, law( Xt)̸ = law( It) = μt as a function of t; the laws only match at the endpoints, with 
+
+X0 ∼ μ0 and Xτ ∼ μ1.
+
+2.2 Autonomous flow from the divergence equation 
+
+The proof of Proposition 1 rests on the fact that ν = R 10 μtdt > 0 and b(x) = Ex0,x 1,t [ ˙It|It = x]
+
+satisfy divergence condition (9). Our next result shows that this argument extends to any positive weight ν and any drift b = ∇ϕ that satisfy (9). 
+
+Theorem 1 (Autonomous Flow) . Let ν > 0 and b = ∇ϕ satisfy the divergence condition (9) 
+
+with μ0 and μ1 satisfying Assumption 1 and consider the autonomous ODE (6) with this b.Then the solution Xt(x0) to this ODE inherits the properties listed in Proposition 1 with τ (x0)
+
+finite if b(x)̸ = 0 on M1 and τ (x0) = ∞ otherwise and, in particular, the associated map 
+
+T (x0) = Xτ (x0)(x0) pushes μ0 forward to μ1, i.e. T♯μ0 = μ1.
+
+The proof is in Appendix B. The theorem shows that freedom in ν is a genuine design knob, and the FM-derived b is only one principled instance. A second instance, with ν ≡ 1, recovers the training-free Poisson Flow generative model of Xu et al. [2022]: b = ∇ϕ with ∆ϕ = μ0 − μ1 is the Coulomb potential of the signed charge distribution μ0 − μ1. Details in Appendix C. 
+
+2.3 Connection to Beckmann’s transportation problem 
+
+The divergence condition (9) is the flux constraint of the transportation problem of Beckmann [1952] (see also Santambrogio, 2015): minimize the action R 
+
+> Rd
+
+|b|2ν dx over time-independent fields b, subject to ∇ · (νb ) = μ0 − μ1 with ν a fixed positive weight. Until now, Beckmann’s flux constraint has lacked a dynamical realization analogous to Benamou–Brenier’s formulation of Monge– 4Kantorovich’s optimal transport problem; BTM provides one. As long as the pair (ν, b ) satisfies (9), the autonomous flow ˙Xt = b(Xt) pushes μ0 to μ1 at the first hitting of M1 (Proposition 1), and R 
+
+> Rd
+
+|b|2ν dx is the action of this autonomous flow. The structural analogy is: 
+
+Static formulation Dynamic / flow interpretation 
+
+Monge–Kantorovich optimal transport ←→ Benamou–Brenier (time-dependent flow) Beckmann transportation ←→ Beckmann Transport Models (autonomous flow) This positioning has a quantitative consequence. By Benamou–Brenier applied to the autonomous flow and Jensen’s inequality applied to the FM time-averaging, we show in Appendix D that 
+
+W 22 (μ0, μ 1) ≤
+
+Z
+
+> Rd
+
+|b|2ν ≤
+
+Z 10
+
+Z
+
+> Rd
+
+|bt|2μt dt, (10) so the autonomous Beckmann action of b upper-bounds W 22 and is itself bounded by the FM Benamou–Brenier action. 
+
+2.4 The transport map 
+
+Theorem 1 defines the transport map T (x0) = Xτ (x0)(x0) associated with the autonomous flow (6), and shows that this map can be used to generate samples from μ1. One way to sample from T is to integrate the ODE directly: given x0 ∼ μ0, evolve the flow with drift b until the trajectory reaches 
+
+M1 at time τ (x0), and then set T (x0) = Xτ (x0)(x0). A more attractive option, which we develop in this section, is to learn the map T directly and thereby bypass ODE integration at inference time. The key observation is that the value of the endpoint T does not change as a point moves along the flow generated by b, which leads to the following characterization. 
+
+Theorem 2 (Conservation equation for the map) . The map T of Theorem 1 is, up to its values on a μ0-null set, the unique continuous solution of 
+
+b(x) · ∇ T (x) = 0 for x / ∈ M1, T (x) = x for x ∈ M1. (11) 
+
+Proof. Fix x0 ∈ Rd and write Xt = Xt(x0). For any t ∈ [0 , τ (x0)) , restarting the autonomous flow from Xt simply follows the same trajectory with time shifted by t. Hence, the endpoint is unchanged, so T (Xt(x0)) = T (x0). Differentiating this identity at t = 0 gives b(x0) · ∇ T (x0) = 0 ,which is the PDE in (11). The boundary condition follows from τ (x0) = 0 for x0 ∈ M1, so 
+
+T (x0) = x0 on M1. For uniqueness, let ˜T be any continuous solution of (11). The chain rule gives  
+
+> ddt
+
+˜T (Xt) = b(Xt) · ∇ ˜T (Xt) = 0 , so ˜T is constant along the trajectory Xt. Taking the limit as 
+
+t → τ (x0) and using the boundary condition on M1 gives 
+
+˜T (x0) = lim  
+
+> t→τ(x0)
+
+˜T (Xt) = ˜T (T (x0)) = T (x0),
+
+which holds for μ0-a.e. x0 since basin boundaries are μ0-null (Proposition 1). The two theorems form a complementary pair. Theorem 1 characterizes the drift b via a divergence equation with source μ0 − μ1, while Theorem 2 characterizes the map T via a conservation equation along the flow trajectories of b. The first determines the vector field that drives transport; the second determines the map produced by that field. 
+
+2.5 The flow map 
+
+The transport map T is the long-time limit of the autonomous flow Xt. In the transverse case b̸ = 0 
+
+on M1, this limit is reached in finite time at each starting point: Xt(x0) = T (x0) for all t ≥ τ (x0),by Theorem 1. We extend Xt(x0) to all t ≥ 0 by freezing the flow after first hitting — setting 
+
+Xt(x0) := Xτ (x0)(x0) for t ≥ τ (x0). Under this convention, Xt inherits the semigroup property of the autonomous ODE, 
+
+Xt+s = Xt ◦ Xs for all s, t ≥ 0, (12) 5with X0 = id , since Xt ◦ Xs leaves M1 fixed once any trajectory has reached it. We now show that 
+
+Xt also satisfies a transport equation in t.
+
+Proposition 2 (Eulerian form of the flow) . Under Assumption 1, let ν > 0 and b satisfy the divergence condition (9) with b̸ = 0 on M1, and let Xt(x0) be the corresponding autonomous flow (6) extended by freezing as above. Viewed as a flow map of the initial condition x ∈ Rd,
+
+Xt(x) satisfies the Eulerian equation 
+
+∂tXt(x) = b(x)·∇ Xt(x), X0(x) = x, for x / ∈ M1, Xt(x) = x for x ∈ M1. (13) 
+
+Proof. For x /∈ M1 and t < τ (x), the semigroup identity (12) gives Xt+s(x) = Xt(Xs(x)) .Differentiating in s at s = 0 and using the chain rule yields ∂tXt(x) = ∇Xt(x) · b(x), which is the Eulerian PDE. The boundary condition Xt(x) = x for x ∈ M1 is the freezing convention. By Theorem 1, Xt → T as t → τ , so T is the steady state of (13): setting ∂tXt = 0 recovers the conservation equation b · ∇ T = 0 of Theorem 2. 
+
+2.6 Direct learning of the transport map 
+
+From the conservation equation (11) we could in principle learn T by minimizing the squared residual 
+
+E[|b·∇ T |2]. This requires access to the drift b, which the FM regression provides. We argue, however, that even with b in hand a residual-based loss is suboptimal: it has the right stationary points but no dynamical interpretation, so a partially trained Tθ approximates nothing in particular. A more principled approach is suggested by Proposition 2: the transport map T is the long-time limit of the autonomous flow Xt, which itself solves the Eulerian equation (13). One option is to learn the full map Xt using existing methods such as consistency or distillation losses (e.g. [Song et al., 2023, Boffi et al., 2025a, Geng et al., 2025]). We propose instead to discard intermediate Xt and learn only their updates : starting from X(0) = id , an explicit-Euler step of (13) with time step η > 0 reads 
+
+X(k+1) (x) = X(k)(x) + η b (x) · ∇ X(k)(x). (14) Reading (14) as a regression target, we train a single network Tθ to predict X(k+1) from X(k),treating X(k) as fixed. This is similar in spirit to the Drifting framework of Deng et al. [2026] but without the need of a kernel, leading to more stable training dynamics, see Appendix I for a comparison. The fixed-target convention is implemented by a stop-gradient on the right-hand side of (14); what gets backpropagated is only the predicted next iterate. Iterating until convergence in k,
+
+Tθ → T .In the FM setup we do not need b explicitly: the regression identity b(x) = Et,x 0,x 1 [ ˙It | It = x]
+
+allows us to replace b(It) · ∇ T (It) in (14) by the conditional sample ˙It · ∇ T (It). Adding a soft Dirichlet penalty for the BC of (13), this yields: 
+
+Theorem 3 (Map objective) . Under Assumption 1 and the transverse condition b̸ = 0 on M1,the transport map T is the unique stationary point (modulo μ0-null sets) of the objective 
+
+L(T ) = Et,x 0,x 1
+
+ T (It) − sg  T (It) + ˙It · ∇ T (It) 2 + λ Ex1 [|T (x1) − x1|2]. (15) 
+
+Proof. At a stationary point, the gradient through the unstopped T (It) on the left vanishes, requiring 
+
+E[ ˙It · ∇ T (It) | It = x] = b(x) · ∇ T (x) = 0 , which is the conservation equation (11). The boundary penalty enforces T = id on M1. Uniqueness follows from Theorem 2. 
+
+Iterative convergence of the transport map. Once T is trained, sampling at inference is a single forward pass: x1 = T (x0) for x0 ∼ μ0. If training has not fully converged, the partially trained 
+
+T approximates the time-t flow Xt for some moderate t > 0, and Proposition 2 gives a way to compensate: by the semigroup property, T ◦k ≈ Xkt , which equals T for k large enough that 
+
+kt ≥ τ (x0). Iterating the network at inference therefore trades training time for forward passes. This is illustrated in Figure 2, in which we learn the autonomous map for 62 0 22                                               
+
+> 02
+> x0(0, I)
+> x0x1x2x3x4
+> 0.0 0.2 0.4
+> mass  target empirical
+> 2022
+> 1
+> 012T1(x0)
+> x0x1x2x3x4
+> 0.0 0.2 0.4
+> 2022
+> 1
+> 012T2(x0)
+> x0x1x2x3x4
+> 0.0 0.2 0.4
+> 2022
+> 1
+> 012T3(x0)
+> x0x1x2x3x4
+> 0.0 0.2 0.4
+> atoms
+> x0p= 0.30
+> x1p= 0.30
+> x2p= 0.15
+> x3p= 0.15
+> x4p= 0.10
+> x0T1T2T3
+> 10 1
+> 10 0
+> mean  xj
+> per-atom contraction
+
+Figure 2: Autonomous transport map learning on 5-mode atomic distribution learned with (15). Iterative convergence of the map to the singular distribution shows that total variation distance of samples on each mode is maintained while clusters continue to converge upon iteration. 
+
+2.7 Equilibrium Matching as Approximate Self-Stopping BTM 
+
+Wang and Du [2025] proposed Equilibrium Matching via a loss that resembles (5) but pairs the linear interpolant It = (1 − t)x0 + tx 1 with a target ct(x1 − x0) scaled by a non-trivial schedule: 
+
+Et,x 0,x 1
+
+|b((1 − t)x0 + tx 1) − ct(x1 − x0)|2. (16) in hope to send the b to 0 as we approach the support supp( μ1). Sampling is then done by following the drift over an indefinite amount of time. This coincides with the loss in (5) only when ct ≡ 1 (where ˙It = x1 − x0 for the linear interpolant). For other choices of ct, the loss (16) does not correspond to E[|b(It) − ˙It|2] for any interpolant and as a result the flow defined by ˙˜Xt(x0) = ˜b( ˜Xt(x0)) converges to M1 but introduces a bias: 
+
+( ˜Xτ )♯μ0̸ = μ1 (see Section 3). The resolution, which is what (5) implements, is to treat the schedule as part of the interpolant rather than as a separate weight on the target. To satisfy the desired tail behaviour, one may choose αt
+
+and βt such that ˙I1 = 0 . This results a self-stopping autonomous flow where the drift is 0 on the support of μ1. Our experiment in Section 3 explores one such choice and confirms that this correction improves the quality reported by Wang and Du [2025] at the same training cost. 
+
+Algorithm 1: Learning the autonomous drift b
+
+Input: Samples {x(n)0 } ∼ μ0, {x(m)1 } ∼ μ1; interpolant (αt, β t); network bθ ; learning rate η
+
+for iteration = 1 , 2, . . . do 
+
+Sample a minibatch B;
+
+for k ∈ B do 
+
+Sample tk ∼ U ([0 , 1]) , xk 
+
+> 0
+
+∼ μ0, xk 
+
+> 1
+
+∼ μ1; set Ik = αtk xk 
+
+> 0
+
++ βtk xk 
+
+> 1
+
+,
+
+˙Ik = ˙ αtk xk 
+
+> 0
+
++ ˙βtk xk 
+
+> 1
+
+;
+
+θ ← θ − η ∇θ L, where L = 1
+
+|B| 
+
+X
+
+> k∈B
+
+bθ (Ik) − ˙Ik
+
+> 2
+
+;
+
+return bθ
+
+7Algorithm 2: Learning the transport map T
+
+Input: Samples {x(n)0 } ∼ μ0, {x(m)1 } ∼ μ1; interpolant (αt, β t); network Tθ ; boundary weight 
+
+λ; learning rate η
+
+for iteration = 1 , 2, . . . do 
+
+Sample a minibatch B;
+
+for k ∈ B do 
+
+Sample tk ∼ U ([0 , 1]) , xk 
+
+> 0
+
+∼ μ0, xk 
+
+> 1
+
+∼ μ1; set Ik = αtk xk 
+
+> 0
+
++ βtk xk 
+
+> 1
+
+,
+
+˙Ik = ˙ αtk xk 
+
+> 0
+
++ ˙βtk xk 
+
+> 1
+
+, bTk = Tθ (Ik) + ˙Ik · ∇ Tθ (Ik);
+
+θ ← θ − η ∇θ L, where L = 1
+
+|B| 
+
+X
+
+> k∈B
+
+h
+
+Tθ (Ik) − sg( bTk) 2 + λ Tθ (xk 
+
+> 1
+
+) − xk
+
+> 1
+> 2
+
+i
+
+;
+
+return Tθ
+
+## 3 Experiments 
+
+We validate several claims experimentally: (i) the original EqM loss (16) produces biased pushforward weights, the geometry of which is directly visible in the basin structure of the learned drift, and the consistent interpolant (5) provably corrects this bias at no additional cost; (ii) on lower-dimensional targets, the learned map T allows for one-step generation, and improve upon iteration; and (iii) BTM scales to large-scale image generation, matching and modestly improving the quality reported by Wang and Du [2025]. In Appendix J, we further study the dependence of the bias on the schedule exponent, the trade-off between convergence speed and correctness controlled by a tail parameter, and the training-free Coulomb transport of Appendix C. We defer larger scale evaluation of the direct map learning algorithm to future studies, and provide preliminar results in Appendix K. 
+
+BTM corrects bias in Equilibrium Matching. We validate the proposed BTM learnt through the consistent loss (5) corrects the bias in the orignal EqM loss (16). We consider a 2d ex-ample where μ0 = N (0 , I 2), and μ1 = P5 
+
+> j=1
+
+pj δxj with deliberately unequal weights p =(0 .30 , 0.30 , 0.15 , 0.15 , 0.10) , chosen so that weight errors are immediately visible. For BTM, the five basin areas match the target weights to within measurement error ( MAE = 0 .005 ). For EqM, the two largest basins expand while the smallest nearly disappears ( MAE = 0 .102 , a 20 × error). The mechanism is visible in the separatrices: the EqM drift satisfies b(xj ) ≈ 0 because ct → 0 forces the regression target to vanish at t = 1 , but this does not enforce the divergence condition (9), so the flow reaches M1 with the wrong weights. The consistent interpolant ties the regression target to ˙It,encoding the source–sink balance μ0 − μ1; the minimizer then satisfies (9) by construction. 
+
+Figure 3: Basins of attraction for BTM (left) and EqM (right), schedule ct = (1 − t)0.8, J = 5 
+
+atoms. Each color identifies the set of initial conditions that converge to the corresponding atom; white lines are the separatrices. EqM introduces a bias because of an inconsistency in its loss that BTM corrects at no cost. 8Flow vs. map generation (Figure 4). We use the two-dimensional spiral distribution embedded in d = 6 dimensions ( μ0 = N (0 , I 6)) using It = (1 − t)x0 + tx 1 (tranverse case) to compare generation with the autonomous flow associated with b against the one-step map T and its iterates. The autonomous flow recovers the target sharply, while the one-shot map T from a partially trained network is visibly diffuse around the spiral. Iterating the trained map three times, T 3, sharpens generation substantially and brings it close to the flow; a fully trained T matches the flow at one step. This confirms that, by the semigroup property, a partially trained T approximates Xt for some t < τ ,so T ◦k ≈ Xkt , and iteration drives trajectories closer to M1 at the cost of (a few) additional forward passes. Crucially, inference here is one or three forward passes of T , not numerical ODE integration. 1 0 1        
+
+> x1
+> 1
+> 01
+> x2
+> Target 1
+> 101
+> x1
+> Flow with b
+> 101
+> x1
+> T1(x0)
+> 101
+> x1
+> T3(x0)
+
+Figure 4: Flow vs. map generation. Spiral target embedded in d = 6 with μ0 = N (0 , I 6). From left: target μ1; autonomous flow ˙Xt = b(Xt); one-step map T 1 = T (1-NFE); three-fold iterate T 3
+
+(3-NFE). Iteration sharpens a partially trained map; a fully trained Tθ matches the flow at 1-NFE. 
+
+BTM correction improves EqM image generation for free (Figure 5). We train the consistent loss (5) on class-conditional ImageNet 256 × 256 , using the XL/2 architecture and identical training budget as Wang and Du [2025] with a self-stopping interpolant detailed in Appendix H. The corrected model (EqM-XL/2) achieves FID = 1.87 vs. FID = 1 .90 for the uncorrected EqM-XL/2 under the same conditions. The gain is modest but consistent with the bias being a weight-allocation error that is small when the class distribution is nearly uniform, on the other hand it is free: no change of architecture, training cost, or inference procedure is required. Curated samples are shown in Figure 5. 
+
+BTM enables one-step image generation. We train a one-step map using loss (15) with an XL/2 architec-ture on an SD-VAE latent space, omitting time em-beddings. Training is stabilized via adaptive weight-ing [Geng et al., 2025], and loss terms are balanced dynamically using the final layer’s gradient norm (de-tails in Appendix K.2). As shown in Table 1, under the same budget as Wang and Du [2025], BTM achieves a 17.58 FID. While modest, competing one-step methods rely heavily on classifier-free guidance (CFG) for sam-ple quality. Extending CFG to BTM remains an open direction for future work.                       
+
+> Model NFE Guidance FID ↓
+> iCT [2024] 1None 30.10
+> BTM (Ours) 1None 17.58
+> Shortcut Models 1CFG 10.60 SiT (w/o CFG) 250 None 8.30 MeanFlow 1CFG 3.43 SiT (w/ CFG) 2x250 CFG 2.06
+
+Table 1: FID comparison against recent baselines. All numbers use the same eval-uation protocol. 
+
+## 4 Concluding remarks 
+
+We have introduced Beckmann Transport Models , a framework for generative modeling built on time-independent drifts b satisfying the divergence equation ∇ · (νb ) = μ0 − μ1. The framework recovers Equilibrium Matching and the Poisson Flow generative model as instances at different choices of ν, and admits a clean characterization of the resulting one-step map T via a conservation equation, which can be discretized to learn T directly from samples without ODE integration at inference. The framework requires the target μ1 to be supported on a lower-dimensional manifold; this is not a real restriction, since any target on Rd1 can be embedded into Rd1+d2 by zero-padding. 
+
+Open directions. Since any pair (ν, b ) satisfying the divergence equation (9) gives a valid transport, one could optimize jointly over (ν, b ) subject to ∇ · (νb ) = μ0 − μ1. This could be done in the 9Model Method FID ↓            
+
+> StyleGAN-XL GAN 2.30 VDM++ Diffusion 2.12 DiT-XL/2 Diffusion 2.27 SiT-XL/2 FM 2.06 EqM-XL/2 EqM 1.90 EqM-XL/2 BTM 1.87
+
+Figure 5: Left: Curated class-conditional samples from EqM-XL/2 architecture on ImageNet 
+
+256 × 256 . Each image corresponds to a distinct ImageNet class. Right: : FID comparison against recent baselines, All numbers use the same evaluation protocol Beckmann sense (to minimize the action R 
+
+> Rd
+
+|b|2ν dx and tighten the bound (10)) or under other criteria targeting sample quality, computational cost, or training stability. The framework is also well-suited to text generation via embedding on the probability simplex: text tokens correspond to vertices of the simplex (atomic distributions), so the singular-target assumption is satisfied natively. The conservation equation then characterizes a one-step map directly to a discrete output, an avenue worth exploring as discrete generative modeling continues to develop. Finally, the iterative-inference scheme of Section 2.6 suggests a continuous trade-off between training-time and inference-time compute that has not been characterized. A network trained for k steps of effective flow time can be applied ⌈τ /k ⌉ times at inference to recover T ; understanding the optimal allocation in this trade-off is an open problem with practical relevance. 
+
+## References 
+
+Michael S. Albergo and Eric Vanden-Eijnden. Building normalizing flows with stochastic interpolants. In International Conference on Learning Representations , 2023. Michael S. Albergo, Nicholas M. Boffi, and Eric Vanden-Eijnden. Stochastic interpolants: A unifying framework for flows and diffusions. arXiv preprint arXiv:2303.08797 , 2023. Martin Beckmann. A continuous model of transportation. Econometrica , 20(4):643–660, 1952. Jean-David Benamou and Yann Brenier. A computational fluid mechanics solution to the Monge– Kantorovich mass transfer problem. Numerische Mathematik , 84(3):375–393, 2000. Nicholas M. Boffi, Michael S. Albergo, and Eric Vanden-Eijnden. Flow map matching with stochastic interpolants: A mathematical framework for consistency models. Transactions on Machine Learning Research , 2025a. arXiv:2406.07507. Nicholas M. Boffi, Michael S. Albergo, and Eric Vanden-Eijnden. How to build a consistency model: Learning flow maps via self-distillation. In Advances in Neural Information Processing Systems (NeurIPS) , 2025b. arXiv:2505.18825. Yu Cao and Eric Vanden-Eijnden. Learning optimal flows for non-equilibrium importance sampling. In Advances in Neural Information Processing Systems , volume 35, 2022. arXiv:2206.09908. Mingyang Deng, He Li, Tianhong Li, Yilun Du, and Kaiming He. Generative modeling via drifting. 
+
+arXiv preprint arXiv:2602.04770 , 2026. Kevin Frans, Danijar Hafner, Sergey Levine, and Pieter Abbeel. One step diffusion via short-cut models. In International Conference on Learning Representations (ICLR) , 2025. Oral; arXiv:2410.12557. Zhengyang Geng, Mingyang Deng, Xingjian Bai, J. Zico Kolter, and Kaiming He. Mean flows for one-step generative modeling. In Advances in Neural Information Processing Systems (NeurIPS) ,2025. Oral; arXiv:2505.13447. 10 Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilistic models. In Advances in Neural Information Processing Systems , volume 33, pages 6840–6851, 2020. Yaron Lipman, Ricky T. Q. Chen, Heli Ben-Hamu, Maximilian Nickel, and Matthew Le. Flow matching for generative modeling. In International Conference on Learning Representations ,2023. Xingchao Liu, Chengyue Gong, and Qiang Liu. Flow straight and fast: Learning to generate and transfer data with rectified flow. In International Conference on Learning Representations , 2023. Nanye Ma, Mark Goldstein, Michael S. Albergo, Nicholas M. Boffi, Eric Vanden-Eijnden, and Saining Xie. Sit: Exploring flow and diffusion-based generative models with scalable interpolant transformers, 2024. URL https://arxiv.org/abs/2401.08740 .Grant M. Rotskoff and Eric Vanden-Eijnden. Dynamical computation of the density of states and Bayes factors using nonequilibrium importance sampling. Physical Review Letters , 122(15): 150602, 2019. arXiv:1809.11132. Filippo Santambrogio. Optimal Transport for Applied Mathematicians , volume 87 of Progress in Nonlinear Differential Equations and Their Applications . Birkhäuser, 2015. Yang Song and Prafulla Dhariwal. Improved techniques for training consistency models. In 
+
+The Twelfth International Conference on Learning Representations , 2024. URL https:// openreview.net/forum?id=WNzy9bRDvG .Yang Song, Jascha Sohl-Dickstein, Diederik P. Kingma, Abhishek Kumar, Stefano Ermon, and Ben Poole. Score-based generative modeling through stochastic differential equations. In International Conference on Learning Representations , 2021. Yang Song, Prafulla Dhariwal, Mark Chen, and Ilya Sutskever. Consistency models. In Proceedings of the 40th International Conference on Machine Learning , ICML, 2023. Cédric Villani. Optimal Transport: Old and New , volume 338 of Grundlehren der mathematischen Wissenschaften . Springer, 2009. Runqian Wang and Yilun Du. Equilibrium matching: Generative modeling with implicit energy-based models. arXiv preprint arXiv:2510.02300 , 2025. Yilun Xu, Ziming Liu, Max Tegmark, and Tommi Jaakkola. Poisson flow generative models. In 
+
+Advances in Neural Information Processing Systems , 2022. arXiv:2209.11178. Yilun Xu, Ziming Liu, Yonglong Tian, Shangyuan Tong, Max Tegmark, and Tommi Jaakkola. PFGM++: Unlocking the potential of physics-inspired generative models. In Proceedings of the 40th International Conference on Machine Learning , ICML, 2023. URL https://arxiv.org/ abs/2302.04265 .
+
+## A Related work 
+
+Flow matching, diffusion, and equilibrium matching. Flow matching [Lipman et al., 2023, Albergo and Vanden-Eijnden, 2023, Albergo et al., 2023, Liu et al., 2023] and diffusion models [Ho et al., 2020, Song et al., 2021] construct differential equations with time-dependent drifts that transport between base and target distributions. The BTM drift minimizes the same FM loss, but over time-independent fields. BTM provides the mathematical justification for Equilibrium Matching [Wang and Du, 2025], which also uses time-independent drifts, and corrects the loss originally proposed there. It also recovers Poisson Flow [Xu et al., 2022] from the choice ν = 1 , with PFGM++ [Xu et al., 2023] softening the resulting Coulomb singularity via an extra dimension parameter — a different design knob from the choice of ν in BTM. 11 Relationship with optimal transport. The divergence condition is classical in OT [Santambrogio, 2015, Villani, 2009]. Standard flow matching realizes a transport without minimizing the Benamou– Brenier action [Benamou and Brenier, 2000]; analogously, BTM gives a dynamical realization of Beckmann’s flux constraint [Beckmann, 1952] without minimizing the associated cost. The variational form of the divergence equation also appears in NEIS [Cao and Vanden-Eijnden, 2022, Rotskoff and Vanden-Eijnden, 2019] for partition-function estimation. 
+
+Consistency models, flow maps, and one-step generation. One-step or few-step generation has been pursued through consistency models [Song et al., 2023], rectified flow [Liu et al., 2023], Flow Map Matching [Boffi et al., 2025a,b], MeanFlow [Geng et al., 2025], and Shortcut Models [Frans et al., 2025]. These methods start from an underlying time-dependent flow and distill or self-distill it into a one-step network. Drifting [Deng et al., 2026] learns a one-step map directly, by evolving the network’s pushforward during training, using an MMD distance to measure progress. BTM also learns the map directly, but exploits a different structural fact: because the underlying flow is autonomous, the map is the unique solution of a stationary conservation equation, and training reduces to a residual loss with no kernel needed. 
+
+## B Proof of Proposition 1 and Theorem 1 
+
+We begin with Theorem 1 since some steps of its proof are used in the proof of Proposition 1. 
+
+Proof of Theorem 1. The proof has two parts: showing that trajectories converge to M1, and account-ing for the mass that lands on each subset of M1.
+
+(i) Convergence to M1. Since b = ∇ϕ, along any trajectory of ˙Xt = b(Xt) we have 
+
+ddt ϕ(Xt) = ∇ϕ(Xt) · ˙Xt = |∇ ϕ(Xt)|2 ≥ 0,
+
+so ϕ is non-decreasing along trajectories. Away from M1, the divergence equation (9) reads ∇ · 
+
+(ν∇ϕ) = ρ0 > 0, where ρ0 is the density of μ0 (Assumption 1). The strong maximum principle for the weighted elliptic operator u 7 → ∇ · (ν∇u) then forbids ϕ from attaining a local maximum at any interior point of Rd \ M1. Combined with the decay of ∇ϕ at infinity (which excludes escape), this implies that μ0-almost every trajectory converges to M1: any limit point would be a local maximum of ϕ along the trajectory, hence must lie on M1. The hitting time τ (x0) is finite when b̸ = 0 on M1,since | ˙Xt| = |b(Xt)| is then bounded away from zero in a neighborhood of M1; conversely, if b = 0 
+
+on M1 (i.e. M1 is a critical set of ϕ), the drift vanishes as Xt → M1 and the trajectory approaches 
+
+M1 asymptotically, giving τ (x0) = ∞.
+
+(ii) Mass accounting via the divergence theorem. For any measurable A ⊂ M1, define the basin 
+
+BA := {x0 ∈ Rd : T (x0) ∈ A} = T −1(A),
+
+i.e. the set of initial conditions whose trajectory lands in A. We show that μ0(BA) = μ1(A), which gives T♯μ0 = μ1.Let Tδ (A) := {x ∈ Rd : dist( x, A ) < δ } be the open δ-tube around A, and set Ωδ := BA \ Tδ (A).By construction, Ωδ ∩M1 = ∅, so on Ωδ the divergence equation reduces to ∇· (ν b ) = ρ0. Integrating over Ωδ and applying the divergence theorem, 
+
+Z
+
+> Ωδ
+
+ρ0 dx =
+
+Z
+
+> ∂Ωδ
+
+ν b · ˆn dσ =
+
+Z
+
+> ∂B A
+
+ν b · ˆn∂B A dσ −
+
+Z 
+
+> ∂T δ(A)
+
+ν b · ˆn∂T δ (A) dσ, 
+
+where ˆn∂B A is the outward normal to BA, and ˆn∂T δ (A) is the outward normal to Tδ (A) (pointing away from A); the sign on the second term reflects that the outward normal of Ωδ on its inner boundary points away from the tube, i.e. in the direction −ˆn∂T δ (A).The outer-boundary integral over ∂B A vanishes: basin boundaries are stable manifolds of the gradient flow and trajectories are tangent to them, so b · ˆn∂B A = 0 . For the inner boundary, the flux R  
+
+> ∂T δ(A)
+
+ν b · ˆn∂T δ (A) dσ measures the net rate at which mass leaves Tδ (A); since trajectories enter 
+
+Tδ (A) rather than leave it, this integral is negative, and in the limit δ → 0 it converges to −μ1(A)
+
+12 by the singular-source structure of the divergence equation at M1. The left-hand side converges to 
+
+μ0(BA), since ρ0 is the density of μ0 and Tδ (A) has vanishing μ0-mass as δ → 0. Combining, 
+
+μ0(BA) = μ1(A).
+
+Since (T♯μ0)( A) = μ0(T −1(A)) = μ0(BA), this gives T♯μ0 = μ1.
+
+Proof of Proposition 1. The strategy is to identify the FM-derived autonomous drift as a particular instance of the divergence-equation framework of Theorem 1, then check the additional structure specific to the FM construction — escape at infinity, and the ˙I1 dichotomy for the hitting time. 
+
+Step 1: Derivation of the divergence equation. The interpolant law μt satisfies the continuity equation 
+
+∂tμt + ∇ · (btμt) = 0 , μt=0 = μ0, μt=1 = μ1, (17) where bt is the time-dependent FM drift. Integrating (17) in t over [0 , 1] gives the divergence identity 
+
+∇ · j = μ0 − μ1, j := 
+
+Z 10
+
+btμt dt, (18) in the sense of distributions on Rd. For t ∈ [0 , 1) , μt has a density ρt (since the interpolant 
+
+It = αtx0 + βtx1 is the convex combination of x0 ∼ μ0, which has a density, and x1 ∼ μ1, with 
+
+αt > 0 for t < 1). On Rd \ M1 both integrals 
+
+j(x) = 
+
+Z 10
+
+bt(x)ρt(x) dt, ν(x) = 
+
+Z 10
+
+ρt(x) dt (19) are therefore well-defined densities, with ν(x) > 0 pointwise on Rd \ M1 since ρt > 0 for all t < 1.
+
+Step 2: The minimizer of the time-independent FM loss is b = j/ν . The minimizer of the time-independent FM loss (5) is, by orthogonality of the regression, 
+
+b(x) = Et,x 0,x 1 [ ˙It | It = x] = Et,x 0,x 1 [ ˙It δIt ]
+
+Et,x 0,x 1 [δIt ] . (20) Both numerator and denominator are formal: the numerator equals j(x) (Bayes’ rule applied to the joint density of (t, I t), then marginalizing t gives E[ ˙It | It = x]ρ(x) = R 10 bt(x)ρt(x) dt = j(x)), and the denominator equals ν(x) (the marginal density of It when t ∼ U [0 , 1] ). Hence 
+
+b(x) = j(x)
+
+ν(x) , x ∈ Rd \ M1. (21) Substituting into (18) gives the divergence condition 
+
+∇ · (νb ) = μ0 − μ1. (22) 
+
+Step 3: Applying Theorem 1 via Helmholtz decomposition. The drift b = j/ν defined by (21) is not in general a gradient. However, it admits a ν-weighted Helmholtz decomposition 
+
+νb = ν∇ϕ + q⊥, ∇ · q⊥ = 0 , (23) on Rd \ M1, where ∇ϕ is the ν-weighted gradient projection of b and q⊥ is the divergence-free remainder. Substituting (23) into the divergence condition (22) gives 
+
+∇ · (νb ) = ∇ · (ν∇ϕ) + ∇ · (q⊥) = ∇ · (ν∇ϕ) = μ0 − μ1,
+
+so the gradient pair (ν, ∇ϕ) satisfies the divergence equation on its own. The basin structure of the autonomous flow ˙Xt = b(Xt) coincides with that of the gradient flow ˙Xt = ∇ϕ(Xt) on 
+
+μ0-a.e. initial conditions: the divergence-free part q⊥/ν generates rotations within changing the mass transport. Theorem 1 applied to the gradient pair (ν, ∇ϕ) then gives T♯μ0 = μ1, where 
+
+T (x0) = lim t↑τ (x0) Xt(x0) ∈ M1 is the limit of the autonomous trajectory. 
+
+Step 4: The ˙I1 dichotomy. On the target manifold, b(x) = Et,x 0,x 1 [ ˙It | It = x] for x ∈ M1 reduces to a conditional expectation that concentrates at t = 1 (since It ∈ M1 in the limit t → 1), giving 
+
+b(x) ∝ E[ ˙I1 | I1 = x] on M1. Two cases: 13 • If ˙I1̸ = 0 (e.g., αt, β t have nonzero derivatives at t = 1 , the standard linear-interpolant case), then 
+
+b̸ = 0 on M1. By Theorem 1, τ (x0) < ∞ for μ0-a.e. x0 and the trajectory crosses M1 transversely. • If ˙I1 = 0 (e.g., αt = cos( πt/ 2) or any schedule with ˙α1 = ˙β1 = 0 ), then b = 0 on M1, which becomes a critical set of ϕ. The trajectory approaches M1 asymptotically and τ (x0) = ∞.In both cases the limit T (x0) exists and lies in M1, so the conclusion T♯μ0 = μ1 from Step 3 holds. 
+
+Explicit kernels for discrete μ1
+
+For μ0 = N (0 , I d), μ1 = P 
+
+> j
+
+pj δxj , and a general interpolant It = αtx0 + βtx1 (with αt + βt = 1 
+
+assumed for brevity), the contribution of atom j to ν and j is, with ϵ = x − xj̸ = 0 :
+
+ν(j)(x) = pj
+
+(2 π)d/ 2
+
+Z 10
+
+α−dt exp 
+
+
+
+− |ϵ + αtxj |2
+
+2α2
+
+> t
+
+
+
+dt, (24) 
+
+j(j)(x) = pj
+
+(2 π)d/ 2
+
+Z 10
+
+α−dt
+
+ ˙αt
+
+αt
+
+(ϵ + αtxj ) + ˙βtxj
+
+
+
+exp 
+
+
+
+− |ϵ + αtxj |2
+
+2α2
+
+> t
+
+
+
+dt. (25) For xj = 0 , the integrals reduce via the substitution u = |ϵ|/α t (Laplace asymptotics are controlled by αt ∼ | ϵ|) and admit closed forms in terms of incomplete Gamma functions when αt has a power-law structure; for the specific case αt = (1 − t)a, integrating gives expressions that generalize equation (11) of the original note. For xj̸ = 0 , the cross term ϵ · xj /α t prevents a closed form for all 
+
+|ϵ|; the dominant asymptotic behaviour as |ϵ| → 0 is captured by the exponent 1 − 1/a .A notable special case: for a single atom and αt = 1 − t (linear interpolant, a = 1 ), ˙αt = −1, ˙βt = 1 ,and a direct calculation gives b(x) = xj − x exactly — recovering a linear attractor toward the atom. The regression loss (5) is identically zero at this b provided the parametrization allows it. 
+
+## C Link with Poisson flows when ν = 1 
+
+With ν = 1 , equation (9) is the Poisson equation ∆ϕ = μ0 − μ1, and b = ∇ϕ is the electric field generated by μ1 (as a charge distribution) in the background field of μ0
+
+b(x) = xωd |x|d
+
+γ(d/ 2, |x|2/2) Γ( d/ 2) 
+
+| {z }
+
+> b0(x)
+
+− 1
+
+ωd
+
+Z
+
+> M
+
+x − y
+
+|x − y|d μ1(dy )
+
+| {z }
+
+> b1(x)
+
+, (26) where ωd = 2 πd/ 2/Γ( d/ 2) .In the atomic case when μ1 = P  
+
+> j∈[N]
+
+pj δxj , the second term in (26) is also explicit 
+
+b1(x) = 1
+
+ωd
+
+Z
+
+> M
+
+x − y
+
+|x − y|d μ1(dy ) = 1
+
+ωd
+
+X 
+
+> j∈[N]
+
+pj
+
+x − xj
+
+|x − xj |d
+
+In this case b1 can be estimated at each ODE step by a fresh i.i.d. mini-batch from μ1 and no neural network is required. This is the basus of Poisson Flow generative model of Xu et al. [2022]. 
+
+## D Proof of the cost-chain inequality (10) 
+
+We establish the chain 
+
+W 22 (μ0, μ 1) ≤
+
+Z
+
+> Rd
+
+|b|2ν ≤
+
+Z 10
+
+Z
+
+> Rd
+
+|bt|2μt dt 
+
+in two steps. The first inequality is Benamou–Brenier applied to the autonomous flow once we identify ν as its occupation measure. The second is Jensen’s inequality applied to the FM time-averaging. 14 Step 1: ν is the occupation density of the autonomous flow. Let νt denote the distribution of the solution to the autonomous flow ˙Xt = b(Xt), with ν0 = μ0 and mass progressively absorbed into 
+
+M1 as trajectories arrive there. The continuity equation for νt reads 
+
+∂tνt + ∇ · (bν t) = 0 on Rd \ M1, t ∈ [0 , ∞), (27) with mass progressively transferred from the bulk onto M1. By Proposition 1, the total mass absorbed onto any measurable A ⊂ M1 equals μ1(A). Integrating (27) from t = 0 to t = ∞ and using 
+
+ν0 = μ0 together with the absorbed-mass distribution μ1 on M1,
+
+∇ · 
+
+
+
+b
+
+Z ∞
+
+> 0
+
+νt dt 
+
+
+
+= μ0 − μ1. (28) The autonomous flow’s occupation mesaure ¯ν := R inf ty  
+
+> 0
+
+νt(x) dt therefore satisfies ∇· (¯ νb ) = μ0−μ1
+
+on Rd \ M1, the same divergence equation that ν satisfies. Since both ¯ν and ν are positive on Rd \ M1,vanish at infinity, and integrate to give matching total mass against the source-sink structure of 
+
+μ0 − μ1, they are equal: 
+
+ν = ¯ ν on Rd \ M1. (29) The FM time-averaged density ν is thus also the occupation measure of the autonomous flow. 
+
+Step 2: Benamou–Brenier on the autonomous flow. The autonomous flow with drift b and law 
+
+νt realizes a continuous-time path interpolating μ0 to μ1. By the Benamou–Brenier inequality for ODE-driven transport, 
+
+W 22 (μ0, μ 1) ≤
+
+Z ∞
+
+> 0
+
+Z
+
+> Rd
+
+|b|2νt dt =
+
+Z
+
+> Rd
+
+|b|2 ¯ν(= 
+
+Z
+
+> Rd
+
+|b|2ν, (30) using (29) in the last equality. (Strictly, the BB infimum is over time-rescaled paths on [0 , 1] ; the inequality follows from a standard time-reparametrization of the autonomous trajectory that preserves the integrand.) This establishes the first inequality of the cost chain. 
+
+Step 3: Jensen on the FM time-averaging. The FM-derived drift b is the conditional expectation 
+
+b(x) = Et,x 0,x 1 [ ˙It | It = x], which can be written as the ratio 
+
+b(x) = j(x)
+
+ν(x) , j(x) = 
+
+Z 10
+
+bt(x)ρt(x) dt, ν(x) = 
+
+Z 10
+
+ρt(x) dt. (31) By the Cauchy–Schwarz inequality (a special case of Jensen’s inequality applied to the convex function u 7 → u2 against the time-averaging probability measure ρt(x) dt/ν (x) on [0 , 1] ), 
+
+|b(x)|2 = 1
+
+ν(x)
+
+Z 10
+
+bt(x)ρt(x) dt 
+
+> 2
+
+≤ 1
+
+ν(x)
+
+Z 10
+
+|bt(x)|2ρt(x) dt. (32) Multiplying both sides by ν(x) and integrating over Rd,
+
+Z
+
+> Rd
+
+|b(x)|2ν(x) dx ≤
+
+Z
+
+> Rd
+
+Z 10
+
+|bt(x)|2ρt(x) dt dx =
+
+Z 10
+
+Z
+
+> Rd
+
+|bt(x)|2μt(dx ) dt, (33) using ρt dx = μt(dx ) in the last identification. This establishes the second inequality of the cost chain. 
+
+Combining. (30) and (32) give 
+
+W 22 (μ0, μ 1) ≤
+
+Z
+
+> Rd
+
+|b|2ν ≤
+
+Z 10
+
+Z
+
+> Rd
+
+|bt|2μt dt, 
+
+which is (10). 15 E Discontinuity of b and regularity of T at M1: two independent design questions 
+
+The autonomous-flow construction underlying BTM produces two learnable objects: the drift b(x)
+
+and the map T (x0). Each can be learned via the corresponding loss in Section ?? , and each has its own regularity considerations at M1. We show in this appendix that the regularity properties of b and 
+
+T at M1 are governed by independent design choices in the construction: • The discontinuity of b at M1 is controlled by the choice of weight ν in the divergence equation 
+
+∇ · (νb ) = μ0 − μ1. Adjusting ν to vanish on M1 (equivalently, ν → ∞ on M1) makes b → 0
+
+smoothly at M1, easing learning of b.• The regularity of T at M1 is controlled by the geometry of the current j = νb , which is independent of ν. Making T smooth (rather than merely continuous) at M1 requires the geometric current j to be transverse to M1, which in the FM construction depends on the interpolant family — not on its time parameterization. The two design questions are separately addressed by separate mechanisms. The schedule-invariance result (Subsection ?? ) makes this separation precise: time reparameterizations of a single-schedule interpolant change ν and b but not j or T .
+
+E.1 Constraints on j at M1
+
+The divergence equation ∇ · j = μ0 − μ1 pins down the normal component of j on M1 via the divergence theorem: the limiting flux of j into any region of M1 equals the local density of μ1. In the codimension-1 case, with μ1 having smooth density ρ1 on M1:
+
+j⊥(x+) − j⊥(x−) = −ρ1(x), x ∈ M1,
+
+where x+, x − denote approach from the two sides of M1. j⊥ is therefore discontinuous across M1
+
+whenever ρ1 > 0, with a jump equal to (minus) the density of μ1 on M1.This jump is structural — a consequence of μ1 being a singular sink for the divergence equation. It cannot be removed by any choice of ν or interpolant. The drift b = j/ν inherits this jump unless 
+
+ν → ∞ on M1 at a sufficient rate to cancel it. The behavior of the drift b = j/ν at M1 depends on whether ν is bounded or unbounded there: • ν bounded on M1 (e.g., PFGM with ν = 1 ). b = j/ν has the same jump as j: discontinuous across M1 with finite normal jump. Trajectories of ˙X = b(X) approach M1 at finite speed and reach it in finite time, but the integrator must detect the crossing and stop — otherwise the ODE will continue past M1 in the wrong direction. Furthermore, the discontinuity of b at M1 is a difficult target for neural-network regression: the network must learn a function with a sharp transition on a low-dimensional manifold. • ν → ∞ on M1 (e.g., FM single-schedule with linear interpolant, where ν ∼ ln(1 /dist) ). 
+
+b = j/ν → 0 on M1, and b is continuous (with value zero on M1). Trajectories slow down asymptotically as they approach M1, but no stopping criterion is needed: integrating the ODE for sufficiently long time leaves the trajectory arbitrarily close to M1, with no risk of overshoot since b
+
+vanishes there. Learning b via neural-network regression is also easier because the target is smooth (bounded gradients, no jump on a manifold). The choice between these cases is purely a function of ν, which the framework treats as a design knob (Section 2.3, equation (9)). Within FM constructions, ν is determined by the interpolant; within other constructions (PFGM, custom ν), it can be chosen independently. 
+
+Implication. For both learning and inference, the FM-style construction with ν → ∞ at M1 is preferred: it eliminates the discontinuity that would be a barrier to neural-network regression of b,and it removes the need for a stopping criterion in ODE integration. The trade-off is purely numerical: the ODE must be integrated for a longer fixed horizon to bring trajectories close to M1.16 F Analysis of j near M1 and the regularity of T
+
+F.1 Setup 
+
+μ0 = N (0 , I d) centered at the origin, μ1 supported on a smooth codim-k submanifold M1 ⊂ Rd
+
+(1 ≤ k ≤ d − 1 for the manifold case; k = d atomic, treated separately), with smooth tangential density ρ1 on M1. For field point x ∈ Rd near M1:• y(x) := arg min z∈M1 |x − z|, the foot point on M1;• Ty(x)M1 (tangent, dim d − k) and Ny(x)M1 (normal, dim k); • hξ ⊥ := x − y(x) ∈ Ny(x)M1, with h = |x − y(x)| and ξ⊥ a unit vector in Ny(x)M1;• y(x)∥ ∈ Ty(x)M1 the projection of y(x) onto Ty(x)M1.We consider interpolants of the generic form It = αtx0 + f (αt) x1, where f : [0 , 1] → [0 , 1] with 
+
+f (0) = 1 , f (1) = 0 , f ′(α) ≤ 0 encodes the curve geometry, and αt : [0 , 1] → [0 , 1] with α0 = 1 ,
+
+α1 = 0 , ˙αt < 0 encodes the time parametrization. The path Γx0,x 1 = {It : t ∈ [0 , 1] } depends on f
+
+only. When f ′(0) = 0 , define the path-curvature parameter 
+
+c := − 12 f ′′ (0) , so that 1 − f (α) ∼ c α 2 near α = 0 (34) (for VP, f (α) = √1 − α2, c = 1 /2). 
+
+F.2 Invariance: j is geometric, ν and b are kinematic 
+
+Resolving the δ in the line integral j(x) = E[R δ(x − It) ˙It dt ] via x0 = ( x − f (αt)x1)/α t (Jacobian 
+
+α−dt ) and ˙It = ˙ αt[x0 + f ′(αt)x1], the time-derivative ˙αt exactly cancels the dt = dα/ ˙αt Jacobian. Setting α = αt:
+
+j(x) = 
+
+Z 10
+
+dα 
+
+Z
+
+dx 1
+
+1
+
+αd ρ0
+
+ x − f (α)x1
+
+α
+
+
+
+ρ1(x1)
+
+ x − f (α)x1
+
+α + f ′(α) x1
+
+
+
+. (35) This is manifestly independent of the time parametrization αt(·) and depends on f only. By contrast, ν and the time-pointwise ρt, b t depend on the time parametrization. Direct change of variable gives 
+
+ν(x) = 
+
+Z 10
+
+ρt(x) dt =
+
+Z 10
+
+ρα(x)
+
+| ˙αt(α)| dα, (36) where ρα is the marginal density relabeled by α. The factor 1/| ˙αt| is the kinematic content. Similarly the average drift ¯b := j/ν inherits the ν-dependence. 
+
+## G Analysis of j near M1 and the regularity of T
+
+G.1 Setup 
+
+μ0 = N (0 , I d) centered at the origin, μ1 supported on a smooth codim-k submanifold M1 ⊂ Rd
+
+(1 ≤ k ≤ d − 1 for the manifold case; k = d atomic, treated separately), with smooth tangential density ρ1 on M1. For field point x ∈ Rd near M1:• y(x) := arg min z∈M1 |x − z|, the foot point on M1;• Ty(x)M1 (tangent, dim d − k) and Ny(x)M1 (normal, dim k); • hξ ⊥ := x − y(x) ∈ Ny(x)M1, with h = |x − y(x)| and ξ⊥ a unit vector in Ny(x)M1;• y(x)∥ ∈ Ty(x)M1 the projection of y(x) onto Ty(x)M1.We consider interpolants of the generic form It = αtx0 + f (αt) x1, where f : [0 , 1] → [0 , 1] with 
+
+f (0) = 1 , f (1) = 0 , f ′(α) ≤ 0 encodes the curve geometry, and αt : [0 , 1] → [0 , 1] with α0 = 1 ,
+
+α1 = 0 , ˙αt < 0 encodes the time parametrization. The path Γx0,x 1 = {It : t ∈ [0 , 1] } depends on f
+
+only. 17 When f ′(0) = 0 , define the path-curvature parameter 
+
+c := − 12 f ′′ (0) , so that 1 − f (α) ∼ c α 2 near α = 0 (37) (for VP, f (α) = √1 − α2, c = 1 /2). 
+
+G.2 Invariance: j is geometric, ν and b are kinematic 
+
+Resolving the δ in the line integral j(x) = E[R δ(x − It) ˙It dt ] via x0 = ( x − f (αt)x1)/α t (Jacobian 
+
+α−dt ) and ˙It = ˙ αt[x0 + f ′(αt)x1], the time-derivative ˙αt exactly cancels the dt = dα/ ˙αt Jacobian. Setting α = αt:
+
+j(x) = 
+
+Z 10
+
+dα 
+
+Z
+
+dx 1
+
+1
+
+αd ρ0
+
+ x − f (α)x1
+
+α
+
+
+
+ρ1(x1)
+
+ x − f (α)x1
+
+α + f ′(α) x1
+
+
+
+. (38) This is manifestly independent of the time parametrization αt(·) and depends on f only. By contrast, ν and the time-pointwise ρt, b t depend on the time parametrization. Direct change of variable gives 
+
+ν(x) = 
+
+Z 10
+
+ρt(x) dt =
+
+Z 10
+
+˜ρα(x)
+
+| ˙αt(α)| dα, (39) where ˜ρα = ρt(α) is the marginal density relabeled by α. The factor 1/| ˙αt| is the kinematic content. Similarly the average drift ¯b := j/ν inherits the ν-dependence. 
+
+G.3 Impact of j on the regularity of T
+
+Proposition 3. The map T is characterized by 
+
+j(x) · ∇ T (x) = 0 on Rd \ M1, T = id on M1. (40) 
+
+Proof. Trajectories of the autonomous flow ˙Xt = b(Xt) = j(Xt)/ν (Xt) have direction j/ |j|,independent of ν > 0, so two choices of ν give the same orbits and therefore the same map T .Equivalently, multiplying (40) by ν−1 recovers b · ∇ T = 0 . By (38), j depends only on f .The characteristics of (40) are the orbits of j/ |j|, and M1 carries the data T = id . Decomposing 
+
+j(x) = j⊥(x) + j∥(x) with j⊥ ∈ Ny(x)M1, j∥ ∈ Ty(x)M1, two regimes arise: • j transverse (|j∥|/|j⊥| bounded at M1): characteristics puncture through M1 at finite angle. M1
+
+is non-characteristic for (40), the BVP is C1-well-posed, T extends to a C1 map across M1 (within each basin). • j tangential (|j∥|/|j⊥| → ∞ at M1): characteristics curve to align with M1 rather than crossing it. M1 is characteristic in the limit; the BVP is C0-well-posed but the normal derivative of T blows up at the rate |j∥|/|j⊥|.Determining the regime is the goal of the asymptotic analysis below. 
+
+G.4 Asymptotics for codim k ≥ 3 (general ρ1)
+
+For k ≥ 3, the saddle of (38) dominates the integral asymptotically as h → 0, and the leading behavior follows from the joint (α, x 1) saddle. 
+
+Saddle. The action of (38) is 
+
+˜S(α, x 1) = − |x − f (α) x1|2
+
+2α2 + log ρ1(x1) − d log α + const .
+
+Joint minimization over (α, x 1 ∈ M1). The Euler–Lagrange in x1 (projected onto Tx1 M1): 
+
+f (α)
+
+α2 (x − f (α)x1)∥ + ∇∥ log ρ1(x1) = 0 .
+
+18 For small α, f → 1 and the kinematic term dominates: 
+
+x∗
+
+> 1
+
+(α) = y(x) + α2 (g + c y (x)∥) + O(α4), g := ∇∥ log ρ1(y(x)) . (41) Substituting back, the action in α alone is ˜S∗(α) ∼ − h2/(2 α2) − d log α + log ρ1(y(x)) + O(h2),with saddle 
+
+α∗ = |h|/√d, x∗ 
+
+> 1
+
+= y(x) + O(h2). (42) 
+
+Bracket at saddle. Decompose [( x − f (α)x1)/α + f ′(α) x1]:• Normal: hξ ⊥/α ∗ = √d sgn( h) ξ⊥ — O(1) .• Tangent (using f ′(0) = 0 , the score correction (41), and 1 − f (α) ∼ cα 2): −(|h|/√d) ( g +2c y (x)∥) + O(|h|3) — O(|h|).The tangent bracket is one power smaller in |h| than the normal: the f ′(0) = 0 assumption forces the kinematic and score pieces to nearly cancel. 
+
+Asymptotics. Combining the bracket with the post-Laplace integrand structure ∼ 1/α k · e−h2/(2 α2)
+
+and the standard u = h/α substitution, 
+
+j⊥(x) ∼ − ρ1(y(x)) 2(k−2) /2 Γ( k/ 2) (√2π)k |h|1−k ξ⊥, (43) 
+
+j∥(x) ∼ ρ1(y(x)) [ g + 2 c y ∥] 2(k−4) /2 Γ(( k − 2) /2) (√2π)k |h|2−k. (44) For the kinematic ν, an extra 1/| ˙α1| appears: 
+
+ν(x) ∼ ρ1(y(x)) 2 (k−3) /2 Γ(( k − 1) /2) (√2π)k | ˙α1| |h|1−k. (45) 
+
+Conclusion (for k ≥ 3, f ′(0) = 0 ). Both currents diverge with h → 0, but the ratio 
+
+|j∥||j⊥| ∼ | h| → 0 : (46) streamlines approach M1 normally , T ∈ C1 across M1. The pre-factor in (46) is irrelevant for the regime determination — only the scaling matters. 
+
+Why the saddle fails for k ≤ 2. The post-Laplace integrand for j∥ behaves as 1/α k−1 · e−h2/(2 α2)
+
+near α = 0 . For k ≥ 3, the 1/α k−1 factor concentrates the integrand at α ∼ | h| → 0, where the saddle approximation is accurate. For k = 2 the integrand ∝ 1/α has a logarithmic tail that the Gaussian-around-saddle misses; the actual scaling is log(1 /|h|), not |h|0. For k = 1 the integrand ∝ 1
+
+is bulk-dominated: the integral samples the slowly-varying factors over α ∈ (|h|, 1) , and replacing them by their values at α = 0 gives the wrong constant. The exact Gaussian benchmark below makes this concrete. 
+
+G.5 The drift b = j/ν remains bounded 
+
+Although j⊥, j∥, and ν may individually diverge at M1 (for k ≥ 2), the autonomous-flow drift 
+
+b = j/ν stays bounded in every regime. From (43)–(45): 
+
+b⊥(x) = j⊥(x)
+
+ν(x) → −| ˙α1| √2 Γ( k/ 2) Γ(( k − 1) /2) ξ⊥ (h → 0, k ≥ 2, f ′(0) = 0) , (47) 
+
+b∥(x) = j∥(x)
+
+ν(x) ∼ −| ˙α1| (g + 2 c y ∥)
+
+√2 Γ(( k − 2) /2) 2 Γ(( k − 1) /2) |h| → 0 (h → 0, k ≥ 3, f ′(0) = 0) .
+
+(48) The Coulomb-type divergences of j and ν cancel exactly in the ratio: b⊥ approaches a finite, nonzero constant, and b∥ vanishes linearly in |h|. This is consistent with the streamline regime read off directly from b:19 • Normal streamlines : b⊥ → finite, b∥ → 0 — codim ≥ 2 with f ′(0) = 0 .• Oblique : both b⊥, b ∥ finite — codim ≥ 2 with f ′(0) ̸ = 0 , or codim 1 with f ′(0) = 0 (where 
+
+ν ∼ log(1 /|h|) and j⊥ finite give b⊥ → 0, but the ratio b∥/b ⊥ stays O(1) ). • Tangent : b⊥ → 0, b∥ → finite — only codim 1 with f ′(0) ̸ = 0 . Particles entering the boundary slow down in the normal direction faster than tangentially, sweeping along M1 rather than crossing it. 
+
+G.6 Gauss-law consistency check 
+
+The current satisfies ∇ · j = μ0 − μ1, so integrating over Ωϵ = {x : dist( x, M 1) > ϵ } and applying the divergence theorem, Z
+
+> ∂Ωϵ
+
+j · n dσ =
+
+Z
+
+> Ωϵ
+
+μ0 dx − 0 → 1 (ϵ → 0) ,
+
+with n = −ξ⊥ outward from Ωϵ (toward M1). Only j⊥ contributes. The cross-section of ∂Ωϵ at distance ϵ from M1 scales as cross-section area ∼
+
+2 (k = 1 , two sheets )
+
+ϵk−1 |Sk−1| (k ≥ 2, tube ).
+
+For the flux to have a finite, ϵ-independent limit, j⊥ must scale as 
+
+|j⊥| ∼ ρ1(y(x)) · 1
+
+cross-section area ∼ ρ1(y) |h|1−k :
+
+• Codim 1: |j⊥| = ρ1/2 on each side, two-sheet flux = ρ1 per unit area, integrating to 1. • Codim ≥ 2: |j⊥| ∼ ρ1 |h|1−k Coulomb scaling. This is forced by the conservation law alone, independent of any approximation. The constant in (43) can be checked: Ck |Sk−1| = [2 (k−2) /2Γ( k/ 2) /(√2π)k] · [2 πk/ 2/Γ( k/ 2)] = 1 , giving total flux R 
+
+> M1
+
+ρ1 dσ = 1 . ✓
+
+Why M1 is a dividing surface only in codim 1. Rd \ M1 is disconnected for k = 1 (two sides) and connected for k ≥ 2. So the "two-sided" structure of j⊥ exists only in codim 1; for k ≥ 2, the field threads a vanishing ϵk−1 cross-section, and Gauss’s law forces it to diverge at M1. Electrostatic analogy: codim-k charged surface in Rd produces |h|1−k field — uniform for a charged hyperplane (k = 1 ), 1/r for a charged line ( k = 2 ), 1/r 2 for a point charge ( k = d). 
+
+G.7 Direct calculation for the Gaussian case (any k)
+
+Take μ0 = N (0 , I d) and μ1 = N (0 , v 1 Id−k) ⊗ δ0 on M1 = {x⊥ = 0 }, a planar codim-k subspace through the origin. Everything is jointly Gaussian. Define 
+
+V (α) := α2 + f (α)2 v1. (49) The marginal density factorizes: 
+
+ρt(x) = (2 πV )−(d−k)/2 (2 πα 2 
+
+> t
+
+)−k/ 2 exp 
+
+
+
+− |x∥|2
+
+2V − |x⊥|2
+
+2α2
+
+> t
+
+
+
+, (50) and the drifts read 
+
+b∥ 
+
+> t
+
+(x) = ˙Vt
+
+2 Vt
+
+x∥, b⊥ 
+
+> t
+
+(x) = ˙αt
+
+αt
+
+x⊥. (51) Changing variable to α = αt (with the orientation reversal α : 1 → 0 as t : 0 → 1): 
+
+j∥(x) = − x∥
+
+2
+
+Z 10
+
+V ′(α)
+
+V (α) ρα(x) dα, j⊥(x) = −x⊥
+
+Z 10
+
+1
+
+α ρα(x) dα, (52) 
+
+ν(x) = 
+
+Z 10
+
+ρα(x)
+
+| ˙αt(α)| dα. (53) 20 These are exact for the Gaussian benchmark, depend on f alone (geometric, in the case of j), and serve as the baseline for testing the codim-k asymptotics. 
+
+Asymptotics h → 0. The integrand structure for j∥ near α = 0 (using V ′(0) = 2 f (0) f ′(0) v1 = 0 
+
+for f ′(0) = 0 , hence V ′(α) ∼ 2cα · stuff and V ′/α k ∼ 1/α k−1): codim k ν(x) j⊥(x)/ξ ⊥ j∥(x)1 ρ1 log(1 /|h|)/(√2π | ˙α1|) −sgn( h) ρ1/2 R 10 integral, finite 
+
+2 ρ1 · Cν 
+
+> 2
+
+· | h|−1 −ρ1 · C⊥ 
+
+> 2
+
+· | h|−1 ρ1 [g + 2 cy ∥] · C∥ 
+
+> 2
+
+· log(1 /|h|)
+
+≥ 3 ρ1 · Cνk · | h|1−k −ρ1 · C⊥ 
+
+> k
+
+· | h|1−k ρ1 [g + 2 cy ∥] · C∥ 
+
+> k
+
+· | h|2−k
+
+with explicit constants Cνk = 2 (k−3) /2Γ(( k −1) /2) /(( √2π)k| ˙α1|), C⊥ 
+
+> k
+
+= 2 (k−2) /2Γ( k/ 2) /(√2π)k,
+
+C∥ 
+
+> k
+
+= 2 (k−4) /2Γ(( k − 2) /2) /(√2π)k (for k ≥ 3). The codim-1 entry for j∥ is the explicit integral 
+
+j∥(x) = y∥(v1 − 1) (2 π)d/ 2
+
+Z 10
+
+e−| y∥|2/(2 V (α)) 
+
+V (α)(d+1) /2 dα (h = 0 , VP ), (54) which depends on the full V (α) profile and does not reduce to the saddle form ρ1[g + 2 cy ∥]/√2π
+
+(which would replace V → v1 throughout, missing the bulk variation of V ). 
+
+Cancellation. For Gaussian μ1, j∥ ≡ 0 everywhere (not just at M1) iff the integrand of (52) vanishes, i.e., V ′(α) ≡ 0, i.e., V (α) ≡ const. Since V (0) = v1 and V (1) = v0 = 1 , this requires v1 = 1 : the matched-marginals case. 
+
+G.8 Conclusions 
+
+• Invariance. j and T depend on the path geometry f alone. The time parametrization αt enters ν
+
+and b but cancels from T .• Streamline regime, k ≥ 3, f ′(0) = 0 . The saddle analysis gives |j∥|/|j⊥| ∼ | h| → 0 uncondi-tionally: streamlines normal at M1, T ∈ C1. The pre-factor is irrelevant for this conclusion — the codim-≥ 3 regime is robust. • Streamline regime, k = 2 , f ′(0) = 0 . |j∥|/|j⊥| ∼ | h| log(1 /|h|) → 0: streamlines normal, 
+
+T ∈ C1.• Streamline regime, k = 1 . The saddle approximation fails; one must compute j∥ explicitly. For Gaussian benchmark with VP, (54): j∥ is finite, generically nonzero, and the ratio |j∥|/|j⊥| is 
+
+O(1) — streamlines oblique , T ∈ C1. With f ′(0) ̸ = 0 , j∥ ∼ log(1 /|h|) diverges and the ratio blows up: streamlines tangent, T fails C1.• The pathology — T failing C1 — occurs only in codim 1 with f ′(0) ̸ = 0 . The geometric condition f ′(0) = 0 (equivalently ˙β1 = 0 , since ˙βt = f ′(αt) ˙ αt) is the unique fix. In all other regimes the BVP (40) is C1-well-posed. • Cancellation. For Gaussian μ1, j∥ ≡ 0 iff v0 = v1 (matched tangential variances). For general ρ1,an analogous condition would require the Vt-analog of (52) to be constant in t.
+
+G.9 What if f ′(0) ̸ = 0 ?
+
+The analysis of Section G.4 assumed f ′(0) = 0 , which produced an O(α) tangential bracket at the saddle and the regularity conclusion T ∈ C1. With f ′(0) ̸ = 0 , two leading-order changes occur. 
+
+x1-saddle and bracket-par. The EL equation in x1 now balances f (α)/α 2 · (x − f (α)x1)∥ against 
+
+∇∥ log ρ1 at a different scale, giving 
+
+x∗
+
+> 1
+
+(α) = y(x) − α f ′(0) y(x) + O(α2), (55) shifted by O(α) rather than O(α2). Computing the bracket at this saddle: 
+
+[ bracket-par ]∗(α) = f ′(0) y(x)∥ + O(α) (f ′(0) ̸ = 0) . (56) Nonzero at α = 0 — O(1) , versus O(α) when f ′(0) = 0 . The kinematic and score pieces no longer cancel to leading order, leaving a residual proportional to f ′(0) y∥.21 Consequence. The post-Laplace integrand for j∥ becomes ∼ 1/α k · e−h2/(2 α2) — same α-power as 
+
+j⊥, rather than one power softer. Repeating the saddle/exact analysis: codim k |j⊥| |j∥| |j∥|/|j⊥| streamlines T at M1
+
+1 finite log(1 /|h|) → ∞ tangent fails C1
+
+2 |h|−1 |h|−1 finite oblique C1
+
+≥ 3 |h|1−k |h|1−k finite oblique C1
+
+Three regimes. 
+
+• k = 1 , f ′(0) ̸ = 0 : the unique pathological case. j∥ acquires a log divergence — the bulk-dominated integrand 1/α · e−h2/(2 α2) replaces the constant integrand of the f ′(0) = 0 case — while j⊥ stays finite. Ratio → ∞ ; streamlines align with M1; T fails C1.• k ≥ 2, f ′(0) ̸ = 0 : j∥ and j⊥ scale identically (both Coulomb |h|1−k). Ratio finite; streamlines oblique; T ∈ C1.• k ≥ 2, f ′(0) = 0 : |j∥|/|j⊥| → 0, streamlines normal; the strongest regularity. 
+
+Summary. Setting f ′(0) = 0 is necessary only in codim 1 — without it, T fails C1. In codim ≥ 2
+
+it is not required: T ∈ C1 for any f . The condition’s role in higher codim is to promote oblique streamlines to normal — a stronger but inessential form of regularity. 
+
+G.10 Atomic case ( k = d)
+
+Ty(x)M1 = {0}, y(x)∥ ≡ 0, hence j∥ ≡ 0 trivially. The codim-d formula (43) for j⊥ applies. 
+
+## H Self-stopping interpolant for BTM image experiments 
+
+Motivated by the empirical success of Wang and Du [2025], we consider a class of interpolant where the minimizer of the consistent loss (5) results in a self-stopping autonomous flow, that is a flow with drift such that b = 0 on M1. In words, as a sample evolves along the dynamics of b, as t → ∞ , the sample lands on a point on supp( μ1) and stops moving. We consider a piecewise interpolant where αt is chosen as: 
+
+αt =
+
+
+
+1 − 2 t
+
+1 + tc
+
+0 ≤ t ≤ tc,
+
+(1 − t)2
+
+1 − t2
+
+> c
+
+tc < t ≤ 1.
+
+(57) The interpolant inherits the best of both regimes. In the bulk t ≤ tc, αt decreases linearly and ˙It is at full strength: transport is fast. In the tail t > t c, αt vanishes quadratically, so a = 2 , ˙I1 = 0 , and 
+
+|b(x)| ∼ | x − xj |1/2 near each atom — trajectories stop on their own, no stopping criterion needed. The breakpoint tc ∈ (0 , 1) is a single tunable scalar: tc → 1 recovers the linear interpolant ( a = 1 ,transverse crossing, requires a stopping criterion), tc → 0 the purely quadratic one (slow asymptotic), intermediate values retain both virtues. Other tail exponents a > 1 are obtained by replacing the tail branch with αt = ac(1 − t)a/(1 − tc)a and adjusting ac to preserve C1 matching. 
+
+## I Comparison with Drifting 
+
+While the Beckmann transport model (BTM) and the drifting framework Deng et al. [2026] both approximate the fixed points of transport maps, they differ fundamentally in implementation. Drifting relies on learning the fixed-point of a McKean-Vlasov dynamics, driving samples from measure μ0
+
+to a target probability measure μ∗ as t → ∞ . In equation, this is written as, 
+
+˙xt = V [μt, μ ∗]( xt) := E[K(xt, X t)Xt]
+
+E[K(xt, X t)] − E[K(xt, X ∗)X∗]
+
+E[K(xt, X ∗)] , x0 ∼ μ0 (58) 22 where K is a kernel of choice, Xt ∼ μt, and X∗ ∼ μ∗. As the expectation is not available in an analytical form, in training, the expectation is approximated through a biased estimate from a mini-batch of samples. Kernel-based approaches are notoriously fragile in high dimensions, as kernel performance is hy-persensitive to the target’s unknown scale and geometry, often necessitating averaging a mixture of kernels and temperature tuning. In figure 6, we show that the canonical linear transport, and the piecewise self-stopping interpolant is sufficient to obtain good samples without tuning whereas drifting can fail easily depending on choice of kernel and its derived hyperparameters. 1.0 0.5 0.0 0.5 1.0 1.0                       
+
+> 0.5
+> 0.0 0.5 1.0
+> Spiral - True Data
+> 1.0 0.5 0.0 0.5 1.0 1.0
+> 0.5
+> 0.0 0.5 1.0
+> BTM (Linear interpolant)
+> 1.0 0.5 0.0 0.5 1.0 1.0
+> 0.5
+> 0.0 0.5 1.0
+> BTM (Piecewise self-stopping interpolant)
+> 1.0 0.5 0.0 0.5 1.0 1.0
+> 0.5
+> 0.0 0.5 1.0
+> Drifting (Gaussian Kernel = 1.0)
+> 1.0 0.5 0.0 0.5 1.0 1.0
+> 0.5
+> 0.0 0.5 1.0
+> Drifting (Gaussian Kernel = 0.5)
+> 1.0 0.5 0.0 0.5 1.0 1.0
+> 0.5
+> 0.0 0.5 1.0
+> Drifting (Cosine)
+
+Figure 6: Comparison between the proposed Beckmann transport models (BTMs) and Drifting Deng et al. [2026]. Depending on the choice of kernel the training of drifting model can be unstable, whereas the proposed Beckmann transport model trains stably across common choices of interpolants. 
+
+## J Additional experiments 
+
+Bias grows monotonically with κ (Figure 7). At κ = 0 the two losses are algebraically identical and both give MAE ≈ 0.007 . As κ increases the Wang–Du loss degrades monotonically (up to 25 ×
+
+at κ = 0 .9), while the consistent loss remains flat, confirming that the consistent interpolant decouples schedule choice from transport accuracy. Practitioners may therefore tune the tail behaviour freely to control ODE convergence speed without any accuracy penalty. 0.0 0.2 0.4 0.6 0.8 
+
+(schedule ct = (1 t) ) 
+
+> 0.00 0.02 0.04 0.06 0.08 0.10
+> Mass-allocation MAE
+> 4× 8× 18×
+> BTM EqM
+
+x0 x1 x2 x3 x4
+
+Mode ( = 0.8) 
+
+0.0 0.1 0.2 0.3 0.4 0.5 
+
+> Mass fraction
+
+Target pj
+
+BTM (MAE=0.005) EqM (MAE=0.102) 
+
+Figure 7: Left: mass-allocation MAE vs. schedule exponent κ (mean ± std over 3 seeds). Right: per-atom mass fractions at κ = 0 .8. The consistent loss (blue) is invariant to κ; the EqM loss (red) degrades up to 25 ×.
+
+Convergence speed vs. correctness (Figure 8). Both the linear interpolant ( a = 1 , transverse crossing, τ < ∞) and the quadratic interpolant ( a = 2 , self-stopping, τ = ∞), trained with the consistent loss, achieve correct mass allocation ( MAE ≈ 0.005 ). The difference is purely in convergence speed: 99% of particles freeze by T ≈ 4 for a = 1 and by T ≈ 6 for a = 2 .
+
+Training-free Coulomb transport (Figure 9). For completeness, we verify that the training-free Coulomb field ( ν = 1 , Theorem 1) transports a Gaussian cloud onto a continuous target without any 23 0 2 4 6 8 10         
+
+> ODE time T
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Fraction of particles frozen
+> T= 4
+> T= 6
+> = 0
+> = 0.5
+> x0x1x2x3x4
+> Atom
+> 0.0 0.1 0.2 0.3 0.4
+> Mass fraction
+> Target pj
+> = 0
+> = 0.5
+
+Figure 8: Left: fraction of frozen particles vs. ODE time for a = 1 and a = 2 . Right: both achieve correct mass allocation ( MAE ≈ 0.005 ); only convergence speed differs. neural network or training loop. Figure 9 shows this for a Swiss-roll target in d = 5 : particles are transported onto the spiral manifold by integrating the Coulomb drift with mini-batch estimates. At large d the 1/r d−1 singularity sharpens, concentrating mass onto supp( μ1) faster. 
+
+Figure 9: KDE of reference μ1 (left) and Coulomb-transported particles (right). μ0 = N (0 , I 5),
+
+N = 5000 particles, M = 1000 mini-batch, T = 30 . No training, no score function. 
+
+## K Image Experiments for Direct Map Learning 
+
+In this appendix, we detail our experimental finding of the direct-map learning algorithm. We consider two experiments: 1) A conditional MNIST digit generation and 2) Conditional ImageNet 256 x256 
+
+generation in a latent space. The first acts as a sanity check for the feasibility of the algorithm for images, while the second act as a testbed to rigorously ablate components of the method and its scaling properties. 
+
+K.1 MNIST digit generation 
+
+We consider a class-conditional MNIST digit generation task, where the transport map T is approxi-mated using a standard diffusion U-Net of 23 million parameters with the time conditioning removed from the architecture. Figure 10 shows high quality MNIST digits generated from the learnt transport 
+
+T . Notably, we observe that repeated application of the learnt transport T removes visual artifiacts and sharpens the edges of the generated digits. 
+
+K.2 Latent ImageNet 256 × 256 generation 
+
+We now detail the experimental setup and ablation results for our image experiments. We utilize the SiT architecture Ma et al. [2024] without time embeddings. The models operate entirely within the SD-VAE latent space. We conduct our initial ablations using a B/2 model with 131M parameters. We then scale our model to a 637M parameters XL/2 model. The architectural configurations (layers, 24 (a) One-step generated results (b) Two-step generated results 
+
+Figure 10: Generated MNIST digits. From left, one-step and two-step generated results from the learnt transport map T .hidden dimension, and attention heads) for the Base and Extra-Large variants strictly follow the standard SiT configurations. 
+
+Optimization and Stabilization Techniques Scaling the direct map learning algorithm on Ima-geNet requires careful stabilization of the objective. We train both models using the Muon optimizer with a constant learning rate of 1 × 10 −3, and employ the stabilization techniques: • Adaptive Weighting: Following MeanFlow, we apply an adaptive weight to the transport term of the loss. The adaptively weighted loss is defined as sg (w) · L , where L = || ∆|| 22
+
+denotes the regression error, and sg (·) is the stop-gradient operator. The weight w is computed as: 
+
+w = 1(|| ∆|| 22 + c)p (59) We set the hyperparameters to p = 1 and c = 0 .01 . This mechanism down-weights samples with excessively large regression errors, stabilizing early training dynamics. While adaptive weighting is highly effective for the transport term, we utilize a plain L2 loss for the boundary condition. We observe applying adaptive weights to the boundary condition resulted in blurry generated images. • Gradient Adaptive Weighting (Term Balancing): To ensure neither the boundary loss nor the transport loss dominates the updates, we dynamically balance their gradients. Following the adaptive weight mechanism of VQGAN, we weight the transport term by the ratio of their gradient norms with respect to the parameters of the last layer ( L): 
+
+λ = ||∇ LLboundary || ||∇ LLtransport || (60) • Anchoring the slightly noisy image: To increase the learning signal from the boundary loss term, we find it useful to apply the loss not only for time Is=1 , but for Is>τ where τ is a prespecified threshold. The motivation is that when a small amount of noise is injected, the clean image should be easily recoverable. 25 Training Configurations and Hyperparameters For hyperparameter selection and objective stabilization, we ablate using the BTM B/2 model, which is trained for a total of 80 epochs. To achieve optimal generation quality and convergence, the full BTM XL/2 model is trained for an extended period of 1280 epochs. A comprehensive summary of our architectural details and training hyperparameters is provided in Table 3. 
+
+Ablation and Scaling Results Using the stabilized objective, we present our ablation and scaling results below. We first evaluated the BTM B/2 model trained for 80 epochs against the MeanFlow B/2 model (Table 2a); we observe that BTM is competitive with MeanFlow without guidance (CFG). We additionally ablate the effect of scaling the model architecture (Table 2b). Increasing the parameter count to an XL/2 size yields significant stabilization and improvements in early training. 
+
+Iterated Composition We also explore the iterated application of the map. Repeated application does not require re-noising, time conditioning, or a schedule, but rather plain composition, which primarily serves to remove visual artifacts. As shown in Table 2c, increasing the number of function evaluations (NFE) through iteration yields a modest improvement in FID. 
+
+Method FID 
+
+MeanFlow B/2 (80 ep.) 61.06 BTM B/2 (80 ep.) 62.14 
+
+> (a) 80-Epoch Baseline Comparison (Without CFG)
+
+Method FID 
+
+BTM B/2 (80 ep.) 62.14 BTM XL/2 (80 ep.) 47.58 
+
+> (b) Effect of Model Scaling at 80 Epochs
+
+NFE 1 2 5
+
+FID 17.58 17.04 16.53 
+
+> (c) Iterated application of the direct map for BTM.
+
+Configuration BTM B/2 (Ablation) BTM XL/2 (Full Scale) 
+
+Generator Architecture 
+
+Architecture SiT-B SiT-XL Latent Space SD-VAE SD-VAE Input size 32 × 32 × 4 32 × 32 × 4
+
+Patch size 2 × 2 2 × 2
+
+Hidden size d 768 1152 Layers N 12 28 Attention Heads 12 16 
+
+Optimizer Settings 
+
+Optimizer Muon Muon Learning Rate 1 × 10 −3 1 × 10 −3
+
+Training Epochs 80 1280 
+
+Loss Stabilization 
+
+Adaptive Weight p 1 1Adaptive Weight c 0.01 0.01 Boundary Loss Plain L2 Plain L2
+
+Gradient Balancing Yes (last layer) Yes (last layer) Table 3: Hyperparameter Configurations for BTM Models. Architectural dimensions match the standard SiT configurations. 26

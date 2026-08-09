@@ -1,0 +1,629 @@
+Title: LLaDA MoE v2: Scaling Mixture-of-Experts Diffusion Language Models
+
+URL Source: https://arxiv.org/pdf/2608.03457v1
+
+Published Time: Wed, 05 Aug 2026 00:53:54 GMT
+
+Number of Pages: 25
+
+Markdown Content:
+Preprint. 
+
+# LL ADA M OE V2: SCALING MIXTURE -OF -E XPERTS 
+
+# DIFFUSION LANGUAGE MODELS 
+
+Fengqi Zhu 1,2,3,¶, Shaoxuan Xu 1,2,3, Jingyang Ou 1,2,3, Zebin You 1,2,3, Yipeng Xing 4,Huabin Liu 4, Xiaolu Zhang 4, Jun Zhou 4, Zhenzhong Lan 4, Yankai Lin 1,2,3,Wayne Xin Zhao 1,2,3, Jianguo Li 4, Chongxuan Li 1,2,3,‡, Ji-Rong Wen 1,2,3,‡ 
+
+> 1
+
+Gaoling School of AI, Renmin University of China  
+
+> 2
+
+Beijing Key Laboratory of Research on Large Models and Intelligent Governance  
+
+> 3
+
+Engineering Research Center of Next-Generation Intelligent Search and Recommendation, MOE  
+
+> 4
+
+Ant Group 
+
+## ABSTRACT 
+
+Diffusion language models (dLLMs) offer an alternative to autoregressive (AR) language modeling, yet the scaling behavior of Mixture-of-Experts (MoE) dLLMs remains poorly understood. We systematically characterize how optimization hy-perparameters, compute allocation, and architecture scale for MoE dLLMs, iden-tifying quantitative differences from scaling trends previously reported for AR models. Specifically, for optimization, the optimal nominal batch size grows faster, while the optimal learning rate decays more rapidly with compute. For model–data allocation, IsoFLOP analysis reveals a slight data-side tilt: the opti-mal token budget grows faster than activated model-side computation. For MoE architecture, larger scales increasingly favor larger expert pools at fixed activated capacity, while moderate expert granularity remains consistently effective and the preferred fraction of activated capacity assigned to shared experts remains stable across scales. Guided by these findings, we train LLaDA MoE v2, a 30B-A3B dLLM, from scratch on 23.5T tokens. With approximately 65% as many pretrain-ing tokens as Qwen3, LLaDA MoE v2 approaches Qwen3 on several knowledge, reasoning, and coding benchmarks. After supervised fine-tuning alone, it out-performs SDAR Chat on seven of eight reasoning and coding benchmarks and remains close to Qwen3 on several tasks. These results establish practical scaling laws and design principles for MoE dLLMs. 
+
+## 1 INTRODUCTION 
+
+Large language models (Zhao et al., 2026) have advanced largely through scale: as models, data, and compute grow, performance improves in systematic and predictable ways (Kaplan et al., 2020; Hoffmann et al., 2022). Most of this progress has followed the autoregressive (AR) paradigm (Rad-ford et al., 2018; 2019; Brown et al., 2020; Ouyang et al., 2022), which factorizes the distribution of a text sequence into next-token conditionals along a fixed left-to-right order. Diffusion language models (dLLMs) (Lou et al., 2023; Sahoo et al., 2024; Ou et al., 2025; Nie et al., 2026b) offer an alternative probabilistic formulation: they define the distribution through an iterative denoising process, in which a bidirectional model reconstructs the masked tokens of a corrupted sequence, al-lowing multiple tokens to be decoded in parallel at each step (Wu et al., 2026; Li et al., 2026; Chen et al., 2026). Recent dLLMs now match the capabilities of strong AR models, both when trained from scratch (Nie et al., 2025; 2026b;a) and when adapted from pretrained AR checkpoints (Bie et al., 2025; Ye et al., 2025), making them a promising candidate for future language modeling. Realizing this potential, however, requires understanding how dLLMs behave as training budgets grow. Existing scaling studies of dLLMs have so far focused on dense architectures (Nie et al., 2025; Ni et al., 2025b; von R¨ utte et al., 2026; Sahoo et al., 2026). The AR literature, in contrast, has 
+
+> ¶
+
+Work done during an internship at Ant Group 
+
+> ‡
+
+Corresponding author 
+
+1arXiv:2608.03457v1 [cs.AI] 4 Aug 2026 Preprint. Table 1: Empirical findings for MoE dLLMs. Controlled sweeps cover optimization, compute allocation, and MoE architecture, with scale-up evidence from LLaDA MoE v2.                   
+
+> Category Finding Evidence
+> Optimization Optimal batch size grows more steeply with compute than in AR models. Figs. 1, 2 Optimal learning rate decays faster with compute than in AR models. Figs. 1, 2 Compute allocation Optimal compute allocation is near-balanced with a slight data-side tilt. Fig. 3 The MoE dLLM frontier is more data-tilted than dense dLLM frontiers. Table 2 MoE architecture Lower activation ratios are increasingly favorable at larger scales. Fig. 4a Moderate expert granularity, G= 8 –16 , is robust across scales. Fig. 4b The optimal shared-expert ratio stays at S= 33 .3% across scales. Fig. 4c Scale-up validation Approaches Qwen3 on some tasks with 35% fewer pretraining tokens. Table 3 Matches or exceeds 7B-A1B at substantially lower compute. Fig. 5 Outperforms SDAR Chat on seven of eight tasks after SFT. Table 4
+
+widely adopted Mixture-of-Experts (MoE) Transformer architectures (Vaswani et al., 2017; Shazeer et al., 2017; Lepikhin et al., 2020; Fedus et al., 2022), which expand model capacity far beyond what dense models can afford at the same computation per token (Du et al., 2022; Dai et al., 2024; Liu et al., 2024a;b; Tian et al., 2026; Yang et al., 2025). MoE dLLMs have therefore begun to emerge (Zhu et al., 2025; Feng et al., 2026; Zhang et al., 2026), but their designs largely inherit AR practice. AR experience provides a useful prior, but it cannot be assumed to transfer directly: dLLMs optimize a masked denoising objective rather than next-token prediction, supervision falls only on masked positions, and each prediction conditions on a corrupted sequence rather than a causal prefix. Consequently, the scaling behavior of MoE dLLMs remains undercharacterized. In this work, we systematically characterize the scaling behavior and architectural design of MoE dLLMs across compute scales. We ask how the optimal batch size and learning rate change with compute, how a fixed compute budget should be allocated between activated model-side computa-tion and training tokens, and how the resulting activated budget should be decomposed into routing sparsity, expert granularity, and shared capacity. Table 1 summarizes the resulting empirical findings and the corresponding evidence. Across these dimensions, AR experience provides a useful prior but requires dLLM-specific calibration. These findings yield practical guidance for scaling MoE dLLMs, which we validate by training LLaDA MoE v2, a 30B-A3B model, from scratch on 23.5T tokens. LLaDA MoE v2 approaches Qwen3 30B-A3B (Yang et al., 2025) on several knowledge, reasoning, and coding benchmarks while using approximately 65% as many pretraining tokens, and matches a prior MoE dLLM (Zhu et al., 2025) developed without such guidance at a fraction of its training compute. Standard SFT turns it into a strong instruct model: LLaDA MoE v2 outperforms SDAR Chat 30B-A3B (Cheng et al., 2026a) on seven of eight reasoning and coding benchmarks and remains competitive with Qwen3 across multiple benchmarks despite Qwen3’s additional RL stage. 
+
+## 2 PRELIMINARIES 
+
+2.1 DIFFUSION LANGUAGE MODELS 
+
+Masked diffusion language models (Austin et al., 2021a; Campbell et al., 2022; Lou et al., 2023; Shi et al., 2024) define a discrete diffusion process over token sequences. Let x0 = ( x10, . . . , x L 
+
+> 0
+
+) denote a clean sequence of L tokens, and let [MASK] be the mask token. The forward process corrupts each position independently: at noise level t ∈ [0 , 1] , the token xi 
+
+> 0
+
+is replaced by [MASK] with probability t and kept unchanged otherwise, producing the corrupted state xt.A bidirectional Transformer (Vaswani et al., 2017) pθ is trained to reverse this process, predicting the clean token at each masked position conditioned on the corrupted state. With the noise level 2Preprint. sampled uniformly, training minimizes the denoising objective 
+
+L(θ) = −Ex0, t, x t
+
+"
+
+1
+
+t
+
+> L
+
+X
+
+> i=1
+
+1 xit = [MASK]  log pθ
+
+ xi 
+
+> 0
+
+| xt
+
+#
+
+, (1) which upper-bounds the negative log-likelihood of the data. At inference time, generation starts from a fully masked sequence and unmasks tokens through iterative denoising steps. 2.2 MIXTURE -OF -E XPERTS TRANSFORMERS AND SCALING LAWS 
+
+A Mixture-of-Experts (MoE) Transformer decouples model capacity from per-token computation by replacing the feed-forward network with ne routed experts and a lightweight router (Jacobs et al., 1991; Shazeer et al., 2017; Lepikhin et al., 2020; Fedus et al., 2022; Zoph et al., 2022; Dai et al., 2024): the total parameter count scales with ne, whereas each token is processed by only a small subset of them. Concretely, the router activates the top-na routed experts for each token and combines their outputs. In addition, every token is processed by a single shared expert with intermediate width dshare = nsdexpert , where ns denotes shared capacity measured in units of one routed expert. We parameterize such an architecture by three variables: the activation ratio 
+
+A = ( na + ns)/(ne + ns), which is the fraction of expert capacity activated per token; the expert granularity G = 2 dmodel /d expert , which controls how routed capacity is partitioned into experts; and the shared-expert ratio S = ns/(na + ns), which controls the fraction of activated expert ca-pacity assigned to the shared pathway (Krajewski et al., 2024; Abnar et al., 2025; Tian et al., 2026). Scaling laws use small-scale measurements to estimate how compute-dependent choices, including optimization hyperparameters, model–data allocation, and architecture, should change at larger bud-gets (Hestness et al., 2017; Kaplan et al., 2020; Hoffmann et al., 2022; Krajewski et al., 2024; Abnar et al., 2025). In practice, power-law fits model the optimal batch size and learning rate as functions of the compute budget C, while IsoFLOP analysis fixes C and sweeps model-side computation against training tokens (Hoffmann et al., 2022; Bi et al., 2024; Li et al., 2025a). Dense-model studies com-monly approximate training compute as C ≈ 6N D , where N is the number of non-embedding parameters and D is the number of training tokens, assuming that all parameters participate in pro-cessing each token (Kaplan et al., 2020; Hoffmann et al., 2022). Because this assumption does not hold for MoE models, we follow prior MoE scaling studies and use C = M D , where M denotes activated non-embedding training FLOPs per token (Bi et al., 2024; Ludziejewski et al., 2025; Tian et al., 2026); full compute expressions are provided in Appendix A.1. 
+
+## 3 SCALING LAWS FOR MOE DLLM S
+
+In this section, we develop a scaling framework for MoE dLLMs in three stages. We first calibrate compute-dependent batch size and learning rate, then estimate the optimal allocation between ac-tivated model-side computation and training data, and finally decompose the resulting model-side budget into activation ratio, expert granularity, and shared-expert ratio. 3.1 SCALING LAW FOR HYPERPARAMETERS 
+
+Although hyperparameter scaling has been extensively studied for AR models (Bi et al., 2024; Li et al., 2025a), whether the same compute-dependent laws describe dLLMs remains an open question. Unlike AR training, which optimizes next-token prediction over causal prefixes, dLLMs are trained with a masked denoising objective over partially observed sequences. Since each update supervises only sampled masked positions, the nominal token batch size does not directly correspond to the effective number of prediction targets; for example, under common uniform timestep sampling, only half of the tokens are predicted in expectation. This reduced effective supervision can change the gradient noise level, optimization stability, and learning-rate sensitivity. We therefore study how the optimal batch size and learning rate vary with compute, both to compare their scaling behavior with AR expectations and to establish stable, compute-efficient settings for the subsequent analyses. Concretely, we perform a hyperparameter search over nominal token batch size and learning rate across a set of representative model scales, ranging from 158M to 3.6B, under compute budgets from 10 18 to 3 × 10 20 ; the detailed training and model settings are provided in Appendix A.3. 3Preprint. 1e17 1e18 1e19 1e20 1e21 1e22 1e23               
+
+> Non-Embedding Training FLOPs
+> 217
+> 219
+> 221
+> 223
+> 225
+> Batch Size
+> B= 0.374 C0.3481
+> B= 0.2920 C0.3271 1e17 1e18 1e19 1e20 1e21 1e22 1e23
+> Non-Embedding Training FLOPs
+> 10 −4
+> 10 −3
+> 10 −2
+> Learning Rate  η= 64.8 C−0.2447
+> η= 0.3118 C−0.1250
+
+Figure 1: Scaling curves of nominal token batch size and learning rate with training compute. Left: nominal token batch size. Right: learning rate. Magenta dashed lines indicate our fitted scaling laws, blue dashed lines show the reference scaling laws from DeepSeek LLM (Bi et al., 2024), and shaded regions denote the empirical ranges around our fitted curves. As shown in Figure 1, we fit the scaling curves of batch size and learning rate against training compute. The resulting scaling laws can be summarized as 
+
+B∗ = 0 .374 · C0.3481 , η∗ = 64 .8 · C−0.2447 , (2) where C denotes the compute budget, and B∗ and η∗ denote the optimal nominal token batch size and learning rate under the dLLM training objective, respectively. 7e-4 4e-4 1e-4 Learning Rate 
+
+221 
+
+222 
+
+223        
+
+> Batch Size  1.304 1.301 1.325 1.295 1.298 1.347 1.276 1.228 1.391
+
+1.25 1.30 1.35 Training Loss 
+
+Figure 2: Joint search over batch size and learning rate at 6×10 20 FLOPs. Each cell corresponds to one training run, with color and overlaid value denoting training loss; red stars mark the fitted scaling-law predic-tion and the best observed configuration. To test whether the fitted dLLM-specific scaling law extrapolates beyond its fitting range, we continue the joint batch-size and learning-rate runs from 3 × 10 20 
+
+to 6 × 10 20 FLOPs and examine the loss grid in Fig-ure 2. The fitted recommendation lies close to the best observed configuration in the two-dimensional hyper-parameter plane, and the surrounding losses do not indicate a substantially better alternative within the searched settings. This result supports using the fitted scaling law as a practical estimate of the compute-dependent hyperparameters at this scale. 
+
+Optimization: high compute favors larger batches and faster learning-rate decay. The optimization directions are consistent between dLLM and AR training, with the optimal batch size growing sublin-early with training compute and the optimal learning rate decreasing at larger compute. The calibration, however, differs in a systematic way. Compared with DeepSeek LLM’s AR law (Bi et al., 2024), our dLLM fit uses a slightly steeper batch-size scaling and a faster learning-rate decay, shifting the high-compute estimate toward larger nominal batches and smaller learning rates. At a compute budget of 
+
+10 20 FLOPs, for example, DeepSeek LLM’s AR law predicts a similar learning rate, 9.86 × 10 −4
+
+compared with 8.27 × 10 −4 from our fit, but a much smaller optimal batch size, 1.02M tokens com-pared with 3.43M tokens. This batch-size gap is consistent with the reduced effective supervision per nominal token noted above. Thus, AR scaling can provide a useful prior, but it should not replace dLLM-specific calibration when the fitted trends diverge. All subsequent experiments therefore use our fitted dLLM hyperparameter laws. 3.2 SCALING LAW FOR COMPUTE ALLOCATION 
+
+Once the optimization hyperparameters are calibrated, the next issue is how to split a fixed compute budget between activated model-side computation and training data. For MoE dLLMs, this trade-off differs from its AR counterpart: each nominal token contributes a prediction target only when masked, while the router acts on corrupted states that vary with noise level and mask pattern rather than causal prefixes. Relative to AR training, a fixed nominal token budget therefore supplies fewer 4Preprint. Table 2: Representative compute-allocation scaling laws for language models. We position our MoE dLLM frontier against representative model–data allocation laws across modeling objectives and architectures. The frontier columns report fitted growth exponents. For DLMs, we report the masked setting matching our formulation; the SMDM coefficients are taken from the DLMs analysis. 
+
+Scaling law Modeling Architecture Model frontier Data frontier Kaplan (Kaplan et al., 2020) AR Dense M ∗ ∝ C0.73 D∗ ∝ C0.27 
+
+Chinchilla (Hoffmann et al., 2022) AR Dense M ∗ ∝ C0.49 D∗ ∝ C0.51 
+
+DeepSeek LLM (Bi et al., 2024) AR Dense M ∗ ∝ C0.5243 D∗ ∝ C0.4757 
+
+Llama 3 (Grattafiori et al., 2024) AR Dense M ∗ ∝ C0.463 D∗ ∝ C0.537 
+
+SMDM (Nie et al., 2025) AR Dense M ∗ ∝ C0.644 D∗ ∝ C0.356 
+
+Ling (Tian et al., 2026) AR Dense M ∗ ∝ C0.5422 D∗ ∝ C0.4578 
+
+Ling (Tian et al., 2026) AR MoE M ∗ ∝ C0.5095 D∗ ∝ C0.4905 
+
+SMDM (Nie et al., 2025) Diffusion Dense M ∗ ∝ C0.634 D∗ ∝ C0.366 
+
+Quokka (Ni et al., 2025b) Diffusion Dense M ∗ ∝ C0.514 D∗ ∝ C0.486 
+
+DLMs (von R¨ utte et al., 2026) Diffusion Dense M ∗ ∝ C0.566 D∗ ∝ C0.434 
+
+Ours Diffusion MoE M ∗ ∝ C0.475 D∗ ∝ C0.525 100M 1B 10B       
+
+> Non-Embedding FLOPs/Token ( M)
+> 2.5 3.0 3.5 4.0 4.5 5.0
+> Loss
+> 1e17 3e17 1e18 3e18 1e19 3e19 1e20
+> 10 19 10 22
+> Training FLOPs
+> 10 8
+> 10 9
+> 10 10
+> 10 11
+> Optimal Non-Embedding FLOPs/Token ( M*) M*= 0.5152 ⋅ C0.475
+> 10 19 10 22
+> Training FLOPs
+> 10 10
+> 10 11
+> 10 12
+> 10 13
+> Optimal Training Tokens ( D*)
+> D*= 1.9411 ⋅ C0.525
+
+Figure 3: IsoFLOP analysis for compute allocation. Left : training loss under different model– data allocations at fixed compute budgets, with stars marking the lowest-loss. Middle and right :fitted power laws for the compute-optimal non-embedding FLOPs per token and training tokens. supervised targets over a more variable set of conditioning and routing states. Additional tokens can improve coverage of both denoising targets and router inputs, giving data-side investment a dLLM-specific marginal value; AR allocation laws thus cannot be assumed to transfer directly. Prior IsoFLOP studies characterize this trade-off for dense and MoE AR models (Hoffmann et al., 2022; Bi et al., 2024; Ludziejewski et al., 2025), whereas analogous studies of dLLMs have mainly considered dense architectures, leaving the allocation behavior of MoE dLLMs uncharacterized. To address this gap, we measure the model side by activated non-embedding FLOPs per token M ,which directly captures activated model computation; the data side is the number of training tokens 
+
+D, giving C = M D . We sweep their allocation across fixed compute budgets ranging from 10 17 to 
+
+10 20 training FLOPs, with detailed settings provided in Appendix A.4. For each budget, we identify the lowest-loss allocation within the sweep and fit the resulting frontiers M ∗(C) and D∗(C).The left panel of Figure 3 shows the resulting U-shaped IsoFLOP curves across the compute budgets above: smaller models are capacity-limited despite seeing more tokens, while larger models become data-limited because fewer tokens can be trained under the same budget. The star-marked points give each budget’s empirical compute-optimal allocation, (M ∗(C), D ∗(C)) .As the compute budget increases, these optima move toward larger activated non-embedding FLOPs per token and more training tokens, forming model-side and data-side allocation frontiers. The middle and right panels of Figure 3 plot M ∗(C) and D∗(C), respectively; both follow approximately linear trends in log–log space. Fitting the two frontiers under the fixed-compute constraint gives 
+
+M ∗(C) = 0 .5152 · C0.475 , D∗(C) = 1 .9411 · C0.525 . (3) 5Preprint. 100.0% 50.0% 25.0% 12.5% 6.2% 3.1% 1.6% 0.8%                      
+
+> Activation Ratio 3e+20 1e+20 3e+19 1e+19 3e+18
+> FLOPs
+> 2.4 2.8 3.2 3.6
+> Loss
+> 20 16 842
+> Granularity
+> 3e+20 1e+20 3e+19 1e+19 3e+18
+> FLOPs
+> 2.4 2.8 3.2 3.6
+> Loss
+> 100% 75% 50% 25% 0%
+> Shared Expert Ratio
+> 3e+20 1e+20 3e+19 1e+19 3e+18
+> FLOPs
+> 2.4 2.8 3.2 3.6
+> Loss
+> 2.4 2.8 3.2 3.6
+> Loss
+> 150M 300M 600M 1.2B
+> Model Size (M)
+> 2.4 2.7 3.0 3.3
+> Loss
+> 150M 300M 600M 1.2B
+> Model Size (M)
+> 2.4 2.7 3.0 3.4
+> Loss
+> 150M 300M 600M 1.2B
+> Model Size (M)
+
+(a) Activation Ratio (A) (b) Expert Granularity (G) (c) Shared-Expert Ratio (S) 
+
+Figure 4: MoE architecture scaling. We evaluate how different decompositions of the activated model-side budget affect training loss across compute scales. (a): Activation Ratio A, (b): Expert Granularity G, and (c): Shared-Expert Ratio S. Colors indicate the activated model-side budget 
+
+M ∗(C), and red stars mark the lowest-loss configurations at each compute scale. 
+
+Compute allocation: near-balanced scaling with a slight data-side tilt. Both frontiers grow with compute, and their exponents are close to 0.5; the data-side exponent of 0.525 is slightly larger than the model-side exponent of 0.475 . Thus, the optimal token budget grows faster than activated model-side computation. We contextualize this tilt against representative compute-allocation laws for AR models and dLLMs in Table 2. Within this comparison, two matched results help separate the effects of architecture and modeling objective. First, Ling compares dense and MoE architectures under AR modeling: moving from dense AR to MoE AR shifts the model/data exponents from 0.5422 /0.4578 to 0.5095 /0.4905 , indi-cating that sparse activation moves the AR frontier toward more data. Second, SMDM compares AR and dLLM objectives under a dense architecture: moving from AR to dLLM shifts the exponents from 0.644 /0.356 to 0.634 /0.366 , showing the same data-favoring direction. Our setting combines sparse activation with the dLLM objective, providing a lens for interpreting the data-side tilt of our frontier. While existing dense dLLM frontiers remain model-side dominated, our MoE dLLM fron-tier reaches a larger data-side exponent of 0.525 . This result is consistent with the data-favoring tendencies associated separately with sparse activation and diffusion modeling in the comparisons. The fitted frontier yields a simple allocation rule: the marginal compute of an MoE dLLM is best spent relatively more on additional training tokens than on increasing activated non-embedding FLOPs per token. Following this frontier fixes the aggregate activated model-side budget M ∗(C) at each compute scale while leaving expert count, expert size, and activation pattern undetermined. 3.3 SCALING LAW FOR MOE A RCHITECTURE 
+
+Translating this fixed budget into an MoE architecture poses a dLLM-specific design problem be-cause the router acts on masked denoising states that vary with noise level and mask pattern. We consider the three architectural dimensions defined in Section 2: the activation ratio A, which con-trols routing sparsity and thereby the size of the routed expert pool; the expert granularity G, which trades off routing diversity against per-expert capacity; and the shared-expert ratio S, which de-termines the fraction of activated capacity assigned to a shared pathway. We examine how these dimensions should be configured across compute scales. For each reference compute scale C, we fix the activated model-side budget to M ∗(C) and sweep one architectural dimension at a time while holding the other two fixed. Detailed settings are pro-vided in Appendix A.5. Figure 4 summarizes these controlled architecture sweeps. 
+
+Activation ratio: larger scales favor sparser activation. We examine the activation ratio A in Figure 4(a). Under the fixed activated model-side budget M ∗(C), reducing A generally lowers training loss, with the benefit becoming more pronounced as compute increases. At the smallest budgets, however, the second-lowest activation ratio slightly outperforms the sparsest setting. This exception is consistent with the intuition that extremely sparse routing exposes a larger routed expert 6Preprint. pool, which may require sufficient training compute to be effectively optimized. The trend suggests that MoE dLLMs can increasingly exploit this expert capacity at larger scales. 
+
+Expert granularity: G = 8 –16 is robust. We next examine expert granularity G in Figure 4(b). 
+
+G does not show a monotonic trend across compute scales, suggesting that it is not a primary scaling direction. Instead, it mainly reflects a trade-off between routing diversity and per-expert capacity: coarser experts provide stronger individual transformations but fewer routing choices, while finer-grained experts increase routing choices at the cost of narrower experts. For MoE dLLMs, this trade-off is relevant because masked denoising requires both diverse specialization over corrupted contexts and sufficient expert expressiveness. Empirically, G = 8 to G = 16 provides a robust range in our sweep, although the exact optimum does not vary systematically with compute. 
+
+Shared-expert ratio: S = 33 .3% remains optimal. We examine the shared-expert ratio S in Figure 4(c). Across all compute scales, the loss curves are U-shaped and reach their minima at 
+
+S = 33 .3% . This optimum contrasts with AR MoE designs: DeepSeekMoE adopts S = 25% ,Qwen3 uses no shared experts (Dai et al., 2024; Yang et al., 2025), and Tian et al. (2026) report a decreasing optimal ratio from 16 .7% to 8.3% , motivating a fixed “one shared expert” rule. Our dLLM sweeps instead favor a shared pathway whose capacity grows proportionally with the acti-vated model budget, rather than a fixed shared component whose relative contribution diminishes with scale. We therefore derive a dLLM-specific rule distinct from the AR heuristic: maintain ap-proximately one unit of shared activated capacity for every two units of routed activated capacity. Our architecture sweeps translate the aggregate budget M ∗(C) into dLLM-specific architectural choices for routing over corrupted states that vary with noise level and mask pattern rather than causal prefixes. At fixed M ∗(C), larger scales favor sparser activation, while moderate expert gran-ularity and a stable shared-capacity fraction remain robust across the studied scales. 
+
+## 4 TRAINING LARGE -S CALE MOE DLLM S
+
+Guided by the scaling laws derived above, we design LLaDA MoE v2, a 30B-A3B MoE dLLM, and train it on 23.5T tokens. We briefly introduce its architecture and training strategies below, with additional details provided in Appendix B. 
+
+Model. LLaDA MoE v2 has 30B total parameters, with 3B parameters activated per token. Based on our scaling analysis, we adopt (A, G, S ) = (9 .09% , 8, 33 .3%) . Each layer comprises 128 fine-grained routed experts with top-8 routing and one shared expert of width 4dexpert , corresponding to 
+
+ns = 4 and yielding A = (8 + 4) /(128 + 4) = 9 .09% and S = 4 /(8 + 4) = 33 .3% .
+
+Training strategy. We train LLaDA MoE v2 in five stages. Stages 1 and 2 each use 10T tokens, followed by 2T tokens of annealing in Stage 3. In Stage 4, we increase the RoPE base from 10,000 to 500,000, extend the context length from 4K to 32K, and continue training for 500B tokens. Stage 5 concludes with 1T tokens of long-context annealing, yielding the final pretrained base model. 4.1 BENCHMARK RESULTS 
+
+As shown in Table 3, we compare LLaDA MoE v2 30B-A3B with five representative dLLM and AR baselines. The closest scale-matched baselines are SDAR Sci and Qwen3 30B-A3B: the former is obtained by continued pretraining from Qwen3 (Cheng et al., 2026a), whereas the latter is a strong AR MoE model (Yang et al., 2025). LLaDA MoE v2 is trained from scratch on 23.5T tokens, 63% of SDAR Sci’s 37.05T and 65% of Qwen3’s 36T. Across all 15 benchmarks, LLaDA MoE v2 achieves the highest average among the evaluated dLLMs (58.60), outperforming SDAR Sci by 3.78 points and the smaller dLLM baselines by at least 12.44 points. Its advantage over SDAR Sci is particularly pronounced on coding benchmarks such as HumanEval ( +16 .46 ) and BigCodeBench ( +7 .98 ), despite being pretrained from scratch rather than initialized from an AR checkpoint. Compared with Qwen3, LLaDA MoE v2 shows larger gaps on the Chinese knowledge benchmarks CEval and CMMLU and on some coding tasks, but remains close on several reasoning and coding benchmarks, including OlympiadBench ( −2.22 )and HumanEval ( −2.44 ). This performance with 65% as many pretraining tokens as Qwen3 sup-ports the effectiveness of our scaling-law-guided design. 7Preprint. Table 3: Benchmark results. We report results for LLaDA MoE v2, our 30B-A3B dLLM trained from scratch, alongside the representative dLLMs and AR model Qwen3. CPT denotes continued pretraining from AR models. The symbol ∗ denotes results reported in Qwen3 (Yang et al., 2025), †
+
+denotes results reported in LLaDA MoE 7B-A1B (Zhu et al., 2025). 
+
+LLaDA MoE v2 SDAR Sci LLaDA MoE Dream 7B LLaDA 8B Qwen3 Architecture MoE MoE MoE Dense Dense MoE Modeling Diffusion Diffusion Diffusion Diffusion Diffusion AR Method Pretrain CPT Pretrain CPT Pretrain Pretrain # Total Params 30B 30B 7B 7B 8B 30B # Activated Params 3B 3B 1B 7B 8B 3B # Trained Tokens 23.5T 36 + 1.05T 21T 18 + 0.58T 2.3T 36T 
+
+General Tasks 
+
+MMLU 78.01 82.72 64.59 † 69.50 † 65.90 † 81.38 ∗
+
+MMLU-Pro 57.28 56.96 39.16 † 48.15 † 41.80 † 61.49 ∗
+
+CEval 76.11 86.95 65.56 † 59.18 † 70.50 † 87.50 CMMLU 77.99 85.82 65.65 † 60.87 † 69.90 † 86.35 HellaSwag 77.19 56.38 65.46 74.37 70.82 77.92 KorBench 45.92 40.08 31.20 † 37.44 † 33.68 † 44.96 
+
+Reasoning Tasks 
+
+GSM8K 83.93 86.13 66.41 † 77.79 † 70.70 † 91.81 ∗
+
+MATH 54.72 48.52 36.10 † 39.60 † 27.30 † 59.04 ∗
+
+OlympiadBench 28.74 24.44 10.07 † 10.22 † 6.85 † 30.96 
+
+Coding Tasks 
+
+CRUXEval 50.62 53.00 38.94 40.31 36.38 56.88 MBPP 71.00 60.40 52.40 † 56.20 † 38.20 † 74.40 ∗
+
+MultiPL-E 53.78 33.66 41.13 † 27.60 † 23.61 † 66.53 ∗
+
+HumanEval 50.00 33.54 45.73 † 57.90 † 33.50 † 52.44 LiveCodeBench v6 31.86 39.87 16.18 † 14.87 † 2.53 † 49.18 BigCodeBench 41.84 33.86 21.23 † 18.33 † 13.42 † 45.70 
+
+Table 4: SFT results. Comparison of the LLaDA MoE v2 30B-A3B instruct model with Qwen3 30B-A3B and SDAR Chat 30B-A3B on reasoning and code benchmarks. Values marked with ∗ are reported in the original Qwen3 paper, and marked with † are reported in the original SDAR paper. 
+
+Reasoning Code Model Math Olympiad AIME24 AIME25 MBPP LCB v6 BigCode MultiPL-E Qwen3 89.80 ∗ 57.26 32.80 ∗ 21.60 ∗ 85.48 31.50 41.14 66.60 SDAR Chat 77.80 † 34.93 16.70 † 10.80 † 71.60 † 21.70 † 39.39 45.00 
+
+LLaDA MoE v2 80.02 46.44 30.00 20.00 81.03 27.75 35.53 67.52 
+
+To further evaluate the practical value of our scaling-law-guided design, Figure 5 compares the benchmark performance of LLaDA MoE v2 30B-A3B across different training FLOPs with that of LLaDA MoE 7B-A1B, an MoE dLLM developed without scaling-law guidance. Across diverse benchmarks spanning knowledge, math, and code, the 30B-A3B model achieves performance com-parable to or better than the 7B-A1B model at substantially lower compute budgets. Specifically, our model surpasses LLaDA MoE 7B-A1B on MMLU, GSM8K, and KorBench at approximately 50% of its training FLOPs, and even surpasses it on HellaSwag with less than 10% of the train-ing FLOPs. The benchmark results and compute-controlled comparison provide practical evidence that our scaling laws offer actionable guidance for large-scale MoE dLLM design, improving the efficiency with which pretraining compute is translated into downstream performance. 8Preprint. 10 23 2 × 10 23       
+
+> Training FLOPs
+> 50 55 60 65
+> Accuracy
+> MMLU
+> LLaDA MoE v2 LLaDA MoE
+> 10 23 2 × 10 23
+> Training FLOPs
+> 30 40 50 60 70
+> GSM8K
+> LLaDA MoE v2 LLaDA MoE
+> 10 23 2 × 10 23
+> Training FLOPs
+> 20 25 30 35 40 45
+> HumanEval
+> LLaDA MoE v2 LLaDA MoE
+> 10 23 2 × 10 23
+> Training FLOPs
+> 20 25 30 35 40 KorBench
+> LLaDA MoE v2 LLaDA MoE
+> 10 23 2 × 10 23
+> Training FLOPs
+> 60 65 70 75 80 HellaSwag
+> LLaDA MoE v2 LLaDA MoE
+
+Figure 5: Benchmark performance versus training compute. Red curves show the scaling-law-guided LLaDA MoE v2 30B-A3B model evaluated with varying training-token budgets, and the black diamond denotes the LLaDA MoE 7B-A1B model trained without scaling-law guidance. 4.2 SUPERVISED FINE -T UNING 
+
+The preceding experiments evaluate the capabilities of the pretrained LLaDA MoE v2 base model. We further examine whether this scaling-guided pretrained model can be effectively adapted to in-struction following and complex reasoning through standard supervised fine-tuning (SFT). Starting from the LLaDA MoE v2 30B-A3B base checkpoint, we construct an instruct model and evaluate it on mathematical reasoning and code generation benchmarks. We fine-tune LLaDA MoE v2 for three epochs on 7M instruction–response examples. For each example, we keep the prompt uncorrupted, apply the masking process in Equation 1 only to the response, and compute the denoising loss over the masked positions. We use a batch size of 512 sequences and a peak learning rate of 5.0 × 10 −6, with linear warmup over the first 8% of steps. We do not apply reinforcement learning (RL) after SFT and leave its integration to future work. We compare the resulting model with Qwen3 30B-A3B no think and SDAR Chat 30B-A3B. As shown in Table 4, LLaDA MoE v2 outperforms SDAR Chat on all four reasoning benchmarks and three of the four code benchmarks. Despite using fewer pretraining tokens, without the addi-tional RL used by Qwen3 (Yang et al., 2025), LLaDA MoE v2 remains close to Qwen3 on AIME 24/25 (AIME, 2025), MBPP, and LiveCodeBench, and surpasses it on MultiPL-E. These results show that LLaDA MoE v2 acquires strong reasoning and coding capabilities through SFT alone. 
+
+## 5 RELATED WORK 
+
+Diffusion Language Models (dLLMs) have recently emerged as a new paradigm for language modeling (Austin et al., 2021a; Campbell et al., 2022; Chen et al., 2022; Gulrajani & Hashimoto, 2023; He et al., 2023; Lou et al., 2023; Shi et al., 2024; Xue et al., 2024; Zheng et al., 2025; Li et al., 2025b; Nie et al., 2026b; Song et al., 2025; Labs et al., 2025). In particular, masked discrete diffusion models are viewed as potential alternatives to autoregressive (AR) models, as they can generate multiple tokens in parallel at each denoising step (Arriola et al., 2025; Wei et al., 2025; Chen et al., 2026; Cheng et al., 2026b). Recent work has scaled dLLMs both by pretraining from scratch (Nie et al., 2026b; Zhu et al., 2025; 2026) and by adapting pretrained AR models (Gong et al., 2025; Ye et al., 2025; Bie et al., 2025). Meanwhile, several studies have begun to characterize the scaling behavior of dLLMs (Nie et al., 2025; Ni et al., 2025b; von R¨ utte et al., 2026; Ni et al., 2025a; Sahoo et al., 2026), though most of them are confined to dense architectures. 
+
+Mixture-of-Experts (MoE) and Scaling Laws. By replacing a single feed-forward network with multiple fine-grained experts and selectively activating only a subset of parameters for each token, MoE architectures enable models to increase capacity without a proportional increase in computa-tion (Shazeer et al., 2017; Lepikhin et al., 2020; Fedus et al., 2022; Du et al., 2022; Jiang et al., 2024; Dai et al., 2024). Building on scaling law research for language models (Kaplan et al., 2020; Hoff-mann et al., 2022), recent studies have used scaling insights to guide the design of compute-efficient MoE architectures (Clark et al., 2022; Abnar et al., 2025; Ludziejewski et al., 2025), and several works have also applied MoE to dLLMs (Zhu et al., 2025; Feng et al., 2026). Existing MoE dLLMs, however, largely adopt architectural choices developed for AR models, leaving their optimization, compute allocation, and expert architecture scaling behavior largely uncharacterized. 9Preprint. 
+
+## 6 CONCLUSION 
+
+In this work, we characterize how optimization hyperparameters, model–data allocation, and ex-pert architecture scale for MoE dLLMs, finding that AR trends provide useful priors but require dLLM-specific calibration. These results yield practical design principles that guide the from-scratch training of LLaDA MoE v2 30B-A3B. The model approaches Qwen3 on several benchmarks with fewer pretraining tokens, while SFT alone, without RL, produces an instruct model that outper-forms SDAR Chat on seven of eight reasoning and coding tasks. Our experiments vary the scaling dimensions separately and therefore do not capture their interactions. Nevertheless, the large-scale results demonstrate the practical value of scaling-law-guided MoE dLLM design. 
+
+## REFERENCES 
+
+Samira Abnar, Harshay Shah, Dan Busbridge, Alaaeldin Mohamed Elnouby Ali, Josh Susskind, and Vimal Thilak. Parameters vs flops: Scaling laws for optimal sparsity for mixture-of-experts language models. arXiv preprint arXiv:2501.12370 , 2025. AIME. AIME problems and solutions, 2025. URL https://artofproblemsolving.com/ wiki/index.php/AIME_Problems_and_Solutions .Joshua Ainslie, James Lee-Thorp, Michiel De Jong, Yury Zemlyanskiy, Federico Lebr´ on, and Sumit Sanghai. Gqa: Training generalized multi-query transformer models from multi-head check-points. In Proceedings of the 2023 conference on empirical methods in natural language process-ing , pp. 4895–4901, 2023. Marianne Arriola, Aaron Gokaslan, Justin Chiu, Zhihan Yang, Zhixuan Qi, Jiaqi Han, Subham Sahoo, and Volodymyr Kuleshov. Block diffusion: Interpolating between autoregressive and diffusion language models. In International Conference on Learning Representations , volume 2025, pp. 50726–50753, 2025. Jacob Austin, Daniel D Johnson, Jonathan Ho, Daniel Tarlow, and Rianne Van Den Berg. Structured denoising diffusion models in discrete state-spaces. Advances in neural information processing systems , 34:17981–17993, 2021a. Jacob Austin, Augustus Odena, Maxwell Nye, Maarten Bosma, Henryk Michalewski, David Dohan, Ellen Jiang, Carrie Cai, Michael Terry, Quoc Le, et al. Program synthesis with large language models. arXiv preprint arXiv:2108.07732 , 2021b. Xiao Bi, Deli Chen, Guanting Chen, Shanhuang Chen, Damai Dai, Chengqi Deng, Honghui Ding, Kai Dong, Qiushi Du, Zhe Fu, et al. Deepseek llm: Scaling open-source language models with longtermism. arXiv preprint arXiv:2401.02954 , 2024. Tiwei Bie, Maosong Cao, Kun Chen, Lun Du, Mingliang Gong, Zhuochen Gong, Yanmei Gu, Jiaqi Hu, Zenan Huang, Zhenzhong Lan, et al. Llada2. 0: Scaling up diffusion language models to 100b. arXiv preprint arXiv:2512.15745 , 2025. Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, et al. Language models are few-shot learners. Advances in neural information processing systems , 33:1877–1901, 2020. Andrew Campbell, Joe Benton, Valentin De Bortoli, Thomas Rainforth, George Deligiannidis, and Arnaud Doucet. A continuous time framework for discrete denoising models. Advances in Neural Information Processing Systems , 35:28266–28279, 2022. Federico Cassano, John Gouwar, Daniel Nguyen, Sydney Nguyen, Luna Phipps-Costin, Donald Pinckney, Ming-Ho Yee, Yangtian Zi, Carolyn Jane Anderson, Molly Q Feldman, et al. Multipl-e: A scalable and extensible approach to benchmarking neural code generation. arXiv preprint arXiv:2208.08227 , 2022. Jian Chen, Yesheng Liang, and Zhijian Liu. Dflash: Block diffusion for flash speculative decoding. 
+
+arXiv preprint arXiv:2602.06036 , 2026. 10 Preprint. Mark Chen, Jerry Tworek, Heewoo Jun, Qiming Yuan, Henrique Ponde De Oliveira Pinto, Jared Kaplan, Harri Edwards, Yuri Burda, Nicholas Joseph, Greg Brockman, et al. Evaluating large language models trained on code. arXiv preprint arXiv:2107.03374 , 2021. Ting Chen, Ruixiang Zhang, and Geoffrey Hinton. Analog bits: Generating discrete data using diffusion models with self-conditioning. arXiv preprint arXiv:2208.04202 , 2022. Shuang Cheng, Yihan Bian, Dawei Liu, Yuhua Jiang, Yihao Liu, Linfeng Zhang, Qian Yao, Zhongbo Tian, Wenhai Wang, Qipeng Guo, et al. Sdar: A synergistic diffusion-autoregression paradigm for scalable sequence generation. In Findings of the Association for Computational Linguistics: ACL 2026 , pp. 22058–22075, 2026a. Xin Cheng, Xingkai Yu, Chenze Shao, Jiashi Li, Yunfan Xiong, Yi Qian, Jiaqi Zhu, Shirong Ma, Xiaokang Zhang, Jiasheng Ye, et al. Dspark: Confidence-scheduled speculative decoding with semi-autoregressive generation. arXiv preprint arXiv:2607.05147 , 2026b. Aidan Clark, Diego de Las Casas, Aurelia Guy, Arthur Mensch, Michela Paganini, Jordan Hoff-mann, Bogdan Damoc, Blake Hechtman, Trevor Cai, Sebastian Borgeaud, et al. Unified scaling laws for routed language models. In International conference on machine learning , pp. 4057– 4086. PMLR, 2022. Karl Cobbe, Vineet Kosaraju, Mohammad Bavarian, Mark Chen, Heewoo Jun, Lukasz Kaiser, Matthias Plappert, Jerry Tworek, Jacob Hilton, Reiichiro Nakano, et al. Training verifiers to solve math word problems. arXiv preprint arXiv:2110.14168 , 2021. Damai Dai, Chengqi Deng, Chenggang Zhao, RX Xu, Huazuo Gao, Deli Chen, Jiashi Li, Wangding Zeng, Xingkai Yu, Yu Wu, et al. Deepseekmoe: Towards ultimate expert specialization in mixture-of-experts language models. In Proceedings of the 62nd annual meeting of the association for computational linguistics (volume 1: Long papers) , pp. 1280–1297, 2024. Nan Du, Yanping Huang, Andrew M Dai, Simon Tong, Dmitry Lepikhin, Yuanzhong Xu, Maxim Krikun, Yanqi Zhou, Adams Wei Yu, Orhan Firat, et al. Glam: Efficient scaling of language models with mixture-of-experts. In International conference on machine learning , pp. 5547– 5569. PMLR, 2022. William Fedus, Barret Zoph, and Noam Shazeer. Switch transformers: Scaling to trillion parameter models with simple and efficient sparsity. Journal of Machine Learning Research , 23(120):1–39, 2022. Sicheng Feng, Zigeng Chen, Gongfan Fang, Xinyin Ma, and Xinchao Wang. dmoe: dllms with learnable block experts. arXiv preprint arXiv:2605.30876 , 2026. Samir Yitzhak Gadre, Georgios Smyrnis, Vaishaal Shankar, Suchin Gururangan, Mitchell Worts-man, Rulin Shao, Jean Mercat, Alex Fang, Jeffrey Li, Sedrick Keh, et al. Language models scale reliably with over-training and on downstream tasks. In International Conference on Learning Representations , volume 2025, pp. 67661–67682, 2025. Shansan Gong, Shivam Agarwal, Yizhe Zhang, Jiacheng Ye, Lin Zheng, Mukai Li, Chenxin An, Peilin Zhao, Wei Bi, Jiawei Han, et al. Scaling diffusion language models via adaptation from autoregressive models. In International Conference on Learning Representations , volume 2025, pp. 5046–5073, 2025. Aaron Grattafiori, Abhimanyu Dubey, Abhinav Jauhri, Abhinav Pandey, Abhishek Kadian, Ahmad Al-Dahle, Aiesha Letman, Akhil Mathur, Alan Schelten, Alex Vaughan, et al. The llama 3 herd of models. arXiv preprint arXiv:2407.21783 , 2024. Alex Gu, Baptiste Rozi` ere, Hugh Leather, Armando Solar-Lezama, Gabriel Synnaeve, and Sida I Wang. Cruxeval: A benchmark for code reasoning, understanding and execution. arXiv preprint arXiv:2401.03065 , 2024. Ishaan Gulrajani and Tatsunori B Hashimoto. Likelihood-based diffusion language models. Ad-vances in Neural Information Processing Systems , 36:16693–16715, 2023. 11 Preprint. Chaoqun He, Renjie Luo, Yuzhuo Bai, Shengding Hu, Zhen Thai, Junhao Shen, Jinyi Hu, Xu Han, Yujie Huang, Yuxiang Zhang, et al. Olympiadbench: A challenging benchmark for promoting agi with olympiad-level bilingual multimodal scientific problems. In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pp. 3828–3850, 2024. Zhengfu He, Tianxiang Sun, Qiong Tang, Kuanning Wang, Xuan-Jing Huang, and Xipeng Qiu. Diffusionbert: Improving generative masked language models with diffusion models. In Pro-ceedings of the 61st annual meeting of the association for computational linguistics (volume 1: Long papers) , pp. 4521–4534, 2023. Dan Hendrycks, Collin Burns, Steven Basart, Andy Zou, Mantas Mazeika, Dawn Song, and Jacob Steinhardt. Measuring massive multitask language understanding. arXiv preprint arXiv:2009.03300 , 2020. Dan Hendrycks, Collin Burns, Saurav Kadavath, Akul Arora, Steven Basart, Eric Tang, Dawn Song, and Jacob Steinhardt. Measuring mathematical problem solving with the math dataset. arXiv preprint arXiv:2103.03874 , 2021. Joel Hestness, Sharan Narang, Newsha Ardalani, Gregory Diamos, Heewoo Jun, Hassan Kianinejad, Md Mostofa Ali Patwary, Yang Yang, and Yanqi Zhou. Deep learning scaling is predictable, empirically. arXiv preprint arXiv:1712.00409 , 2017. Jordan Hoffmann, Sebastian Borgeaud, Arthur Mensch, Elena Buchatskaya, Trevor Cai, Eliza Rutherford, Diego de Las Casas, Lisa Anne Hendricks, Johannes Welbl, Aidan Clark, et al. Train-ing compute-optimal large language models. arXiv preprint arXiv:2203.15556 , 2022. Yuzhen Huang, Yuzhuo Bai, Zhihao Zhu, Junlei Zhang, Jinghan Zhang, Tangjun Su, Junteng Liu, Chuancheng Lv, Yikai Zhang, Yao Fu, et al. C-eval: A multi-level multi-discipline chinese evalu-ation suite for foundation models. Advances in neural information processing systems , 36:62991– 63010, 2023. Robert A Jacobs, Michael I Jordan, Steven J Nowlan, and Geoffrey E Hinton. Adaptive mixtures of local experts. Neural computation , 3(1):79–87, 1991. Naman Jain, Alex Gu, Wen-Ding Li, Fanjia Yan, Tianjun Zhang, Sida Wang, Armando Solar-Lezama, Koushik Sen, and Ion Stoica. Livecodebench: Holistic and contamination free evalua-tion of large language models for code. In International Conference on Learning Representations ,volume 2025, pp. 58791–58831, 2025. Albert Q Jiang, Alexandre Sablayrolles, Antoine Roux, Arthur Mensch, Blanche Savary, Chris Bam-ford, Devendra Singh Chaplot, Diego de las Casas, Emma Bou Hanna, Florian Bressand, et al. Mixtral of experts. arXiv preprint arXiv:2401.04088 , 2024. Jared Kaplan, Sam McCandlish, Tom Henighan, Tom B Brown, Benjamin Chess, Rewon Child, Scott Gray, Alec Radford, Jeffrey Wu, and Dario Amodei. Scaling laws for neural language models. arXiv preprint arXiv:2001.08361 , 2020. Jakub Krajewski, Jan Ludziejewski, Kamil Adamczewski, Maciej Pi´ oro, Michał Krutul, Szymon Antoniak, Kamil Ciebiera, Krystian Kr´ ol, Tomasz Odrzyg´ o´ zd´ z, Piotr Sankowski, et al. Scaling laws for fine-grained mixture of experts. arXiv preprint arXiv:2402.07871 , 2024. Inception Labs, Samar Khanna, Siddhant Kharbanda, Shufan Li, Harshit Varma, Eric Wang, Sawyer Birnbaum, Ziyang Luo, Yanis Miraoui, Akash Palrecha, et al. Mercury: Ultra-fast language models based on diffusion. arXiv preprint arXiv:2506.17298 , 2025. Dmitry Lepikhin, HyoukJoong Lee, Yuanzhong Xu, Dehao Chen, Orhan Firat, Yanping Huang, Maxim Krikun, Noam Shazeer, and Zhifeng Chen. Gshard: Scaling giant models with conditional computation and automatic sharding. arXiv preprint arXiv:2006.16668 , 2020. Haonan Li, Yixuan Zhang, Fajri Koto, Yifei Yang, Hai Zhao, Yeyun Gong, Nan Duan, and Timothy Baldwin. Cmmlu: Measuring massive multitask language understanding in chinese. In Findings of the Association for Computational Linguistics: ACL 2024 , pp. 11260–11285, 2024. 12 Preprint. Houyi Li, Wenzhen Zheng, Qiufeng Wang, Hanshan Zhang, Zili Wang, Shijie Xuyang, Yuantao Fan, Zhenyu Ding, Haoying Wang, Ning Ding, et al. Predictable scale: Part i, step law–optimal hy-perparameter scaling law in large language model pretraining. arXiv preprint arXiv:2503.04715 ,2025a. Jia-Nan Li, Jian Guan, Wei Wu, and Chongxuan Li. Refusion: A diffusion large language model with parallel autoregressive decoding. In International Conference on Learning Representations ,volume 2026, pp. 53846–53869, 2026. Tianyi Li, Mingda Chen, Bowei Guo, and Zhiqiang Shen. A survey on diffusion language models. 
+
+arXiv preprint arXiv:2508.10875 , 2025b. Aixin Liu, Bei Feng, Bin Wang, Bingxuan Wang, Bo Liu, Chenggang Zhao, Chengqi Dengr, Chong Ruan, Damai Dai, Daya Guo, et al. Deepseek-v2: A strong, economical, and efficient mixture-of-experts language model. arXiv preprint arXiv:2405.04434 , 2024a. Aixin Liu, Bei Feng, Bing Xue, Bingxuan Wang, Bochao Wu, Chengda Lu, Chenggang Zhao, Chengqi Deng, Chenyu Zhang, Chong Ruan, et al. Deepseek-v3 technical report. arXiv preprint arXiv:2412.19437 , 2024b. Jingyuan Liu, Jianlin Su, Xingcheng Yao, Zhejun Jiang, Guokun Lai, Yulun Du, Yidao Qin, Weixin Xu, Enzhe Lu, Junjie Yan, et al. Muon is scalable for llm training. arXiv preprint arXiv:2502.16982 , 2025. Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization. arXiv preprint arXiv:1711.05101 , 2017. Aaron Lou, Chenlin Meng, and Stefano Ermon. Discrete diffusion modeling by estimating the ratios of the data distribution. arXiv preprint arXiv:2310.16834 , 2023. Jan Ludziejewski, Maciej Pi´ oro, Jakub Krajewski, Maciej Stefaniak, Michał Krutul, Jan Mała´ snicki, Marek Cygan, Piotr Sankowski, Kamil Adamczewski, Piotr Miło´ s, et al. Joint moe scaling laws: Mixture of experts can be memory efficient. arXiv preprint arXiv:2502.05172 , 2025. Kaijing Ma, Xeron Du, Yunran Wang, Haoran Zhang, Zhoufutu Wen, Xingwei Qu, Jian Yang, Jiaheng Liu, Minghao Liu, Xiang Yue, et al. Kor-bench: Benchmarking language models on knowledge-orthogonal reasoning tasks. In International Conference on Learning Representations ,volume 2025, pp. 80062–80161, 2025. Jinjie Ni, Qian Liu, Longxu Dou, Chao Du, Zili Wang, Hang Yan, Tianyu Pang, and Michael Qizhe Shieh. Diffusion language models are super data learners. arXiv preprint arXiv:2511.03276 ,2025a. Jinjie Ni, Qian Liu, Chao Du, Longxu Dou, Hang Yan, Zili Wang, Tianyu Pang, and Michael Qizhe Shieh. Training optimal large diffusion language models. arXiv preprint arXiv:2510.03280 ,2025b. Shen Nie, Fengqi Zhu, Chao Du, Tianyu Pang, Qian Liu, Guangtao Zeng, Min Lin, and Chongx-uan Li. Scaling up masked diffusion models on text. In International Conference on Learning Representations , volume 2025, pp. 82974–82997, 2025. Shen Nie, Qiyang Min, Shaoxuan Xu, Zihao Huang, Yuxuan Song, Yong Shan, Yankai Lin, Wayne Xin Zhao, Chongxuan Li, and Ji-Rong Wen. Improved large language diffusion mod-els. arXiv preprint arXiv:2606.25331 , 2026a. Shen Nie, Fengqi Zhu, Zebin You, Xiaolu Zhang, Jingyang Ou, Jun Hu, Jun Zhou, Yankai Lin, Ji-Rong Wen, and Chongxuan Li. Large language diffusion models. Advances in Neural Information Processing Systems , 38:50608–50646, 2026b. Jingyang Ou, Shen Nie, Kaiwen Xue, Fengqi Zhu, Jiacheng Sun, Zhenguo Li, and Chongxuan Li. Your absorbing discrete diffusion secretly models the conditional distributions of clean data. In 
+
+International Conference on Learning Representations , volume 2025, pp. 64972–65009, 2025. 13 Preprint. Long Ouyang, Jeffrey Wu, Xu Jiang, Diogo Almeida, Carroll Wainwright, Pamela Mishkin, Chong Zhang, Sandhini Agarwal, Katarina Slama, Alex Ray, et al. Training language models to fol-low instructions with human feedback. Advances in neural information processing systems , 35: 27730–27744, 2022. Alec Radford, Karthik Narasimhan, Tim Salimans, Ilya Sutskever, et al. Improving language under-standing by generative pre-training. 2018. Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, Ilya Sutskever, et al. Language models are unsupervised multitask learners. OpenAI blog , 1(8):9, 2019. Subham S Sahoo, Marianne Arriola, Yair Schiff, Aaron Gokaslan, Edgar Marroquin, Justin T Chiu, Alexander Rush, and Volodymyr Kuleshov. Simple and effective masked diffusion language models. Advances in Neural Information Processing Systems , 37:130136–130184, 2024. Subham Sekhar Sahoo, Jean-Marie Lemercier, Zhihan Yang, Justin Deschenaux, Jingyu Liu, John Thickstun, and Ante Jukic. Scaling beyond masked diffusion language models. arXiv preprint arXiv:2602.15014 , 2026. Noam Shazeer. Glu variants improve transformer. arXiv preprint arXiv:2002.05202 , 2020. Noam Shazeer, Azalia Mirhoseini, Krzysztof Maziarz, Andy Davis, Quoc Le, Geoffrey Hinton, and Jeff Dean. Outrageously large neural networks: The sparsely-gated mixture-of-experts layer. 
+
+arXiv preprint arXiv:1701.06538 , 2017. Jiaxin Shi, Kehang Han, Zhe Wang, Arnaud Doucet, and Michalis Titsias. Simplified and general-ized masked diffusion for discrete data. Advances in neural information processing systems , 37: 103131–103167, 2024. Yuxuan Song, Zheng Zhang, Cheng Luo, Pengyang Gao, Fan Xia, Hao Luo, Zheng Li, Yuehang Yang, Hongli Yu, Xingwei Qu, et al. Seed diffusion: A large-scale diffusion language model with high-speed inference. arXiv preprint arXiv:2508.02193 , 2025. Jianlin Su, Murtadha Ahmed, Yu Lu, Shengfeng Pan, Wen Bo, and Yunfeng Liu. Roformer: En-hanced transformer with rotary position embedding. Neurocomputing , 568:127063, 2024. Changxin Tian, Kunlong Chen, Jia Liu, Ziqi Liu, Zhiqiang Zhang, and Jun Zhou. Towards greater leverage: Scaling laws for efficient mixture-of-experts language models. In International Confer-ence on Learning Representations , volume 2026, pp. 29806–29843, 2026. Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, Łukasz Kaiser, and Illia Polosukhin. Attention is all you need. Advances in neural informa-tion processing systems , 30, 2017. Dimitri von R¨ utte, Janis Fluri, Omead Pooladzandi, Bernhard Sch¨ olkopf, Thomas Hofmann, and Antonio Orvieto. Scaling behavior of discrete diffusion language models. In International Con-ference on Learning Representations , volume 2026, pp. 36638–36663, 2026. Yubo Wang, Xueguang Ma, Ge Zhang, Yuansheng Ni, Abhranil Chandra, Shiguang Guo, Weiming Ren, Aaran Arulraj, Xuan He, Ziyan Jiang, et al. Mmlu-pro: A more robust and challenging multi-task language understanding benchmark. Advances in Neural Information Processing Systems ,37:95266–95290, 2024. Qingyan Wei, Yaojie Zhang, Zhiyuan Liu, Dongrui Liu, and Linfeng Zhang. Accelerating diffusion large language models with slowfast: The three golden principles. arXiv e-prints , pp. arXiv–2506, 2025. Chengyue Wu, Hao Zhang, Shuchen Xue, Zhijian Liu, Shizhe Diao, Ligeng Zhu, Ping Luo, Song Han, and Enze Xie. Fast-dllm: Training-free acceleration of diffusion llm by enabling kv cache and parallel decoding. In International Conference on Learning Representations , volume 2026, pp. 57027–57051, 2026. 14 Preprint. Wenhan Xiong, Jingyu Liu, Igor Molybog, Hejia Zhang, Prajjwal Bhargava, Rui Hou, Louis Martin, Rashi Rungta, Karthik Abinav Sankararaman, Barlas Oguz, et al. Effective long-context scaling of foundation models. In Proceedings of the 2024 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies (Volume 1: Long Papers) , pp. 4643–4663, 2024. Kaiwen Xue, Yuhao Zhou, Shen Nie, Xu Min, Xiaolu Zhang, Jun Zhou, and Chongxuan Li. Unify-ing bayesian flow networks and diffusion models through stochastic differential equations. arXiv preprint arXiv:2404.15766 , 2024. An Yang, Anfeng Li, Baosong Yang, Beichen Zhang, Binyuan Hui, Bo Zheng, Bowen Yu, Chang Gao, Chengen Huang, Chenxu Lv, et al. Qwen3 technical report. arXiv preprint arXiv:2505.09388 , 2025. Jiacheng Ye, Zhihui Xie, Lin Zheng, Jiahui Gao, Zirui Wu, Xin Jiang, Zhenguo Li, and Lingpeng Kong. Dream 7b, 2025. URL https://hkunlp.github.io/blog/2025/dream .Rowan Zellers, Ari Holtzman, Yonatan Bisk, Ali Farhadi, and Yejin Choi. Hellaswag: Can a ma-chine really finish your sentence? In Proceedings of the 57th annual meeting of the association for computational linguistics , pp. 4791–4800, 2019. Shuibai Zhang, Caspian Zhuang, Chihan Cui, Zhihan Yang, Fred Zhangzhi Peng, Yanxin Zhang, Haoyue Bai, Zack Jia, Yang Zhou, Guanhua Chen, et al. Expert-choice routing enables adaptive computation in diffusion language models. arXiv preprint arXiv:2604.01622 , 2026. Wayne Xin Zhao, Kun Zhou, Junyi Li, Tianyi Tang, Zican Dong, Yupeng Hou, Beichen Zhang, Yingqian Min, Junjie Zhang, Peiyu Liu, et al. A survey of large language models. Frontiers of Computer Science , 20(12):2012627, 2026. Kaiwen Zheng, Yongxin Chen, Hanzi Mao, Ming-Yu Liu, Jun Zhu, and Qinsheng Zhang. Masked diffusion models are secretly time-agnostic masked models and exploit inaccurate categorical sampling. In International Conference on Learning Representations , volume 2025, pp. 63186– 63227, 2025. Fengqi Zhu, Zebin You, Yipeng Xing, Zenan Huang, Lin Liu, Yihong Zhuang, Guoshan Lu, Kangyu Wang, Xudong Wang, Lanning Wei, et al. Llada-moe: A sparse moe diffusion language model. 
+
+arXiv preprint arXiv:2509.24389 , 2025. Fengqi Zhu, Rongzhen Wang, Shen Nie, Xiaolu Zhang, Chunwei Wu, Jun Zhou, Yankai Lin, Ji-Rong Wen, and Chongxuan Li. Llada 1.5: Variance-reduced preference optimization for large language diffusion models. In Proceedings of the 64th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pp. 11425–11460, 2026. Terry Yue Zhuo, Minh Chien Vu, Jenny Chim, Han Hu, Wenhao Yu, Ratnadira Widyasari, Imam Nur Bani Yusuf, Haolan Zhan, Junda He, Indraneil Paul, et al. Bigcodebench: Benchmarking code generation with diverse function calls and complex instructions. In International Conference on Learning Representations , volume 2025, pp. 66602–66656, 2025. Barret Zoph, Irwan Bello, Sameer Kumar, Nan Du, Yanping Huang, Jeff Dean, Noam Shazeer, and William Fedus. St-moe: Designing stable and transferable sparse expert models. arXiv preprint arXiv:2202.08906 , 2022. 15 Preprint. 
+
+## A SCALING LAWS FOR MOE DLLM S
+
+A.1 COMPUTE ACCOUNTING 
+
+We distinguish total parameter count, activated parameter count, and the activated computation used in our scaling analysis. Let nlayer be the number of Transformer layers, dmodel the hidden size, s the sequence length, and rkv = nkvheads /n heads the ratio of key-value heads to query heads. Each MoE layer contains ne routed experts, each with intermediate width dexpert , of which na are selected per token. In the implemented architecture, every token is additionally processed by a single shared expert with intermediate width dshare . To express routed and shared capacity in common units, we define ns ≡ dshare /d expert , or equivalently dshare = nsdexpert . Thus, ns denotes the shared capacity measured in units of one routed expert, rather than the physical number of shared experts. With SwiGLU (Shazeer, 2020), the three projection matrices contain 3dmodel dexpert parameters for each routed expert and 3dmodel dshare = 3 nsdmodel dexpert parameters for the single shared expert. Ignoring biases and normalization parameters, the total and activated non-embedding parameter counts are 
+
+Pnonemb = nlayer 
+
+2d2model (1 + rkv ) + dmodel ne + 3 dmodel (nedexpert + dshare ) , (4) 
+
+Pact ,nonemb = nlayer 
+
+2d2model (1 + rkv ) + dmodel ne + 3 dmodel (nadexpert + dshare ) . (5) The first term accounts for the query, key, value, and output projections; the second accounts for the router, which scores all ne routed experts for every token; and the final term accounts for the routed experts and the single shared expert. Substituting dshare = nsdexpert recovers the equivalent-unit forms 3dmodel dexpert (ne + ns) and 3dmodel dexpert (na + ns), respectively. We use an input embed-ding matrix and a separate LM head matrix, each containing V d model parameters for vocabulary size 
+
+V . Their combined 2V d model parameters are included when reporting total or activated parameter counts but excluded from the non-embedding quantities used below. We count one multiply–accumulate as two FLOPs. The forward FLOPs per token of one layer are approximated by 
+
+Fattn = 4 d2model (1 + rkv ) + 4 sd model , (6) 
+
+FMoE = 2 dmodel ne + 6 dmodel (nadexpert + dshare ), (7) where the two terms in Fattn correspond to the attention projections and the two sequence-level attention matrix multiplications, respectively. The terms in FMoE account for routing, the selected routed experts, and the single shared expert. Approximating the backward pass as twice the forward pass, we define the activated non-embedding FLOPs per token as 
+
+M = 3 nlayer 
+
+4d2model (1 + rkv ) + 4 sd model + 2 dmodel ne + 6 dmodel (nadexpert + dshare ) . (8) This FLOPs accounting omits the input embedding, LM head, normalization operations, nonlin-earities, and attention softmax. All Transformer layers in our models share the same architecture; accordingly, Equation 8 multiplies the per-layer FLOPs by nlayer .Finally, let D denote the total number of nominal tokens processed during training, including both masked and visible positions. The compute budget used throughout our scaling law experiments is 
+
+C = M D. (9) Masked and visible tokens incur the same Transformer computation, so the sampled corruption level changes the number of supervised prediction targets but not the accounted FLOPs. A.2 MOE I MPLEMENTATION 
+
+Throughout the scaling experiments, we use a MoE Transformer architecture in which every layer pairs grouped-query attention (GQA) (Ainslie et al., 2023) with an MoE feed-forward block com-prising the routed experts and the single shared expert parameterized in Appendix A.1, all imple-mented as SwiGLU networks; the only exceptions arise in the architecture experiments, where some configurations omit the shared expert. Routing is performed independently for each token at every layer. Given the token representation 
+
+h, a linear router produces logits r(h) ∈ Rne and routing scores p(h) = softmax( r(h)) . Let T (h)
+
+16 Preprint. contain the indices of the na largest routing scores. We renormalize the selected scores as 
+
+wi(h) = pi(h)
+
+P  
+
+> j∈T (h)
+
+pj (h) , i ∈ T (h). (10) The routed expert output is 
+
+Eroute (h) = X 
+
+> i∈T (h)
+
+wi(h)Ei(h). (11) The routed and shared pathways are combined as Eshare (h) + λE route (h), where Ei is a routed expert, Eshare is the shared expert, and λ balances the output scales of the two pathways. The routed-only configuration in the shared-expert-ratio experiments omits the shared term and does not use a scaling factor. For configurations with ns > 0, we estimate λ by matching the expected output norms of the shared and routed pathways at initialization, following the gate scaling heuristic of Liu et al. (2025). Treating the shared expert of width nsdexpert as ns expert-width units, and assuming that all expert outputs have equal norms and are pairwise orthogonal at initialization, the shared pathway has norm proportional to √ns, whereas the unscaled routed pathway has norm propor-tional to (P  
+
+> i∈T (h)
+
+wi(h)2)1/2. Approximating the initialization distribution of the router logits by 
+
+r(h) ∼ N (0 , I ne ), we estimate 
+
+λ = Er(h)∼N (0 ,I ne )
+
+
+
+√ns
+
+P  
+
+> i∈T (h)
+
+wi(h)2
+
+1/2
+
+ , (12) where the expectation is approximated by Monte Carlo sampling independently for each architecture configuration with a shared expert. We train the router jointly with the rest of the model. The training objective is 
+
+L = Ldiff + αaux Lbal + αz Lz , (13) where Ldiff is the denoising objective in Equation 1, Lbal is the load balancing auxiliary loss, and 
+
+Lz is the router z-loss; following commonly used MoE training settings, we set αaux = 0 .01 and 
+
+αz = 0 .001 (Fedus et al., 2022; Shazeer et al., 2017; Zoph et al., 2022). Both auxiliary terms are added directly to the denoising loss, and their coefficients are held fixed across all scaling and architecture sweeps. A.3 HYPERPARAMETER SCALING 
+
+We conduct the hyperparameter scaling experiments at three model scales—158M, 1B, and 3.6B— under compute budgets ranging from 10 18 to 3×10 20 FLOPs. All runs use the same pretraining data and a sequence length of 4096, and optimize the denoising objective in Equation 1. We use AdamW with (β1, β 2) = (0 .9, 0.95) and a weight decay of 0.1. The learning rate is linearly warmed up for 2,000 optimizer steps to the peak value η, allowing optimization to enter a stable regime before the peak rate is held constant until the final 10% of the training compute and then decayed to 0.1η using a cosine schedule. For each model scale, we jointly search the global nominal token batch size B and peak learning rate η, while holding the architecture and training-token budget fixed within each compute setting. Table 5 summarizes the model architectures, compute budgets, and corresponding search grids. For each run, we define its loss as the average training loss over the final 0.5% of its allocated training FLOPs. At each compute budget, we identify the minimum average loss and regard configurations whose losses are no more than 0.25% above this minimum as near-optimal (Bi et al., 2024). We include all near-optimal configurations in log–log linear regressions of batch size and learning rate against C, yielding the final scaling laws. A.4 COMPUTE ALLOCATION SCALING 
+
+We conduct IsoFLOP sweeps under compute budgets ranging from 10 17 to 10 20 FLOPs. All runs use the same pretraining data, denoising objective, and optimizer as the hyperparameter scaling ex-periments in Appendix A.3. At each compute budget C, we set the nominal token batch size and 17 Preprint. Table 5: Configurations for the hyperparameter scaling sweep. The upper block lists the model architectures; the lower block reports the compute budgets C (in FLOPs) and joint search grids for the global nominal token batch size B and peak learning rate η.                                                                              
+
+> Model architecture Model scale nlayer dmodel nheads nkvheads nenansdexpert
+> 158M 6256 8264 41256 1B 10 640 10 264 41640 3.6B 16 1024 16 464 411024 Search configuration Model scale CBη
+> 158M {1,2,3,6,8} × 10 18 {217 ,218 ,219 ,220 }{1,1.4,2,2.8} × 10 −3
+> 1B {1,2,3,6,8,10 } × 10 19 {218 ,219 ,220 ,221 }{0.7,1,1.4,2} × 10 −3
+> 3.6B {0.8,1,2,3} × 10 20 {221 ,222 ,223 }{1,4,7} × 10 −4
+
+peak learning rate according to the fitted hyperparameter scaling laws reported in the main text. Tables 8 and 9 report the candidate model architectures and their corresponding allocation configu-rations, respectively. Because the number of optimizer steps varies across model–data allocations, we adapt the warmup length to each run. Let T denote the total number of optimizer steps implied by the allocation. We linearly warm up the learning rate to its peak over Twarm = max(0 .01 T, 100) 
+
+steps, maintain the peak rate until the final 10% of the training steps, and then decay it to 10% 
+
+of the peak using a cosine schedule. The 100-step floor provides a minimum warmup period for optimization stability (Nie et al., 2025). For each compute budget, we evaluate a set of MoE models spanning different amounts of activated model-side computation. We measure the model side by the activated non-embedding FLOPs per token M , and assign each model a training-token budget D = C/M . At each compute budget, we select the evaluated allocation with the lowest loss as the empirical optimal allocation point. We fit the selected model-side optima using linear regression in log–log space and derive the corresponding data-side frontier from D∗(C) = C/M ∗(C), yielding the final compute-allocation scaling laws reported in the main text. A.5 MOE A RCHITECTURE SCALING 
+
+We conduct the MoE architecture sweeps at five reference compute budgets, C ∈ { 6 × 10 17 , 2 ×
+
+10 18 , 6 × 10 18 , 2 × 10 19 , 6 × 10 19 } FLOPs. At each reference budget, we keep the Transformer backbone fixed and vary one architectural dimension at a time while holding the other two fixed as closely as permitted by the discrete configurations. The sweep grids are parameterized using the definitions in Section 2: the activation ratio A = ( na + ns)/(ne + ns), the expert granu-larity G = 2 dmodel /d expert , and the shared-expert ratio S = ns/(na + ns). We evaluate the fitted compute-allocation scaling laws at the reference budget C to obtain the target activated non-embedding FLOPs per token M ∗(C) and the compute-optimal token count D∗(C). To make ar-chitecture selection representative of the overtraining regime commonly used in large-scale pre-training (Grattafiori et al., 2024; Gadre et al., 2025; Tian et al., 2026), we train each candidate for 
+
+3D∗(C) nominal tokens, corresponding to approximately 3C training FLOPs. We therefore evalu-ate the fitted hyperparameter scaling laws at the actual training budget 3C and set the nominal token batch size B and peak learning rate η accordingly. The common allocation targets and training hyperparameters are reported in Table 10; the exact model architectures used in the three sweeps are reported in Tables 11, 12, and 13. All remaining training settings are identical to those of the compute-allocation sweeps in Appendix A.4. Within each sweep, the candidate architectures are constructed so that, ignoring the negligible router contribution, the activated model-side budget M ∗(C) is preserved. In the activation-ratio sweep, we fix the Transformer backbone, na, ns, and dexpert , and vary only the number of routed experts ne:the activated expert computation per token is unchanged, while the total parameter count grows as A
+
+decreases. In the expert-granularity sweep, we vary dexpert and scale ne, na, and ns in inverse pro-18 Preprint. Table 6: Architecture of LLaDA MoE v2 30B-A3B.                   
+
+> Parameter scale Transformer backbone MoE configuration Total Activated nlayer dmodel nheads nkvheads nenans
+> 30.6B 3.4B 32 3072 32 4128 84
+
+portion, preserving A, S, and both the routed and shared activated widths, nadexpert and nsdexpert .In the shared-expert-ratio sweep, we fix ne and dexpert and redistribute the fixed activated expert width (na + ns)dexpert between the shared and routed pathways by varying ns and na; since ns
+
+enters the denominator of A, this redistribution induces a slight drift in the activation ratio across candidates, which is negligible and does not affect the controlled comparison. For each run, we define its loss as the average training loss over the final 0.5% of its allocated training FLOPs, as in Appendix A.3. At each reference budget, we select the candidate with the lowest loss along each architectural dimension. 
+
+## B TRAINING LARGE -S CALE MOE DLLM S
+
+B.1 MODEL ARCHITECTURE 
+
+We train LLaDA MoE v2 30B-A3B, a large MoE dLLM whose detailed architecture is reported in Table 6. The routing rule, the combination of routed and shared expert outputs, and the auxiliary objectives follow Appendix A.2. The Transformer backbone contains 32 layers with hidden size 3072 and uses grouped-query atten-tion (GQA) with 32 query heads and 4 key-value heads. The model uses a vocabulary of 157,184 tokens. All Transformer layers use an MoE feed-forward block. To realize the architecture-scaling recommendations, we use ne = 128 routed experts, activate 
+
+na = 8 of them per token, and allocate ns = 4 expert-width units to the single shared expert. Setting G = 8 gives dexpert = dmodel /4 and hence dshare = 4 dexpert = dmodel . This discrete configuration yields A = (8 + 4) /(128 + 4) = 9 .09% and S = 4 /(8 + 4) = 33 .3% .B.2 PRETRAINING 
+
+We pretrain LLaDA MoE v2 30B-A3B from scratch for a total of 23.5T nominal tokens. The pretraining corpus is constructed from a broad collection of high quality text gathered from the web. We apply a standard data processing pipeline that collects the raw text, removes boilerplate and malformed or low quality documents, deduplicates repeated content, and filters harmful material. Throughout pretraining, we optimize the denoising objective in Equation 1; the routing procedure and auxiliary objectives follow Appendix A.2. The five-stage data schedule is summarized in Table 7. Stages 1 and 2 draw separate 10T-token samples from the same source corpus, with the Stage 2 mixture assigning slightly more weight to mathematical reasoning and code data. For Stage 3, we construct a curated 1T-token annealing corpus after cleaning, deduplication, and harmful-content filtering, and train on it for two epochs, yielding 2T training tokens. Stages 4 and 5 primarily use long-form data with sequence lengths of up to 32K tokens. We train in BF16 precision using AdamW with (β1, β 2) = (0 .9, 0.95) and a weight decay of 0.1 (Loshchilov & Hutter, 2017). The global nominal token batch size is 33,554,432 tokens. Each stage uses a separate learning-rate schedule that linearly warms up from zero to its stage-specific peak over the first 2,000 optimizer steps. During the final 10% of the allocated training compute in Stages 1–4, the learning rate is decayed to the peak rate of the following stage using a cosine schedule; in Stage 5, it is decayed to 5.0 × 10 −6 using the same schedule. The peak learning rates for Stages 1–5 are 1.5 × 10 −4, 1.0 × 10 −4, 5.0 × 10 −5, 1.0 × 10 −5, and 7.0 × 10 −6, respectively. At the transition from Stage 3 to Stage 4, we increase the RoPE base from 10,000 to 500,000 to extend 19 Preprint. Table 7: Five-stage pretraining schedule for LLaDA MoE v2 30B-A3B.                         
+
+> Stage Training phase Tokens Context length RoPE base 1Base pretraining 1 10T 4K 10,000 2Base pretraining 2 10T 4K 10,000 3Pretraining annealing 2T 4K 10,000 4Context extension 500B 32K 500,000 5Long-context annealing 1T 32K 500,000
+
+the context length from 4K to 32K (Su et al., 2024; Xiong et al., 2024). The full pretraining run consumed approximately 460,000 NVIDIA B200 GPU hours. B.3 SUPERVISED FINE -T UNING 
+
+Starting from the final pretrained checkpoint, we fine-tune LLaDA MoE v2 30B-A3B for three epochs on 7M instruction–response examples, primarily comprising single-turn mathematical rea-soning and code generation tasks. We process the data following the same general procedure used for pretraining, removing malformed or low quality examples, deduplicating repeated content, and filtering harmful material, and then format every example using a unified conversation template. The formatted examples are packed into non-overlapping 8K-token training sequences. For each instruction–response pair, we concatenate the prompt and response but apply the forward masking process in Equation 1 only to response tokens, leaving the prompt available as uncorrupted conditioning context and computing the denoising loss only at masked response positions. The MoE load balancing loss and router z-loss described in Appendix A.2 remain active during SFT, with their coefficients unchanged at αaux = 0 .01 and αz = 0 .001 .We update all model parameters using AdamW with (β1, β 2) = (0 .9, 0.999) , a weight decay of 0.1, and gradient clipping at a maximum norm of 1.0. The global batch size is 512 sequences. The learning rate is linearly warmed up to 5.0 × 10 −6 over the first 8% of training steps and then follows a cosine schedule that decays it to a minimum of 1.0 × 10 −6. We use the final checkpoint as the instruct model and apply no reinforcement learning stage after SFT. B.4 EVALUATION 
+
+We evaluate LLaDA MoE v2 across a diverse suite of benchmarks covering general tasks (MMLU (Hendrycks et al., 2020), MMLU-Pro (Wang et al., 2024), CEval (Huang et al., 2023), CMMLU (Li et al., 2024), HellaSwag (Zellers et al., 2019), KorBench (Ma et al., 2025)), mathemat-ical reasoning (GSM8K (Cobbe et al., 2021), MATH (Hendrycks et al., 2021), OlympiadBench (He et al., 2024)), and code generation (CRUXEval (Gu et al., 2024), MBPP (Austin et al., 2021b), MultiPL-E (Cassano et al., 2022), HumanEval (Chen et al., 2021), LiveCodeBench (Jain et al., 2025), BigCodeBench (Zhuo et al., 2025)). For the base-model results in Table 3, we use conditional likelihood for multiple-choice tasks and conditional generation for the remaining tasks, whereas all results in the SFT evaluation in Table 4 are obtained through conditional generation. For each model, we preferentially report results from its official publication (Yang et al., 2025; Cheng et al., 2026a; Zhu et al., 2025; Ye et al., 2025; Nie et al., 2026b); when a benchmark result is unavailable, we report the score obtained under our unified evaluation configuration. We use conditional likelihood on MMLU, MMLU-Pro, CEval, CMMLU, and HellaSwag. For each example, we compute the conditional likelihood of every candidate answer given the prompt, select the candidate with the highest likelihood, and report accuracy over the benchmark. For an AR model, we compute the conditional log-likelihood under its left-to-right factorization. For LLaDA MoE v2, we follow the likelihood-evaluation protocols used in SMDM, LLaDA, and the previous LLaDA MoE (Nie et al., 2025; 2026b; Zhu et al., 2025). For SDAR, we estimate conditional likelihood using the method introduced in Block Diffusion (Arriola et al., 2025). 20 Preprint. For conditional-generation tasks, each model generates a completion from the benchmark prompt using its native generation procedure. For code tasks, we extract the code from the response and execute it against the benchmark test cases. For mathematical reasoning tasks, we extract the final answer and determine correctness using the equivalence checker. All instruct models are evaluated through conditional generation. We allow at most 1,024 generated tokens on each benchmark. Because this limit can be insufficient for models to produce a final answer on MATH, OlympiadBench, AIME 2024, and AIME 2025, we increase the limit to 4,096 tokens for these benchmarks. LLaDA MoE v2 uses semi-autoregressive sampling (Nie et al., 2026b) with a block size of 64 and a total number of denoising steps equal to the generation length. For SDAR, we follow its recommended block diffusion decoding procedure with a block size of 4 and likewise set the total number of sampling steps to the generation length (Cheng et al., 2026a). Table 8: Model architectures for the compute-allocation sweeps. Each row specifies a candidate model architecture. 
+
+Model scale nlayer dmodel nheads nkvheads ne na ns dexpert 
+
+60M 6 128 8 2 64 4 1 128 63M 7 128 8 2 64 4 1 128 66M 8 128 8 2 64 4 1 128 69M 9 128 8 2 64 4 1 128 103M 6 192 8 2 64 4 1 192 111M 7 192 8 2 64 4 1 192 119M 8 192 8 2 64 4 1 192 184M 8 256 8 2 64 4 1 256 242M 7 320 8 2 64 4 1 320 296M 6 384 8 2 64 4 1 384 325M 7 384 8 2 64 4 1 384 354M 8 384 8 2 64 4 1 384 472M 6 512 8 2 64 4 1 512 574M 6 576 8 2 64 4 1 576 575M 8 512 8 2 64 4 1 512 627M 9 512 8 2 64 4 1 512 731M 11 512 8 2 64 4 1 512 1B 10 640 10 2 64 4 1 640 1.1B 11 640 10 2 64 4 1 640 1.4B 10 768 12 4 64 4 1 768 1.6B 12 768 12 4 64 4 1 768 1.8B 14 768 12 4 64 4 1 768 2.8B 12 1024 16 4 64 4 1 1024 3.2B 14 1024 16 4 64 4 1 1024 7.5B 22 1280 20 4 64 4 1 1280 
+
+21 Preprint. Table 9: Allocation configurations for the compute-allocation sweeps. Each row reports the compute budget C (in FLOPs), model scale, training-token budget D, global nominal token batch size B, and peak learning rate η.
+
+C Model scale D (×10 9) B η
+
+10 17 
+
+60M 2.07 
+
+218 4.4 × 10 −3
+
+63M 1.77 66M 1.55 69M 1.38 103M 1.25 111M 1.07 119M 0.934 184M 0.639 
+
+3 × 10 17 
+
+63M 5.32 
+
+219 3.4 × 10 −3
+
+66M 4.65 69M 4.14 103M 3.74 111M 3.20 119M 2.80 184M 1.92 296M 1.45 472M 0.945 
+
+10 18 
+
+119M 9.34 
+
+220 2.5 × 10 −3
+
+184M 6.39 242M 5.37 296M 4.83 325M 4.14 354M 3.62 472M 3.15 574M 2.63 575M 2.36 627M 2.10 731M 1.72 
+
+3 × 10 18 
+
+184M 19.2 
+
+220 2.0 × 10 −3
+
+242M 16.1 296M 14.5 325M 12.4 354M 10.9 472M 9.45 574M 7.89 575M 7.09 627M 6.30 731M 5.16 1B 4.03 Continued on next page 
+
+22 Preprint. 
+
+Table 9 continued 
+
+C Model scale D (×10 9) B η
+
+10 19 
+
+296M 48.3 
+
+221 1.4 × 10 −3
+
+325M 41.4 354M 36.2 472M 31.5 574M 26.3 575M 23.6 627M 21.0 731M 17.2 1B 13.4 1.1B 12.2 1.4B 9.94 1.6B 8.29 
+
+3 × 10 19 
+
+472M 94.5 
+
+221 1.1 × 10 −3
+
+574M 78.9 575M 70.9 627M 63.0 731M 51.6 1B 40.3 1.1B 36.6 1.4B 29.8 1.6B 24.9 1.8B 21.3 2.8B 15.5 3.2B 13.3 
+
+10 20 
+
+731M 172 
+
+222 8.3 × 10 −4
+
+1B 134 1.1B 122 1.4B 99.4 1.6B 82.9 1.8B 71.0 2.8B 51.8 3.2B 44.4 7.5B 19.4 
+
+23 Preprint. Table 10: Common training configurations for the MoE architecture sweeps. At each reference budget C, the allocation targets M ∗(C) and D∗(C) are obtained from the fitted compute-allocation laws. All candidates are trained for 3D∗(C) nominal tokens, corresponding to approximately 3C
+
+training FLOPs, while B and η are obtained by evaluating the fitted hyperparameter laws at 3C.
+
+C M ∗(C) 3D∗(C) B η
+
+6 × 10 17 1.43 × 10 8 1.26 × 10 10 1048576 2.2 × 10 −3
+
+2 × 10 18 2.54 × 10 8 2.36 × 10 10 1310720 1.7 × 10 −3
+
+6 × 10 18 4.28 × 10 8 4.20 × 10 10 2097152 1.3 × 10 −3
+
+2 × 10 19 7.59 × 10 8 7.91 × 10 10 3145728 9.4 × 10 −4
+
+6 × 10 19 1.28 × 10 9 1.41 × 10 11 4194304 7.0 × 10 −4
+
+Table 11: Configurations for the activation-ratio sweep. The upper block reports the backbone and fixed expert settings at each reference compute budget. The lower block lists the activation-ratio candidates shared across budgets, with each column giving one corresponding (ne, A ) pair. 
+
+Backbone and fixed expert settings Compute nlayer dmodel nheads nkvheads na ns dexpert 
+
+6 × 10 17 8 256 8 2 2 1 256 
+
+2 × 10 18 8 448 8 2 2 1 448 
+
+6 × 10 18 10 512 16 4 2 1 512 
+
+2 × 10 19 12 640 16 4 2 1 640 
+
+6 × 10 19 15 768 16 4 2 1 768 Activation-ratio candidates Candidate 1 2 3 4 5 6 7 8
+
+ne 2 4 8 16 32 64 128 256 
+
+A (%) 100 60 33.3 17.6 9.1 4.6 2.3 1.2 
+
+24 Preprint. Table 12: Configurations for the expert-granularity sweep. The upper block reports the Trans-former backbone at each reference compute budget. In the lower block, each column gives one candidate’s G, ne, na, and ns, together with the corresponding dexpert at every budget. 
+
+Transformer backbones Compute nlayer dmodel nheads nkvheads 
+
+6 × 10 17 8 256 8 2
+
+2 × 10 18 8 448 8 2
+
+6 × 10 18 10 512 16 4
+
+2 × 10 19 12 640 16 4
+
+6 × 10 19 15 768 16 4Expert-granularity candidates Candidate 1 2 3 4 5 6 7
+
+G 2 4 6 8 12 16 20 
+
+ne 64 128 192 256 384 512 640 
+
+na 2 4 6 8 12 16 20 
+
+ns 1 2 3 4 6 8 10 
+
+dexpert (6 × 10 17 ) 256 128 85 64 43 32 26 
+
+dexpert (2 × 10 18 ) 448 224 149 112 75 56 45 
+
+dexpert (6 × 10 18 ) 512 256 171 128 85 64 51 
+
+dexpert (2 × 10 19 ) 640 320 213 160 107 80 64 
+
+dexpert (6 × 10 19 ) 768 384 256 192 128 96 77 
+
+Table 13: Configurations for the shared-expert-ratio sweep. The upper block reports the backbone and fixed expert settings at each reference compute budget. The lower block lists the shared-expert-ratio candidates shared across budgets, with each column giving one corresponding 
+
+(na, n s, S ) tuple. 
+
+Backbone and fixed expert settings Compute nlayer dmodel nheads nkvheads ne dexpert 
+
+6 × 10 17 8 256 8 2 256 64 
+
+2 × 10 18 8 448 8 2 256 112 
+
+6 × 10 18 10 512 16 4 256 128 
+
+2 × 10 19 12 640 16 4 256 160 
+
+6 × 10 19 15 768 16 4 256 192 Shared-expert-ratio candidates Candidate 1 2 3 4 5 6 7
+
+na 12 11 10 8 6 4 2
+
+ns 0 1 2 4 6 8 10 
+
+S (%) 0 8.3 16.7 33.3 50 66.7 83.3 
+
+25
