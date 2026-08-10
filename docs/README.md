@@ -18,38 +18,43 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-09
-- 运行时间：2026-08-09 20:45:06 UTC
+- 最新运行日期：2026-08-10
+- 运行时间：2026-08-10 20:53:22 UTC
 - 运行状态：成功
-- 本次总论文数：5
-- 精读区：2
-- 速读区：3
+- 本次总论文数：7
+- 精读区：5
+- 速读区：2
 
 ### 今日简报（AI）
-- 今日共生成 5 篇推荐（精读 2 篇，速读 3 篇）
-- 精读：《Beckmann Transport Models: From Autonomous Flows to One-Step Maps》（9.0/10）, 《Potential Matching Optimal Transport: Continuous Normalizing Flows for Exact $p$-Wasserstein Dynamics》（8.0/10）
-- 速读：《LLaDA MoE v2: Scaling Mixture-of-Experts Diffusion Language Models》（7.0/10）, 《Objects as Audio-Visual Modal Sound Fields》（6.0/10）, 《Marginal Matching Does Not License Factorized Sampling: Auditing Conditional Style Leakage in Factorized Generative Models》（6.0/10）
-- 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202608/09/README](/202608/09/README)
+今日精读5篇，聚焦扩散模型在流体仿真与3D形状优化中的突破，其中两项高分工作均达9.0。  
+最值得关注《Fluid-DiT》的无图Transformer架构和《Flow-Corrected》的高维流形矫正方法，二者分别解决计算效率与几何漂移难题。  
+后续可优先尝试CMuon的分块动量正交化技巧，以加速自有扩散模型的训练稳定性。
+- 详情：[/202608/10/README](/202608/10/README)
 
 ### 精读区论文标签
-1. [Beckmann Transport Models: From Autonomous Flows to One-Step Maps](/202608/09/2608.01692v1-beckmann-transport-models-from-autonomous-flows-to-one-step-maps)  
+1. [Fluid-DiT: Graph-Free Diffusion Transformers for Fluid Flow Simulations Learning](/202608/10/2608.07161v1-fluid-dit-graph-free-diffusion-transformers-for-fluid-flow-simulations-learning)  
    标签：评分：9.0/10、query:fm
-   evidence：基于自治流的流匹配生成建模
-2. [Potential Matching Optimal Transport: Continuous Normalizing Flows for Exact $p$-Wasserstein Dynamics](/202608/09/2608.05666v1-potential-matching-optimal-transport-continuous-normalizing-flows-for-exact-p-wasserstein-dynamics)  
+   evidence：扩散Transformer用于流体仿真
+2. [Flow-Corrected Shape Optimization: Taming Manifold Drift in High-Dimensional 3D Models](/202608/10/2608.07199v1-flow-corrected-shape-optimization-taming-manifold-drift-in-high-dimensional-3d-models)  
+   标签：评分：9.0/10、query:fm
+   evidence：流匹配用于3D形状优化
+3. [FUSE: Feature-Wise Unified Specialization with Cross-Column Exchange for Mixed-Type Tabular Flow Matching](/202608/10/2608.07294v1-fuse-feature-wise-unified-specialization-with-cross-column-exchange-for-mixed-type-tabular-flow-matching)  
+   标签：评分：9.0/10、query:fm
+   evidence：流匹配生成建模
+4. [UDT: Reconciling U-Nets and Diffusion Transformers with Data-Adaptive Token Reduction](/202608/10/2608.01298v1-udt-reconciling-u-nets-and-diffusion-transformers-with-data-adaptive-token-reduction)  
    标签：评分：8.0/10、query:fm
-   evidence：流匹配与连续归一化流用于最优传输
+   evidence：扩散Transformer架构
+5. [Explore or Converge? Stage-Guided Per-Step Optimization for Diffusion Models](/202608/10/2608.06768v1-explore-or-converge-stage-guided-per-step-optimization-for-diffusion-models)  
+   标签：评分：8.0/10、query:fm
+   evidence：扩散模型的阶段引导分步优化
 
 ### 速读区论文标签
-1. [LLaDA MoE v2: Scaling Mixture-of-Experts Diffusion Language Models](/202608/09/2608.03457v1-llada-moe-v2-scaling-mixture-of-experts-diffusion-language-models)  
+1. [CMuon: Accelerating and Stabilizing Diffusion Transformer Training via Chunked Momentum Orthogonalization](/202608/10/2608.02502v1-cmuon-accelerating-and-stabilizing-diffusion-transformer-training-via-chunked-momentum-orthogonalization)  
    标签：评分：7.0/10、query:fm
-   evidence：扩散概率模型
-2. [Objects as Audio-Visual Modal Sound Fields](/202608/09/2608.05145v2-objects-as-audio-visual-modal-sound-fields)  
-   标签：评分：6.0/10、query:dgs-physics
-   evidence：3D高斯溅射结合密集视觉特征用于物理感知声场重建
-3. [Marginal Matching Does Not License Factorized Sampling: Auditing Conditional Style Leakage in Factorized Generative Models](/202608/09/2608.05243v1-marginal-matching-does-not-license-factorized-sampling-auditing-conditional-style-leakage-in-factorized-generative-models)  
+   evidence：加速扩散Transformer训练
+2. [Collaborative Memory Augmentation for Generative Recommendation](/202608/10/2608.01315v1-collaborative-memory-augmentation-for-generative-recommendation)  
    标签：评分：6.0/10、query:fm
-   evidence：对因子化潜在变量生成模型的审计分析
+   evidence：生成式推荐与潜变量压缩
 
 
 <div class="dpr-home-promo-card dpr-home-panel">

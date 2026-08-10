@@ -1,0 +1,599 @@
+Title: Explore or Converge? Stage-Guided Per-Step Optimization for Diffusion Models
+
+URL Source: https://arxiv.org/pdf/2608.06768v1
+
+Published Time: Mon, 10 Aug 2026 00:29:36 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+# Explore or Converge? Stage-Guided Per-Step Optimization for Diffusion Models 
+
+# Renye Yan ∗
+
+Peking University Beijing, China 
+
+# Jikang Cheng ∗
+
+Peking University Beijing, China 
+
+# You Wu 
+
+Nanjing University Nanjing, China 
+
+# Wei Peng 
+
+Stanford University Stanford, California, USA 
+
+# Zongwei Wang 
+
+Peking University Beijing, China 
+
+# Ling Liang †
+
+Peking University Beijing, China 
+
+# Yimao Cai †
+
+Peking University Beijing, China 
+
+## Abstract 
+
+Diffusion models have strong generative capabilities. However, their maximum likelihood training objective only focuses on re-constructing the data distribution, making it difficult to align with specific preferences. Reinforcement learning (RL) for preference alignment in diffusion models is promising but limited by reward sparsity. Since a single reward cannot support optimization, existing RL methods usually backpropagate the final reward to all previous steps. However, denoising is stage-wise, with distinct semantics and controllability. Repeating the final reward across all steps creates a temporal objective mismatch, encouraging reward shortcuts that lead to reward hacking. At the same time, due to reward backfilling, each time step receives the same reward, making it impossible to distinguish between actions, thereby weakening the optimization process. To resolve this issue, we propose Stage-Guided Per-step Optimization (SGPO) for diffusion models, which jointly leverages signal-to-noise ratio and semantic changes to identify generation stages and adaptively assign stage-specific objectives. Early de-noising is chaotic and far from the final reward, resulting in weak reward–behavior correlation. This stage should prioritize exiting the chaotic state. In the mid stage, the latent transitions to a stable structure, where the final reward better corresponds to generative behavior. Therefore, this stage optimizes the final reward while exploring diversity to avoid early convergence to a single mode. In the late stage, the latent’s core structure is largely fixed, and prefer-ence optimization mainly amplifies local details, risking overfitting. Therefore, stable convergence is preferred to avoid quality degra-dation. Results from 16 comparative experiments validate SGPO. 
+
+> ∗Renye Yan and Jikang Cheng contributed equally to this work.
+> †Ling Liang and Yimao Cai are the corresponding authors. Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org.
+> Conference’17, Washington, DC, USA
+> © 2026 Copyright held by the owner/author(s). Publication rights licensed to ACM. ACM ISBN 978-x-xxxx-xxxx-x/YYYY/MM https://doi.org/10.1145/nnnnnnn.nnnnnnn
+
+Our method achieves 26.7% average gains in generative quality and 
+
+36.7% higher convergence speed. 
+
+## CCS Concepts 
+
+• Computing methodologies → Computer vision problems ; • 
+
+Generation Optimization ;
+
+## Keywords 
+
+Language-Vision Conditional Generation, Diffusion Models, Adap-tive Stage-wise Optimization 
+
+ACM Reference Format: 
+
+Renye Yan, Jikang Cheng, You Wu, Wei Peng, Zongwei Wang, Ling Liang, and Yimao Cai. 2026. Explore or Converge? Stage-Guided Per-Step Opti-mization for Diffusion Models. In . ACM, New York, NY, USA, 12 pages. https://doi.org/10.1145/nnnnnnn.nnnnnnn 
+
+## 1 Introduction 
+
+Diffusion models [43, 44, 51] have recently achieved significant suc-cess in text-to-image generation [12] with diverse applications [52]. However, the training objective of standard diffusion models pri-marily focuses on fitting real-data distributions, making it chal-lenging to align directly with specific preferences. Since reinforce-ment learning (RL) [10, 11, 45] can directly optimize objective func-tions, it is regarded as a practical approach for aligning with prefer-ences [3, 42]. However, the preference reward (final reward) can be accurately assessed only upon completion. The intermediate latent states lack direct feedback, resulting in a significant sparsity of rewards during RL training. This issue makes it difficult to support effective optimization using only the final reward (See Appendix Fig. 15). Therefore, existing methods typically adopt a reasonable compromise strategy by propagating the fixed final reward back-ward to all denoising steps, thereby providing each step with the same reward signal [3, 9, 42, 46]. Under sparse rewards, backpropagating the final reward is widely used; yet, it assumes that intermediate states across denoising stages are optimally equivalent. However, this assumption is not fully consistent with diffusion generative dynamics, which recent studies show to be stage-wise [6, 23, 41, 47]. Different denoising stages fundamentally differ in their semantic structure, controllability, arXiv:2608.06768v1 [cs.CV] 7 Aug 2026 Conference’17, July 2017, Washington, DC, USA Yan et al. Stage I  
+
+> Chaotic and Noisy
+> Stage II
+> Stable Preference Optimization
+> Stage III
+> Steady Convergence
+> (xT)(x0)
+
+Figure 1: Motivation. We visualize adaptive semantic changes (Δ CLIP) between adjacent latents and step-wise signal-to-noise ratio (SNR) during denoising, revealing three adaptive stages: chaotic, structure-stable, and structure-convergent. 
+
+and their relationship to final output quality [41, 47]. In the early stage of generation, latents are primarily noise-dominated and only weakly correlated with the final reward. During the middle stage, the denoising process gradually reveals stable semantic structures. In the late stage, the overall semantics and structure of the latent are mostly finalized. Thus, indiscriminate final-reward application causes temporal objective mismatch, which encourages reward shortcuts and ultimately leads to reward hacking [41, 42]. Mitigating reward hacking requires detecting stage transitions and adaptively aligning optimization with stage-specific generative dynamics and requirements; accordingly, we propose SGPO , an adaptive stage-aware training paradigm that aligns optimization focus with different phases of diffusion generation. Specifically, our method detects stage transitions by analyzing semantic changes and the signal-to-noise ratio (SNR), thereby dividing diffusion genera-tion into three stages (Fig. 1). In the early stages, sharp fluctuations between adjacent latents indicate a high-noise chaotic regime, in which action and task reward attribution is unreliable. Thus, SGPO 
+
+prioritizes exiting chaos over preference optimization. As semantic changes stabilize, denoising enters the middle stage, where latents approach the generation endpoint and task reward and action cor-relation strengthens. Thus, this stage optimizes task (preference) rewards while using exploration to maintain diversity. In the late stage, global semantics and structure are largely fixed, while local details remain sensitive. Further preference optimization no longer alters the main structure but instead amplifies details to fit rewards. This behavior increases the risk of overfitting and destabilizing distributional convergence [42]. Thus, suppressing unnecessary drift and encouraging stable convergence is more appropriate. In summary, this paper makes the following contributions: 
+
+• We propose a stage-aware RL framework for diffusion models that departs from uniform optimization by explicitly model-ing stage-wise generative dynamics. 
+
+• We design stage-specific optimization objectives that align training signals with phase-dependent generation character-istics, effectively mitigating reward hacking while improving generation quality and diversity. 
+
+• Experimental results show that SGPO adaptively identifies diffusion stages and applies stage-specific RL strategies, achiev-ing substantial gains across key metrics. By skipping the chaotic stage and conducting preference optimization and diversity exploration during the intermediate stage, SGPO improves reward scores by approximately 26.7% and diver-sity by 8.51%. This stage-aware optimization enables the training signal to better match the requirements of differ-ent generation phases. Stable late-stage convergence further enhances structural and detail controllability, mitigates over-optimization, and improves detail fidelity by 41.93%. 
+
+## 2 Related Work 2.1 Reinforcement Learning Fine-tuning for Diffusion Models 
+
+Recent advances have explored reinforcement learning (RL) [2, 5, 18, 25, 29, 38, 49] as an effective paradigm for fine-tuning diffu-sion models toward specific objectives, such as aesthetic quality, human preference alignment, or task-specific constraints. Unlike standard diffusion training, which optimizes likelihood-based ob-jectives, RL-based fine-tuning enables direct optimization of reward functions [11, 22, 34, 36, 39, 54]. Most existing approaches formulate diffusion sampling as a se-quential decision-making process, where each denoising step corre-sponds to an action, and a preference model or evaluator assigns a reward to the final generated sample. To address the extreme reward sparsity inherent in this setup, these methods typically propagate the final-step reward backward to all denoising steps and apply policy gradient updates across the entire trajectory. This strategy has been shown to improve alignment performance in practice. However, such approaches implicitly treat all denoising steps as equally relevant for reward optimization, overlooking the in-trinsic stage-wise structure of the diffusion generation process. As discussed in recent studies [6, 23, 41, 47], this simplification can lead to optimization inefficiencies, reward hacking, and degradation of sample diversity, motivating the need for more structured and dynamics-aware reinforcement learning formulations. 
+
+## 2.2 Reward Hacking 
+
+Reward hacking [8, 14, 21, 28, 37] is a well-known failure mode in reinforcement learning, where an agent maximizes the reward function through unintended shortcuts rather than achieving the intended task objective. This phenomenon typically arises when the reward function is misaligned with the true optimization goal, leading the policy to exploit spurious correlations rather than learn meaningful behaviors. In Fig. 14, we show the typical hacking im-pressions on a simple animal prompt set after reward optimization. In the context of diffusion model fine-tuning with reinforcement learning, reward hacking becomes particularly pronounced due to the sparse and delayed nature of preference rewards [9]. Most existing approaches compute a single reward only at the final gen-eration step and propagate it backward to all denoising steps. This reward-backpropagation strategy implicitly assumes that all inter-mediate denoising states are equally informative and can be guided by a single reward signal. However, such an assumption ignores the intrinsic stage-wise dynamics of diffusion generation. Explore or Converge? Stage-Guided Per-Step Optimization for Diffusion Models Conference’17, July 2017, Washington, DC, USA ... ... ... 
+
+stage Switch stage Switch 
+
+SNR △CLIP SNR △CLIP SNR △CLIP 
+
+Generation Process Adaptive Stage Switching Reward Function 
+
+Chaotic & Noisy 
+
+# Stage I Stage II Stage III 
+
+Steady Convergence Stable Optimization 
+
+Figure 2: Framework of SGPO . As illustrated, RL training is adaptively stage-scheduled via continuous sensing of stage-wise semantic evolution to align with diffusion generation requirements. 
+
+As a result, repeatedly optimizing an identical reward across consecutive denoising steps can encourage the model to discover shortcuts that improve the accumulated reward over time without genuinely improving generation quality. These shortcuts often man-ifest as mode collapse, repetitive structures, or over-amplified local patterns, leading to reward hacking and degradation of generative diversity. Reward hacking in diffusion model RL fine-tuning is not merely caused by reward sparsity, but fundamentally rooted in the temporal homogenization of rewards induced by indiscriminate reward backpropagation [1, 7, 32, 48]. 
+
+## 3 Method 
+
+In Sec. 3.1, we provide the mathematical definitions of the diffusion models used in this paper within the RL framework. Subsequently, Sec. 3.3 presents the construction of the adaptive generation stage perception mechanism. Finally, Sec. 3.4 details the optimization objectives required for each stage during the generation process. 
+
+## 3.1 Reinforcement Learning for Diffusion Models 
+
+Diffusion Models. A diffusion model defines a data distribution by reversing a predefined noising process. Starting from a clean sample x0, the forward diffusion process 𝑞 (x𝑡 | x𝑡 −1) incrementally injects Gaussian noise, yielding a latent trajectory x0 → · · · → x𝑇 ,pure noise x𝑇 is distributed as 𝑝 (x𝑇 ) = N ( 0, 𝐼 ). The generative model is trained to learn the corresponding reverse-time transi-tions: 𝑝 𝜃 (x0: 𝑇 ) = 𝑝 (x𝑇 ) Î𝑇 𝑡 =1 𝑝 𝜃 (x𝑡 −1 | x𝑡 ), The parameterized reverse conditionals are learned to approximate the exact reverse posterior 𝑞 (x𝑡 −1 | x𝑡 , x0). Sampling begins from noise x𝑇 and suc-cessively composes the learned reverse transitions to recover a data sample. Let 𝑞 (x𝑡 | x𝑡 −1) := N
+
+
+
+x𝑡 ;√︁ 1 − 𝛽 𝑡 x𝑡 −1, 𝛽 𝑡 I
+
+
+
+, where 𝛼 𝑡 :=
+
+1 − 𝛽 𝑡 , ¯𝛼 𝑡 := Î𝑡 𝑘 =1 𝛼 𝑘 , ( ¯𝛼 0 := 1). Let 𝜖 𝜃 (x𝑡 , 𝑡 ) denote the learned noise-prediction function. The induced estimate of the clean sample ˆ x0 can be obtained as ：
+
+ˆx0 (x𝑡 ) = 1
+
+√ ¯𝛼 𝑡 
+
+
+
+x𝑡 − √1 − ¯𝛼 𝑡 𝜖 𝜃 (x𝑡 )
+
+
+
+. (1) 
+
+Text-to-Image Tasks. For text-conditioned generation, a condi-tioning representation z, typically extracted from a natural-language prompt, is introduced to guide the reverse diffusion process. The model therefore parameterizes 𝑝 𝜃 (x0: 𝑇 | z) = 𝑝 (x𝑇 ) Î𝑇 𝑡 =1 𝑝 𝜃 (x𝑡 −1 |
+
+x𝑡 , z), so that each denoising step is guided by z. This conditioning mechanism steers the reverse trajectory toward samples that are semantically consistent with the input text. 
+
+MDP Formulation. We formulate the denoising process as a Markov Decision Process (MDP). In the MDP formulation, s𝑡 represents all image states (latents) during the diffusion model’s denoising pro-cess. Each state s𝑡 corresponds to the intermediate state x𝑇 −𝑡 in the denoising sequence. The action a𝑡 includes both the noise predic-tion result and the newly sampled noise at the timestep 𝑡 , i.e., a𝑡 =
+
+x𝑇 −𝑡 −1. It determines the transition from the current state x𝑇 −𝑡 to the next state x𝑇 −𝑡 −1. 𝜋 𝜃 denotes the parameterized policy. 𝑃 0 is the initial state distribution. 𝛿 (z,xT−t−1 ) represents the Dirac distribution centered at (z, xT−t−1). 𝑃 (s𝑡 +1 | s𝑡 , a𝑡 ) denotes the state transition distribution , which defines the conditional probability distribution of the next state s𝑡 +1 given the current state s𝑡 and the action a𝑡 . The detailed definitions of the above components in MDP are as follows: 
+
+s𝑡 = (z, x𝑇 −𝑡 ), a𝑡 = x𝑇 −𝑡 −1, 𝜋 𝜃 (a𝑡 | s𝑡 ) = 𝑝 𝜃 (x𝑇 −𝑡 −1 | x𝑇 −𝑡 , z),
+
+𝑃 0 (s0) = (𝑝 (z), N ( 0, I)) , 𝑃 (s𝑡 +1 | s𝑡 , a𝑡 ) = 𝛿 (z,xT−t−1 ) . The prefer-ence rewards of existing RL methods is defined as: 
+
+𝑅 (s𝑡 , a𝑡 ) ≜
+
+(
+
+𝑟 (s𝑡 +1) = 𝑟 (x0, z) if 𝑡 = 𝑇 − 1,
+
+0 otherwise . . (2) During the denoising, the rewards for all intermediate timesteps are zero. The reward model provides an accurate preference score based on the quality of the generated image only when the generation pro-cess is complete, i.e., when denoising reaches the final timestep 𝑡 =
+
+𝑇 − 1. During RL-based diffusion model fine-tuning, our objective is to maximize the expected reward of generated images under the Conference’17, July 2017, Washington, DC, USA Yan et al. 
+
+prompt distribution 𝑝 (z) as follow: max 𝜃 E𝑝 (z) E𝑝 𝜃 (x0 |z) [𝑟 (x0, z)] .Hereafter, the preference reward (final reward) is denoted as 
+
+𝑟 (x0, z), distinct from the stage rewards .
+
+## 3.2 Justification of Stage-wise Training Priorities 
+
+Theorem 3.1. If the diffusion model is perfectly trained and the reverse generation follows the score-based SDE, ˆx𝑡  
+
+> 0
+
+denotes the posterior distribution of x0 at time 𝑡 , then Var ( ˆx𝑡  
+
+> 0
+
+| x𝑡 ) is a decreasing function during the generation process. 
+
+The proofs of Theorem 3.1 is shown in Appendix. According to Theorem 3.1, the posterior variance Var ( ˆx𝑡  
+
+> 0
+
+| x𝑡 ) decreases mono-tonically during the generation process. A decreasing variance implies that the model’s uncertainty about x0 gradually diminishes over the generation process. This aligns with intuition: at the early stage of generation, the sample is almost pure noise, making it difficult for the model to infer the original data, so the uncertainty is high; as the time step decreases, more signal is recovered, and the model’s generation becomes increasingly certain. 
+
+Linking Theory and RL: Reduced uncertainty induces progres-sively stabilized state transitions. High uncertainty yields chaotic latents, weak action–reward correlation, and high training variance (intuitively, the image is not yet formed, so finetuning the model in this phase can lead to inconsistent final results). In contrast, overly low uncertainty implies near-converged state transitions, saturated gains, and susceptibility to overfitting (intuitively, the image is mostly fixed, and further adjustments yield neglectable improvement). Based on this theory and Fig. 1, SGPO restricts the task (preference) reward to an intermediate-uncertainty regime (Stage II) with clear action-task (preference) reward attribution and evident gains. In the high-uncertainty region (Stage I), action-task (preference) reward attribution is extremely low, so this region is not suitable for optimizing the preference reward; instead, it should encourage quick denoising. Finally, when the uncertainty enters the extremely low region (Stage III), action-preference re-ward attribution basically converges, and there is no further space for optimizing the preference; forcing optimization at this stage easily leads to overfitting. Therefore, in this stage, we encourage stable convergence to the true distribution. 
+
+## 3.3 Adaptive Switching Mechanism 
+
+In this subsection, we detect stage-wise generative dynamics of diffusion models via real-time semantic structure changes. 
+
+Semantic Structure of Generation. To characterize the evolution of semantic structure during the generation process, we introduce a stage-sensitive semantic signal E ( 𝑡 ), which is defined as the se-mantic alignment score between the predicted clean sample and its corresponding prompt: 
+
+E ( 𝑡 ) = 𝜙 ( ˆx0 (x𝑡 ), z) , (3) where 𝜙 (· , ·) denotes a semantic-structural similarity scorer (e.g., the CLIP model [31]), ˆ x0 (x𝑡 ) denotes the clean image predicted from latent x𝑡 by Eq. 1, and z is the input prompt. Next, we define the semantic evolution rate between adjacent deoising steps as: 
+
+ΔE ( 𝑡 ) = E ( 𝑡 ) − E ( 𝑡 − 1)
+
+= 𝜙 ( ˆx0 (x𝑡 ), z) − 𝜙 ( ˆx0 (x𝑡 −1), z) . (4) We further monitor the signal-to-noise ratio (SNR) to capture noise retention during generation, and define 𝛾 (𝑡 ) = SNR (𝑡 ).
+
+Adaptive Stage-wise Decomposition. As shown in Fig. 1, when the signal-to-noise ratio stabilizes, indicating a transition from chaotic states to semantic structure formation. This point satisfies 
+
+𝑑 2𝛾 (𝑡 )
+
+𝑑𝑡 2 → 0 (defined as 𝑡 (1) 
+
+> 𝑐
+
+), and can be used to separate the early and middle denoising stages. When the semantic indicator ΔE ( 𝑡 )
+
+stabilizes, indicating entry into the late stage. This point satisfies 
+
+𝑑 2ΔE ( 𝑡 )
+
+𝑑𝑡 2 → 0 (defined as 𝑡 (2) 
+
+> 𝑐
+
+), and can be used to separate the middle and late denoising stages. 𝑑 2𝛾 (𝑡 )
+
+𝑑𝑡 2 → 0 and 𝑑 2ΔE ( 𝑡 )
+
+𝑑𝑡 2 → 0respectively indicate that the second-order derivatives tend to zero. We thus define the stage indicator 𝜋 (𝑡 ):
+
+𝜋 (𝑡 ) =
+
+
+
+𝑆 early , 0 ≤ 𝑡 < 𝑡 (1) 
+
+> 𝑐
+
+,𝑆 mid , 𝑡 (1) 
+
+> 𝑐
+
+≤ 𝑡 < 𝑡 (2) 
+
+> 𝑐
+
+,𝑆 late , 𝑡 ≥ 𝑡 (2) 
+
+> 𝑐
+
+.. (5) This stage indicator provides a basis for dynamically shifting the RL optimization focus across different generation stages. 
+
+## 3.4 Stage-Aware Optimization 
+
+By continuously tracking ΔE ( 𝑡 ) and 𝛾 (𝑡 ), we align RL training with the stage-wise semantic evolution of diffusion generation and adapt reward functions accordingly. This strategy prevents premature reward evaluation in unformed semantics and excessive optimization after stabilization. Finally, it improves optimization precision while reducing reward hacking. 
+
+Stage I: Chaotic Stage ( 𝑆 early ). In the early generation, intense noise dominates the latent state, leading to weak correlation be-tween denoising behaviors and 𝑟 (x0, z). preference rewards op-timization at this stage yields unreliable gradients by attributing noise to meaningful improvement. Thus, the optimization objec-tive focuses on rapidly exiting high-noise regions, with the Stage I Rewards Function defined as: 
+
+𝑟 (I)  
+
+> 𝑡
+
+= 𝜆 𝑡 x𝑡 − x𝑇 2, (6) where x𝑇 ∼ N ( 0, 𝐼 ) represents the initial noise, and 𝜆 𝑡 is obtained by scaling SNR (𝑡 ) with a constant factor. Maximizing the distance to the noise origin accelerates departure from chaotic states, while SNR (𝑡 ) aligns optimization intensity with the current noise level. 
+
+Stage II: Stable Preference Stage ( 𝑆 mid ). When ΔE ( 𝑡 ) and 𝛾 (𝑡 )
+
+stabilize, the generation process enters the middle stage. In this stage, the semantic representations emerge, and the correlation between 𝑟 (x0, z) and the resulting behavior strengthens, making optimization of 𝑟 (x0, z) meaningful. As ΔE ( 𝑡 ) remains stable, the generation trajectory retains sufficient plasticity. To prevent pre-mature convergence to a single generation mode during RL op-timization, we therefore introduce an exploration term based on Explore or Converge? Stage-Guided Per-Step Optimization for Diffusion Models Conference’17, July 2017, Washington, DC, USA A TV and a laptop Four vases Five birds A dog right of a teddy A purple car A fork and a knife A pink skateboard 
+
+Ours 
+
+Flow-GRPO SD 3.5      
+
+> Combination Count Location Color Bird below a skateboard
+
+Figure 3: Controlled generation. Using prompts with a specific combination, count, color, and location, SGPO demonstrates stronger instruction-following ability than baselines. Table 1: Reward Hacking Evaluations with Fixed Target Reward and Multiple Cross-Metrics (12 in total). All metrics are obtained with Aesthetic Score (AES) as the targeted reward. Bold indicates the best performance, underlining indicates the second best, and gray entries denote the backbone references that are excluded from comparison. At matched AES, our method consistently outperforms others in Fidelity, Diversity, and Richness, indicating that it is not overly hacked by targeted reward. 
+
+Method Preference Fidelity Diversity Richness #Top2 AES PS ↑ IR ↑ HPS ↑ FID ↓ CLIP ↑ iFS ↑ LPIPS ↑ IS ↑ TCE ↑ BRI ↓ NIQE ↓ SE ↑
+
+SDv15 5.514 21.29 0.916 0.280 - 0.243 - 0.646 30.31 40.23 8.02 4.131 11.34 -DDPO 6.004 20.99 0.897 0.266 95.15 0.239 0.494 0.601 26.17 38.98 11.01 6.967 10.98 0DPOK 5.959 21.12 0.793 0.271 63.31 0.242 0.689 0.643 28.18 39.51 9.07 4.795 11.30 3D3PO 5.970 21.10 0.829 0.276 72.37 0.240 0.696 0.640 27.97 39.95 8.69 5.003 11.37 1B2Diff 6.029 21.09 0.965 0.279 53.32 0.241 0.777 0.647 26.21 39.79 8.32 5.652 11.58 5DR 6.011 21.41 0.723 0.273 74.25 0.244 0.316 0.548 27.89 39.37 7.66 5.030 11.72 4TDPO 6.072 21.31 0.676 0.261 101.4 0.232 0.217 0.517 25.95 37.16 8.08 6.050 11.52 0
+
+Ours 5.967 21.56 0.998 0.278 49.36 0.244 0.868 0.653 29.81 40.14 5.89 4.272 11.86 12 
+
+differences between adjacent latents, modulated by ΔE ( 𝑡 ). This enables diversity under directional constraints. The stage II Rewards Function is defined as: 
+
+𝑟 (II)  
+
+> 𝑡
+
+= 𝑟 (x0, z) + ΔE ( 𝑡 ) ˆx0 (x𝑡 ) − ˆx0 (x𝑡 −1) 2, (7) where 𝑟 (x0, z) is the preference rewards. ˆ x0 (x𝑡 ) and ˆ x0 (x𝑡 −1) are the predicted clean images at steps 𝑡 and 𝑡 − 1, respectively, computed via Eq. 1. We use their Euclidean distance to quantify differences between successive predicted generative distributions, encouraging controlled deviations to enhance generation diversity. To ensure that exploration does not compromise text–image alignment, the exploration term is modulated by ΔE ( 𝑡 ) under two cases: ΔE ( 𝑡 ) >
+
+0: The exploration term ΔE ( 𝑡 ) ˆx0 (x𝑡 ) − ˆx0 (x𝑡 −1) 2 is positive, and the current exploration behavior is encouraged; ΔE ( 𝑡 ) < 0: The exploration term ΔE ( 𝑡 ) ˆx0 (x𝑡 ) − ˆx0 (x𝑡 −1) 2 is negative, and the current exploration behavior is suppressed. Introducing ΔE ( 𝑡 ) as a modulation signal ensures that explo-ration remains directionally constrained toward semantic structure improvement. Thereby, this reward design promotes trajectory diversity while preserving semantic consistency. 
+
+Stage III: Convergence Stage ( 𝑆 late ). When 𝑑 2ΔE ( 𝑡 )
+
+𝑑𝑡 2 → 0. Further reward optimization offers negligible benefits and carries the risks of over-optimization. We thus guide stable convergence. In this stage, we define the Stage III Rewards Function as 
+
+𝑟 (III)  
+
+> 𝑡
+
+= − 12 ˆx0 (x𝑡 ) − 𝑥 pre 0
+
+> 2
+
+, (8) where 𝑥 pre 0 denotes the output of the pre-trained diffusion model under the same z (prompts). 
+
+Training Reward function. Based on the above design, the overall reward function is formulated as: 
+
+𝑅 total =
+
+
+
+𝑟 (I)  
+
+> 𝑡
+
+, 0 ≤ 𝑡 < 𝑡 (1) 
+
+> 𝑐
+
+,𝑟 (II)  
+
+> 𝑡
+
+, 𝑡 (1) 
+
+> 𝑐
+
+≤ 𝑡 < 𝑡 (2) 
+
+> 𝑐
+
+,𝑟 (III)  
+
+> 𝑡
+
+, 𝑡 ≥ 𝑡 (2) 
+
+> 𝑐
+
+.. (9) Using 𝑅 total , SGPO drives early generation away from chaos, opti-mizes preference rewards with diversity exploration in the middle stage after semantic formation, and enforces stable convergence in the late stage. 𝑅 total ensures that each generation step receives a Conference’17, July 2017, Washington, DC, USA Yan et al. 
+
+distinct step-wise reward signal, thereby alleviating reward spar-sity. The use of differentiated rewards further prevents the model from exploiting reward shortcuts caused by repeatedly applying the same reward across steps. 
+
+## 4 Experimental Evaluation 4.1 Implementation Details 
+
+Datasets. We utilize four popular datasets for the fine-tuning pro-cess, that are, HPSv2 [40], Pick-a-Pic [19], GenEval [13], and Simple Animals [3]. Specifically, we focus on the HPSv2-photo subset and GenEval, which offer a more realistic and natural style. In addition, we select a subset of the Pick-a-Pic validation set comprising 500 prompts, characterized by abstract and surreal imagery. 
+
+Rewards and Metrics. The training rewards in our approach cover a wide range, including the Aesthetic Score (AES) [35], PickScore (PS) [19], JPEG compressibility, incompressibility, and multi-objective (AES+PS). Then, to quantify the issue of reward hacking, we fur-ther introduce metrics for evaluation dimensions: Aesthetic Pref-erence: AES, PS, IR, and HPSv2 [40]. Image Fidelity: ClipScore [30] (Clip), Fréchet Inception Distance (FID) [15], and improved F1 Score (iFS) [20]. Generative Diversity: LPIPS [50], TCE [17], and Incep-tion Score [33] (IS). Compositional Richness: NIQE [27], BRISQUE (BRI) [26], and Spectral Entropy (SE) [24]. 
+
+Baselines. We compare against both traditional SDE-based and 
+
+flow-matching-based diffusion baselines. Due to architectural dif-ferences, comparisons are conducted separately within each frame-work. The SDE-based baselines include DDPO [3], DPOK [9], D3PO [46], TDPO [53], DenseReward [4] (DR), and B2DiffusionRL [16] (B2Diff), while the flow-matching-based baselines include the flow-matching versions of GRPO (Flow-GRPO), PPO (DDPO), SFT (D3PO), and DPO (Diffusion-DPO). Notably, our method can be integrated with any of these baselines. For simplicity, we refer to the combination of DDPO and our method as ‘Ours’. The shadows of the curves represent the standard deviations with three seeds. 
+
+Backbones. To evaluate robustness across architectures, our evalu-ation is based on two comprehensive benchmarks: 1) Traditional 
+
+Stable Diffusion models, including v1.4 (SDv1.4), v1.5 (SDv1.5), v2.1-turbo (SDv2.1), and XL 1.0 (SDXL). 2) Flow-matching -based models such as SD 3.5-medium (SD3.5) and Flux. The experiments were carried out on a single node with 8 NVIDIA Tesla H20 GPUs. 
+
+## 4.2 Experiments on Pre-defined RL Objectives 
+
+In this subsection, we compare the performance of SGPO with sev-eral novel RL baselines for optimizing predefined RL objectives. The baseline methods include DDPO, DPOK, D3PO, and TDPO, which use sparse rewards to guide the optimization process. 
+
+Query-wise learning performance. Fig. 4 shows the curves of rewards on different downstream objectives during the fine-tuning process, where we align each method via query number. The results indicate that our method significantly outperforms base-line methods in terms of aesthetic quality and human preference (PickScore) across two popular datasets, i.e., Pick-a-Pic and HPSv2. Our method’s reward curve rises faster with the same optimization steps, achieving the highest scores. Then, we conduct experiments on more objectives and datasets, including Compressibility, Incom-pressibility, and multi-objective as rewards, and GenEval [13] as the dataset. The results shown in Fig. 5 and Fig. 6 further demonstrate the superior reward-learning performance of our method. 
+
+Wall-clock time learning efficiency. To evaluate the real-world application efficiency, we aligned each method with wall-clock time. In Fig. 9, we further consider two advanced baselines, i.e., DenseRe-ward (DR) and B2DiffusionRL (B2Diff), with SDv14 and SDv15 as backbones. Despite deploying our method may slightly introduce further time consumption for each-query-optimization, the overall wall-clock efficiency is still significantly superior to the baselines. 
+
+## 4.3 Evaluations on Mitigating Reward Hacking 
+
+Multi-metrics Results under Fixed Target Reward. To enable a fair comparison of reward hacking among different approaches, all methods were trained until their aesthetics scores approached 6.0, after which their performance was evaluated using the remaining metrics. As reported in Tab. 1, we additionally include the original SDv1.5 model as a reference point. The results show that, when AES is adopted as the optimization objective, our approach consistently achieves top-two performance across all evaluation criteria. This demonstrates that SGPO avoids overfitting to the training reward and maintains strong generalization across evaluation metrics. 
+
+Results under multi-intensities Target Reward. In addition to assessing final generation quality, we systematically analyze reward hacking effects across various reward learning regimes for different baseline models. Fig. 10 demonstrates that our method is largely robust to reward hacking when AES values are below 7. Although minor performance degradation appears during the late optimiza-tion stage, which can be attributed to inevitable over-optimization of the reward, our method maintains superior performance com-pared to all baselines throughout training. 
+
+## 4.4 Ablation study 
+
+Since we include three stages with individual reward design based on the denoising nature of diffusion models, in Tab. 2, we introduce Ablation Variants Var1 to Var4 to discuss the influence of reward for each stage ( i.e. , S1, S2, S3). We also introduce a fixed strategy that implements fixed exploration reward at every stage (Fixed). It can be observed that the reward for the chaotic stage (S1) can slightly enhance the reward learning performance. The reward for the stable performance optimization stage contributes the most to reward learning and generative diversity, while still being less promising in semantic alignment. The reward for the final convergence stage improves the alignment performance while maintaining the other metrics. Our results underscore not only the necessity of each proposed component but also the remarkable performance that emerges from their integration. 
+
+## 4.5 Results on Flow-Matching-Based Models 
+
+As shown in Fig. 11 and Fig. 12, we implement our method for the advanced flow-matching-based diffusion models, namely FLUX and SD3.5. We reproduce supervised fine-tuning as D3PO, Flow-PPO as DDPO, and Flow-DPO as Diffusion-DPO (Diff-DPO). As shown in Fig. 11, we successfully enhance the performance of Flow-GRPO, achieving the SoTA reward learning performance on both models. Notably, we then investigate the performance of the reward hacking issue by evaluating on the unseen set. As shown in Fig. 12, we train Explore or Converge? Stage-Guided Per-Step Optimization for Diffusion Models Conference’17, July 2017, Washington, DC, USA 
+
+Figure 4: Results Trained with Multiple Datasets and Target Rewards, that are, HPSv2 and Pickapic prompts with Aesthetic Score and PickScore as the optimization objectives. Notably, TDPO leads to reward hacking manifested as text–image misalignment during reward improvement (Appendix Fig. 14), whereas our method avoids this issue. 
+
+Figure 5: Optimization results on more objectives, includ-ing compressibility, incompressibility, and multi-objective (PS+AES). 
+
+Figure 6: Optimization results on GenEval datasets. Table 2: Ablation Study on Each Proposed Component. The ablation variants across several metrics on HPSv2 Dataset ,with PS as the target reward. ‘Top2’ indicates second-best performance. Time refers to the training time (hours) to reach PS=22.2. 
+
+Variants S1 S2 S3 AES ↑ CLIP ↑ IS ↑ SE ↑ Time ↓ Top2 Base - - - 5.310 0.239 21.91 11.01 10.41 0Fixed - - - 5.674 0.241 22.59 11.73 8.02 0Var1 ✓ 5.353 0.238 22.04 10.98 9.27 0Var2 ✓ 5.732 0.239 22.61 11.32 8.95 0Var3 ✓ ✓ 5.765 0.241 23.49 11.20 6.81 3Var4 ✓ ✓ 5.730 0.244 22.19 11.92 7.69 2
+
+Ours ✓ ✓ ✓ 5.808 0.244 23.92 11.97 6.59 5all models on pick-a-pic train set with 360 epochs and evaluate on Ours 
+
+Flow GRPO SD 3.5  
+
+> a photo of a teddy bear
+> holding a heart-shaped ballon at a festive fairground. A photo of a corgi with a sign that says 'I am not a real corgi '. …a colorful towel with the phrase "Life's a Beach 2024 " …blue water ... A supermarket scene with a sign that reads "Frozen Goods Section ".
+
+Figure 7: Complex prompt alignment. We evaluate alignment under complex prompts and OCR generation, where SGPO 
+
+significantly outperforms baseline methods. Ours 
+
+> Flow-GRPO SD3.5 Training: Hacking:
+> Training: Hacking:
+> Training: Hacking:
+
+Figure 8: Generation diversity comparison. SGPO yields higher diversity in shape, orientation, and color than base-lines under equal training epochs. 
+
+the test set. Our results can effectively maintain the semantic align-ment and generative diversity compared to the backbone results, while surpassing the baseline Flow-GRPO in all five metrics. 
+
+## 4.6 Qualitative Evaluation 
+
+Generation diversity comparison. In Fig. 8, SGPO yields more diverse samples than the baselines under the same training bud-get. The improvement can be observed in both global attributes Conference’17, July 2017, Washington, DC, USA Yan et al. SDv14 SDv15 
+
+Figure 9: Optimization Efficiency with wall-clock time as the x-axis reference. 
+
+Figure 10: Evaluation on reward hacking with multi-intensities of Target Reward (AES). FLUX1.0 SD3.5-M 
+
+Figure 11: Results on the advanced flow-matching-based dif-fusion models comparing with different baselines. 
+
+(e.g., object shape and viewpoint), and local details (e.g., color and texture). In contrast, the baselines often collapse to a few repeated high-reward patterns, resulting in similar backgrounds and subject layouts, which are consistent with the quantitative diversity results. 
+
+Controlled generation. Fig. 3 compares controllability on prompts involving object category, quantity, color, and spatial position. SGPO follows these compositional constraints more reliably, while the baselines often satisfy only part of the prompt. Typical failure cases include correct object types with incorrect counts, or correct colors with mismatched positions. 
+
+Figure 12: Reward Learning and Hacking Performance on SD3.5 and FLUX. All baselines are trained with the same 240 epochs and evaluated on the unseen test set. PS is treated as the training reward for optimization (marked as gray) . The remaining metrics are evaluated after training. 
+
+Figure 13: User study of our method versus other baselines. Complex prompt alignment and OCR generation. In Fig. 7, SGPO performs better on long&complex prompts that require pre-serving entity relations, scene semantics, and fine-grained textures. Compared with the baselines, it shows less semantic drift and pro-duces more coherent layouts. In Text-related cases, SGPO also gen-erates clearer and more contextually appropriate text content. 
+
+## 4.7 User Study 
+
+To subjectively evaluate the visual quality of the generated images, we recruited human subjects to assess outputs from our method and various baselines, all generated with the same prompt and random seed. We employed the Pick-a-Pic dataset and adopted PickScore as the target reward metric. For the baselines, we considered the original FLUX 1.0, the original SDXL, FLUX 1.0 fine-tuned with Flow-GRPO, and SDXL fine-tuned with DDPO. As shown in Fig. 13, our method consistently achieved a high win rate across all four settings, demonstrating the superiority of the images generated by our approach in terms of perceived visual quality. 
+
+## 5 Conclusion 
+
+In this paper, we propose Stage-Guided Per-step Optimization (SGPO), a stage-aware RL framework that aligns optimization ob-jectives with the dynamics of diffusion generation, i.e., chaotic stage, stable preference stage, and convergence stage. SGPO ef-fectively improves alignment, preserves diversity, and alleviates reward hacking. Experimental results demonstrate that respecting the stage-wise structure of diffusion processes is crucial for robust and efficient RL fine-tuning. Explore or Converge? Stage-Guided Per-Step Optimization for Diffusion Models Conference’17, July 2017, Washington, DC, USA 
+
+## References 
+
+[1] Yatong Bai, Jonah Casebeer, Somayeh Sojoudi, and Nicholas J Bryan. 2025. DRAGON: Distributional Rewards Optimize Diffusion Generative Models. arXiv preprint arXiv:2504.15217 (2025). [2] Surjeet Balhara, Nishu Gupta, Ahmed Alkhayyat, Isha Bharti, Rami Q Malik, Sarmad Nozad Mahmood, and Firas Abedi. 2025. A survey on deep reinforcement learning architectures, applications and emerging trends. IET Communications 
+
+19, 1 (2025), e12447. [3] Kevin Black, Michael Janner, Yilun Du, Ilya Kostrikov, and Sergey Levine. 2023. Training diffusion models with reinforcement learning. arXiv preprint arXiv:2305.13301 (2023). [4] Alex James Chan, Hao Sun, Samuel Holt, and Mihaela van der Schaar. [n. d.]. Dense Reward for Free in Reinforcement Learning from Human Feedback. In 
+
+International Conference on Machine Learning .[5] Shreyas Chaudhari, Pranjal Aggarwal, Vishvak Murahari, Tanmay Rajpurohit, Ashwin Kalyan, Karthik Narasimhan, Ameet Deshpande, and Bruno Castro da Silva. 2025. Rlhf deciphered: A critical analysis of reinforcement learning from human feedback for llms. Comput. Surveys 58, 2 (2025), 1–37. [6] Jooyoung Choi, Jungbeom Lee, Chaehun Shin, Sungwon Kim, Hyunwoo Kim, and Sungroh Yoon. 2022. Perception prioritized training of diffusion models. In 
+
+Computer Vision and Pattern Recognition . 11472–11481. [7] Kevin Clark, Paul Vicol, Kevin Swersky, and David J Fleet. 2023. Directly fine-tuning diffusion models on differentiable rewards. arXiv preprint arXiv:2309.17400 
+
+(2023). [8] Jacob Eisenstein, Chirag Nagpal, Alekh Agarwal, Ahmad Beirami, Alex D’Amour, DJ Dvijotham, Adam Fisch, Katherine Heller, Stephen Pfohl, Deepak Ramachan-dran, et al. 2023. Helping or herding? reward model ensembles mitigate but do not eliminate reward hacking. arXiv preprint arXiv:2312.09244 (2023). [9] Ying Fan, Olivia Watkins, Yuqing Du, Hao Liu, Moonkyung Ryu, Craig Boutilier, Pieter Abbeel, Mohammad Ghavamzadeh, Kangwook Lee, and Kimin Lee. 2024. Reinforcement learning for fine-tuning text-to-image diffusion models. Advances in Neural Information Processing Systems 36 (2024). [10] Yaozhong Gan, Renye Yan, Xiaoyang Tan, Zhe Wu, and Junliang Xing. 2024. Trans-ductive off-policy proximal policy optimization. arXiv preprint arXiv:2406.03894 
+
+(2024). [11] Yaozhong Gan, Renye Yan, Zhe Wu, and Junliang Xing. 2024. Reflective policy optimization. arXiv preprint arXiv:2406.03678 (2024). [12] Rohit Gandikota, Zongze Wu, Richard Zhang, David Bau, Eli Shechtman, and Nick Kolkin. 2025. Sliderspace: Decomposing the visual capabilities of diffusion models. In Proceedings of the IEEE/CVF International Conference on Computer Vision . 15994–16003. [13] Dhruba Ghosh, Hannaneh Hajishirzi, and Ludwig Schmidt. 2023. Geneval: An object-focused framework for evaluating text-to-image alignment. NeurIPS 36 (2023), 52132–52152. [14] Dylan Hadfield-Menell, Smitha Milli, Pieter Abbeel, Stuart J Russell, and Anca Dragan. 2017. Inverse reward design. Advances in neural information processing systems 30 (2017). [15] Martin Heusel, Hubert Ramsauer, Thomas Unterthiner, Bernhard Nessler, and Sepp Hochreiter. 2017. Gans trained by a two time-scale update rule converge to a local nash equilibrium. Advances in Neural Information Processing Systems 30 (2017). [16] Zijing Hu, Fengda Zhang, Long Chen, Kun Kuang, Jiahui Li, Kaifeng Gao, Jun Xiao, Xin Wang, and Wenwu Zhu. 2025. Towards better alignment: Training diffusion models with reinforcement learning against sparse rewards. In Proceedings of the Computer Vision and Pattern Recognition Conference . 23604–23614. [17] Francisco Ibarrola and Kazjon Grace. 2024. Measuring diversity in co-creative image generation. arXiv preprint arXiv:2403.13826 (2024). [18] Leslie Pack Kaelbling, Michael L Littman, and Andrew W Moore. 1996. Rein-forcement learning: A survey. Journal of artificial intelligence research 4 (1996), 237–285. [19] Yuval Kirstain, Adam Polyak, Uriel Singer, Shahbuland Matiana, Joe Penna, and Omer Levy. 2023. Pick-a-pic: An open dataset of user preferences for text-to-image generation. Advances in Neural Information Processing Systems (2023). [20] Tuomas Kynkäänniemi, Tero Karras, Samuli Laine, Jaakko Lehtinen, and Timo Aila. 2019. Improved precision and recall metric for assessing generative models. 
+
+Advances in Neural Information Processing Systems 32 (2019). [21] Cassidy Laidlaw, Shivam Singhal, and Anca Dragan. 2024. Correlated proxies: A new definition and improved mitigation for reward hacking. arXiv preprint arXiv:2403.03185 (2024). [22] Preeti Lamba, Kiran Ravish, Ankita Kushwaha, and Pawan Kumar. 2025. Align-ment and Safety of Diffusion Models via Reinforcement Learning and Reward Modeling: A Survey. arXiv preprint arXiv:2505.17352 (2025). [23] Lijiang Li, Huixia Li, Xiawu Zheng, Jie Wu, Xuefeng Xiao, Rui Wang, Min Zheng, Xin Pan, Fei Chao, and Rongrong Ji. 2023. Autodiffusion: Training-free optimiza-tion of time steps and architectures for automated diffusion model acceleration. In International Conference on Computer Vision . 7105–7114. [24] Lixiong Liu, Bao Liu, Hua Huang, and Alan Conrad Bovik. 2014. No-reference im-age quality assessment based on spatial and spectral entropies. Signal Processing: Image communication 29, 8 (2014), 856–863. [25] Panagiotis Michailidis, Iakovos Michailidis, and Elias Kosmatopoulos. 2025. Re-inforcement learning for optimizing renewable energy utilization in buildings: A review on applications and innovations. Energies 18, 7 (2025), 1724. [26] Anish Mittal, Anush Krishna Moorthy, and Alan Conrad Bovik. 2012. No-reference image quality assessment in the spatial domain. IEEE Transactions on Image Processing 21, 12 (2012), 4695–4708. [27] Anish Mittal, Rajiv Soundararajan, and Alan C Bovik. 2012. Making a “completely blind” image quality analyzer. IEEE Signal Processing Letters 20, 3 (2012), 209–212. [28] Alexander Pan, Erik Jones, Meena Jagadeesan, and Jacob Steinhardt. 2024. Feed-back loops with language models drive in-context reward hacking. arXiv preprint arXiv:2402.06627 (2024). [29] Nikolaos Pippas, Elliot A Ludvig, and Cagatay Turkay. 2025. The Evolution of Reinforcement Learning in Quantitative Finance: A Survey. Comput. Surveys 57, 11 (2025), 1–51. [30] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sand-hini Agarwal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, et al. [n. d.]. Learning transferable visual models from natural language supervision. In International conference on machine learning . PmLR. [31] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, et al. 2021. Learning transferable visual models from natural language supervision. In International conference on machine learning . PmLR, 8748–8763. [32] Rafael Rafailov, Yaswanth Chittepu, Ryan Park, Harshit Sushil Sikchi, Joey Hejna, Brad Knox, Chelsea Finn, and Scott Niekum. 2024. Scaling laws for reward model overoptimization in direct alignment algorithms. Advances in Neural Information Processing Systems 37 (2024), 126207–126242. [33] Tim Salimans, Ian Goodfellow, Wojciech Zaremba, Vicki Cheung, Alec Radford, and Xi Chen. 2016. Improved techniques for training gans. Advances in neural information processing systems 29 (2016). [34] Masuda Begum Sampa, Nor Hidayati Abdul Aziz, Md Siddikur Rahman, Nor Azlina Ab. Aziz, Rosli Besar, and Anith Khairunnisa Ghazali. 2026. Rein-forcement learning for medical image analysis: a systematic review of algorithms, engineering challenges, and clinical deployment. Computer Assisted Surgery 31, 1 (2026), 2597553. [35] Christoph Schuhmann, Romain Beaumont, Richard Vencu, Cade Gordon, Ross Wightman, Mehdi Cherti, Theo Coombes, Aarush Katta, Clayton Mullis, Mitchell Wortsman, et al. 2022. Laion-5b: An open large-scale dataset for training next generation image-text models. Advances in neural information processing systems 
+
+(2022). [36] John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov. 2017. Proximal policy optimization algorithms. arXiv preprint arXiv:1707.06347 
+
+(2017). [37] Joar Skalse, Nikolaus Howe, Dmitrii Krasheninnikov, and David Krueger. 2022. Defining and characterizing reward gaming. Advances in Neural Information Processing Systems 35 (2022), 9460–9471. [38] Chen Tang, Ben Abbatematteo, Jiaheng Hu, Rohan Chandra, Roberto Martín-Martín, and Peter Stone. 2025. Deep reinforcement learning for robotics: A survey of real-world successes. Annual Review of Control, Robotics, and Autonomous Systems 8, 1 (2025), 153–188. [39] Andrew Wagenmaker, Mitsuhiko Nakamoto, Yunchu Zhang, Seohong Park, Waleed Yagoub, Anusha Nagabandi, Abhishek Gupta, and Sergey Levine. 2025. Steering Your Diffusion Policy with Latent Space Reinforcement Learning. arXiv preprint arXiv:2506.15799 (2025). [40] Xiaoshi Wu, Yiming Hao, Keqiang Sun, Yixiong Chen, Feng Zhu, Rui Zhao, and Hongsheng Li. 2023. Human preference score v2: A solid benchmark for evaluat-ing human preferences of text-to-image synthesis. arXiv preprint arXiv:2306.09341 
+
+(2023). [41] Xin Xie and Dong Gong. 2025. DyMO: Training-Free Diffusion Model Align-ment with Dynamic Multi-Objective Scheduling. In Computer Vision and Pattern Recognition Conference . 13220–13230. [42] RenYe Yan, Jikang Cheng, Yaozhong Gan, Shikun Sun, You Wu, Yunfan Yang, Liang Ling, Jinlong Lin, Yeshuang Zhu, Jie Zhou, et al. 2025. Entropy-Adaptive Diffusion Policy Optimization with Dynamic Step Alignment. In Proceedings of the IEEE/CVF International Conference on Computer Vision . 1924–1934. [43] Renye Yan, Jikang Cheng, Shikun Sun, Yi Sun, You Wu, Wei Peng, Zongwei Wang, Ling Liang, Junliang Xing, and Yimao Cai. 2026. Do Less, Achieve More: Do We Need Every-Step Optimization for RL Fine-tuning of Diffusion Models? arXiv preprint arXiv:2605.15855 (2026). [44] Renye Yan, Jikang Cheng, You Wu, Ling Liang, Wei Peng, Athanasios V Vasilakos, Qingyu Zhao, Yu Zhang, Ehsan Adeli, Kilian M Pohl, et al. 2026. Pixel-Space Diffusion Transformers. arXiv preprint arXiv:2607.17585 (2026). [45] Renye Yan, Yaozhong Gan, You Wu, Ling Liang, Junliang Xing, Yimao Cai, and Ru Huang. 2024. The Exploration-Exploitation Dilemma Revisited: An Entropy Perspective. arXiv preprint arXiv:2408.09974 (2024). Conference’17, July 2017, Washington, DC, USA Yan et al. 
+
+[46] Kai Yang, Jian Tao, Jiafei Lyu, Chunjiang Ge, Jiaxin Chen, Weihan Shen, Xiaolong Zhu, and Xiu Li. 2024. Using human feedback to fine-tune diffusion models without any reward model. In Computer Vision and Pattern Recognition . 8941– 8951. [47] Mingyang Yi, Aoxue Li, Yi Xin, and Zhenguo Li. 2024. Towards understand-ing the working mechanism of text-to-image diffusion model. arXiv preprint arXiv:2405.15330 (2024). [48] Kevin Zhai, Utsav Singh, Anirudh Thatipelli, Souradip Chakraborty, Anit Kumar Sahu, Furong Huang, Amrit Singh Bedi, and Mubarak Shah. 2025. Mira: Towards mitigating reward hacking in inference-time alignment of t2i diffusion models. 
+
+arXiv preprint arXiv:2510.01549 (2025). [49] Kaiyan Zhang, Yuxin Zuo, Bingxiang He, Youbang Sun, Runze Liu, Che Jiang, Yuchen Fan, Kai Tian, Guoli Jia, Pengfei Li, et al. 2025. A survey of reinforcement learning for large reasoning models. arXiv preprint arXiv:2509.08827 (2025). [50] Richard Zhang, Phillip Isola, Alexei A Efros, Eli Shechtman, and Oliver Wang. 2018. The unreasonable effectiveness of deep features as a perceptual metric. In 
+
+Computer Vision and Pattern Recognition . 586–595. [51] Xueyi Zhang, Peiyin Zhu, Yuan Liao, Xiyu Wang, Mingrui Lao, Siqi Cai, Yanming Guo, and Haizhou Li. 2025. Trustclip: Learning from noisy labels via semantic label verification and trust-aligned gradient projection. In Proceedings of the 33rd ACM International Conference on Multimedia . 4388–4397. [52] Xueyi Zhang, Peiyin Zhu, Chengwei Zhang, Zhiyuan Yan, Jikang Cheng, Mingrui Lao, Siqi Cai, and Yanming Guo. 2025. Generalization-preserved learning: Closing the backdoor to catastrophic forgetting in continual deepfake detection. In 2025 IEEE/CVF International Conference on Computer Vision (ICCV) . IEEE, 3798–3808. [53] Ziyi Zhang, Sen Zhang, Yibing Zhan, Yong Luo, Yonggang Wen, and Dacheng Tao. 2024. Confronting Reward Overoptimization for Diffusion Models: A Perspective of Inductive and Primacy Biases. In International Conference on Machine Learning .PMLR, 60396–60413. [54] Enmin Zhao, Renye Yan, Jinqiu Li, Kai Li, and Junliang Xing. 2022. Alphaholdem: High-performance artificial intelligence for heads-up no-limit poker via end-to-end reinforcement learning. In AAAI Conference on Artificial Intelligence , Vol. 36. 4689–4697. Explore or Converge? Stage-Guided Per-Step Optimization for Diffusion Models Conference’17, July 2017, Washington, DC, USA Ours TDPO 
+
+## SDv14 SDv21 
+
+Figure 14: Visual Impression of Reward Hacking. With sim-ilar reward scores, the generated images can still be diver-sified and aligned (Ours), while the reward hacking leads to over-fitting and significantly undermines the semantic information and diversity (TDPO). 0 2500 5000 7500 10000 
+
+Training Queries (Simple Animals) 
+
+5.25 5.50 5.75 6.00 6.25 
+
+> Reward
+> DDPO (Last) DPOK (Last) DDPO (Full) DPOK (Full) DDPO (Part) DPOK (Part)
+
+Figure 15: The comparing results of Backpropagating final reward to 1) Last: the last step. 2) Full: full trajectory (widely adopted by existing methods). 3) Part: only the stable middle stage. 
+
+## Appendix A Discussion of More Related Work A.1 Reinforcement Learning Fine-tuning for Diffusion Models 
+
+Recent advances have explored reinforcement learning [2, 5, 18, 25, 29, 38, 49] as an effective paradigm for fine-tuning diffusion models toward specific objectives, such as aesthetic quality, human preference alignment, or task-specific constraints. Unlike standard diffusion training, which optimizes likelihood-based objectives, RL-based fine-tuning enables direct optimization of reward func-tions [11, 22, 34, 36, 39, 54]. Most existing approaches formulate diffusion sampling as a se-quential decision-making process, where each denoising step corre-sponds to an action, and a preference model or evaluator assigns a reward to the final generated sample. To address the extreme reward sparsity inherent in this setup, these methods typically propagate the final-step reward backward to all denoising steps and apply policy gradient updates across the entire trajectory. This strategy has been shown to improve alignment performance in practice. However, such approaches implicitly treat all denoising steps as equally relevant for reward optimization, overlooking the in-trinsic stage-wise structure of the diffusion generation process. As discussed in recent studies [6, 23, 41, 47], this simplification can lead to optimization inefficiencies, reward hacking, and degradation of sample diversity, motivating the need for more structured and dynamics-aware reinforcement learning formulations. 
+
+## A.2 Reward Hacking 
+
+Reward hacking [8, 14, 21, 28, 37] is a well-known failure mode in reinforcement learning, where an agent maximizes the reward function through unintended shortcuts rather than achieving the intended task objective. This phenomenon typically arises when the reward function is misaligned with the true optimization goal, leading the policy to exploit spurious correlations rather than learn meaningful behaviors. In Fig. 14, we show the typical hacking im-pressions on a simple animal prompt set after reward optimization. In the context of diffusion model fine-tuning with reinforcement learning, reward hacking becomes particularly pronounced due to the sparse and delayed nature of preference rewards [9]. Most existing approaches compute a single reward only at the final gen-eration step and propagate it backward to all denoising steps. This reward-backpropagation strategy implicitly assumes that all inter-mediate denoising states are equally informative and can be guided by a single reward signal. However, such an assumption ignores the intrinsic stage-wise dynamics of diffusion generation. As a result, repeatedly optimizing an identical reward across consecutive denoising steps can encourage the model to discover shortcuts that improve the accumulated reward over time without genuinely improving generation quality. These shortcuts often man-ifest as mode collapse, repetitive structures, or over-amplified local patterns, leading to reward hacking and degradation of generative diversity. Reward hacking in diffusion model RL fine-tuning is not merely caused by reward sparsity, but fundamentally rooted in the temporal homogenization of rewards induced by indiscriminate reward backpropagation [1, 7, 32, 48]. 
+
+## A.3 Proof 
+
+Theorem 3.1 If the diffusion model is perfectly trained and the reverse generation follows the score-based SDE, ˆx𝑡  
+
+> 0
+
+denotes the posterior distribution of x0 at time 𝑡 , then Var ( ˆx𝑡  
+
+> 0
+
+| x𝑡 ) is a decreasing function during the generation process. 
+
+Proof. We consider the forward diffusion process. By the reverse-time diffusion equation models by Anderson, when the diffusion model is perfectly trained, the joint distribution of the forward pro-cess is identical to that of the reverse generative process. Therefore, Conference’17, July 2017, Washington, DC, USA Yan et al. 
+
+we can equivalently analyze the posterior variance in the generative process using quantities from the forward process. Consider the forward diffusion process defined as: 
+
+x𝑡 = √ ¯𝛼 𝑡 x0 + √1 − ¯𝛼 𝑡 𝝐 𝑡 , 𝝐 𝑡 ∼ N ( 0, I), (10) where ¯ 𝛼 𝑡 = Î𝑡 𝑘 =1 (1 − 𝛽 𝑘 ) is the cumulative decay coefficient, which decreases as 𝑡 increases. Assume the prior distribution is Gaussian: 
+
+𝑝 (x0) = N ( 0, 𝜎 20 I),
+
+The conditional distribution is given by the forward process: 
+
+𝑝 (x𝑡 | x0) = N
+
+
+
+x𝑡 ; √ ¯𝛼 𝑡 x0, (1 − ¯𝛼 𝑡 )I
+
+
+
+.
+
+By Bayes’ theorem, the posterior distribution is proportional to the product of the prior and the likelihood: 
+
+𝑝 (x0 | x𝑡 ) ∝ 𝑝 (x0) 𝑝 (x𝑡 | x0).
+
+Thus, the posterior covariance matrix is 
+
+𝚺 post (𝑡 ) =
+
+ 1
+
+𝜎 20
+
+I + ¯𝛼 𝑡 
+
+1 − ¯𝛼 𝑡 
+
+I
+
+ −1
+
+= 1
+
+> 1
+> 𝜎 20
+
++ ¯𝛼 𝑡  
+
+> 1−¯𝛼 𝑡
+
+I.
+
+Let 𝜎 2post (𝑡 ) denote the scalar variance of the posterior (independent and identically distributed across components); then 
+
+𝜎 2post (𝑡 ) = 1
+
+> 1
+> 𝜎 20
+
++ ¯𝛼 𝑡  
+
+> 1−¯𝛼 𝑡
+
+= 1 − ¯𝛼 𝑡  
+
+> 1−¯𝛼 𝑡
+> 𝜎 20
+
++ ¯𝛼 𝑡 
+
+. (11) Since ¯ 𝛼 𝑡 is a strictly decreasing function of 𝑡 , ¯ 𝛼 𝑡 decreases as 
+
+𝑡 increases. In the generative process (reverse process), time 𝑡 
+
+decreases from 𝑇 to 0, i.e., 𝑡 becomes smaller. We need to examine the trend of 𝜎 2post (𝑡 ) as 𝑡 decreases (the generation proceeds). Let 𝑢 = ¯𝛼 𝑡 ; then 𝑢 ∈ ( 0, 1] and decreases as 𝑡 increases (i.e., increases as generation proceeds). Rewrite Eqn.(11) as a function of 𝑢 :
+
+𝑓 (𝑢 ) = 1 − 𝑢 
+
+> 1−𝑢 𝜎 20
+
++ 𝑢 = 1 − 𝑢 𝑢 + 1−𝑢 𝜎 20
+
+.
+
+Compute the derivative of 𝑓 (𝑢 ) with respect to 𝑢 :
+
+𝑓 ′ (𝑢 ) =
+
+− 𝑢 + 1−𝑢 𝜎 20
+
+ − ( 1 − 𝑢 )  1 − 1
+
+> 𝜎 20
+
+ 𝑢 + 1−𝑢 𝜎 20
+
+2 = − 1
+
+ 𝑢 + 1−𝑢 𝜎 20
+
+2 < 0.
+
+This shows that 𝑓 (𝑢 ) is strictly decreasing in 𝑢 . Since during the generative process 𝑢 = ¯𝛼 𝑡 gradually increases (because 𝑡 decreases, ¯𝛼 𝑡 increases), 𝑓 (𝑢 ) strictly decreases as generation proceeds. That is, 𝑑 𝑑𝑡 gen 
+
+𝜎 2post (𝑡 ) < 0,
+
+where 𝑡 gen denotes the generation progress (from 𝑇 to 0). Therefore, the posterior variance Var ( ˆx𝑡  
+
+> 0
+
+| x𝑡 ) decreases monotonically during the generative process. □

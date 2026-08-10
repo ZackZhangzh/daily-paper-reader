@@ -1,0 +1,583 @@
+Title: Fluid-DiT: Graph-Free Diffusion Transformers for Fluid Flow Simulations Learning
+
+URL Source: https://arxiv.org/pdf/2608.07161v1
+
+Published Time: Mon, 10 Aug 2026 00:52:50 GMT
+
+Number of Pages: 19
+
+Markdown Content:
+# Fluid-DiT : Graph-Free Diffusion Transformers for Fluid Flow Simulations Learning 
+
+Shentong Mo 1∗
+
+, Guolin Ke 21CMU, 2DP Tech 
+
+# Abstract 
+
+Simulating complex fluid flows requires capturing full equilibrium distributions rather than just mean trajectories, yet high-fidelity solvers remain computationally prohibitive. Recent advances, such as Diffusion Graph Networks (DGNs), have combined diffusion models with graph neural networks to sample equilibrium states directly from unstructured meshes, enabling distributional accuracy even from short simulations. However, graph-based diffusion approaches suffer from hand-crafted architectural constraints, limited receptive fields in message pass-ing, and costly multi-scale designs, which restrict scalability to larger and more complex domains. We propose Fluid-DiT , a Graph-Free Diffusion Transformer that replaces graph message passing with attention-based denoising, eliminating explicit graph design while preserving the ability to model distributions of chaotic flows. Our framework introduces a latent-space formulation that disentangles geometric fidelity from distributional learning, reducing high-frequency artifacts and accelerating sampling. By leveraging the transformer’s global receptive field, 
+
+Fluid-DiT naturally captures both local flow structures and long-range correla-tions without requiring hierarchical graph coarsening. On canonical benchmarks including laminar cylinder wakes, ellipse-flow systems, and turbulent 3D wing experiments, Fluid-DiT consistently outperforms graph-based diffusion baselines in both sample quality and distributional accuracy, achieving higher R2 correlations and lower Wasserstein distances. Moreover, it generalizes robustly from short, incomplete trajectories to unseen Reynolds numbers and geometries, demonstrating strong scalability. 
+
+# 1 Introduction 
+
+Modeling fluid dynamics is central to computational physics, with applications ranging from aerody-namics and weather forecasting to biomedical flows. Traditional solvers based on the Navier–Stokes equations provide accurate solutions, but their cost scales prohibitively with system size, resolution requirements, and the length of simulation. In many applications, the goal is not a single trajectory but the distribution of flow states at statistical equilibrium, from which essential quantities such as root-mean-square (RMS) fluctuations, two-point correlations, and uncertainty estimates can be derived. Efficiently learning and sampling from these distributions could significantly accelerate design, control, and scientific discovery. Recent advances in machine learning have explored deep surrogates for complex physical systems. While early approaches focused on predicting mean flows or rollouts of single trajectories, they often suffered from instability and mode collapse over long horizons. More recently, Diffusion Graph Networks (DGNs) and their latent variant (LDGN) [1] demonstrated that combining denoising diffusion models with graph neural networks enables direct sampling of equilibrium distributions from unstructured meshes. This approach achieved state-of-the-art performance in capturing flow  
+
+> ∗Corresponding author: shentongmo@gmail.com .Preprint. arXiv:2608.07161v1 [cs.LG] 7 Aug 2026
+
+distributions, even from short trajectories. However, DGNs remain fundamentally tied to hand-crafted graph architectures and multi-scale message passing, which impose structural biases, limit receptive fields, and introduce computational bottlenecks. These constraints hinder scalability to high-dimensional 3D turbulent systems and restrict generalization across varying geometries. The central challenge lies in designing generative models that can flexibly capture both local flow features and long-range correlations without explicit graph construction . Graph-based approaches face several obstacles: Message passing requires multiple hops to propagate information across the mesh, making it difficult to capture global interactions such as wake formation or large-scale vortex shedding. This bottleneck is especially severe in turbulent regimes where correlations span the entire domain. Graph hierarchies and coarsening strategies must be hand-engineered for each discretization. These choices are brittle, sensitive to mesh quality, and difficult to adapt when scaling across different geometries or dimensionalities. Multi-scale message passing incurs substantial costs, as each denoising step requires sequential graph operations. For large unstructured meshes with thousands of nodes, this leads to inference times that offset the benefits of distributional modeling. Because denoising operates directly on raw mesh states, graph-based models often overestimate high-frequency content, producing artifacts that obscure statistical properties of the flow. These challenges collectively suggest that while DGNs represent a significant advance, their reliance on handcrafted graph designs fundamentally limits both scalability and generalization. We propose Fluid-DiT , a Graph-Free Diffusion Transformer that rethinks how equilibrium flow distributions are modeled. Instead of propagating information through message passing, Fluid-DiT 
+
+employs transformer attention layers to directly couple all nodes in the domain, regardless of distance. This provides a global receptive field at every denoising step, enabling the model to simultaneously capture localized boundary-layer structures and global flow correlations such as pressure recovery downstream of a wing. Unlike graph hierarchies, the attention mechanism is data-driven and requires no manual design of coarsening or pooling strategies. We further introduce a geometric latent space that decouples high-frequency geometric detail from distributional learning. By operating in this compressed representation, Fluid-DiT reduces noise amplification, accelerates sampling, and ensures that small-scale artifacts are corrected during decoding. This design allows the model to allocate capacity to learning meaningful mid- and large-scale structures while relying on the decoder to restore fine details. Across canonical benchmarks including laminar cylinder wakes, ellipse-flow systems, and turbulent wing experiments, Fluid-DiT consistently outperforms graph-based diffusion models in both sample quality and distributional accuracy, achieving higher R2 correlations and lower Wasserstein distances. Notably, our model learns accurate distributions even when trained on incomplete trajectories, demonstrating robustness in data-scarce settings. Fluid-DiT naturally generalizes across 2D and 3D domains with diverse geometries, eliminates the need for mesh-specific architectural tuning, and achieves faster inference with higher fidelity in distributional accuracy. Overall, we summarize our contributions below: • We introduce Fluid-DiT , the first graph-free diffusion transformer for fluid flow simu-lations, which replaces hand-crafted graph architectures and multi-hop message passing with global attention, enabling both local precision and long-range coupling in a unified framework. • We propose a latent-space diffusion formulation that decouples geometric resolution from distributional modeling, suppresses high-frequency artifacts, and substantially improves training and inference efficiency on large-scale 2D and 3D domains. • We provide theoretical analysis and extensive experiments across canonical fluid bench-marks, demonstrating that Fluid-DiT consistently outperforms state-of-the-art graph-based baselines (DGN, LDGN) in distributional fidelity, scalability, and robustness, with ablations validating each design choice. 
+
+# 2 Related Work 
+
+Machine Learning for Fluid Simulation. Learning-based surrogates for computational fluid dynamics (CFD) have attracted increasing interest as alternatives to expensive numerical solvers. Early approaches [2, 3] focused on regression-based emulators that predict flow statistics or reduced-order 2models from limited simulation data. Recent efforts [4, 5] have leveraged deep generative models to capture the high-dimensional distributions of fluid states. While these approaches demonstrate promise, they often struggle with irregular meshes and turbulence-dominated regimes. Our work builds on this line by introducing a generative framework that scales to complex geometries without mesh-specific design. 
+
+Graph Neural Networks for PDEs and CFD. Graph neural networks (GNNs) have emerged as a natural representation for PDE-constrained systems, where mesh nodes and edges encode local interactions [6, 7]. In fluid mechanics, GNNs have been applied to turbulence modeling [4], mesh-based surrogates [8], and flow extrapolation across geometries [9]. Diffusion Graph Networks (DGN) [1] extend this paradigm by combining graph message passing with diffusion models, showing strong performance in sampling equilibrium flow distributions. However, GNNs impose structural constraints and require hand-crafted connectivity or hierarchical pooling, which limits scalability to large meshes. Our approach eliminates explicit graph construction and instead relies on attention, which is strictly more expressive than finite-hop message passing (see Proposition 1). 
+
+Diffusion Models for Scientific Data. Diffusion probabilistic models [10, 11, 12] have recently achieved state-of-the-art results in image, audio, and graph domains. Their application to scientific data has also grown rapidly, including protein structure generation [13, 14], molecular dynamics [15], and PDE surrogates [16, 17]. For fluid simulations, DGNs [1] represent the current state of the art, but they rely heavily on graph-based inductive biases. By contrast, our work introduces a graph-free diffusion transformer that combines the generative power of diffusion with the scalability and flexibility of transformers. In addition, we incorporate a latent-space formulation inspired by latent diffusion models in vision [18], which allows us to decouple geometric resolution from generative modeling. 
+
+# 3 Method 
+
+In this section, we introduce Fluid-DiT , a novel framework for learning equilibrium distributions of fluid flows using a graph-free diffusion transformer, as shown in Figure 1. We begin with preliminaries on diffusion models and fluid simulation distributions, then present the key components of our method: attention-based denoising for graph-free modeling, and a latent-space formulation for efficient and robust sampling. 
+
+3.1 Preliminaries Problem Setup and Notations. We consider a spatial domain Ω discretized into N nodes (e.g., mesh vertices or grid points). At each node i ∈ { 1, . . . , N }, the fluid state is represented as xi ∈ Rd (e.g., velocity components, pressure, vorticity). Collectively, the flow state is x = [ x1, . . . , xN ] ∈ RN ×d.The goal is to learn a generative model pθ (x) that approximates the distribution of equilibrium flow states D, rather than predicting single rollouts. Such a model should (i) generate samples that reproduce statistical quantities like RMS fluctuations and correlations, (ii) generalize across domains and Reynolds numbers, and (iii) scale to large unstructured meshes. 
+
+Diffusion-based generative modeling. Following the denoising diffusion probabilistic model (DDPM) framework, we define a forward noising process q(xt|xt−1) that gradually adds Gaussian noise to x over T timesteps, and a reverse denoising process parameterized by θ:
+
+q(x1: T |x0) = 
+
+> T
+
+Y
+
+> t=1
+
+q(xt|xt−1), pθ (x0: T ) = p(xT )
+
+> T
+
+Y
+
+> t=1
+
+pθ (xt−1|xt). (1) The learning objective is to minimize the variational bound or equivalently the noise prediction loss: 
+
+L(θ) = Ex,ϵ,t ϵ − ϵθ (xt, t ) 2, (2) where ϵ ∼ N (0 , I ).Traditional approaches parameterize ϵθ using graph neural networks (DGNs), which encode domain connectivity through message passing. Instead, Fluid-DiT leverages transformers to eliminate explicit graph design. 3Figure 1: Overview of the Fluid-DiT framework for learning equilibrium fluid distributions. The pipeline consists of three main components: (1) Latent Encoding: A physical flow state x ∈ RN ×d defined on a high-resolution mesh is mapped by an encoder E to a compact latent representation z0 ∈ RM ×dz . This step filters mesh-level redundancies and ensures computational efficiency ( M ≪ N ). (2) Graph-Free Diffusion Transformer: Denoising is performed in the latent space where the denoiser ϵθ utilizes multi-head self-attention (MSA) instead of traditional graph message passing. This architecture captures global dependencies in a single step, using spatial positional embeddings and distance-based attention biases M to provide physical inductive bias without explicit adjacency matrices. (3) Decoding: The final denoised latent is projected back to the physical space via a decoder D, which reconstructs fine-scale details and acts as a regularizer to suppress high-frequency numerical artifacts. 
+
+3.2 Graph-Free Diffusion Transformer 
+
+Unlike traditional approaches that explicitly rely on graph structures to encode local connectivity of CFD meshes, our goal is to design a generative framework that operates directly on flow states without requiring handcrafted adjacency definitions. While graph message passing has been effective in capturing local interactions, it suffers from two major drawbacks: (i) information propagation is limited to k-hop neighborhoods, requiring deep stacks of GNN layers to approximate long-range dependencies, and (ii) graph construction itself introduces inductive biases that may not generalize across meshes of varying topology or resolution. Transformers, on the other hand, provide a flexible alternative: self-attention enables each token to attend to all others, naturally capturing both local and global correlations in a single step. This obser-vation motivates our replacement of graph-based diffusion networks with a transformer backbone, giving rise to the Graph-Free Diffusion Transformer . The first core innovation of Fluid-DiT is replacing graph-based message passing with transformer attention, thereby removing the need for explicit graph construction and hand-engineered neighborhood definitions. 
+
+Attention as implicit connectivity. At each denoising step t, the noisy state xt ∈ RN ×d is treated as a sequence of N tokens. Each token encodes both physical quantities (velocity, pressure, vorticity) and positional embeddings derived from spatial coordinates pi ∈ R3. Specifically, we embed node i
+
+as 
+
+h0 
+
+> i
+
+= MLP ([ xt,i , ϕ (pi), ψ (t)]) , (3) where ϕ(·) is a sinusoidal encoding of spatial position and ψ(t) encodes the diffusion timestep. The transformer then applies L layers of multi-head self-attention: 
+
+Hℓ+1 = MSA (Hℓ) + FFN (Hℓ), ℓ = 0 , . . . , L − 1, (4) with residual connections and normalization. The attention operator is MSA (H) = Concat (head 1, . . . , head H )W O , (5) where each head computes head j = softmax Qj K⊤
+
+> j
+
+√dk
+
++ M
+
+!
+
+Vj . (6) 4Here Qj , K j , V j are query, key, and value projections of H, and M is an optional attention bias derived from relative spatial distances. This mechanism allows every node to condition on all others, with inductive bias provided by M rather than an explicit adjacency. 
+
+Inductive bias for fluids. While the model is graph-free, fluid dynamics are inherently spatial. We incorporate inductive bias by (i) adding pairwise distance encodings between nodes, (ii) constraining attention sparsity to local neighborhoods during later denoising steps, and (iii) augmenting node features with boundary condition flags. These design choices allow the transformer to balance global coherence (captured in early layers and timesteps) with fine local corrections (refined in later steps). 
+
+Proposition 1 (Global Dependency Modeling). Let G = ( V, E ) be any mesh graph with N nodes. A single attention layer with full connectivity can simulate k-hop message passing on G for arbitrary 
+
+k in one step, provided the attention bias encodes pairwise distances. 
+
+This shows that attention provides a strictly more expressive mechanism than message passing, as multi-hop aggregation is achieved in a single operation. 
+
+Proposition 2 (Scalability of Attention). If the latent representation dimension is M ≪ N , and block-sparse attention with block size b is applied, the computational complexity reduces from O(N 2)
+
+to O(N b ) while preserving global receptive fields via long-range connections. 
+
+This ensures that Fluid-DiT remains computationally feasible even on large 3D domains. 
+
+3.3 Latent-Space Formulation 
+
+Directly applying diffusion models in the raw physical space of CFD meshes can be both computation-ally prohibitive and statistically inefficient. High-resolution meshes often contain tens of thousands of nodes, many of which encode redundant local information, leading to long training times and memory bottlenecks. Moreover, iterative denoising in the raw space tends to amplify high-frequency numerical artifacts, particularly in turbulent flows where small errors can cascade into large-scale inconsistencies. We introduce a latent-space formulation for fluid simulation, where the encoder compresses raw flow fields into a compact representation, diffusion is performed in this reduced domain, and the decoder reconstructs the final physical state. The second innovation of Fluid-DiT is to operate in a compressed latent space, which improves efficiency and reduces the high-frequency noise often amplified in raw-space denoising. 
+
+Latent encoding. We employ an encoder E : RN ×d → RM ×dz with M ≪ N . The encoder is im-plemented as a lightweight convolutional or graph-based module that aggregates local neighborhoods before projecting into latent tokens. This achieves two goals: 1. Compression: reduces computational cost by orders of magnitude ( M/N ≈ 0.1 in our experiments). 2. Disentanglement: filters out mesh-level irregularities and retains mid- to large-scale coherent structures such as vortices and pressure fields. 
+
+Diffusion in latent space. The diffusion process is applied to latent variables z ∈ RM ×dz . Specifi-cally, we define 
+
+q(zt|zt−1) = N (√αtzt−1, (1 − αt)I), (7) with z0 = E(x), and the denoiser ϵθ is parameterized by the diffusion transformer. 
+
+Decoding and artifact suppression. After denoising, the latent trajectory z0 is mapped back to the physical state by a decoder D : RM ×dz → RN ×d. The decoder reconstructs fine details and enforces physical consistency. Notably, since z captures large-scale flow structures, the decoder acts as a regularizer, suppressing spurious high-frequency oscillations that diffusion models sometimes introduce. 
+
+Proposition 3 (Latent Stability). Suppose E satisfies a Lipschitz condition with constant L, and 
+
+D is its approximate inverse with reconstruction error bounded by ϵ. Then training in latent space 
+
+5Algorithm 1 Fluid-DiT : Training and Sampling  
+
+> 1:
+
+Input: Fluid state x ∈ RN ×d, diffusion steps T , encoder E, decoder D, transformer denoiser ϵθ 
+
+> 2:
+
+Output: Generated equilibrium sample ˆx 
+
+> 3:
+
+Training Phase:  
+
+> 4:
+
+Encode fluid state into latent: z0 = E(x) 
+
+> 5:
+
+Sample timestep t ∼ Uniform ({1, . . . , T }) 
+
+> 6:
+
+Add Gaussian noise: zt = √αtz0 + √1 − αt ϵ, ϵ ∼ N (0 , I ) 
+
+> 7:
+
+Predict noise with transformer: ˆϵ = ϵθ (zt, t ) 
+
+> 8:
+
+Update parameters θ by minimizing 
+
+L = ∥ϵ − ˆϵ∥2 + λ∥x − D (E(x)) ∥2 
+
+> 9:
+
+Inference Phase:  
+
+> 10:
+
+Sample zT ∼ N (0 , I ) 
+
+> 11:
+
+for t = T, . . . , 1 do  
+
+> 12:
+
+Predict noise: ˆϵ = ϵθ (zt, t ) 
+
+> 13:
+
+Update latent via reverse diffusion: 
+
+zt−1 = 1√αt (zt − (1 − αt)ˆ ϵ) + σtξ, ξ ∼ N (0 , I ) 
+
+> 14:
+
+end for  
+
+> 15:
+
+Decode final latent to physical state: ˆx = D(z0)
+
+ensures that the Wasserstein distance between generated and true distributions differs by at most Lϵ 
+
+compared to raw-space diffusion. 
+
+This guarantees that latent diffusion preserves distributional accuracy while reducing dimensionality. 
+
+Proposition 4 (Noise Suppression). If E discards components of x with variance below a threshold 
+
+σ2, then the expected reconstruction error from high-frequency noise is reduced by at least σ2 per discarded dimension. 
+
+This formalizes the empirical observation that latent-space denoising mitigates high-frequency artifacts in generated flow fields. 
+
+Benefits. Operating in latent space yields several advantages: • Efficiency: reduces sequence length from N to M , accelerating both training and inference. • Robustness: mitigates overfitting to mesh artifacts and ensures stability across Reynolds numbers. • Quality: suppresses high-frequency noise and improves distributional metrics such as Wasserstein distance. 
+
+3.4 Training and Sampling Algorithm 
+
+To make the proposed framework concrete, we summarize the full training and inference pipeline of 
+
+Fluid-DiT in Algorithm 1. The algorithm consists of two phases: 
+
+Training. Given a fluid state x discretized on N nodes, we first encode it into a compact latent representation z0 = E(x). We then randomly select a diffusion step t and corrupt the latent variable with Gaussian noise according to the forward process. The diffusion transformer ϵθ predicts the noise from the corrupted state zt, conditioned on t. The parameters are updated by minimizing a combination of the standard diffusion noise-prediction loss and a reconstruction loss that enforces consistency between x and D(E(x)) . This dual objective ensures both distributional accuracy and geometric fidelity. 
+
+Inference (Sampling). To generate new samples, we draw a Gaussian latent zT ∼ N (0 , I ) and iteratively denoise it using the learned reverse diffusion process. At each timestep, the transformer 6predicts the noise component and updates zt according to the reverse SDE/ODE dynamics. After T
+
+steps, we obtain a clean latent z0, which is decoded into the physical fluid state ˆx = D(z0).
+
+Properties. This algorithm ensures three desirable properties: • Distributional fidelity: the diffusion objective enforces that generated samples follow the true equilibrium distribution. • Geometry consistency: the reconstruction term ensures that the encoder/decoder pair preserves spatial fidelity. • Scalability: operating in latent space reduces the computational cost of both training and sampling, while the transformer denoiser provides a global receptive field at every step. The complete procedure is outlined in Algorithm 1. 
+
+# 4 Experiments 
+
+We now evaluate Fluid-DiT against strong baselines, including Diffusion Graph Networks (DGN) and Latent Diffusion Graph Networks (LDGN), across canonical fluid dynamics benchmarks. Our experiments are designed to answer the following questions: • Can Fluid-DiT generate samples that accurately reproduce equilibrium flow distributions across laminar and turbulent regimes? • How does the graph-free transformer architecture compare to graph-based diffusion models in terms of accuracy, scalability, and robustness? • What is the effect of the latent-space formulation on sample quality, efficiency, and artifact suppression? 
+
+4.1 Experimental Setup Datasets. We consider canonical fluid simulation benchmarks commonly used in computational fluid dynamics and recent learning-based surrogates. Laminar Cylinder Wakes: two-dimensional flow past a cylinder at Reynolds number Re = 100 , characterized by periodic vortex shedding. Ellipse Flow: two-dimensional flow around ellipses with varying aspect ratios, capturing boundary-layer separation and geometric variability. Turbulent Wing Flow: three-dimensional turbulent flow around an airfoil at Re = 2000 , which introduces strong vortical structures and long-range correlations. Each dataset provides a collection of flow states sampled from high-fidelity Navier–Stokes solvers, which we treat as ground-truth equilibrium distributions. Following prior work [1], we train models using short trajectory segments and evaluate on withheld states. 
+
+Evaluation Metrics. We adopt standard statistical and generative modeling metrics: R2 correlation: measures how well generated samples reproduce ground-truth quantities of interest, including velocity and pressure fields. Wasserstein distance ( W2): quantifies the distance between generated and real distributions of flow statistics. RMS error: root-mean-square error of fluctuations compared to high-fidelity simulations. Two-point correlations: structural statistics measuring how well long-range dependencies ( e.g. , wake patterns) are captured. Efficiency: training time, inference time per sample, and memory footprint. 
+
+Implementation. We implement Fluid-DiT in PyTorch using standard transformer blocks with 
+
+L = 12 layers, hidden dimension d = 256 , and H = 8 attention heads. Positional encodings include both spatial coordinates and timestep embeddings. The encoder E and decoder D are 3-layer MLPs with residual connections, compressing inputs to a latent with M ≈ 0.1N . Training uses the AdamW optimizer with a learning rate of 1e-4, cosine decay, and gradient clipping. Diffusion timesteps are 
+
+T = 1000 with a cosine noise schedule. All models are trained on NVIDIA A100 GPUs with a batch size of 32. 
+
+4.2 Comparison to Prior Work 
+
+We compare Fluid-DiT against a wide range of prior approaches, including conventional graph neural networks (Vanilla GNN, GM-GNN), variational autoencoding methods (VGAE), and diffusion-based generative surrogates (DGN, LDGN). Table 1 reports results across three canonical datasets. 7Table 1: Comparison of Fluid-DiT with prior baselines across three benchmark datasets. We report R2
+
+correlation (higher is better), Wasserstein-2 distance (lower is better), RMS error of fluctuations (lower is better), and inference time per sample in milliseconds (lower is better). Best results are in bold , second best are underlined.                                                                   
+
+> Method Cylinder Wakes (2D) Ellipse Flow (2D) Turbulent Wing (3D) RMS Error ↓Inference (ms) ↓
+> R2↑W2↓R2↑W2↓R2↑W2↓
+> Vanilla GNN 0.9885 0.212 0.926 0.247 0.801 0.389 0.084 175 GM-GNN 0.9571 0.267 0.901 0.288 0.776 0.422 0.119 183 VGAE 0.9818 0.196 0.918 0.232 0.812 0.371 0.092 162 DGN [1] 0.9966 0.131 0.941 0.176 0.856 0.298 0.071 145 LDGN [1] 0.9948 0.144 0.934 0.188 0.849 0.315 0.074 128
+> Fluid-DiT (ours) 0.9980 0.084 0.963 0.129 0.902 0.221 0.055 52
+
+Table 2: Ablation on latent-space formulation. Best results are in bold .                 
+
+> Method Variant R2↑W2↓RMS Error ↓Inference (ms) ↓
+> Fluid-DiT w/o latent 0.992 0.159 0.078 118
+> Fluid-DiT (full) 0.998 0.084 0.055 52
+
+Ellipse flows. When generalizing to flows around ellipses of varying aspect ratios, Fluid-DiT 
+
+shows a clear advantage over baselines. While DGN and LDGN retain strong performance, they require careful graph hierarchy construction for each geometry and still struggle when the geometry differs significantly from training shapes. In contrast, Fluid-DiT eliminates this dependency, and its graph-free transformer naturally adapts to varying geometries through continuous positional encodings. As a result, it achieves the highest correlation ( R2 = 0 .963 ) and lowest Wasserstein distance ( 0.129 ), outperforming all graph-based baselines. The latent formulation is especially beneficial here: by compressing local details into a global latent space, the model avoids overfitting to mesh irregularities and instead captures shape-dependent wake dynamics robustly. This shows that 
+
+Fluid-DiT generalizes more gracefully to unseen geometries, a key requirement for practical CFD surrogate modeling. 
+
+Turbulent wing flows. The largest gains appear in three-dimensional turbulent wing flows, which exhibit complex vortical interactions and long-range correlations. Graph-based methods degrade substantially in this setting: GM-GNN fails to capture coherent structures ( R2 = 0 .776 ), while even LDGN struggles to reproduce long-range wake statistics ( R2 = 0 .849 ). In contrast, Fluid-DiT 
+
+achieves a strong R2 = 0 .902 and reduces Wasserstein distance to 0.221 , outperforming LDGN by a wide margin. These results demonstrate that the global receptive field of attention layers is critical for accurately modeling turbulence-induced fluctuations. From a physical perspective, turbulence involves energy transfer across scales and nonlocal correlations spanning the entire domain. Attention-based denoising is well-suited for capturing these dependencies, whereas local message passing becomes increasingly inefficient and prone to information loss as turbulence intensifies. 
+
+Efficiency and scalability. Beyond accuracy, Fluid-DiT demonstrates significant improvements in efficiency. Operating in latent space reduces sequence length by nearly an order of magnitude, resulting in 2.5× faster training and 3.1× faster inference compared to graph-based diffusion. Inference requires only 52 ms per sample on an NVIDIA A100, compared to 128 ms for LDGN and over 170 ms for classical GNNs. This efficiency advantage grows on larger meshes: graph-based methods incur quadratic or higher complexity due to multi-hop message passing and explicit graph construction, while Fluid-DiT leverages block-sparse attention with global tokens, consistent with Proposition 2. In practice, this means that Fluid-DiT scales to domains with tens of thousands of nodes without prohibitive cost, making it viable for large-scale CFD applications. The improved efficiency also allows broader hyperparameter exploration and larger batch sizes during training, further improving model robustness. 
+
+# 5 Experimental Analysis 
+
+In this section, we conduct a series of ablation studies to validate the key design choices of 
+
+Fluid-DiT . We analyze the contributions of (i) the latent-space formulation, (ii) the transformer attention architecture compared to graph message passing, and (iii) the role of spatial inductive biases. 8Table 3: Comparison of transformer denoising with GNN-based denoising.                                
+
+> Method Variant R2↑W2↓RMS Error ↓Inference (ms) ↓
+> Fluid-DiT w/ GNN denoiser 0.981 0.243 0.093 164
+> Fluid-DiT (transformer) 0.998 0.084 0.055 52
+> Table 4: Effect of spatial inductive biases on model performance.
+> Variant R2↑W2↓RMS Error ↓
+> Fluid-DiT w/o distance encodings 0.991 0.143 0.069
+> Fluid-DiT w/ distance encodings 0.998 0.084 0.055
+
+Effect of Latent-Space Formulation. We first evaluate the impact of performing diffusion in latent space instead of directly on raw flow fields. Table 2 shows that removing the latent encoder–decoder pair degrades both distributional accuracy and efficiency: Wasserstein distance increases by 18% and inference slows down by more than 2×. Beyond raw metrics, this result highlights two important phenomena. First, the latent formulation acts as a natural low-pass filter, suppressing high-frequency artifacts introduced by iterative denoising, which aligns with Proposition 4. Second, it reduces redundancy in mesh-level representation: many fine-scale nodes in CFD meshes carry correlated information, and compressing them into latent tokens avoids overfitting to local irregularities. Inter-estingly, even though the encoder–decoder introduces a small reconstruction error ( ϵrec ), the overall distributional accuracy improves. 
+
+Graph-Free Attention vs. Message Passing. Next, we replace the transformer denoiser with a graph neural network denoiser of comparable parameter count. As shown in Table 3, the GNN-based variant lags significantly behind the transformer, particularly on turbulent wing flows where long-range correlations dominate. This result provides concrete evidence for Proposition 1. While GNNs rely on iterative k-hop message passing to propagate information, transformers can emulate multi-hop interactions in a single step. The global receptive field of attention layers is crucial for turbulence, where vortical interactions occur across the entire domain rather than being confined to local neighborhoods. In practice, we find that GNN-based variants underpredict energy in large-scale coherent structures, while the transformer restores these correlations faithfully. 
+
+Role of Spatial Inductive Biases. Although Fluid-DiT is graph-free, we optionally incorporate spatial inductive biases such as pairwise distance encodings and boundary-condition flags. Removing these biases reduces accuracy, particularly in near-boundary regions where local structures such as shear layers are crucial (Table 4). This observation suggests that while attention provides universal function approximation, mild inductive biases guide the model towards physically meaningful patterns. In particular, relative distance encodings help stabilize training by disambiguating symmetric configurations, and boundary-condition flags ensure that the model does not produce unrealistic flow leakage across solid walls. From an information-theoretic view, these biases constrain the hypothesis space, enabling faster convergence and better generalization. Notably, unlike graph-based methods, these priors are lightweight and do not impose rigid connectivity constraints. 
+
+# 6 Conclusion 
+
+In this work, we present Fluid-DiT , a graph-free diffusion transformer framework for learning distributions of complex fluid simulations. Departing from prior approaches that rely on hand-crafted graph architectures and multi-scale message passing, Fluid-DiT leverages attention mechanisms to model both local and global interactions directly, eliminating structural constraints while scaling efficiently to large 2D and 3D domains. A latent-space formulation further decouples geometric reso-lution from distributional modeling, suppressing high-frequency artifacts and accelerating sampling. Extensive experiments across canonical benchmarks demonstrate that Fluid-DiT consistently out-performs state-of-the-art graph-based diffusion models in both sample quality and statistical fidelity. Our ablation studies confirm the benefits of each component: latent diffusion improves robustness and efficiency, transformer attention surpasses GNN message passing in turbulent regimes, and lightweight spatial inductive biases enhance boundary fidelity without reintroducing rigid graph de-sign. Theoretical analysis further supports these findings, showing that attention subsumes multi-hop message passing and that latent diffusion preserves distributional accuracy under mild assumptions. 9References 
+
+[1] Mario Lino Valencia, Tobias Pfaff, and Nils Thuerey. Learning distributions of complex fluid simulations with diffusion graph networks. In The Thirteenth International Conference on Learning Representations , 2025. [2] N. Thuerey, K. Weißenow, L. Prantl, and X. Hu. Deep learning methods for reynolds-averaged navier–stokes simulations of airfoil flows. AIAA Journal , 58(1):25–36, 2020. [3] Steven L Brunton, Bernd R Noack, and Petros Koumoutsakos. Machine learning for fluid mechanics. Annual review of fluid mechanics , 52:477–508, 2020. [4] Kiwon Um, Robert Brand, Yun Raymond Fei, Philipp Holl, and Nils Thuerey. Solver-in-the-loop: Learning from differentiable physics to interact with iterative pde-solvers. In Advances in Neural Information Processing Systems , pages 6111–6122. Curran Associates, Inc., 2020. [5] Kimberly Stachenfeld, Drummond B Fielding, Dmitrii Kochkov, Miles Cranmer, Tobias Pfaff, Jonathan Godwin, Can Cui, Shirley Ho, Peter Battaglia, and Alvaro Sanchez-Gonzalez. Learned coarse models for efficient turbulence simulation. arXiv:2112.15275 , 2021. [6] Peter W Battaglia, Jessica B Hamrick, Victor Bapst, Alvaro Sanchez-Gonzalez, Vinicius Zam-baldi, Mateusz Malinowski, Andrea Tacchetti, David Raposo, Adam Santoro, Ryan Faulkner, et al. Relational inductive biases, deep learning, and graph networks. arXiv:1806.01261 , 2018. [7] Tobias Pfaff, Meire Fortunato, Alvaro Sanchez-Gonzalez, and Peter W. Battaglia. Learning mesh-based simulation with graph networks. In 9th International Conference on Learning Representations (ICLR 2021) , 2021. [8] Zongyi Li, Nikola Kovachki, Kamyar Azizzadenesheli, Burigede Liu, Kaushik Bhattacharya, Andrew Stuart, and Anima Anandkumar. Fourier neural operator for parametric partial differen-tial equations. arXiv:2010.08895 , 2020. [9] Alvaro Sanchez-Gonzalez, Jonathan Godwin, Tobias Pfaff, Rex Ying, Jure Leskovec, and Peter Battaglia. Learning to simulate complex physics with graph networks. In Proceedings of the 37th International Conference on Machine Learning , 2020. [10] Jascha Sohl-Dickstein, Eric A. Weiss, Niru Maheswaranathan, and Surya Ganguli. Deep unsupervised learning using nonequilibrium thermodynamics. In Proceedings of the 32nd International Conference on Machine Learning (ICML 2015) , volume 37, pages 2256–2265, 2015. [11] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilistic models. Advances in neural information processing systems , 33:6840–6851, 2020. [12] Yang Song, Jascha Sohl-Dickstein, Diederik P. Kingma, Abhishek Kumar, Stefano Ermon, and Ben Poole. Score-based generative modeling through stochastic differential equations. In 9th International Conference on Learning Representations (ICLR 2021) , 2021. [13] Emiel Hoogeboom, Vıctor Garcia Satorras, Clément Vignac, and Max Welling. Equivariant diffusion for molecule generation in 3D. In International conference on machine learning ,pages 8867–8887. PMLR, 2022. [14] Brian L Trippe, Jason Yim, Doug Tischer, David Baker, Tamara Broderick, Regina Barzilay, and Tommi S Jaakkola. Diffusion Probabilistic Modeling of Protein Backbones in 3D for the motif-scaffolding problem. In In Proceedings of the 11th International Conference on Learning Representations , 2023. [15] Jing Qiu, Jiancheng Huang, Xiangdong Zhang, Zeng Lin, Minglei Pan, Zengding Liu, and Fen Miao. Pi-fusion: Physics-informed diffusion model for learning fluid dynamics. arXiv preprint arXiv:2406.03711 , 2024. [16] Johannes Brandstetter, Daniel E. Worrall, and Max Welling. Message passing neural PDE solvers. In International Conference on Learning Representations , 2022. 10 [17] Jiahe Huang, Guandao Yang, Zichen Wang, and Jeong Joon Park. DiffusionPDE: Generative PDE-Solving Under Partial Observation. arXiv preprint arXiv:2406.17763 , 2024. [18] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Björn Ommer. High-resolution image synthesis with latent diffusion models. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , pages 10684–10695, 2022. 11 Appendix 
+
+In this appendix, we provide the following material: • additional implementation and dataset details in Section A, • theoretical properties and guarantees in Section B, • the detailed training and sampling algorithm for Fluid-DiT in Section C, • additional experimental analyses, including further ablations and qualitative visualizations in Section D, • more discussion on limitations and future work in Section E. 
+
+# A Experimental Details 
+
+A.1 Datasets 
+
+We evaluate Fluid-DiT on three canonical benchmark datasets widely used in computational fluid dynamics (CFD) surrogate modeling: • Cylinder wakes (2D). Steady laminar flows past a circular cylinder at varying Reynolds numbers ( Re ∈ [100 , 400] ). The dataset contains 10 ,000 equilibrium snapshots discretized on structured meshes with N = 6 ,400 nodes. This setting primarily captures vortex shedding dynamics. • Ellipse flows (2D). Flows past ellipses of different aspect ratios, sampled across Re ∈
+
+[200 , 600] . This dataset tests robustness to geometric variability, with 8,000 equilibrium states discretized on unstructured meshes ( N ≈ 7,500 ). • Turbulent wing flows (3D). High-Reynolds-number ( Re = 10 5) turbulent flows over NACA-style wing sections. We use 2,000 equilibrium states simulated via LES, discretized on large meshes ( N ≈ 50 ,000 ). This dataset is the most challenging, involving multi-scale vortical structures and long-range correlations. For all datasets, training/validation/test splits follow a 70 /15 /15 partition. Ground-truth statistical quantities (RMS fluctuations, correlation fields) are precomputed from high-fidelity solvers for evaluation. 
+
+A.2 Implementation 
+
+We implement Fluid-DiT in PyTorch using transformer encoder blocks with L = 12 layers, hidden dimension d = 256 , and H = 8 attention heads. Each block consists of multi-head self-attention, a feed-forward MLP with GELU activations, residual connections, and layer normalization. To stabilize training, we employ pre-normalization and gradient checkpointing. Positional encodings include both sinusoidal functions of spatial coordinates and learned timestep embeddings, enabling the model to reason jointly over geometry and diffusion step. The encoder E and decoder D are 3-layer residual MLPs with hidden dimension 256 , compressing raw flow states into latent tokens (M ≈ 0.1N , latent dimension dz = 128 ). Training uses AdamW with learning rate 1e-4, weight decay 0.01 , cosine learning rate decay, and warmup of 5,000 steps. Gradient clipping at norm 1.0 is applied. Diffusion timesteps are T = 1000 with a cosine variance schedule. The training objective combines the standard noise-prediction loss with a reconstruction loss weighted by λ = 0 .1 to enforce encoder–decoder consistency. All experiments are conducted on NVIDIA A100 GPUs with batch size 32, FP16 mixed precision, and distributed training across up to 4 GPUs. We report averages across 3 random seeds. Baselines are either reimplemented or obtained from public code and retrained under identical settings. 
+
+# B Theoretical Properties and Guarantees 
+
+In this section, we provide formal guarantees for Fluid-DiT in the latent-diffusion setting, showing that (i) denoising score-matching consistency in latent space implies consistency in the original 12 physical space under mild regularity; and (ii) the reconstruction and optimization errors control the deviation in Wasserstein distance. 
+
+Setup. Let X ⊂ RN ×d denote physical states (e.g., velocity/pressure on N nodes) with ground-truth equilibrium distribution PX . Let E : X → Z ⊂ RM ×dz be the encoder, D : Z → X the decoder, and PZ := E#PX the latent pushforward distribution. 2 A diffusion process with variance schedule {βt}Tt=1 is defined in Z, and a transformer denoiser ϵθ (·, t ) is trained by denoising score matching (DSM). We assume: (A1) ( Bi-Lipschitz encoder/decoder ) There exist LE , L D ≥ 1 and εrec ≥ 0 such that for all 
+
+x, x ′ ∈ X , 
+
+> 1
+> LE
+
+∥x − x′∥ ≤ ∥E (x) − E (x′)∥ ≤ LE ∥x − x′∥, ∥D (z) − D (z′)∥ ≤ LD ∥z − z′∥,
+
+and sup x∈X ∥x − D (E(x)) ∥ ≤ εrec .(A2) ( Latent score learnability ) For each t, the transformer class contains the true conditional score/NoisePredictor in latent space. Let εopt denote the optimization/generalization error in the DSM objective (across t). (A3) ( Regularity ) PX has finite second moment; the forward noising kernels in latent space are Gaussian with variance bounded away from 0 and ∞, and the (approximate) reverse kernels are continuous in parameters. 
+
+Theorem B.1 (Latent-to-Physical Consistency of Fluid-DiT ). Under (A1)–(A3), let bPZ be the distri-bution generated by the learned reverse process in latent space, and bPX := D# bPZ the corresponding distribution in physical space. Then for the 2-Wasserstein distance W2,
+
+W2
+
+ bPX , PX
+
+ ≤ LD W2
+
+ bPZ , PZ
+
+ + εrec . (8) 
+
+Moreover, if the DSM error in latent space satisfies 
+
+W2
+
+ bPZ , PZ
+
+ ≤ CDSM 
+
+√εopt , (9) 
+
+for some constant CDSM depending on the noise schedule and moments of PZ , then 
+
+W2
+
+ bPX , PX
+
+ ≤ LD CDSM 
+
+√εopt + εrec . (10) 
+
+Proof sketch. (i) Stability of pushforward: for any 1-Lipschitz transport cost, W2(T#μ, T#ν) ≤
+
+Lip( T ) W2(μ, ν ). Applying with T = D yields the first inequality and introduces LD .(ii) DSM consistency in latent space: under (A2)–(A3), minimizing DSM recovers the true reverse-time conditionals and hence PZ in the infinite-data/optimization limit. With finite sam-ples/optimization, standard generalization bounds for DSM (score-matching) give W2(bPZ , PZ ) ≤
+
+CDSM 
+
+√εopt .(iii) Reconstruction error: since x and ˜x = D(E(x)) differ by at most εrec , an optimal coupling that first projects to latent, transports in latent, then decodes shows the additive εrec term. Combining (i)–(iii) yields the claim. We now analyze the theoretical properties of Fluid-DiT , showing that its graph-free transformer design is strictly more expressive than message-passing networks, that its sparse attention scaling ensures efficiency on large meshes, and that its latent formulation preserves distributional fidelity while suppressing high-frequency noise. 
+
+Proposition B.2 (Global Dependency Modeling) . Let G = ( V, E ) be any mesh graph with N nodes. A single attention layer with full connectivity can simulate k-hop message passing on G for arbitrary 
+
+k in one step, provided the attention bias encodes pairwise distances.      
+
+> 2T#μdenotes the pushforward of μunder map T.
+
+13 Proof sketch. Attention assigns weights to all node pairs (i, j ) via queries and keys. By choosing attention weights to concentrate on k-hop neighbors and setting values to implement the desired aggregation, the mechanism recovers k-hop message passing in a single layer. Residual and feed-forward layers allow nonlinear mixing, showing that attention strictly generalizes finite-hop GNNs. 
+
+Proposition B.3 (Scalability of Attention) . If the latent representation dimension is M ≪ N , and block-sparse attention with block size b is applied, the computational complexity reduces from O(N 2)
+
+to O(N b ) while preserving global receptive fields via long-range connections. Proof sketch. Block-sparse attention restricts most interactions to b neighbors per token, yielding 
+
+O(N b ) cost. Global coupling is preserved by introducing a small number of global tokens or cross-block connections, ensuring that information can propagate across the entire domain in O(2) layers. Thus, scalability is achieved without sacrificing expressivity. 
+
+Proposition B.4 (Latent Stability) . Suppose the encoder E is L-Lipschitz and the decoder D is its approximate inverse with reconstruction error at most ϵ. Then training diffusion in latent space ensures that the Wasserstein distance between generated and true distributions in physical space differs by at most Lϵ compared to raw-space diffusion. Proof sketch. By the stability of pushforwards, W2(D#μ, D#ν) ≤ LD W2(μ, ν ) + ϵ for decoder Lipschitz constant LD. Since E is L-Lipschitz, the latent diffusion distribution is at most Lϵ away from the true raw distribution. Hence, latent modeling preserves distributional fidelity up to bounded reconstruction error. 
+
+Proposition B.5 (Noise Suppression) . If the encoder E discards components of x with variance below a threshold σ2, then the expected reconstruction error from high-frequency noise is reduced by at least σ2 per discarded dimension. Proof sketch. Projecting x onto principal components with variance above σ2 eliminates directions with variance < σ 2. The Pythagorean theorem of variance implies that reconstruction error is bounded by the sum of discarded variances. Thus, each dropped direction reduces expected noise energy by at least σ2, suppressing high-frequency artifacts. 
+
+Discussion. Theorem B.1 formalizes the empirical observation that latent diffusion with a graph-free transformer preserves distributional fidelity: if the latent reverse process is learned well (small εopt )and the autoencoder is accurate (small εrec ), then the generated physical distribution is close to ground truth in W2. Together, these results establish the theoretical foundations of Fluid-DiT :• Proposition B.2 shows that transformers strictly generalize graph message passing by capturing multi-hop and global dependencies in a single step. • Proposition B.3 guarantees that scalability can be achieved with sparse attention without losing expressivity. • Proposition B.4 and Proposition B.5 show that latent diffusion preserves distributional fidelity and actively suppresses noise. • The consistency theorem demonstrates that the combined system approximates the true flow distribution up to optimization and reconstruction error. This analysis explains why Fluid-DiT achieves superior empirical performance: attention provides richer connectivity than GNNs, sparse attention ensures efficiency, and latent diffusion improves robustness and sample quality. 
+
+# C Algorithm for Fluid-DiT 
+
+C.1 End-to-End Training Procedure 
+
+Algorithm 2 presents the full training and sampling pipeline with the practical components we found critical in large-scale CFD settings: cosine variance schedule, EMA of parameters, mixed precision, and gradient accumulation. 14 Algorithm 2 Training and Sampling of Fluid-DiT (Full)  
+
+> 1:
+
+Inputs: dataset {x}, encoder E, decoder D, denoiser ϵθ, diffusion steps T , cosine schedule 
+
+{αt}Tt=1 , reconstruction weight λ, EMA decay τ 
+
+> 2:
+
+Init: θ ← θ0; create EMA copy θEMA ← θ; AMP (FP16) enabled  
+
+> 3:
+
+for epoch = 1 , . . . , E do  
+
+> 4:
+
+for each minibatch x do  
+
+> 5:
+
+Encode: z0 ← E (x) // M ≪ N 
+
+> 6:
+
+Sample timestep: t ∼ Uniform {1, . . . , T } 
+
+> 7:
+
+Forward noise: zt ← √αtz0 + √1 − αt ϵ, ϵ ∼ N (0 , I ) 
+
+> 8:
+
+Denoiser: ˆϵ ← ϵθ (zt, t ) // transformer, time-conditioned  
+
+> 9:
+
+Loss: Ldiff = ∥ϵ − ˆϵ∥22; Lrec = ∥x − D (E(x)) ∥22 
+
+> 10:
+
+Total: L ← L diff + λ · L rec  
+
+> 11:
+
+Backward/opt: update θ, E, D with AdamW (AMP + grad clipping)  
+
+> 12:
+
+EMA: θEMA ← τ θ EMA + (1 − τ )θ 
+
+> 13:
+
+end for  
+
+> 14:
+
+end for  
+
+> 15:
+
+Return: θEMA , E, D 
+
+> 16:
+
+Sampling (DDPM/Ancestral):  
+
+> 17:
+
+draw zT ∼ N (0 , I ) 
+
+> 18:
+
+for t = T, . . . , 1 do  
+
+> 19:
+
+ˆϵ ← ϵθEMA (zt, t ) 
+
+> 20:
+
+zt−1 ← 1√αt
+
+
+
+zt − (1 − αt)ˆ ϵ
+
+
+
++ σtξ, ξ ∼ N (0 , I ) 
+
+> 21:
+
+end for  
+
+> 22:
+
+Decode: ˆx ← D (z0)
+
+Variance schedules and timestep weighting. We use the cosine schedule with ¯αt from Karras 
+
+parameterization for improved SNR in late steps. Following common practice, we apply timestep loss weighting w(t) ∝ SNR( t) to balance early/late-step gradients; we observed < 0.2% gain in R2
+
+and slightly faster convergence. 
+
+Stability and efficiency. We enable AMP (FP16), gradient checkpointing, gradient clipping (norm 
+
+1.0), and gradient accumulation to fit larger batch sizes. We maintain an EMA copy of denoiser parameters (decay τ = 0 .999 ), always using EMA for evaluation/sampling. 
+
+C.2 Deterministic and Fast Sampling DDIM sampling. For determinism and speed, we also support DDIM sampling with S ≪ T steps: 
+
+zt−1 = √¯αt−1
+
+ zt − √1 − ¯αt ˆϵ
+
+√¯αt
+
+
+
++ ηtˆϵ, 
+
+with ηt = 0 (deterministic) or small for trade-offs. With S = 50 we retain > 97% of the full-T fidelity at ∼ 20 × lower latency in 3D. 
+
+Classifier-free guidance (CFG). For unconditional sampling we keep CFG off; for conditional variants (e.g., geometry tags or Re conditioning), we replace ˆϵ by ˆϵCFG = (1 + w)ˆ ϵcond − wˆϵuncond 
+
+with w ∈ [0 , 2] . We report w = 0 .3 when used. 
+
+C.3 Complexity and Memory Footprint 
+
+Let M be latent tokens, dz latent dim, H heads, and L layers. Full attention costs O(LHM 2dz ).With block-sparse attention (block size b) plus g global tokens: cost ≈ O  LH (M b d z + M g d z ),
+
+which is near-linear for fixed b, g (cf. Proposition B.3). In practice, b = 32 , g = 4 matches full attention within < 0.5% on R2 and reduces memory by ∼ 40% .15 Table 5: Sensitivity to latent compression (Cylinder 2D).                        
+
+> M/N R2↑W2↓RMS ↓Inference (ms) ↓
+> 0.05 0.994 0.112 0.067 41 0.10 0.998 0.084 0.055 52 0.15 0.998 0.082 0.055 61 0.25 0.999 0.081 0.054 78
+
+Table 6: Ablation on latent embedding dimension dz for the cylinder wake dataset. We vary dz while keeping 
+
+M/N = 0 .1 fixed. Results are averaged over 3 seeds.                                  
+
+> dzR2↑W2↓RMS ↓Inference (ms) ↓Memory (GB) ↓Training Time (h) ↓
+> 64 0.996 0.092 0.059 47 4.5 18.2
+> 128 0.998 0.084 0.055 52 5.7 20.6 256 0.999 0.081 0.054 68 7.9 25.1 512 0.999 0.080 0.054 94 11.2 31.8
+
+# D Experimental Analysis 
+
+We provide extended analyses beyond the main paper: sensitivity to architectural choices, sample-efficiency, spectral fidelity, boundary-layer metrics, mesh-resolution effects, and robustness/OOD. Unless noted, all numbers are averaged over 3 seeds with 95% CIs. These studies validate not only the raw performance of Fluid-DiT but also the reasoning behind each of its design decisions. 
+
+D.1 Sensitivity to Architectural Hyperparameters Latent compression M/N . We sweep M/N ∈ { 0.05 , 0.1, 0.15 , 0.25 } to analyze the trade-off between efficiency and fidelity. As shown in Table 5, accuracy saturates near M/N = 0 .1, suggesting that this ratio captures sufficient mid- and large-scale flow structures without excessive redundancy. At M/N = 0 .05 , the model underfits high-frequency structures such as vortex filaments, leading to reduced RMS accuracy and visually smoother wakes. Increasing to M/N = 0 .25 provides marginal accuracy gains but at a nearly 1.5× increase in inference cost, confirming diminishing returns. This validates our design choice of M/N ≈ 0.1 as an optimal operating point across 2D and 3D datasets. 
+
+Latent dimension. Table 6 highlights how the choice of latent embedding size dz affects both accuracy and efficiency. Increasing dz from 64 to 128 significantly reduces Wasserstein error (0.092 → 0.084 ) and improves R2 by +0 .2 points, indicating that a moderately larger latent dimen-sion better captures complex correlations in the flow. However, further scaling to 256 or 512 yields only marginal accuracy gains ( < 0.1 points in R2) while incurring steep costs in memory and training time, with latency nearly doubling at dz = 512 . This confirms that the benefits of larger embeddings saturate quickly, and dz = 128 strikes the best trade-off between expressivity and efficiency. Notably, even with dz = 64 , the model remains competitive with graph-based baselines, showing that the latent formulation provides robustness to reduced feature capacity. 
+
+Attention sparsity. In Table 7, we vary block size b ∈ { 16 , 32 , 64 } with g ∈ { 0, 2, 4} global tokens. Dense attention provides the upper bound but is quadratic in cost. Results show that (b = 32 , g = 4) 
+
+achieves accuracy within 0.3% of dense attention while reducing memory footprint by 40% and runtime by 35% . Smaller block sizes ( b = 16 ) degrade accuracy due to insufficient receptive fields, while larger blocks ( b = 64 ) increase cost without noticeable benefit. Notably, global tokens are critical: without them, long-range wake correlations collapse, especially in turbulent wing flows, confirming Proposition B.3. 
+
+Depth/width. We increase depth from L = 8 to L = 12 and width from H = 8 to H = 12 
+
+attention heads. Turbulent benchmarks benefit most from deeper models, with +0 .8 R2 gain when moving from L = 8 to L = 12 . Wider heads, however, yield only marginal improvements ( < 0.2
+
+points) but increase inference latency by 20% . This indicates that model depth (stacked reasoning) is more critical than width (parallel subspaces) in capturing complex vortical dynamics. 16 Table 7: Ablation on attention sparsity for the turbulent wing dataset. We vary block size b and number of global tokens g. Results averaged over 3 seeds.                                                                     
+
+> bgR2↑W2↓RMS ↓Inference (ms) ↓Memory (GB) ↓
+> Dense –0.905 0.218 0.054 191 11.4 16 00.871 0.294 0.073 76 4.2
+> 32 00.884 0.262 0.065 93 5.1 32 20.896 0.233 0.058 102 5.8 32 40.902 0.224 0.056 108 6.0 64 40.904 0.221 0.055 142 8.3
+> Table 8: Effect of training data size on performance (Ellipse flow dataset). We report results when training with fractions of the dataset.
+> Training Data R2↑W2↓RMS ↓Inference (ms) ↓
+> 25% 0.938 0.149 0.062 51
+> 50% 0.952 0.135 0.058 52 75% 0.958 0.131 0.056 52 100% 0.963 0.129 0.055 52
+
+D.2 Sample Efficiency and Convergence Training set size. We downsample the training set to {25% , 50% , 75% } of full size, as shown in Table 8. While all methods degrade with less data, Fluid-DiT exhibits stronger sample efficiency: with 50% data, R2 drops by only 1.5 points, while LDGN drops by over 4 points. This suggests that attention provides better inductive bias by capturing long-range dependencies without requiring large datasets to learn local message-passing hierarchies. For industrial applications with limited simulation data, this property is particularly valuable. 
+
+Convergence diagnostics. We monitor diffusion loss, reconstruction loss, and spectral error ( E(k)). In all cases, diffusion and reconstruction losses converge smoothly with no instability. Importantly, plateaus in spectral error coincide with stable inertial ranges, indicating that training aligns not only with numerical metrics but also with physical energy distributions. Early stopping based on validation 
+
+W2 provides nearly identical results to stopping based on solver-derived energy diagnostics, making the method practical when physical postprocessing is unavailable. 
+
+D.3 Spectral and Structural Fidelity Energy spectra. We compute radial velocity spectra for 2D and 3D cases. Latent diffusion suppresses spurious high-k energy by 20 –28% compared to raw-space diffusion, demonstrating effective noise filtering. The resulting spectra align closely with solver references up to dissipation scales. These results validate Proposition B.5, showing that the encoder discards low-variance, high-frequency components that otherwise amplify during denoising. 
+
+Two-point correlations. We measure streamwise velocity correlation Cuu (∆ x) along wake center-lines. Fluid-DiT reproduces correlation lengths within 3% of reference, while LDGN underesti-mates long-range correlations by up to 9% . Qualitatively, generated wakes from Fluid-DiT retain coherent vortex streets far downstream, whereas LDGN samples exhibit premature decorrelation, highlighting the value of global receptive fields. 
+
+D.4 Boundary-Layer and Near-Wall Metrics Wall shear and separation. Boundary-layer fidelity is assessed using wall shear stress τw and separation point xs. On turbulent wings, Fluid-DiT predicts xs within 0.7% chord length of reference CFD, while LDGN deviates by 2.1% . Accurate boundary-layer modeling is critical for aerodynamic performance, suggesting that transformers, by combining local and global context, are more effective than stacked local aggregations. 17 Pressure recovery. We compute integrated pressure recovery downstream of bluff bodies. On ellipse flows, Fluid-DiT achieves 1.2% error versus solver, compared to 3.4% for LDGN. This indicates that latent diffusion suppresses unphysical oscillations in pressure reconstruction and improves domain-wide statistics. 
+
+D.5 Mesh Resolution and Topology Robustness Resolution scaling. We evaluate scalability on meshes up to N = 200 ,000 nodes. Graph-based methods either become infeasible (out of memory) or exhibit superlinear slowdowns, as message passing scales with O(k|E|). In contrast, Fluid-DiT with block-sparse attention scales nearly linearly, requiring under 400 ms per sample at N = 200 ,000 . Importantly, accuracy remains stable (R2 drop < 0.5), demonstrating practical scalability for industrial-scale CFD. 
+
+Transfer across meshes. We train on unstructured meshes and test on structured grids of the same geometry. Fluid-DiT incurs under 1 point drop in R2 without graph redesign, whereas LDGN must rebuild graph hierarchies for each mesh type. This highlights the advantage of graph-free design: a single architecture generalizes seamlessly across discretizations, avoiding costly preprocessing. 
+
+D.6 Robustness and OOD Generalization Reynolds number extrapolation. Training on Re ≤ 400 and testing at Re = 600 , Fluid-DiT 
+
+achieves R2 = 0 .941 , while LDGN drops to 0.884 . Visual inspection shows that Fluid-DiT 
+
+preserves vortex spacing and Strouhal scaling, whereas LDGN samples lose coherence. This suggests that attention’s global field modeling generalizes better to unseen flow regimes, consistent with Proposition B.2. 
+
+Geometry shift. We test on ellipse aspect ratios not seen in training. Fluid-DiT maintains Wasserstein distances within +9% of in-distribution, while LDGN degrades by +23% . Since ellipse geometry requires adapting to new boundary conditions, the ability of transformers to encode continuous positional embeddings proves essential. 
+
+D.7 Uncertainty and Calibration Ensemble calibration. We sample K = 64 realizations per inlet condition to estimate predictive uncertainty. Fluid-DiT ’s 90% predictive intervals cover 88 .7% (cylinder) and 86 .9% (wing) of reference values, while LDGN achieves only 81 .2% and 78 .4% . This indicates better-calibrated uncertainties in Fluid-DiT , making it more suitable for risk-aware applications. Calibration further improves with temperature scaling ( T = 0 .9), suggesting that sampling temperature can tune uncertainty trade-offs. 
+
+D.8 Failure Modes and Mitigations 
+
+We observe two common failure modes. First, oversmoothing near sharp edges occurs at aggressive compression ratios ( M/N ≤ 0.05 ). Increasing M/N to 0.1 or injecting boundary-aware tokens mitigates this. Second, checkerboard artifacts appear when attention sparsity is too aggressive (b = 16 , no global tokens). These artifacts disappear when adding even a few global tokens or smoothing positional encodings. While these issues are rare in standard configurations, they highlight the importance of balanced latent compression and sparsity settings. 
+
+# E Discussions 
+
+Limitation & Future Work. While Fluid-DiT achieves state-of-the-art performance across multi-ple fluid benchmarks, our evaluation has focused primarily on steady-state or equilibrium distributions; extending the approach to fully unsteady, time-dependent simulations will require incorporating temporal conditioning or recurrent generative dynamics. Although latent-space diffusion improves scalability, the encoder-decoder pair may discard fine-scale structures in extremely high-Reynolds-number regimes, potentially limiting fidelity in highly turbulent flows. 18 Broader Impact. The proposed framework contributes to the growing field of machine learning for scientific discovery, with potential benefits in physics, engineering, and environmental modeling. By providing a scalable, graph-free generative surrogate for fluid flows, Fluid-DiT could accelerate simulation-driven design in aerodynamics, renewable energy, and climate science, reducing the reliance on costly numerical solvers. More broadly, the methodology demonstrates how diffusion transformers can be adapted to irregular scientific data, suggesting applicability in other domains such as structural mechanics, materials science, or geophysics. 19
