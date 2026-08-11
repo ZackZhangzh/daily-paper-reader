@@ -1,0 +1,434 @@
+Title: CuteTTS: Efficient and High-Quality Speech Synthesis via Autoregressive Modeling of Continuous Latents
+
+URL Source: https://arxiv.org/pdf/2608.08638v1
+
+Published Time: Tue, 11 Aug 2026 01:16:11 GMT
+
+Number of Pages: 19
+
+Markdown Content:
+CuteTTS Technical Report 
+
+# CuteTTS: Efficient and High-Quality Speech Synthesis via Autoregressive Modeling of Continuous Latents 
+
+Yuqian Zhang *,1,3 , Yao Shi 2, Kexin Huang 3, Botian Jiang 1,3 , Zhe Xu 1,3 
+
+Yiwei Zhao 1,3 , Min Liang 2, Shuang Chen †,1,3 , Xipeng Qiu 1,3 
+
+## Abstract 
+
+Zero-shot text-to-speech (TTS) now supports interactive assistants, per-sonalized media, and accessibility tools. All TTS systems require faithful linguistic rendering, consistent speaker identity, and low-latency response. Yet compact streaming systems must preserve sufficient acoustic detail in a predictable low-rate latent sequence, while iterative diffusion sampling and classifier-free guidance multiply inference cost at every autoregressive step. To strike a balance between high-fidelity synthesis and low-latency inference, we present CuteTTS , a compact continuous-autoregressive TTS system. It combines semantically aligned causal VAE latents with patch-level autoregression, explicit speaker conditioning, and a bidirectional flow-matching head. We further introduce guidance–step distillation, which absorbs classifier-free guidance and multiple solver steps into a single interval-conditioned student. Evaluations on LibriSpeech and Seed-TTS-Eval demonstrate competitive intelligibility and speaker similarity in zero-shot voice cloning, while distillation lowers first-audio latency by 23.3% and real-time factor by 40.8% relative to the base model with comparable ob-jective and subjective quality. These results provide a practical path toward continuous-autoregressive TTS that reconciles high-fidelity generation with the latency demands of real-time interaction. 
+
+## 1 Introduction 
+
+Zero-shot TTS enables conversational agents, personalized media, and assistive applications by reproducing the voice of an unseen speaker from a short reference utterance. Practical systems must preserve linguistic content and speaker identity while maintaining low latency. Existing approaches either model discrete codec tokens autoregressively (Wang et al., 2023a; Kharitonov et al., 2023) or generate continuous speech representations through diffusion or flow matching (Le et al., 2023; Chen et al., 2025). Hybrid streaming systems combine both paradigms (Du et al., 2024a;b). Despite substantial progress, achieving high-quality, speaker-faithful, and low-latency synthesis within a compact model remains challenging. Continuous-autoregressive TTS retains the fidelity of continuous speech latents while supporting causal streaming generation (Peng et al., 2025; Rouard et al., 2025). Patch-based methods use a causal backbone to model dependencies across patches and a diffusion head to capture local correlations (Jia et al., 2025; Zhou et al., 2025b). However, compact streaming systems still face two challenges. Low-rate latents must balance reconstruction quality with autoregressive predictability, while iterative patch generation and LM-level classifier-free guidance require repeated model evaluations (Ho & Salimans, 2022). This computational overhead directly increases streaming latency. In order to address these challenges, we present CuteTTS, a compact continuous-autoregressive TTS system built around a low-rate causal speech representation, patch-level language modeling, and a flow-matching-based diffusion head. The representation is  
+
+> *
+
+Work done during internship at OPPO. yuqianzhang24@m.fudan.edu.cn  
+
+> †
+
+Corresponding author: chenshuang_fd@fudan.edu.cn  
+
+> 1
+
+Shanghai Innovation Institute 2 OPPO AI Center 3 Fudan University 
+
+1arXiv:2608.08638v1 [cs.SD] 9 Aug 2026 CuteTTS Technical Report trained with a semantic alignment objective, and a separate speaker embedding directly conditions the TTS backbone. To accelerate the diffusion head, we train a single student on interval-averaged velocities along the CFG-guided teacher trajectory. The student there-fore absorbs both the guidance branch and multiple numerical integration steps in one distillation objective. Our main contributions are summarized as follows: • We develop CuteTTS, an approximately 0.2B-parameter streaming system that combines patch-level autoregression over continuous speech latents with a flow-matching diffusion head. It achieves competitive intelligibility and speaker simi-larity across LibriSpeech and Seed-TTS benchmarks, and is preferred to similarly sized baselines in subjective sound-quality comparisons. • We show that semantic alignment of the low-rate speech representation improves in-telligibility, while explicit speaker conditioning strengthens zero-shot voice cloning. Controlled studies of representation rate and patch size further clarify the balance among reconstruction fidelity, autoregressive sequence length, and within-patch generation difficulty. • We introduce guidance–step distillation, which unifies classifier-free guidance re-moval and interval-wise integration in a single diffusion head. Under the paired efficiency protocol, the distilled model lowers mean first-audio latency by 23.3% and mean real-time factor by 40.8% while preserving synthesis quality close to that of the base model. 
+
+## 2 Related Work 
+
+Discrete and continuous TTS. Codec language models cast TTS as autoregressive pre-diction over discrete speech tokens (Wang et al., 2023a; Kharitonov et al., 2023; Peng et al., 2024). Other systems generate continuous-valued speech features in parallel using diffusion or flow matching (Popov et al., 2021; Le et al., 2023; Mehta et al., 2024; Chen et al., 2025). Hybrid pipelines combine an autoregressive semantic model with a separate continuous acoustic decoder, as in CosyVoice and CosyVoice 2 (Du et al., 2024a;b). 
+
+Continuous autoregressive generation. Continuous-autoregressive models avoid a dis-crete codebook while retaining causal sequence modeling. MELLE directly predicts mel-spectrogram frames (Meng et al., 2025); SALAD uses a per-token diffusion process (Turetzky et al., 2024); and DiTAR introduces patch-level generation with a causal LM and a bidirec-tional diffusion decoder (Jia et al., 2025). Related systems employ flow-based patch decoders, hierarchical continuous-latent backbones, or consistency heads (Wang et al., 2025a; Rouard et al., 2025; Peng et al., 2025; An et al., 2025; Wu et al., 2025; Zhou et al., 2026). CuteTTS follows the patch-based factorization of this family and focuses on efficient guided sampling. 
+
+Audio representation. Neural audio codecs obtain compact representations through quan-tization, trading reconstruction fidelity against bitrate (Défossez et al., 2023). Continuous latents avoid codebook discretization and can preserve fine-grained speech variation, but a representation optimized only for reconstruction need not be well suited to low-rate autore-gressive prediction. Semantic-VAE encourages VAE latents to align with self-supervised speech features (Niu et al., 2025; Chen et al., 2022), while MELA-TTS studies related repre-sentation alignment for speech synthesis (An et al., 2025). Motivated by these works, we use a semantically aligned continuous audio representation for low-rate autoregressive modeling. 
+
+Guidance and few-step sampling. CFG combines conditional and unconditional predic-tions to strengthen conditional generation (Ho & Salimans, 2022). Guided-model distillation can absorb this two-branch computation (Meng et al., 2023), while progressive distilla-tion and consistency models reduce the number of sampling steps (Salimans & Ho, 2022; Song et al., 2023). More recent work learns average velocities or conditions a model on 2CuteTTS Technical Report Causal LM Backbone               
+
+> Text Patch Enc Diffusion Head
+> Streaming Decoder
+> Pi
+> TTTTs
+> hi-2
+> Ref Wav
+> Diffusion Head
+> hi
+> eCFG
+> Diffusion Head
+> hi-1
+> Pi-1 xt(i)
+> ⊕
+> s
+> Pi
+> hi
+> Patch Enc Patch Enc
+> AdaLN
+> Pi-1 Pi-2
+> Diffusion Head
+> w
+> aref
+> zjref Pi-2 Pi-1
+> ai-2 ai-1
+> Diffusion Head at AR Step i
+> y
+> Target Wav ... ... TText Token
+> sSpeaker Embedding Pi: i-the Clean Patch
+> xt(i) :Noisy patch at flow time t
+> Causal LM hidden Patch Embedding
+> wCFG guidance scale VAE Latent
+
+Figure 1: Overview of CuteTTS. A patch encoder aggregates previously generated latent patches for the causal backbone. The final-layer LM hidden state at the current autoregres-sive position, preceding latent patch, and speaker embedding condition the diffusion head to generate the next continuous patch; for the distilled model, CFG weight w is supplied as an additional condition. A causal VAE decoder converts completed patches to audio incrementally. the integration interval (Geng et al., 2025; Frans et al., 2025; Wang et al., 2025b). Our method builds on these ideas but targets their joint effect within the diffusion head of a continuous-autoregressive TTS model: the student learns the CFG-guided trajectory and its interval-wise integration at the same time. 
+
+## 3 CuteTTS 
+
+Given text y and a reference utterance xref , CuteTTS autoregressively generates a sequence of continuous latent patches and decodes them into waveform chunks. As illustrated in Figure 1, the system consists of a causal audio VAE, a patch encoder, a causal language-model backbone, a diffusion head, and a speaker encoder. 3.1 Causal audio VAE with semantic alignment We separately train a causal audio VAE that maps a 24-kHz waveform x to continuous latents at 12.5 Hz and reconstructs ˆ x. Following Kumar et al. (2023) and Zhou et al. (2025b), its encoder and decoder use a DAC-style fully convolutional architecture with stacked causal convolutions and residual blocks supporting incremental encoding and decoding. In order to avoid posterior variance collapse in continuous autoregressive modeling, we adopt a σ-VAE (Sun et al., 2024; Peng et al., 2025). The encoder predicts a posterior mean 
+
+μ = Eϕ(x), while the scale is sampled from a prescribed distribution pσ rather than estimated from the input: 
+
+σ ∼ pσ, z = μ + σϵ, ϵ ∼ N (0, I). (1) Reconstruction fidelity alone does not ensure that a low-rate representation is well suited to text-conditioned generation. Inspired by Semantic-VAE (Niu et al., 2025), we align the latent sequence with a frozen WavLM teacher (Chen et al., 2022). The teacher features are projected to the VAE dimension and temporally aligned to the latent rate, and a cosine loss encourages the two representations to encode shared linguistic structure. The VAE objective combines multi-resolution Mel-spectrogram reconstruction, adversarial and feature-matching losses from multi-period and multi-resolution discriminators, a lightly 3CuteTTS Technical Report weighted KL regularizer, and semantic alignment: 
+
+LVAE = λmel Lmel (x, ˆ x) + λadv Ladv ( ˆx) + λfeat Lfeat (x, ˆ x) + λKL LKL + λsem Lsem . (2) where Lsem is the negative cosine similarity between the latent sequence and the aligned teacher features. After VAE training, only the causal encoder and decoder are retained; the TTS model operates entirely in the continuous VAE space. 3.2 Explicit speaker conditioning We train a compact ECAPA-style speaker encoder (Desplanques et al., 2020) by distilling a frozen WavLM Large speaker-verification teacher (Chen et al., 2022). Given a reference utterance xref , the student and teacher embeddings are sstudent = Estudent (xref ) and steacher =
+
+Eteacher (xref ), respectively. Both embeddings are L2-normalized. The student is optimized with Lspk = Lcos (sstudent , steacher )+ λpair Lpair (sstudent , steacher )+ λsoft Lsoft (sstudent , steacher ),(3) where Lcos aligns each student embedding with its teacher target, Lpair matches pairwise speaker similarities within a minibatch, and Lsoft matches the teacher-induced similarity distribution. Only the student encoder is retained for TTS, and we use s ≡ sstudent as the speaker condition. A learned projection inserts s into the causal backbone, while adaptive layer normalization conditions the diffusion head on the same embedding. Condition dropout provides the unconditional predictions used for classifier-free guidance. 3.3 Patch-based diffusion autoregression Let z0, z1, . . . , zT−1 denote the target latent frames, and let K be the number of frames per patch. After padding the sequence to a multiple of K when necessary, we form N
+
+non-overlapping patches, 
+
+Pi =
+
+
+
+ziK , ziK +1, . . . , z(i+1)K−1
+
+
+
+, i ∈ { 0, . . . , N − 1}, (4) where N is the number of patches. CuteTTS uses K = 2, giving Pi = ( z2i, z2i+1). The patch encoder A is a bidirectional Transformer applied independently within each patch. It prepends a learned summary token to the latent frames, allows the token to attend to the entire patch, and uses its final state as the patch embedding ai = A(Pi). We partition the reference latent sequence in the same way, denoting its patches by Pref  
+
+> j
+
+. The same encoder yields the reference conditioning sequence aref = ( A(Pref 0 ), . . . , A(Pref 
+
+> M−1
+
+)) , where M is the number of reference patches. A causal Transformer summarizes the text, speaker condition, reference sequence, and previously generated patch embeddings at step i:
+
+hi = Fθ
+
+
+
+y, s, aref , a<i
+
+
+
+. (5) The diffusion head then models the next patch conditioned on hi, s, and the preceding latent patch Pi−1. This division of labor follows the patch-based formulation of DiTAR (Jia et al., 2025): the causal backbone captures inter-patch structure, while bidirectional attention within the diffusion head captures correlations inside a patch. The diffusion head is trained with conditional flow matching (Lipman et al., 2023). For a clean patch P and Gaussian noise ξ, we use the linear path 
+
+xt = ( 1 − t)ξ + tP, v⋆ = P − ξ, (6) and regress the conditional velocity 
+
+LFM = E
+
+h
+
+∥vθ (xt, t | hi, s, Pi−1) − v⋆∥22
+
+i
+
+. (7) After sampling Pi, the patch encoder produces ai for the next autoregressive step. A stop head terminates generation, and the VAE decoder emits the corresponding waveform chunk. 4CuteTTS Technical Report 3.4 Guidance–step distillation We use LM-level classifier-free guidance (Ho & Salimans, 2022) to construct the teacher trajectory. For the conditional branch, let ci = ( hi, s, Pi−1) denote the patch condition, and let vT (x, t | ci) be the corresponding teacher velocity. The unconditional branch removes the text, reference, and speaker conditions while retaining the generated patch history: 
+
+hu 
+
+> i
+
+= Fθ (a<i ) , cu 
+
+> i
+
+= ( hu 
+
+> i
+
+, Pi−1) . (8) The CFG-guided teacher velocity is then 
+
+vcfg  
+
+> T
+
+(x, t | ci) = vT (x, t | ci) + w [vT (x, t | ci) − vT (x, t | cu 
+
+> i
+
+)] , (9) where w is the guidance scale. Computing this velocity requires one conditional and one unconditional forward pass at each solver step. We distill the resulting teacher trajectory directly. Starting from a noised patch xt defined as in Equation 6, let xteacher  
+
+> t+∆t
+
+denote the endpoint obtained by numerically integrating the CFG-guided teacher velocity over [t, t + ∆t], where ∆t ∈ D and D denotes the supported interval lengths. The student is conditioned on the starting time, interval length, and guidance scale, and predicts the teacher’s average velocity over the interval, ¯vT = xteacher  
+
+> t+∆t
+
+− xt
+
+∆t , LGS = E
+
+h
+
+∥vS(xt, t, ∆t | ci, w) − ¯vT ∥22
+
+i
+
+. (10) At inference, a single student forward pass maps xt directly to xt+∆t,
+
+xt+∆t = xt + ∆t vS(xt, t, ∆t | ci, w). (11) The target in Equation 10 is already CFG-guided, so the student does not require a separate unconditional branch. Because the interval is an input, the same diffusion head can be evaluated with different step budgets. In this sense, guidance removal and step reduction are learned jointly rather than as two sequential distillation stages. 
+
+## 4 Experiments 
+
+4.1 Experimental Setup 
+
+Implementation details. The TTS backbone contains approximately 230M parameters and comprises a bidirectional patch encoder, a causal language-model backbone, and a bidirectional diffusion head. The audio VAE encodes 24-kHz speech into 64-dimensional latents at 12.5 Hz. We group two frames per patch, resulting in an LM token rate of 6.25 tokens per second. For each generated patch, the base system uses 10 diffusion-head function evaluations (NFEs) on each of the two CFG branches, whereas the student uses 4 NFEs on a single branch. Further training and inference details are provided in Appendix A. 
+
+Training and evaluation datasets. CuteTTS, including its audio VAE and speaker encoder, is trained on an internal multilingual dataset containing approximately 550,000 hours of speech. For objective evaluation, we use LibriSpeech test-clean (Panayotov et al., 2015) under the protocol adopted by F5-TTS (Chen et al., 2025), together with the English and Chinese test sets released with Seed-TTS (Anastassiou et al., 2024). For subjective evaluation and efficiency benchmarking, we sample 50 examples from LibriSpeech test-clean and refer to this fixed set as the LibriSpeech test-clean subset. 
+
+Evaluation metrics. For objective evaluation, we compute Word Error Rate (WER) using Faster-Whisper-large-v3 for LibriSpeech test-clean, Whisper-large-v3 for Seed-TTS EN, and Paraformer-zh for Seed-TTS ZH (Radford et al., 2023; Gao et al., 2022). Speaker similarity (SIM) is measured as the cosine similarity between embeddings from a fine-tuned WavLM-Large model. For the ablation analyses, we additionally use UTMOS (Saeki et al., 2022) as an automatic estimate of perceived speech quality. For subjective evaluation, annotators compare paired outputs from two systems along two dimensions: sound quality and naturalness. 5CuteTTS Technical Report Table 1: Objective evaluation results of zero-shot voice-cloning performance. “Disc.” and “Cont.” denote discrete and continuous speech representations; “AR” and “NAR” denote autoregressive and non-autoregressive generation. ↑ and ↓ indicate that higher and lower values are better, respectively. A dash denotes an unavailable result.                                                                                                                       
+
+> Type Model Params. LibriSpeech test-clean Seed-TTS EN Seed-TTS ZH WER (%) ↓SIM ↑WER (%) ↓SIM ↑WER (%) ↓SIM ↑
+> Disc. AR MOSS-TTS 8B 1.98 67.7 1.84 70.9 1.37 77.0 Qwen3-TTS 1.7B 2.35 70.3 1.66 71.4 0.91 77.0 FireRedTTS-2 1.5B 4.32 64.2 1.95 66.5 1.14 73.6 MOSS-TTS-Nano 0.1B 4.10 48.4 4.62 49.9 3.13 64.3 Cont. NAR F5-TTS 0.3B 2.42 66.0 1.83 67.0 1.56 76.0 ZipVoice 0.1B 2.05 67.4 1.70 69.7 1.40 75.1 Disc. AR + Cont. NAR IndexTTS2 1.5B 2.47 70.0 2.22 70.6 1.02 76.5 CosyVoice 3 0.5B 1.99 69.7 2.02 71.8 1.16 78.0 Cont. AR VoxCPM2 2B 3.01 74.0 1.84 75.3 0.97 79.5
+> VibeVoice 1.5B ––3.04 68.9 1.16 74.4 DiTAR 0.6B 2.39 67.0 1.69 73.5 1.02 75.3 VibeVoice-Realtime 0.5B 2.00 69.5 2.05 63.3 ––Pocket TTS 0.1B 1.59 49.1 1.63 50.7 ––Cont. AR CuteTTS 0.2B 2.16 78.9 2.04 76.5 1.41 77.8
+> CuteTTS-distill 0.2B 2.41 76.8 2.03 74.2 1.47 75.6
+
+Baselines. We compare CuteTTS against a broad range of recent publicly available TTS systems, including discrete-autoregressive systems such as the MOSS-TTS family (Gong et al., 2026), Qwen3-TTS (Hu et al., 2026), and FireRedTTS-2 (Xie et al., 2025); continuous-non-autoregressive systems such as F5-TTS (Chen et al., 2025) and ZipVoice (Zhu et al., 2025); hybrid systems such as IndexTTS2 (Zhou et al., 2025a) and CosyVoice 3 (Du et al., 2025); and continuous-autoregressive systems such as VoxCPM2 (Zhou et al., 2026), the VibeVoice family (Peng et al., 2025; Microsoft, 2025), DiTAR (Jia et al., 2025), and Pocket TTS (Kyutai, 2026). All baseline results were obtained using official implementations with default settings, or as reported in their original papers. 4.2 Experimental Results 
+
+Objective evaluation. Table 1 compares CuteTTS with publicly available systems across three zero-shot voice-cloning benchmarks. CuteTTS achieves performance comparable to leading systems with only 0.2B parameters, while maintaining low recognition error and strong speaker similarity across all three test sets. The distilled student closely matches the base model across the evaluated metrics while using a substantially smaller inference budget. 
+
+Subjective evaluation. On the LibriSpeech test-clean subset, we compare CuteTTS and CuteTTS-distill with four similarly sized TTS systems: MOSS-TTS-Nano, F5-TTS, ZipVoice, and Pocket TTS. Annotators evaluate paired outputs independently in terms of sound qual-ity and naturalness under a blinded protocol. Further details are provided in Appendix B. Figure 2 reports win, tie, and loss percentages from the perspective of each CuteTTS variant. Both variants are preferred over all four baselines in terms of sound quality. The base model also receives more naturalness wins than losses against MOSS-TTS-Nano, F5-TTS, and ZipVoice, while its comparison with Pocket TTS is dominated by ties. The distilled model yields results closely matching those of the base model across both evaluation dimensions. 4.3 Efficiency We define first-audio latency as the elapsed time from raw target text and a reference-audio path to the first PCM chunk on the CPU, and real-time factor (RTF) as total synthesis time divided by generated-audio duration. We report the mean, P50, and P95 first-audio latency, 6CuteTTS Technical Report 0 20 40 60 80 100 
+
+> Percentage (%)
+> vs MOSS-TTS Nano vs F5TTS vs ZipVoice vs PocketTTS
+> 32% 48% 74% 34% 52% 46% 18% 44% 16% 6% 8% 22%
+
+Sound Quality      
+
+> 020 40 60 80 100
+> Percentage (%)
+> 46% 32% 40% 16% 42% 50% 42% 64% 12% 18% 18% 20%
+
+Naturalness      
+
+> 020 40 60 80 100
+> Percentage (%)
+> vs MOSS-TTS Nano vs F5TTS vs ZipVoice vs PocketTTS
+> 32% 42% 64% 30% 48% 42% 30% 50% 20% 16% 6% 20%
+
+Sound Quality      
+
+> 020 40 60 80 100
+> Percentage (%)
+> 50% 28% 40% 18% 30% 42% 42% 50% 20% 30% 18% 32%
+
+Naturalness (a) CuteTTS (b) CuteTTS-Distill   
+
+> Win Tie Lose
+
+Figure 2: Subjective evaluation on the LibriSpeech test-clean subset. Results are reported as win/tie/loss percentages from the perspective of each CuteTTS variant. where P50 is the median and P95 is the latency threshold below which 95% of requests fall, characterizing tail latency. All efficiency measurements are conducted on an NVIDIA RTX 4090. Further benchmark details are provided in Appendix C. Table 2 compares end-to-end inference efficiency across representative system families. For CuteTTS, guidance–step distillation reduces mean first-audio latency by 23.3% and mean RTF by 40.8% under this paired protocol. It also lowers P50 latency from 48.7 to 37.1 ms and P95 latency from 52.3 to 40.8 ms, showing consistent gains in both typical and tail latency. 
+
+## 5 Ablation Studies and Analysis 
+
+All ablation experiments use an approximately 50,000-hour subset of the full training corpus. Detailed experimental configurations are provided in Appendix A.4. 5.1 Temporal Granularity in Continuous Autoregressive Modeling The VAE frame rate r and patch size p jointly determine the temporal resolution of the speech representation and the granularity of autoregressive prediction. Given a VAE frame rate of r frames per second and p frames per patch, the LM token rate q, defined as the number of autoregressive steps taken by the causal backbone per second, is 
+
+q = rp (12) A higher r provides finer temporal detail but increases the latent sequence length, whereas a larger p lowers the LM token rate but requires the diffusion head to generate a larger continuous patch at each step. Different combinations of r and p can yield the same LM token rate while differing in representation resolution and patch-generation difficulty. We 7CuteTTS Technical Report Table 2: End-to-end efficiency across representative TTS systems, measured by first-audio latency and real-time factor (RTF). 
+
+Type Model Params. Latency (ms) ↓ RTF ↓
+
+Mean P50 P95 Disc. AR MOSS-TTS (vLLM-Omni) 8B – – – 0.498 Qwen3-TTS (vLLM-Omni) 1.7B 108.8 108.4 112.2 0.190 FireRedTTS-2 1.5B 316.0 314.7 326.6 1.113 MOSS-TTS-Nano 0.1B 123.8 122.7 142.8 0.778 Cont. NAR F5-TTS 0.3B 628.2 622.2 667.5 0.122 ZipVoice 0.1B 200.5 191.3 250.0 0.030 
+
+Disc. AR + Cont. NAR IndexTTS2 1.5B 3826.1 3694.8 5490.0 0.676 CosyVoice 3 0.5B 2370.1 2263.7 3345.4 0.453 Cont. AR VoxCPM2 2B 66.6 63.0 82.2 0.404 VibeVoice-Realtime 0.5B 62.9 62.6 64.8 0.365 Pocket TTS 0.1B 51.0 50.7 52.9 0.125 Cont. AR CuteTTS 0.2B 49.0 48.7 52.3 0.184 
+
+CuteTTS-distill 0.2B 37.6 37.1 40.8 0.109 6.25 12.5 25 50                  
+
+> Frame rate (Hz, log 2scale)
+> 0.7 0.8 0.9 1.0
+> SIM
+> 0.732 0.881 0.946 0.976
+> SIM ↑
+> 6.25 12.5 25 50
+> Frame rate (Hz, log 2scale)
+> 2.0 2.5 3.0 3.5 4.0 4.5
+> PESQ-WB
+> 2.336 2.844 3.759 4.166
+> PESQ-WB ↑
+> 6.25 12.5 25 50
+> Frame rate (Hz, log 2scale)
+> 0.90 0.92 0.94 0.96 0.98 1.00
+> STOI
+> 0.914 0.944 0.970 0.985
+> STOI ↑
+> 6.25 12.5 25 50
+> Frame rate (Hz, log 2scale)
+> 3.5 3.6 3.7 3.8 3.9 4.0 4.1
+> UTMOS
+> 3.569 3.783 3.974 4.019
+> UTMOS ↑
+
+Figure 3: VAE reconstruction quality at different frame rates on LibriSpeech test-clean. All models use the same training data and training configuration. therefore examine two controlled settings: varying r with p fixed, and varying r and p while holding q constant. 5.1.1 Representation Rate and Reconstruction Quality To isolate the effect of the VAE frame rate r, we train four VAEs with r ∈ { 6.25, 12.5, 25, 50 }
+
+Hz using the same training data and training configuration. The models differ only in the downsampling factor of the encoder’s final stage and the corresponding upsampling factor of the decoder’s final stage. Their reconstruction performance on LibriSpeech test-clean is visualized in Figure 3. Reconstruction quality improves consistently as r increases across all four metrics. The improvement is steepest from 6.25 Hz to 12.5 Hz and gradually diminishes at higher frame rates. 8CuteTTS Technical Report Table 3: TTS performance at a fixed patch size of p = 1 on LibriSpeech test-clean. Model WER (%) ↓ SIM ↑ UTMOS ↑
+
+TTS 6.25,1 2.53 62.5 3.733 TTS 12.5,1 4.67 71.0 3.883 
+
+TTS 25,1 10.59 71.0 3.833 TTS 50,1 70.33 67.9 3.346 Table 4: TTS performance at a fixed LM token rate of q = 6.25 tokens per second on LibriSpeech test-clean. Model WER (%) ↓ SIM ↑ UTMOS ↑
+
+TTS 6.25,1 2.53 62.5 3.733 TTS 12.5,2 2.70 71.3 3.878 
+
+TTS 25,4 3.92 72.5 3.749 TTS 50,8 7.04 74.1 3.649 5.1.2 Joint Effects of VAE Frame Rate and Patch Size We denote a TTS model with VAE frame rate r and patch size p as TTS r,p, where r is measured in Hz and p is the number of VAE frames in each patch. Using a training configuration shared across all variants, we train the configurations reported below and evaluate them on LibriSpeech test-clean. 
+
+Fixed patch size. We first fix p = 1, for which the LM token rate grows directly with the VAE frame rate. Table 3 shows that increasing r initially improves SIM and UTMOS, consis-tent with the stronger reconstruction capability of the higher-rate VAEs. However, WER rises rapidly because the causal backbone must make proportionally more autoregressive decisions. At 50 Hz, WER increases sharply and both SIM and UTMOS decline relative to the intermediate-rate models, suggesting that the resulting temporal granularity exceeds the modeling capacity of the fixed backbone. 
+
+Fixed LM token rate. To separate autoregressive sequence length from patch-generation difficulty, we next fix the LM token rate at q = r/p = 6.25 tokens per second. The four configurations in Table 4 require the same number of autoregressive decisions but use progressively higher VAE frame rates and larger patches. TTS 12.5,2 improves SIM and UTMOS substantially over TTS 6.25,1 with only a small change in WER, showing that a moderate patch size can exploit the stronger reconstruction capability of a higher-rate VAE without materially degrading intelligibility. With still larger patches, SIM continues to improve, but WER increases and UTMOS declines. This divergence shows that LM token rate alone does not characterize synthesis difficulty: large patches reduce autoregressive sequence length while placing a heavier generation burden on the diffusion head. 5.2 Effect of Semantic Alignment To assess the effect of semantic alignment, we train an additional VAE using the same configuration as the 12.5-Hz VAE in Section 5.1.1, but without the semantic-alignment objective. Table 5 shows that adding semantic alignment incurs virtually no degradation in reconstruction quality. We then train a TTS model on the representation without semantic alignment using the same configuration as TTS 12.5,2 . Figure 4 compares the two models across CFG weights. The semantically aligned representation substantially reduces WER across guidance strengths while retaining comparable SIM and UTMOS. These results indicate that semantic alignment makes the continuous representation easier for the causal backbone to model, improving intelligibility without compromising speaker similarity or predicted synthesis quality. 9CuteTTS Technical Report Table 5: Effect of semantic alignment on VAE reconstruction at a frame rate of 12.5 Hz. 
+
+Model Rate (Hz) SIM ↑ PESQ-WB ↑ STOI ↑ UTMOS ↑
+
+w/ semantic 12.5 0.881 2.844 0.944 3.783 w/o semantic 12.5 0.881 2.885 0.945 3.786 1 2 3 4 5            
+
+> CFG weight w
+> 2.5 3.0 3.5
+> WER (%)  ↓
+> 12345
+> CFG weight w
+> 68 70 72
+> SIM  ↑
+> 12345
+> CFG weight w
+> 3.5 3.6 3.7 3.8 3.9
+> UTMOS  ↑
+> w/ semantic w/o semantic
+
+Figure 4: Effect of semantic alignment on TTS evaluation metrics across CFG weights on LibriSpeech test-clean. The WER axis is reversed so that better performance is shown higher. 5.3 Effect of Explicit Speaker Conditioning The default TTS 12.5,2 uses the explicit speaker embedding in both the LM prefix and the diffusion head, with adaptive layer normalization (AdaLN) providing the diffusion-head condition. To assess the contribution of explicit speaker conditioning, we train two variants using the same training configuration: TTS 12.5,2 (no spk), which removes the explicit speaker embedding from both components, and TTS 12.5,2 (DiT spk), which provides it only to the diffusion head. To examine the injection mechanism, we also train TTS 12.5,2 (spk as global token), which retains LM-prefix speaker conditioning but injects the speaker embedding into the diffusion head as a global token rather than through AdaLN. We compare all variants on LibriSpeech test-clean with CFG weight w = 2. Because our speaker encoder is distilled from WavLM and the primary SIM evaluator is also WavLM-based, proximity between their representation spaces could influence the measured sim-ilarity. We therefore additionally report SIM using WeSpeaker (Wang et al., 2023b) as an independent speaker-embedding model. As shown in Table 6, removing the explicit speaker embedding substantially degrades similarity under both speaker evaluators, confirming its importance for zero-shot voice cloning. Conditioning the diffusion head alone recovers most of this loss, and using the speaker embedding as a global token instead of AdaLN provides no consistent benefit. The default TTS 12.5,2 achieves the highest WavLM-based SIM, ties the best WeSpeaker SIM, and remains competitive in WER. It therefore provides the strongest overall balance and is retained as our default conditioning design. 5.4 Effect of Guidance–Step Distillation To assess guidance–step distillation across inference budgets, we compare CuteTTS and CuteTTS-distill using 4, 2, and 1 diffusion-head NFEs and sweep the CFG weight from 1 to 5 on LibriSpeech test-clean. The base model uses standard two-branch LM-CFG with a Sway coefficient of −0.8, whereas the distilled model uses its single-branch distilled guidance and a uniform time grid. Figure 5 reports WER, SIM, and UTMOS for all settings. At four NFEs, both models maintain strong performance over moderate guidance weights. As the NFE budget decreases, the base model degrades sharply, while the distilled model retains low WER and high speaker similarity at both two and one NFE. The distilled model 10 CuteTTS Technical Report Table 6: Effect of explicit speaker conditioning on TTS 12.5,2 performance at CFG weight 
+
+w = 2 on LibriSpeech test-clean. Model WER (%) ↓ SIM ↑ SIM (WeSpeaker) ↑
+
+TTS 12.5,2 2.70 71.3 82.5 
+
+No spk 2.76 53.4 74.5 
+
+DiT spk 2.52 71.2 82.5 
+
+Spk as global token 2.76 71.0 82.4 2.25 2.50 2.75                    
+
+> NFE = 4
+> WER (%) ↓
+> 75.0 76.5 78.0
+> SIM ↑
+> 3.4 3.6 3.8 4.0
+> UTMOS ↑
+> 510 15 20
+> NFE = 2
+> 50 60 70
+> 1.6 2.4 3.2 4.0
+> 12345
+> CFG weight w
+> 030 60 90
+> NFE = 1
+> 12345
+> CFG weight w
+> 20 40 60
+> 12345
+> CFG weight w
+> 1.2 1.8 2.4 3.0
+> CuteTTS CuteTTS-distill
+
+Figure 5: Effect of guidance–step distillation on TTS performance across CFG weights and diffusion-head NFE budgets on LibriSpeech test-clean. WER axes are reversed so that better performance is shown higher. always achieves higher UTMOS than the base model across the tested NFE budgets and CFG weights. These results show that guidance–step distillation substantially improves robustness under highly constrained sampling budgets. 
+
+## 6 Conclusion 
+
+We presented CuteTTS, a compact streaming TTS system that combines patch-level au-toregression over continuous speech latents with a bidirectional flow-matching head. Its semantically aligned causal σ-VAE preserves acoustic detail at a low rate, while explicit speaker conditioning supplies a direct identity cue for zero-shot voice cloning. Across LibriSpeech and Seed-TTS benchmarks, CuteTTS achieves competitive intelligibility and speaker similarity, with paired subjective evaluations showing a consistent sound-quality preference over similarly sized baselines. Our controlled studies reveal that representation rate and generation granularity must be considered jointly. Higher-rate latents improve reconstruction but increase the prediction burden, whereas moderate patching retains much of their acoustic benefit without inflating the language-model token rate. Semantic alignment improves intelligibility, and explicit speaker conditioning preserves identity. Guidance–step distillation targets this cost directly. 11 CuteTTS Technical Report It compresses two-branch CFG and multiple integration steps into a single head that remains effective at small NFE budgets. Under the paired efficiency protocol, the distilled model reduces mean first-audio latency by 23.3% and mean real-time factor by 40.8% while main-taining synthesis quality close to the base model. These findings provide a coherent design principle for balancing representation fidelity, autoregressive granularity, and sampling cost in streaming continuous-autoregressive TTS. 
+
+## References 
+
+Keyu An, Zhiyu Zhang, Changfeng Gao, Yabin Li, Zhendong Peng, Haoxu Wang, Zhihao Du, Han Zhao, Zhifu Gao, and Xiangang Li. MELA-TTS: Joint transformer-diffusion model with representation alignment for speech synthesis. arXiv preprint arXiv:2509.14784 ,2025. URL https://arxiv.org/abs/2509.14784 .Philip Anastassiou, Jiawei Chen, Jitong Chen, Yuanzhe Chen, Zhuo Chen, Ziyi Chen, Jian Cong, Lelai Deng, Chuang Ding, Lu Gao, Mingqing Gong, Peisong Huang, Qingqing Huang, Zhiying Huang, Yuanyuan Huo, Dongya Jia, Chumin Li, Feiya Li, Hui Li, Jiaxin Li, Xiaoyang Li, Xingxing Li, Lin Liu, Shouda Liu, Sichao Liu, Xudong Liu, Yuchen Liu, Zhengxi Liu, Lu Lu, Junjie Pan, Xin Wang, Yuping Wang, Yuxuan Wang, Zhen Wei, Jian Wu, Chao Yao, Yifeng Yang, Yuanhao Yi, Junteng Zhang, Qidi Zhang, Shuo Zhang, Wenjie Zhang, Yang Zhang, Zilin Zhao, Dejian Zhong, and Xiaobin Zhuang. Seed-TTS: A family of high-quality versatile speech generation models. arXiv preprint arXiv:2406.02430 , 2024. URL https://arxiv.org/abs/2406.02430 .Sanyuan Chen, Chengyi Wang, Zhengyang Chen, Yu Wu, Shujie Liu, Zhuo Chen, Jinyu Li, Naoyuki Kanda, Takuya Yoshioka, Xiong Xiao, Jian Wu, Long Zhou, Shuo Ren, Yanmin Qian, Yao Qian, Jian Wu, Michael Zeng, Xiangzhan Yu, and Furu Wei. WavLM: Large-scale self-supervised pre-training for full stack speech processing. IEEE Journal of Selected Topics in Signal Processing , 16(6):1505–1518, 2022. doi: 10.1109/JSTSP.2022.3188113. URL 
+
+https://doi.org/10.1109/JSTSP.2022.3188113 .Yushen Chen, Zhikang Niu, Ziyang Ma, Keqi Deng, Chunhui Wang, Jian Zhao, Kai Yu, and Xie Chen. F5-TTS: A fairytaler that fakes fluent and faithful speech with flow matching. In Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pp. 6255–6271, 2025. doi: 10.18653/v1/2025.acl-long.313. URL 
+
+https://aclanthology.org/2025.acl-long.313/ .Alexandre Défossez, Jade Copet, Gabriel Synnaeve, and Yossi Adi. High fidelity neural audio compression. Transactions on Machine Learning Research , 2023. URL https:// openreview.net/forum?id=ivCd8z8zR2 .Brecht Desplanques, Jenthe Thienpondt, and Kris Demuynck. ECAPA-TDNN: Emphasized channel attention, propagation and aggregation in TDNN-based speaker verification. In 
+
+Interspeech 2020 , pp. 3830–3834, 2020. doi: 10.21437/Interspeech.2020-2650. URL https: //www.isca-archive.org/interspeech_2020/desplanques20_interspeech.html .Zhihao Du, Qian Chen, Shiliang Zhang, Kai Hu, Heng Lu, Yexin Yang, Hangrui Hu, Siqi Zheng, Yue Gu, Ziyang Ma, Zhifu Gao, and Zhijie Yan. Cosyvoice: A scalable multilingual zero-shot text-to-speech synthesizer based on supervised semantic tokens. arXiv preprint arXiv:2407.05407 , 2024a. URL https://arxiv.org/abs/2407.05407 .Zhihao Du, Yuxuan Wang, Qian Chen, Xian Shi, Xiang Lv, Tianyu Zhao, Zhifu Gao, Yexin Yang, Changfeng Gao, Hui Wang, Fan Yu, Huadai Liu, Zhengyan Sheng, Yue Gu, Chong Deng, Wen Wang, Shiliang Zhang, Zhijie Yan, and Jingren Zhou. Cosyvoice 2: Scalable streaming speech synthesis with large language models. arXiv preprint arXiv:2412.10117 ,2024b. URL https://arxiv.org/abs/2412.10117 .Zhihao Du, Changfeng Gao, Yuxuan Wang, Fan Yu, Tianyu Zhao, Hao Wang, Xiang Lv, Hui Wang, Chongjia Ni, Xian Shi, Keyu An, Guanrou Yang, Yabin Li, Yanni Chen, Zhifu Gao, Qian Chen, Yue Gu, Mengzhe Chen, Yafeng Chen, Shiliang Zhang, Wen Wang, and Jieping Ye. Cosyvoice 3: Towards in-the-wild speech generation via scaling-up and post-training. 
+
+arXiv preprint arXiv:2505.17589 , 2025. URL https://arxiv.org/abs/2505.17589 .12 CuteTTS Technical Report Kevin Frans, Danijar Hafner, Sergey Levine, and Pieter Abbeel. One step diffusion via shortcut models. In The Thirteenth International Conference on Learning Represen-tations , 2025. URL https://proceedings.iclr.cc/paper_files/paper/2025/hash/ 559a0998fab1d19b80e7e43a5852401c-Abstract-Conference.html .Zhifu Gao, Shiliang Zhang, Ian McLoughlin, and Zhijie Yan. Paraformer: Fast and accurate parallel transformer for non-autoregressive end-to-end speech recognition. In Interspeech 2022 , pp. 2063–2067, 2022. doi: 10.21437/Interspeech.2022-9996. URL https://www. isca-archive.org/interspeech_2022/gao22b_interspeech.html .Zhengyang Geng, Mingyang Deng, Xingjian Bai, J. Zico Kolter, and Kaiming He. Mean flows for one-step generative modeling. arXiv preprint arXiv:2505.13447 , 2025. URL 
+
+https://arxiv.org/abs/2505.13447 .Yitian Gong, Botian Jiang, Yiwei Zhao, Yucheng Yuan, Kuangwei Chen, Yaozhou Jiang, Cheng Chang, Dong Hong, Mingshu Chen, Ruixiao Li, Yiyang Zhang, Yang Gao, Hanfu Chen, Ke Chen, Songlin Wang, Xiaogui Yang, Yuqian Zhang, Kexin Huang, ZhengYuan Lin, Kang Yu, Ziqi Chen, Jin Wang, Zhaoye Fei, Qinyuan Cheng, Shimin Li, and Xipeng Qiu. MOSS-TTS technical report. arXiv preprint arXiv:2603.18090 , 2026. URL https: //arxiv.org/abs/2603.18090 .Jonathan Ho and Tim Salimans. Classifier-free diffusion guidance. arXiv preprint arXiv:2207.12598 , 2022. URL https://arxiv.org/abs/2207.12598 .Hangrui Hu, Xinfa Zhu, Ting He, Dake Guo, Bin Zhang, Xiong Wang, Zhifang Guo, Ziyue Jiang, Hongkun Hao, Zishan Guo, Xinyu Zhang, Pei Zhang, Baosong Yang, Jin Xu, Jingren Zhou, and Junyang Lin. Qwen3-TTS technical report. arXiv preprint arXiv:2601.15621 ,2026. URL https://arxiv.org/abs/2601.15621 .Dongya Jia, Zhuo Chen, Jiawei Chen, Chenpeng Du, Jian Wu, Jian Cong, Xiaobin Zhuang, Chumin Li, Zhen Wei, Yuping Wang, and Yuxuan Wang. DiTAR: Diffusion transformer autoregressive modeling for speech generation. In Proceedings of the 42nd International Conference on Machine Learning , volume 267 of Proceedings of Machine Learning Research , pp. 27255–27270. PMLR, 2025. URL https://proceedings.mlr.press/v267/jia25a.html .Eugene Kharitonov, Damien Vincent, Zalán Borsos, Raphaël Marinier, Sertan Girgin, Olivier Pietquin, Matt Sharifi, Marco Tagliasacchi, and Neil Zeghidour. Speak, read and prompt: High-fidelity text-to-speech with minimal supervision. Transactions of the Association for Computational Linguistics , 11:1703–1718, 2023. doi: 10.1162/tacl_a_00618. URL https: //aclanthology.org/2023.tacl-1.95/ .Rithesh Kumar, Prem Seetharaman, Alejandro Luebs, Ishaan Kumar, and Kundan Kumar. High-fidelity audio compression with improved RVQGAN. In Advances in Neural Informa-tion Processing Systems , volume 36, 2023. URL https://arxiv.org/abs/2306.06546 .Kyutai. Pocket TTS: A high-quality TTS with voice cloning that runs on CPU. Kyutai technical report, 2026. URL https://kyutai.org/blog/2026-01-13-pocket-tts/ .Matthew Le, Apoorv Vyas, Bowen Shi, Brian Karrer, Leda Sari, Rashel Moritz, Mary Williamson, Vimal Manohar, Yossi Adi, Jay Mahadeokar, and Wei-Ning Hsu. Voicebox: Text-guided multilingual universal speech genera-tion at scale. In Advances in Neural Information Processing Systems , vol-ume 36, 2023. URL https://proceedings.neurips.cc/paper_files/paper/2023/ hash/2d8911db9ecedf866015091b28946e15-Abstract-Conference.html .Yaron Lipman, Ricky T. Q. Chen, Heli Ben-Hamu, Maximilian Nickel, and Matt Le. Flow matching for generative modeling. In The Eleventh International Conference on Learning Representations , 2023. URL https://openreview.net/forum?id=PqvMRDCJT9t .Shivam Mehta, Ruibo Tu, Jonas Beskow, Éva Székely, and Gustav Eje Henter. Matcha-TTS: A fast TTS architecture with conditional flow matching. In Proceedings of the IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) , 2024. URL 
+
+https://arxiv.org/abs/2309.03199 .13 CuteTTS Technical Report Chenlin Meng, Robin Rombach, Ruiqi Gao, Diederik P. Kingma, Stefano Er-mon, Jonathan Ho, and Tim Salimans. On distillation of guided diffu-sion models. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pp. 14297–14306, 2023. doi: 10.1109/CVPR52729.2023. 01374. URL https://openaccess.thecvf.com/content/CVPR2023/html/Meng_On_ Distillation_of_Guided_Diffusion_Models_CVPR_2023_paper.html .Lingwei Meng, Long Zhou, Shujie Liu, Sanyuan Chen, Bing Han, Shujie Hu, Yanqing Liu, Jinyu Li, Sheng Zhao, Xixin Wu, Helen M. Meng, and Furu Wei. Autoregressive speech synthesis without vector quantization. In Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pp. 1287–1300, 2025. doi: 10.18653/v1/2025.acl-long.65. URL https://aclanthology.org/2025.acl-long.65/ .Microsoft. VibeVoice-Realtime-0.5B model card. Official Microsoft Hugging Face model card, 2025. URL https://huggingface.co/microsoft/VibeVoice-Realtime-0.5B .Zhikang Niu, Shujie Hu, Jeongsoo Choi, Yushen Chen, Peining Chen, Pengcheng Zhu, Yunting Yang, Bowen Zhang, Jian Zhao, Chunhui Wang, and Xie Chen. Semantic-VAE: Semantic-alignment latent representation for better speech synthesis. arXiv preprint arXiv:2509.22167 , 2025. URL https://arxiv.org/abs/2509.22167 .Vassil Panayotov, Guoguo Chen, Daniel Povey, and Sanjeev Khudanpur. LibriSpeech: An ASR corpus based on public domain audio books. In 2015 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) , pp. 5206–5210, 2015. doi: 10.1109/ ICASSP.2015.7178964. URL https://doi.org/10.1109/ICASSP.2015.7178964 .Puyuan Peng, Po-Yao Huang, Shang-Wen Li, Abdelrahman Mohamed, and David Harwath. Voicecraft: Zero-shot speech editing and text-to-speech in the wild. In Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) ,pp. 12442–12462, 2024. doi: 10.18653/v1/2024.acl-long.673. URL https://aclanthology. org/2024.acl-long.673/ .Zhiliang Peng, Jianwei Yu, Wenhui Wang, Yaoyao Chang, Yutao Sun, Li Dong, Yi Zhu, Wei-jiang Xu, Hangbo Bao, Zehua Wang, Shaohan Huang, Yan Xia, and Furu Wei. Vibevoice technical report. arXiv preprint arXiv:2508.19205 , 2025. URL https://arxiv.org/abs/ 2508.19205 .Vadim Popov, Ivan Vovk, Vladimir Gogoryan, Tasnima Sadekova, and Mikhail Kudinov. Grad-TTS: A diffusion probabilistic model for text-to-speech. In Proceedings of the 38th International Conference on Machine Learning , volume 139 of Proceedings of Machine Learning Research , pp. 8599–8608. PMLR, 2021. URL https://proceedings.mlr.press/v139/ popov21a.html .Alec Radford, Jong Wook Kim, Tao Xu, Greg Brockman, Christine Mcleavey, and Ilya Sutskever. Robust speech recognition via large-scale weak supervision. In Proceedings of the 40th International Conference on Machine Learning , volume 202 of Proceedings of Machine Learning Research , pp. 28492–28518. PMLR, 2023. URL https://proceedings.mlr.press/ v202/radford23a.html .Simon Rouard, Manu Orsini, Axel Roebel, Neil Zeghidour, and Alexandre Défossez. Continuous audio language models. arXiv preprint arXiv:2509.06926 , 2025. URL 
+
+https://arxiv.org/abs/2509.06926 .Takaaki Saeki, Detai Xin, Wataru Nakata, Tomoki Koriyama, Shinnosuke Takamichi, and Hiroshi Saruwatari. UTMOS: UTokyo-SaruLab system for VoiceMOS challenge 2022. In Interspeech 2022 , pp. 4521–4525, 2022. doi: 10.21437/Interspeech.2022-439. URL 
+
+https://www.isca-archive.org/interspeech_2022/saeki22c_interspeech.html .Tim Salimans and Jonathan Ho. Progressive distillation for fast sampling of diffusion models. In The Tenth International Conference on Learning Representations , 2022. URL 
+
+https://openreview.net/forum?id=TIdIXIpzhoI .14 CuteTTS Technical Report Yang Song, Prafulla Dhariwal, Mark Chen, and Ilya Sutskever. Consistency models. In Proceedings of the 40th International Conference on Machine Learning , volume 202 of 
+
+Proceedings of Machine Learning Research , pp. 32211–32252. PMLR, 2023. URL https: //proceedings.mlr.press/v202/song23a.html .Yutao Sun, Hangbo Bao, Wenhui Wang, Zhiliang Peng, Li Dong, Shaohan Huang, Jianyong Wang, and Furu Wei. Multimodal latent language modeling with next-token diffusion. 
+
+arXiv preprint arXiv:2412.08635 , 2024. URL https://arxiv.org/abs/2412.08635 .Arnon Turetzky, Nimrod Shabtay, Slava Shechtman, Hagai Aronowitz, David Haws, Ron Hoory, and Avihu Dekel. Continuous speech synthesis using per-token latent diffusion. 
+
+arXiv preprint arXiv:2410.16048 , 2024. URL https://arxiv.org/abs/2410.16048 .Chengyi Wang, Sanyuan Chen, Yu Wu, Ziqiang Zhang, Long Zhou, Shujie Liu, Zhuo Chen, Yanqing Liu, Huaming Wang, Jinyu Li, Lei He, Sheng Zhao, and Furu Wei. Neural codec language models are zero-shot text to speech synthesizers. arXiv preprint arXiv:2301.02111 ,2023a. URL https://arxiv.org/abs/2301.02111 .Hongji Wang, Chengdong Liang, Shuai Wang, Zhengyang Chen, Binbin Zhang, Xu Xiang, Yanlei Deng, and Yanmin Qian. WeSpeaker: A research and production oriented speaker embedding learning toolkit. In 2023 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) , pp. 1–5, 2023b. doi: 10.1109/ICASSP49357.2023.10096626. URL https://doi.org/10.1109/ICASSP49357.2023.10096626 .Hui Wang, Shujie Liu, Lingwei Meng, Jinyu Li, Yifan Yang, Shiwan Zhao, Haiyang Sun, Yanqing Liu, Haoqin Sun, Jiaming Zhou, Yan Lu, and Yong Qin. FELLE: Autoregressive speech synthesis with token-wise coarse-to-fine flow matching. In Proceedings of the 33rd ACM International Conference on Multimedia , 2025a. doi: 10.1145/3746027.3755494. URL 
+
+https://arxiv.org/abs/2502.11128 .Wei Wang, Rong Cao, Yi Guo, Zhengyang Chen, Kuan Chen, and Yuanyuan Huo. Int-meanflow: Few-step speech generation with integral velocity distillation. arXiv preprint arXiv:2510.07979 , 2025b. URL https://arxiv.org/abs/2510.07979 .Chun Yat Wu, Jiajun Deng, Guinan Li, Qiuqiang Kong, and Simon Lui. CLEAR: Continuous latent autoregressive modeling for high-quality and low-latency speech synthesis. arXiv preprint arXiv:2508.19098 , 2025. URL https://arxiv.org/abs/2508.19098 .Kun Xie, Feiyu Shen, Junjie Li, Fenglong Xie, Xu Tang, and Yao Hu. Fireredtts-2: To-wards long conversational speech generation for podcast and chatbot. arXiv preprint arXiv:2509.02020 , 2025. URL https://arxiv.org/abs/2509.02020 .Siyi Zhou, Yiquan Zhou, Yi He, Xun Zhou, Jinchao Wang, Wei Deng, and Jingchen Shu. Indextts2: A breakthrough in emotionally expressive and duration-controlled auto-regressive zero-shot text-to-speech. arXiv preprint arXiv:2506.21619 , 2025a. URL 
+
+https://arxiv.org/abs/2506.21619 .Yixuan Zhou, Guoyang Zeng, Xin Liu, Xiang Li, Renjie Yu, Ziyang Wang, Runchuan Ye, Weiyue Sun, Jiancheng Gui, Kehan Li, Zhiyong Wu, and Zhiyuan Liu. VoxCPM: Tokenizer-free TTS for context-aware speech generation and true-to-life voice cloning. arXiv preprint arXiv:2509.24650 , 2025b. URL https://arxiv.org/abs/2509.24650 .Yixuan Zhou, Guoyang Zeng, Xin Liu, Xiang Li, Renjie Yu, Jiancheng Gui, Jiaheng Wu, Ziyang Wang, Xudong Shen, Runchuan Ye, Zhisheng Zhang, Jiuyang Zhou, Bingsong Bai, Weiyue Sun, Mengyuan Deng, Qundong Shi, Zhiyong Wu, and Zhiyuan Liu. VoxCPM2 technical report. arXiv preprint arXiv:2606.06928 , 2026. URL https://arxiv.org/abs/ 2606.06928 .Han Zhu, Wei Kang, Zengwei Yao, Liyong Guo, Fangjun Kuang, Zhaoqing Li, Weiji Zhuang, Long Lin, and Daniel Povey. Zipvoice: Fast and high-quality zero-shot text-to-speech with flow matching. arXiv preprint arXiv:2506.13053 , 2025. URL https://arxiv.org/ abs/2506.13053 .15 CuteTTS Technical Report 
+
+## Appendix A Training and Inference Details 
+
+A.1 Model Configuration Tables 7 and 8 summarize the model configurations used in our experiments. The audio VAE accepts and reconstructs 24-kHz waveforms. It uses a causal convolutional architecture and a σ-VAE posterior with its standard deviation fixed to 0.15. CuteTTS and CuteTTS-distill share the same overall architecture, while the latter augments the diffusion head with guidance-strength and step-size embeddings. Both models group two latent frames per patch, resulting in an LM token rate of 6.25 tokens per second. A.2 Training Configuration 
+
+Audio VAE. Training is conducted in FP32 for 1M steps with an effective batch size of 256. Training samples are randomly cropped into 2.5-s segments. To improve reconstruction from bandwidth-degraded speech, we downsample 5% of the training examples to 16 kHz and another 5% to 8 kHz, resample them back to 24 kHz, and retain the original 24-kHz signals as reconstruction targets. The loss weights in Equation 2 are λmel = 15, λadv = 1, 
+
+λfeat = 2, λKL = 0.1, and λsem = 1. We use AdamW with a learning rate of 2 × 10 −4,
+
+(β1, β2) = ( 0.8, 0.99 ), and weight decay of 0.01, followed by exponential decay with γ =
+
+0.999996. 
+
+CuteTTS. We train the TTS backbone end-to-end for 1M steps with a global batch size of up to 81,920 packed tokens. For flow-matching training, each target patch is repeated four times; each copy uses independently sampled Gaussian noise and t = sigmoid (u), where 
+
+u ∼ N (0, 1 ). Conditional inputs are dropped with probability 0.1 to enable CFG at inference. We use AdamW with a peak learning rate of 5 × 10 −4, (β1, β2) = ( 0.9, 0.95 ), and weight decay of 0.01. The learning rate follows a cosine schedule with 5K warmup steps. 
+
+CuteTTS-distill. We update only the diffusion head for 100K steps with a global batch size of up to 65,536 packed tokens. Each target patch is repeated twice for distillation. Teacher targets are computed on an eight-step base grid. At 0, 20K, and 50K training steps, the sampling probabilities over four-, two-, and one-step targets are (1, 0, 0 ), (0.5, 0.5, 0 ), and 
+
+(0.2, 0.3, 0.5 ), respectively; the interval start is sampled uniformly from the selected discrete grid. We use AdamW with a peak learning rate of 1 × 10 −5, (β1, β2) = ( 0.9, 0.95 ), weight decay of 0.01, and a cosine schedule with 1K warmup steps. The resulting checkpoint supports all three inference budgets. Table 7: Audio VAE configuration. Hyperparameter Value Frame rate (Hz) 12.5 Latent dimension 64 Encoder initial channels 128 Encoder strides 3/5/8/16 Decoder initial channels 1,536 Decoder strides 16/8/5/3 Parameters (M) 127.9 A.3 Inference Configuration 
+
+Voice-cloning CFG. The base model uses LM-level CFG with guidance weight w = 2. Table 9 summarizes the two branches. Both branches retain the generated patch history. The unconditional branch removes the target text and reference audio from the LM input and 16 CuteTTS Technical Report Table 8: Model configurations. Parameter counts are rounded.                                  
+
+> Component Hyperparameter CuteTTS CuteTTS-distill
+> Patch encoder Layers 22Hidden dimension 1,024 1,024 Attention/KV heads 16/2 16/2 FFN dimension 4,096 4,096 Parameters (M) 31.0 31.0 Causal backbone Layers 77Hidden dimension 1,024 1,024 Attention/KV heads 16/8 16/8 FFN dimension 3,072 3,072 Parameters (M) 126.9 126.9 Diffusion head Layers 44Hidden dimension 1,024 1,024 Attention/KV heads 16/2 16/2 FFN dimension 4,096 4,096 Guidance-strength embedding –
+
+✓  
+
+> Step-size embedding –
+
+✓     
+
+> Parameters (M) 70.5 73.6 Overall Parameters (M) 228.6 231.8
+
+Table 9: LM-CFG branches for zero-shot voice cloning with CuteTTS.    
+
+> Branch LM input Diffusion-head speaker Conditional
+
+⟨reference audio ⟩ | ⟨ text ⟩ s  
+
+> Unconditional Unconditional LM prefix 0
+
+zeros the diffusion-head speaker condition. CFG therefore jointly strengthens the LM-side text and reference conditions and the diffusion-head speaker condition. 
+
+Sampling. For each generated patch, CuteTTS uses 10 diffusion-head NFEs on each CFG branch, with Euler integration over a Sway time grid with coefficient −0.8. CuteTTS-distill encodes w = 2 directly as a diffusion-head condition and uses four NFEs on a single uniform Euler grid, without an unconditional branch. The same distilled checkpoint supports one-, two-, and four-step inference; unless otherwise noted, the main experiments use four steps. A.4 Ablation Configuration 
+
+VAE. The VAE ablations accept and reconstruct 24-kHz waveforms and use the same causal convolutional architecture, 64-dimensional σ-VAE posterior, and fixed posterior standard deviation of 0.15 as the main audio VAE. As summarized in Table 10, the four frame-rate variants differ only in the final encoder downsampling factor and the corresponding decoder upsampling factor. All other model settings are shared. 17 CuteTTS Technical Report Table 10: Model configurations for the VAE frame-rate ablation.                             
+
+> Hyperparameter 6.25 Hz 12.5 Hz 25 Hz 50 Hz Latent dimension 64 64 64 64 Encoder initial channels 128 128 128 128 Encoder strides 3/5/8/32 3/5/8/16 3/5/8/8 3/5/8/4 Decoder initial channels 1,536 1,536 1,536 1,536 Decoder strides 32/8/5/3 16/8/5/3 8/8/5/3 4/8/5/3 Parameters (M) 232.7 127.9 75.5 49.2
+
+Figure 6: Annotation interface for the subjective evaluation. The four variants are trained for 500K steps in FP32 on randomly cropped 2.5-s segments with an effective batch size of 64. We optimize both the generator and discriminator using AdamW with a learning rate of 1 × 10 −4, (β1, β2) = ( 0.8, 0.99 ), and weight decay of 0.01, followed by exponential decay with γ = 0.999996. The weights for mel reconstruction, adversarial feature matching, adversarial generation, KL regularization, and semantic alignment are 15, 2, 1, 0.1, and 1, respectively. 
+
+TTS. All TTS ablations use the model configuration in Table 8. The layer counts and hidden dimensions are held fixed, while the patch-encoder input and diffusion-head output projections follow the patch size p.18 CuteTTS Technical Report The models are trained end-to-end for 500K steps with a global batch size of up to 40,960 packed tokens. We use the same conditional flow-matching setup as for CuteTTS, including four independently noised copies of each target patch. AdamW is used with a peak learning rate of 5 × 10 −4, (β1, β2) = ( 0.9, 0.95 ), and weight decay of 0.01. The learning rate follows a cosine schedule with 5K warmup steps. To enable CFG at inference, conditional inputs are dropped with probability 0.1 during training. 
+
+## B Subjective Evaluation Details 
+
+We conduct the subjective evaluation on the 50-example LibriSpeech test-clean subset. Each of the two CuteTTS variants is compared with MOSS-TTS-Nano, F5-TTS, ZipVoice, and Pocket TTS on all 50 examples, yielding 400 comparison items in total. The items are randomly shuffled and distributed among seven annotators. For each pair of generated samples, annotators select the better sample independently for sound quality and natural-ness, with a tie permitted for either dimension. System identities are hidden throughout the evaluation. Figure 6 shows the annotation interface. 
+
+## C Efficiency Benchmark 
+
+All systems are evaluated on the fixed 50-request LibriSpeech test-clean subset using a single NVIDIA RTX 4090. We keep one model resident at a time and process requests strictly sequentially with batch size one. Measurements follow a warm-service, warm-file-cache protocol: each model completes one full warm-up pass before measurement, while model loading, compilation, and warm-up are excluded from the timed interval. Each voice-cloning request begins with raw target text and a raw reference-audio path. Timing starts before text processing and reference file access and includes, where applicable, audio loading and resampling, reference and speaker encoding, LM prefill, latent generation, causal VAE decoding, and device-to-host transfer. No request-level tokenizer output, decoded reference audio, reference representation, speaker embedding, or prefix state is reused across requests; only the operating-system file cache is retained. Table 2 reports the arithmetic mean, P50, and P95 first-audio latency, together with the mean per-utterance RTF, over the fixed 50 requests. For CuteTTS, the inference configurations follow Appendix A. The base and distilled models use the same request order and per-item seeds. Their fixed-shape diffusion heads and Euler sampling loops are compiled, while CUDA graphs are disabled. Both models successfully complete all 50 requests without truncation. For baseline inference configurations, MOSS-TTS and Qwen3-TTS use the official vLLM-Omni inference engine, while ZipVoice uses the official PyTriton/TensorRT engine. The MOSS-TTS Delay model accepts a streaming request but returns a single final PCM block; we therefore report only its RTF. MOSS-TTS-Nano is evaluated in raw-reference voice-cloning mode. Since VibeVoice-Realtime does not support arbitrary-reference voice cloning, it is evaluated using its default voice. 19

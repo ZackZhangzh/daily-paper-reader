@@ -1,0 +1,441 @@
+Title: Staying True to the Origin: Continuous Image Stylization with Smooth Transitions
+
+URL Source: https://arxiv.org/pdf/2608.08125v1
+
+Published Time: Tue, 11 Aug 2026 00:50:45 GMT
+
+Number of Pages: 14
+
+Markdown Content:
+# Staying True to the Origin: Continuous Image Stylization with Smooth Transitions 
+
+## Rui Xu, Hanmo Zhang, Songhua Liu ∗
+
+Shanghai Jiao Tong University chiaroair@gmail.com, hammershock@163.com, liusonghua@sjtu.edu.cn 
+
+Abstract 
+
+Recent advances in generative models have achieved remark-able performance in text- and image-conditioned editing. However, preserving the content of a given image while refer-encing style patterns from another remains challenging, often leading to uncontrollable stylization results. In this paper, we approach image stylization from the perspective of continu-ous control, aiming to enable modern Diffusion Transformer (DiT)-based multi-reference editing models to (1) faithfully preserve the semantic structure of the content image, (2) ren-der strong stylization effects, and (3) smoothly transition be-tween the two. To this end, we propose a simple yet effective two-stage training strategy along with a style-strength-aware spline formulation. Specifically, in the first stage, the model is trained to produce strongly stylized outputs while preserving the content semantics as much as possible. In the second stage, with the base model frozen, we learn a set of anchor projectors that map various stylization strengths into the model parameter space. During inference, by performing style-strength-aware spline interpolation in a low-rank space, our method enables continuous control over stylization strength, even though the model is trained with only a few discrete strength levels. Ex-tensive experiments demonstrate that our method supports precise and continuous manipulation of stylization strength while generating high-fidelity results with modern DiT mod-els. Project page: https://reychiaro.github.io/StyleController. 
+
+## Introduction 
+
+Recent advancements in generative models (Ho, Jain, and Abbeel 2020; Lipman et al. 2022) have demonstrated pro-found capabilities in local detail editing (Wu et al. 2025; Labs et al. 2025; Wang et al. 2025b; Comanici et al. 2025; Esser et al. 2024), particularly when guided by textual and visual modalities via Classifier-Free Guidance (CFG) (Ho and Sal-imans 2022). Despite their ability to produce high-fidelity images, these models often struggle with global understand-ing tasks such as style transfer (Gatys, Ecker, and Bethge 2016). Fundamentally, style transfer requires generating styl-ized outputs that simultaneously preserve the semantic struc-ture of a content image and incorporate intricate patterns from a style reference. To address this, several prominent studies (Wang et al. 2025a; Song, Liu, and Shou 2025; Tan et al. 2025) have focused on unleashing the inherent styliza-tion potential of image editing models, employing efficient 
+
+> ∗
+
+Corresponding author. content style 
+
+> increase style strength
+
+Figure 1: Continuous stylization with smooth transitions. The proposed method transfers styles with explicit stylization control strengths, achieving controllable stylization while preserving content layouts and local style patterns along smooth transition paths. parameter-tuning techniques like LoRA (Hu et al. 2022) to balance content integrity with stylistic fidelity. However, most existing methods are constrained to map-ping inputs to a fixed stylization strength, which often leads to a reduction in distributional diversity and a failure to capture subtle stylistic patterns. While adjusting guidance scales (Ho and Salimans 2022) can partially mitigate these issues, this implicit tuning mechanism typically yields suboptimal re-sults and fails to produce smooth stylization transitions. Al-though recent advances in LoRA merging and adapter scal-ing (Zhong et al. 2024; Chen et al. 2025; Shenaj et al. 2025; Liu et al. 2025) offer some degree of control, simply ma-nipulating the normalization factors of stylization adapters is inherently unreliable for generating high-fidelity, contin-uous transition curves. Alternatively, image morphing tech-niques (Cao et al. 2025; Zhang et al. 2024) attempt to cre-ate transition paths between images. However, these meth-ods often transform content instances from one to another, significantly compromising stylization performance due to their strong constraints on smoothness. These persistent chal-lenges are visualized in Figure 2. Based on current research, a robust methodology for achieving controllable stylization while balancing content arXiv:2608.08125v1 [cs.CV] 8 Aug 2026 preservation and style transfer remains elusive. The limita-tions of current approaches can be summarized into three core challenges: (1) Content-Style Dilemma . Existing edit-ing models often struggle to achieve strong stylization effects without compromising the semantic structure of the content images. This manifests as either under-stylized results that lack style patterns or over-stylized outputs where the con-tent becomes unrecognizable. (2) Unreliable Style Control .Current methods typically map inputs to a fixed, discrete styl-ization strength. While implicit control methods ( e.g. , CFG, LoRA) can be applied, these mechanisms are often unreliable and fail to provide predictable and high-fidelity control over the strength of style transitions. (3) Non-Smooth Transition Path . Although interpolation or morphing techniques can generate intermediate images, they are generally optimized for instance-to-instance blending rather than style-strength-aware transitions. Consequently, they fail to produce smooth stylization transition curves. To address these challenges, we propose a two-stage train-ing strategy with a strength-aware spline interpolation frame-work, effectively bridging the gap between local editing and controllable continuous stylization. In the first stage, the model is tuned to achieve high-fidelity endpoint stylization, focusing on reconstructing content semantics while simul-taneously capturing local stylistic patterns and global color palettes. Based on these priors, the second stage introduces a set of anchor projectors that map stylization strengths into a low-rank parameter space. Finally, by formulating a strength-aware spline, we extend the capability of these projectors to enable an explicit and robust control mechanism. In sum-mary, the contributions of this work are three-fold: 1. Stylization Improvements . We design a specialized tun-ing pipeline that empowers image editing models to ex-tract subtle stylistic patterns while maintaining content semantic integrity. 2. Controllable Strengths . We introduce low-rank anchor projectors that inject stylization strength directly into the latent parameter space, replacing unreliable implicit guid-ance with an explicit, controllable mechanism. 3. Smooth Trajectories . We achieve continuous and smooth stylization trajectories by incorporating a strength-aware spline formulation. Extensive experiments demonstrate that our method exhibits superior stylization performance and robust strength control, consistently preserving both global content structures and fine-grained stylistic details across the entire transition. 
+
+## Related Work 
+
+Style Transfer . With the development of diffusion and flow matching models, style transfer has achieved substan-tial progress. StyleSSP (Xu et al. 2025) improves content preservation through frequency manipulation and employs inversion-based guidance to mitigate content leakage from style references. InstantStyle (Wang et al. 2024a,b) injects style features via attention modulation while preserving con-tent semantics using adapters. Instead of explicitly balancing content and style, StyleDiffusion (Wang, Zhao, and Xing 2023) disentangles style and content representations through guidance scale image morphing LoRA scale factor  
+
+> content style
+
+Figure 2: The limitations of current models for continuous stylization with smooth transition control. Top : Style transfer models (Xu et al. 2025) with guidance scales neglect style patterns and change the content. Middle : Morphing-based methods provide a smooth transition but fail to transfer styles to content images. Bottom : Scaling a tuned LoRA by adjust-ing αr fails to maintain content consistency in the early stages. a style removal module and learns stylization implicitly. As a representative tuning-based approach, OmniStyle (Wang et al. 2025a) constructs a large-scale content–style–stylized dataset and fine-tunes a flow matching model (Labs et al. 2025) to generate aesthetically stylized images. Despite their effectiveness, these methods provide limited control over stylization strength and often rely on indirect mechanisms such as guidance scales. Consequently, stylization control remains underexplored, potentially leading to unpredictable transfer results in practical applications. In contrast, our method enables continuous and controllable stylization while preserving both content structure and style characteristics. 
+
+Style Morphing . Smooth image morphing enables grad-ual transitions of visual structures and has been widely used in animation and keyframe generation. Although diffusion models can produce high-fidelity images, their unstructured latent spaces make smooth interpolation challenging (Zhang et al. 2024). Wang and Golland (2023) employ textual in-version and perform interpolation in the noisy latent space, followed by denoising to obtain target images. DiffMor-pher (Zhang et al. 2024) further introduces linear interpola-tion over attention and LoRA (Hu et al. 2022) parameters and adopts spherical linear interpolation (Shoemake 1985) in the high-dimensional latent space, demonstrating smooth mor-phing trajectories between images. Building on this line of work, FreeMorph (Cao et al. 2025) proposes a training-free framework that incorporates guidance-aware spherical inter-polation and customized attention processors. While these approaches successfully generate transitions between source and target images, they are not designed to explicitly con-trol stylization variations when applied to style transfer. In contrast, our method performs interpolation in a low-rank parameter space, enabling controllable stylization transitions while preserving both content and style characteristics. 
+
+## Methodology 
+
+To improve style transfer and enable controllable styliza-tion transitions, we propose a two-stage, content–style-conditioned fine-tuning method followed by stylization-strength-aware interpolation. As summarized in Figure 3, panels (b) and (c) show the two training stages, whereas panel (a) shows inference with an interpolated runtime projector. Preliminaries 
+
+Flow-Matching . Given the Gaussian distribution Pinit =
+
+N (0 , I ) and data distribution Pdata , flow matching aims to construct a marginal vector field vt(x) (0 ≤ t ≤ 1) mapping a data point x0 drawn from Pinit to a point x1 ∼ Pdata (Lip-man et al. 2022) by solving the ODE ddt Xt = vt(Xt) with initial condition X0 = x0, where x0 ∼ Pinit and xt follows the marginal probability path Pt(xt).Given an arbitrary data point z ∼ Pdata and a Gaussian conditional probability path Pt(xt|z), we have Pt(xt) = R Pt(xt|z)Pdata (z)dz . With the help of the continuity equa-tion (Lipman et al. 2022), the marginal vector field can be calculated from the conditional field as vt(Xt) =
+
+R vt(Xt|z) Pt(Xt|z)Pdata (z) 
+
+> Pt(Xt)
+
+dz . Then, the tractable condi-tional flow-matching training objective can be written as 
+
+LCF M (θ) = E[∥uθt (Xt) − vt(Xt|z)∥2]. In the Gaussian case, this loss function can be expressed as 
+
+LCF M (θ) = E
+
+h
+
+∥uθt (αtϵ + βtz) − ( ˙ αtϵ + ˙βtz)∥2i
+
+, (1) where αt, β t are the noise schedulers, and t ∼ U (0 , 1) , ϵ ∼N (0 , I ), z ∼ Pdata are sampled during training. 
+
+Anchor Style Transfer Dataset 
+
+Our method is motivated by the goal of improving styliza-tion performance for image editing models (Wu et al. 2025; Seedream et al. 2025; Labs et al. 2025) and extending this capability to continuous stylization transitions. To this end, we construct a new style transfer dataset with stylization anchors (Kolkin, Salavon, and Shakhnarovich 2019). Specif-ically, we first generate a collection of style reference im-ages (Labs et al. 2025) with dense texture patterns, which provide priors for learning fundamental style characteristics. To further enhance style diversity and align the styles with commonly used patterns, we additionally collect a subset of styles from Style30k (Li et al. 2024). For content images, we randomly sample a subset of images from OmniStyle (Wang et al. 2025a); these images are generated and filtered by ex-pert models (Labs et al. 2025; Achiam et al. 2023; Radford et al. 2021; Chen et al. 2024; Oquab et al. 2023). Finally, for each content–style pair, we automatically generate five stylization anchors at s ∈ { 0.2, 0.4, 0.6, 0.8, 1.0} by vary-ing only the content–style trade-off weight, without manual intensity annotation or selection. For evaluation, we follow the paired evaluation protocol of OmniStyle-150k, separately from the synthetic anchor generation used for training. 
+
+Stylization Strength Affine Module 
+
+The proposed method aims to improve both basic stylization performance and the ability to perform continuous styliza-tion transitions. To address the limitations of current image editing models (Wu et al. 2025; Seedream et al. 2025; Labs et al. 2025), we adopt a simple yet effective fine-tuning strat-egy by introducing LoRA (Hu et al. 2022) modules into the attention projection matrices (Q, K, and V) (Vaswani et al. 2017) as well as the MLP layers. Specifically, for a latent representation x ∈ Rd, LoRA introduces trainable low-rank matrices A ∈ Rr×d and B ∈
+
+Rd×r , where r ≪ d. These matrices parameterize a low-rank update to the original weight matrix. The transformed latent representation can therefore be written as 
+
+˜x = W x + BAx, (2) where W ∈ Rd×d denotes the original frozen weight matrix. Consistent with prior studies and common practices in styl-ization research (Wang et al. 2025a,c; Song, Liu, and Shou 2025; Tan et al. 2025), incorporating LoRA adapters into a foundation image editing model can significantly improve style transfer performance while keeping the base model pa-rameters frozen. However, despite these improvements, such a framework still essentially performs a one-to-one mapping between the input content and the target style, which limits its ability to provide fine-grained control over the stylization process. To enable controllable stylization transitions with a limited number of trainable parameters, training a separate adapter for each target control strength is inefficient. We ob-serve that these adapters essentially perform the same style transfer task and differ mainly in the stylization strength, while the remaining inputs and outputs remain largely con-sistent. Based on this observation, we introduce a low-rank affine transformation that projects latents into different stylization-strength spaces. Specifically, given a pre-trained style transfer adapter consisting of matrices A ∈ Rr×d and B ∈ Rd×r ,we design a lightweight linear module L ∈ Rr×r with bias 
+
+b ∈ Rr operating in the low-rank space. The transformed latent representation is defined as 
+
+˜x(s) = W x + B (L (ˆ s ⊙ Ax ) + b) , (3) Here, s ∈ [0 , 1] denotes the stylization control strength, and its r-dimensional extension is ˆs = s1r , where 1r ∈ Rr is an all-ones vector. The symbol ⊙ represents element-wise mul-tiplication. The stylization strength first scales the low-rank features, after which the full affine projector mixes informa-tion across the rank dimensions. With this design, the trainable parameters consist of a sin-gle adapter responsible for the basic style transfer capability, together with a set of lightweight projectors that control the stylization strength. Specifically, the endpoint adapter is pa-rameterized by ∆θ0 = ( A, B ), while the projector at the i-th stylization control level is parameterized by ∆θi = ( Li, b i)
+
+for 1 ≤ i ≤ N . The model is optimized using a two-stage training strategy with the same linear noise schedule αt = t
+
+and βt = 1 − t as used in (Liu, Gong, and Liu 2022) and de-scribed in the preliminaries. The training objective is defined as 
+
+L(∆ θi) = E
+
+
+
+uθ+∆ θi 
+
+> t
+
+((1 − t)z + tϵ ) − (ϵ − z) 2
+
+, (4) where t denotes the flow-matching time step. As shown in Figure 3(b), the first stage trains the end-point adapter ∆θ0 = ( A, B ) at s = 1 .0 to establish image-conditioned style transfer capability. In the second stage shown in Figure 3(c), A and B are frozen while the strength projectors ∆θi are trained at the discrete stylization anchors. Experiments and ablation studies demonstrate that the pro-posed module is effective for controllable stylization. MMDiT 
+
+1.0 
+
+Frozen B Frozen A 
+
+×" 
+
+> Stylization Anchors Continuous Stylization
+> Strength Bar
+
+Prompt: Transfer the style of image 1 to the style of image 2 with strength 0.68 .content style 
+
+> Low Rank Space Stylization Strength Interpolation
+> Strength Proj
+
+0
+
+> 0.68
+
+(a) The inference steps of pipeline. (b) Finetune with stylization endpoints. (c) Train stylization strength anchors projectors. 
+
+endpoint 
+
+strength 1.0 
+
+MMDiT 
+
+×" 
+
+Train B Train A 
+
+image 1 image 2 
+
+output 
+
+> Constant strength 1.0
+
+1.0 0
+
+1.0 0
+
+strength anchors 
+
+content 
+
+style 
+
+MMDiT 
+
+×" 
+
+Frozen B Frozen A 
+
+> Strength 0.6
+
+strength 0.6 
+
+> Strength 0.2 Strength 0.6 Strength 0.8 Strength 0.4
+
+!
+
+!
+
+!Figure 3: Overview of the proposed two-stage training and inference pipeline. Left (a) : during inference, the learned anchor projectors are combined through strength-aware interpolation to construct a runtime projector for a queried strength s, which modulates the frozen adapter matrices A and B. Right (b) : in the first training stage, A and B are optimized using the endpoint at s = 1 .0. Right (c) : in the second training stage, A and B are frozen while the strength projectors are trained at discrete stylization anchors. 
+
+Interpolation in Low-Rank Space 
+
+We seek continuous stylization control from projectors learned only at the N discrete anchor strengths. We treat the learned projectors {∆θi = ( Li, b i)}Ni=1 as B-spline control points and interpolate them directly in the low-rank parame-ter space. For a B-spline of degree k, let U = {uj }N +k+1  
+
+> j=1
+
+be a non-decreasing knot vector. The basis functions are defined by the Cox–de Boor recursion 
+
+Bi, 0(s) = 
+
+1, ui ≤ s < u i+1 ,
+
+0, otherwise ,Bi,k (s) = s − ui
+
+ui+k − ui
+
+Bi,k −1(s)+ ui+k+1 − sui+k+1 − ui+1 
+
+Bi+1 ,k −1(s), k ≥ 1, (5) where 1 ≤ i ≤ N and a term with a zero denominator is defined as zero. Thus, the N projector control points require 
+
+N + k + 1 knots. At a queried strength s ∈ [0 , 1] , the runtime projector is 
+
+Θ(s) = ( L(s), b (s)) = 
+
+> N
+
+X
+
+> i=1
+
+Bi,k (s) ∆ θi. (6) Because the basis weights vary continuously with s, Θ(s)
+
+provides smooth strength control while remaining in the low-rank parameter space. Only the projectors ∆θi are interpo-lated; the endpoint adapter ∆θ0 = ( A, B ) remains frozen. At inference, as shown in Figure 3(a), we evaluate the ba-sis functions at the queried s, construct Θ(s) using Eq. (6), and combine it with the frozen endpoint adapter to generate the stylized image without further optimization. Both quan-titative and qualitative experimental results demonstrate that the proposed method maintains high stylization fidelity along the entire transition path. 
+
+## Experiments 
+
+Experiments are conducted using the image editing model QwenImage (Wu et al. 2025) unless otherwise specified. The parameter-free optimizer Prodigy (Mishchenko and Defazio 2023) is applied with a learning rate of 1.0. All experiments are conducted on a single NVIDIA A100 GPU with 80 GB of memory. 
+
+Metrics 
+
+Stylization . We mainly use FID (Heusel et al. 2017), LPIPS (Zhang et al. 2018), and ArtFID (Wright and Ommer 2022). FID is used for both style learning and content preser-vation, denoted as s-FID and c-FID, respectively. LPIPS mea-sures the degree of content preservation between stylized im-ages and content images. ArtFID = (1+ s-FID )·(1+ LPIPS )
+
+is a comprehensive metric for both content and style trans-fer capabilities. Meanwhile, we introduce the CLIP image score (Hessel et al. 2021) for content semantic alignment and style loss (Gatys, Ecker, and Bethge 2016) ( 10 −4) for content style Instant Style-Plus OmniStyle StyleID StyleSSP CSGO Ours 
+
+> ! = #. %
+> Ours
+> ! = #. &
+
+Figure 4: Stylization comparisons between our method and the baselines. We show the default strength s = 0 .4 and 
+
+additionally report s = 0 .9 to evaluate stronger stylization. Zoom in for better visualization. style alignment, providing a comprehensive view of content and style quality. 
+
+Smoothness . We use perceptual path length (PPL) (Kar-ras et al. 2020) to evaluate the smoothness of the overall generated transition paths. PPL is the sum of perceptual losses (Zhang et al. 2018) between adjacent images along the stylization paths. We then introduce a new metric to better reflect stylization transition smoothness, which we call styl-ization path length (SPL). Analogous to PPL, SPL focuses on variations in style along the transition path. Specifically, given a stylization transition path P = {Ics i }ni=1 , SPL is calculated using Eq. (7) SPL (P, I S ) = 
+
+> n
+
+X
+
+> i=2
+
+|SL (Ics i , I S ) − SL (Ics i−1, I S )| (7) where IS is the style reference and SL (·) is the style loss (Gatys, Ecker, and Bethge 2016)( 10 −4). 
+
+Qualitative Comparisons 
+
+Stylization . Figure 4 presents qualitative comparisons between our method and existing style transfer ap-proaches (Xing et al. 2024; Xu et al. 2025; Chung, Hyun, and Heo 2024; Wang et al. 2025a, 2024b). We report results at stylization strengths s = 0 .4 and s = 0 .9 to evaluate both moderate and strong stylization. Compared with the base-lines, our method preserves image content more effectively even under strong stylization. Meanwhile, the generated im-ages maintain global color palettes consistent with the ref-erence styles and progressively reveal richer local style pat-terns as the stylization strength increases. For instance, in the last row, the reference style image contains butterfly motifs as its dominant pattern. While most baselines only transfer coarse attributes such as color and brush strokes, our method successfully incorporates the butterfly pattern into the gener-ated image. These results demonstrate improved stylization fidelity while maintaining structural consistency with the content image. Free-Morph Diff-Morpher Ours Free-Morph Diff-Morpher Ours content style content style 
+
+Figure 5: The smoothness of continuous stylization transi-tions for our method and the baselines. Zoom in for better visualization. Though some morphing methods can transfer the reference styles when conditioned on ground-truth end-points , they still fail to preserve content along the transition path. 
+
+Smoothness . Morphing models (Zhang et al. 2024; Cao et al. 2025) require both start and end images as inputs; how-ever, in stylization scenarios, the end image is not naturally available. To enable comparison, we use the ground-truth stylized images from our dataset as endpoint images for the morphing models and evaluate the generated intermediate frames without requiring ground-truth intermediate frames. As shown in Figure 5, our method preserves the content structure along the transition path while progressively in-jecting global style colors and local patterns. Although both our method and DiffMorpher produce visually smooth tran-sitions, our approach transfers stylistic patterns more effec-tively even at low stylization strengths. Overall, the proposed method achieves both strong style transfer capability and smooth stylization transitions. 
+
+Stylization Quantitative Comparisons 
+
+To further evaluate the stylization performance of the pro-posed method, Table 1 reports quantitative comparisons with style transfer models. For content preservation, our method achieves the lowest LPIPS ( 0.3246 ) and content FID ( 65 .95 )among all compared methods. Meanwhile, the model also preserves semantic consistency with the content images, as reflected by the highest CLIP image score ( 0.9241 ). Regard-ing style learning capability, both the style FID and style loss remain at relatively low levels, indicating strong stylis-tic similarity between the generated images and the refer-ence styles. For overall stylization quality, benefiting from both strong content fidelity and effective style modeling, our method achieves the lowest ArtFID ( 220 .79 ), demonstrating competitive performance. These quantitative results further support the qualitative observations in Figure 4 and are consistent with the qualita-tive analysis above. Overall, both qualitative and quantitative evaluations indicate that the proposed method achieves a fa-vorable balance between accurate content preservation and effective style pattern transfer. Methods c-FID ↓ s-FID ↓ LPIPS ↓ ArtFID ↓ CLIP-I ↑ SL ↓
+
+StyleID (Chung, Hyun, and Heo 2024) 118 .91 188 .48 0.4517 275 .06 0.8671 6.0182 
+
+StyleSSP (Xu et al. 2025) 109 .10 186 .64 0.4787 277 .47 0.8553 6.0903 
+
+CSGO (Xing et al. 2024) 140 .77 174 .50 0.6008 280 .94 0.7954 9.0661 
+
+InstantStyle-Plus (Wang et al. 2024b) 86 .43 202 .21 0.3486 274 .05 0.9115 7.4530 
+
+FLUX+OmniStyle (Wang et al. 2025a) 123 .35 181 .90 0.5404 281 .74 0.8546 6.9905 
+
+FLUX+Ours 91 .32 188 .09 0.3448 254 .29 0.9030 4.6925 
+
+QwenImage (Wu et al. 2025) 125 .91 165 .74 0.5881 264 .81 0.7883 7.4404 
+
+QwenImage+Ours 65 .95 165 .67 0.3246 220 .79 0.9241 4.9693 
+
+Table 1: Quantitative comparisons of stylization performance.                         
+
+> PPL ↓SPL ↓LPIPS ↓SL ↓ArtFID ↓
+> FreeMorph 2.7632 20 .5159 0.4946 6.5588 446 .06
+> DiffMorpher 0.7984 5.0645 0.4091 3.4182 412 .57
+> Ours 0.4959 4.7162 0.3530 3.1354 408 .37
+
+Table 2: Quantitative comparisons for style morphing. 
+
+Style Morphing Quantitative Comparisons 
+
+Our method further produces highly smooth stylization tran-sitions compared with morphing-based models. Note that morphing methods require both the content image and the 
+
+ground-truth stylized image as inputs. As shown in Table 2, FreeMorph (Cao et al. 2025) struggles to perform effective style transfer even when conditioned on ground-truth end-points, resulting in significantly higher metric values. Com-pared with DiffMorpher (Zhang et al. 2024), our method achieves the best PPL ( 0.4959 ), indicating stronger content preservation and smoother structural transitions. Moreover, the relatively low SPL = 4 .7162 demonstrates smoother style injection throughout the transition process. These obser-vations are consistent with the qualitative results in Figure 5, where our method introduces style patterns at early stages and produces stable transitions from content images to styl-ized outputs. Overall, by controlling stylization strength, our approach generates high-fidelity images while maintaining smooth transition trajectories, providing an effective solu-tion for controllable style transfer. We further compare different transition strategies (guidance-scale control, LoRA scaling, morphing, and our method) in Figure 7. As illustrated in the left panel of Fig-ure 7, our method maintains consistently low and stable PPL values, reflecting strong content preservation, whereas the guidance-scale and LoRA-scaling strategies fail to retain fine structural details. For style transition smoothness, the right panel of Figure 7 shows that the guidance-scale approach deviates from the reference style, while the LoRA-scaling strategy exhibits abrupt changes in the middle stages, lead-ing to suboptimal stylization control. 
+
+Ablation Study 
+
+To validate the effectiveness of the proposed components, we conduct ablation experiments to compare different settings. input scale low rank scale low rank projector 0.04 0.08 0.12 0.16 0.20 0.44 0.68 0.92 bias          
+
+> content style
+> (a) Ablation for projector types. neighbor linear B-spline k=2 B-spline k=3 0.04 0.08 0.12 0.16 0.20 0.44 0.68 0.92 bias
+> content style
+> (b) Ablation for interpolation degree.
+
+Figure 6: Ablation studies on projector types (top) and in-terpolation degree (bottom). Note that the sampled strengths increase nonlinearly. 
+
+Projectors . Ablations on the projectors aim to illustrate the effectiveness of the low-rank-space linear projector. In-spired by (Hu et al. 2022) and its implementations, we design two other common frameworks in Eqs. (8) and (9), which are similar to the proposed module because they all aim to modulate the feature dimension to enable strength-aware ca-pability. 
+
+˜x(s) = W x + BA (ω1 ⊙ s ⊙ x + b1) (8) 
+
+˜x(s) = W x + B(ω2 ⊙ s ⊙ Ax + b2) (9) Here, ω1, b 1 ∈ Rd and ω2, b ω2 , b ∈ Rr (d ≫ r) are learnable vectors, with b2 := bω2 ⊙ Ax + b. Unlike these direct vector-scaling baselines, our formulation applies the full matrix projector L to the strength-scaled low-rank features, enabling interactions across rank dimensions while supporting spline interpolation in the projector parameter space. PPL ↓ SPL ↓ LPIPS ↓ SL ↓ ArtFID ↓
+
+Eq. (8) 1.2863 7.1156 0.3952 3.2280 439 .16 
+
+Eq. (9) 2.3582 8.4097 0.4400 3.3768 459 .16 
+
+Ours 0.4959 4.7162 0.3530 3.1354 408 .37 
+
+Table 3: Ablation study for different projectors. Note that our method in Eq. (3) is denoted as “low-rank space linear”. PPL ↓ SPL ↓ LPIPS ↓ SL ↓ ArtFID ↓
+
+n = 1 1.2217 6.8433 0.4926 4.0041 436 .58 
+
+n = 3 1.3639 7.9803 0.4070 3.5348 421 .66 
+
+n = 5 1.1407 6.6244 0.3922 3.1499 416 .97 
+
+k = 2 0.5233 4.6132 0.3573 3.1008 409 .03 
+
+k = 3 0.4959 4.7161 0.3531 3.1354 408 .37 
+
+Table 4: Ablation study for strength-aware interpolation. The best and second-best results are shown in bold and under-lined, respectively. The symbol n denotes nearest-neighbor interpolation with n neighbors, while k denotes the degree of the B-spline. As shown in Table 3, employing learnable scalars in the low-rank space leads to the weakest style transfer perfor-mance and transition smoothness. Applying scalars in the input space yields relatively improved results but remains in-ferior to our linear projector design. The qualitative compar-isons in Figure 6 further support these observations. Specif-ically, scalar-based methods in both the high-dimensional input space and low-rank space fail to preserve content structure and layout at early stages where stylization control strengths are small. In contrast, our method reconstructs con-tent and layout while progressively injecting style features, demonstrating greater robustness to fine-grained strength variations, which validates the effectiveness of linear pro-jectors in the low-rank space. 
+
+Interpolation . The choice of interpolation strategy signif-icantly affects stylization transition quality. As reported in Ta-ble 4, we compare linear interpolation with spline approaches of different degrees. Compared with the commonly used piecewise linear interpolation between n adjacent parame-ters (Hu et al. 2022), spline methods consistently achieve su-perior performance. As illustrated in the first row of Figure 6, linear interpolation fails to preserve content at early stages near the stylization boundary, whereas spline methods ex-hibit faster convergence toward stable stylization. Regarding spline degree, the methods show comparable performance overall, with k = 2 achieving slightly better style transfer metrics. However, this setting demonstrates reduced robust-ness and occasionally produces images with lower content fidelity, as shown in the second row of Figure 6. 
+
+Additional Analysis on Strength Control 
+
+The purpose of this analysis is to verify whether the queried strength s provides predictable control over the content–style trade-off beyond the discrete anchors used for training and to compare different spline degrees. We therefore evaluate de-
+
+Figure 7: PPL ( Left ) and SPL ( Right ) along the stylization transition paths for the guidance-scale, LoRA-scaling, mor-phing, and proposed methods. 050 100 150 200 250 0 0.1 0.3 0.5 0.7 0.9 1.0       
+
+> Strength FID
+> c-FID (k=3) s-FID (k=3) 050 100 150 200 250 00.1 0.3 0.5 0.7 0.9 1.0
+> Strength FID
+> c-FID (k=4) s-FID (k=4)
+
+Figure 8: The c-FID (blue) and s-FID (purple) across sampled stylization strengths for B-spline degrees k = 3 and k = 4 .grees k = 3 and k = 4 across a range of stylization strengths. As shown in Figure 8, for both spline degrees, c-FID in-creases monotonically and s-FID decreases monotonically as s grows, with no reversal between adjacent queries. Thus, increasing s consistently relaxes content preservation while strengthening style matching, rather than producing an irreg-ular response between the learned anchors. However, k = 3 
+
+yields a more gradual trade-off, whereas k = 4 changes more sharply in the middle range and reaches stronger style match-ing at high strengths at the cost of larger content deviation. These results demonstrate that s acts as an interpretable con-trol variable and that the proposed interpolation generalizes discrete anchor projectors to unseen strengths. Compared with k = 4 , k = 3 avoids the sharp increase in c-FID over the middle and high strength ranges while still reducing s-FID steadily. We therefore select k = 3 as the default degree because it provides a more gradual and balanced control re-sponse across the full stylization path; k = 4 favors stronger style matching at high strengths but incurs substantially larger content deviation. 
+
+## Conclusions 
+
+This paper presents a controllable continuous stylization framework for generating smooth style transition paths in image editing models. To overcome the limited stylization control of existing methods, we adopt an endpoint stylization tuning strategy and introduce learnable projectors in low-rank spaces to better capture style strength variations. Fur-thermore, strength-aware interpolation is performed in the low-rank space to ensure smooth transitions along the styl-ization trajectory. Extensive experiments and ablation studies demonstrate that the proposed method achieves strong style transfer fidelity, effective style pattern learning, and stable continuous stylization with smooth transition dynamics. Supplementary Materials 
+
+This standalone supplementary material contains the fol-lowing additional information and experiments: 
+
+• implementation details for reproducing the method; 
+
+• user studies of stylization quality and transition smooth-ness; 
+
+• algorithms for the two training stages and runtime inter-polation; 
+
+• fixed-content experiments that isolate robustness to the style reference; 
+
+• additional comparisons with stylization baselines; and 
+
+• additional continuous-strength results. 
+
+## Implementation Details 
+
+We use QwenImage (Wu et al. 2025) as the default image-editing backbone. All training is conducted on a single NVIDIA A100 GPU with 80 GB of memory at a resolution of 512 × 512 . The first stage optimizes the endpoint LoRA adapter for 2500 steps at stylization strength s = 1 .0. The second stage freezes the backbone and endpoint adapter and optimizes the strength projectors for 500 steps using five an-chor strengths, {0.2, 0.4, 0.6, 0.8, 1.0}. Both stages use the Prodigy optimizer (Mishchenko and Defazio 2023) with a learning rate of 1.0 and zero weight decay. At inference, our default sampler uses 16 steps. The NaViT-based visual encoder (Dehghani et al. 2023) also per-mits inputs whose resolutions differ from the 512 ×512 train-ing resolution. Competing methods use the inference settings recommended by their respective official implementations. For strength-aware interpolation, we use SciPy’s interpo-lating B-spline routine (Virtanen et al. 2020) with the anchor strengths as interpolation nodes, the stacked projector tensors as values, spline degree k = 3 , and bc_type=None . The resulting not-a-knot interpolating B-spline passes through every learned anchor projector. Consequently, querying an anchor strength exactly recovers its tuned projector, while querying an intermediate strength constructs a new projector in the same low-rank parameter space. 
+
+## User Study 
+
+The user study evaluates two perceptual properties that are difficult to capture completely with automated metrics: the overall quality of a stylized output and the perceived smooth-ness of a stylization trajectory. For stylization quality, the survey compares our method with OmniStyle (Wang et al. 2025a), StyleID (Chung, Hyun, and Heo 2024), InstantStyle-Plus (Wang et al. 2024b), StyleSSP (Xu et al. 2025), and CSGO (Xing et al. 2024) under shared content–style in-puts. For transition smoothness, it compares our strength-controlled trajectories with DiffMorpher (Zhang et al. 2024) and FreeMorph (Cao et al. 2025). Because these morphing methods require both endpoints, they are additionally given the target stylized images from the evaluation pairs. Tables 5 and 6 report normalized shares of the collected preference votes. 
+
+Algorithm 1 Stage 1: endpoint adapter training                                                   
+
+> Require: Frozen backbone θ; endpoint set D1.0
+> 1: Initialize LoRA matrices Aand B
+> 2: for m= 1 , . . . , 2500 do
+> 3: Sample (Ic, I s, z )∼ D 1.0
+> 4: Sample t∼ U (0 ,1) and ϵ∼ N (0 , I )
+> 5: zt←(1 −t)z+tϵ ;v⋆←ϵ−z
+> 6: ˆv←uθ,A,B (zt, t |Ic, I s)
+> 7: Update A, B using ∥ˆv−v⋆∥22
+> 8: end for
+> 9: return Frozen endpoint adapter (A, B )
+
+Algorithm 2 Stage 2: anchor-projector training                                                       
+
+> Require: Frozen θ, A, B ; anchor sets {D si}Ni=1
+> 1: Initialize Pi= ( Li, b i)for every anchor si
+> 2: for m= 1 , . . . , 500 do
+> 3: Sample anchor iand (Ic, I s, z )∼ D si
+> 4: Sample t∼ U (0 ,1) and ϵ∼ N (0 , I )
+> 5: zt←(1 −t)z+tϵ ;v⋆←ϵ−z
+> 6: ˆv←uθ,A,B,P i(zt, t |Ic, I s, s i)
+> 7: Update only Piusing ∥ˆv−v⋆∥22
+> 8: end for
+> 9: return Anchor projectors {Pi}Ni=1
+
+As shown in Table 5, our method receives the largest styl-ization vote share, 25 .33% . It exceeds the second-ranked InstantStyle-Plus ( 19 .74% ) by 5.59 percentage points. Ta-ble 6 shows a larger advantage for continuous transitions: our method receives 40 .79% of the votes, compared with 
+
+31 .58% for DiffMorpher and 27 .63% for FreeMorph. The margin over the strongest morphing baseline is 9.21 percent-age points. The largest vote share in both surveys indicates that the proposed method’s gains are perceptually meaning-ful. In particular, the transition result is notable because the morphing baselines receive an extra target endpoint, whereas our method generates the trajectory directly from a content image, a style reference, and the queried strengths. The styl-ization result should be interpreted as a plurality rather than a majority: 25 .33% is the highest share among six methods but is below 50% .
+
+## Algorithms 
+
+Algorithms 1 and 2 specify the two training stages, and Al-gorithm 3 specifies runtime interpolation. Let z denote a target stylized latent, ϵ ∼ N (0 , I ) denote Gaussian noise, and t ∼ U (0 , 1) . Both stages minimize the flow-matching objective with noisy input zt = (1 − t)z + tϵ and target velocity ϵ − z. The backbone parameters θ remain frozen throughout training. 
+
+## Content Robustness 
+
+This experiment isolates sensitivity to the style reference. Holding the content image fixed makes it easier to deter-mine whether a method can alter color, texture, and local motifs without changing the underlying object geometry. OmniStyle StyleID InstantStyle-Plus StyleSSP CSGO Ours       
+
+> Preference (%) 12.83 14.80 19.74 15.46 11.84 25.33
+
+Table 5: Normalized user-preference shares for overall stylization quality. Higher is better, and all entries sum to 100% .     
+
+> DiffMorpher FreeMorph Ours
+> Preference (%) 31.58 27.63 40.79
+
+Table 6: Normalized user-preference shares for stylization-transition smoothness. DiffMorpher and FreeMorph are sup-plied with target stylized endpoints. Higher is better, and all entries sum to 100% .
+
+Algorithm 3 Inference: construct a runtime projector                                      
+
+> Require: Query s; nodes X= [0 .2,0.4,0.6,0.8,1.0] ;
+> Require: anchor projectors {Pi}5
+> i=1 ; frozen θ, A, B
+> 1: Group corresponding tensors in {Pi}by parameter key 2: for each parameter key qdo
+> 3: Yq←stack( P1[q], . . . , P 5[q])
+> 4: Sq←make _interp _spline( X, Y q, k = 3)
+> 5: P(s)[ q]← S q(s)
+> 6: end for
+> 7: Load P(s)alongside the frozen endpoint adapter (A, B )
+> 8: return Generate the output with the standard 16 -step sampler
+
+Figure 9 contains two fixed-content groups: a close-up of blossoms and a bed of roses. Within each group, the same content is paired with four diverse references, including flat illustrations, dense object collages, and repeated motifs. We compare our outputs at s = 0 .4 and s = 0 .9 with five ded-icated stylization methods. Morphing methods are excluded because they require a target stylized endpoint and therefore operate under a different input setting. At s = 0.4, our method generally retains the orig-inal flower locations, silhouettes, and depth cues while shifting the global palette toward each reference. At s =0.9, reference-specific local patterns become more visible: rounded cloud-like regions, outlined cartoon forms, and collage-like object shapes are incorporated without replacing the blossom branches or the spatial extent of the rose bed. Across the baselines, weak transfer often leaves the source photograph nearly unchanged, whereas aggressive transfer can flatten or rearrange the flowers. Our two strength lev-els expose the intended progression between these extremes. The consistent behavior across multiple references for each fixed content image indicates that strength control is not tied to a particular content–style pair. The model can increase reference-specific appearance changes while retaining the principal content layout. 
+
+## More Stylization Comparisons 
+
+This experiment evaluates generalization across varied con-tent categories and style types, and examines whether explicit strength control provides useful outputs at both moderate and strong settings. Figure 10 compares the same five stylization baselines with our method at s = 0 .4 and s = 0 .9. The examples cover landscapes, architecture, animals, and por-traits, paired with references containing watercolor washes, geometric illustrations, ink drawings, repeated objects, and high-saturation paintings. Every row uses a common content image and style reference for all methods. The s = 0 .4 outputs favor content preservation: cloud masses, street perspective, animal silhouettes, facial iden-tity, and other scene structures remain recognizable while the reference palette is introduced. Increasing the strength to 
+
+s = 0 .9 makes local style evidence more explicit, such as coffee-bean-like texture on the giraffe, geometric marks in the forest scene, ink-like contours on the armored figure, and saturated painterly regions on the portrait. Several compet-ing methods either transfer mainly color with limited motif adoption or introduce stronger appearance changes together with noticeable structural drift. The comparisons show that a single fixed output does not fully characterize stylization quality. The two queried strengths provide distinct and useful operating points, allowing users to trade conservative content preservation for stronger transfer of local style patterns. 
+
+## More Results 
+
+This experiment tests whether projectors trained only at dis-crete anchors can generate visually ordered transitions at densely queried strengths. Figure 11 shows content images on the left, style references on the right, and sequences pro-duced by monotonically increasing the queried strength from left to right. The examples include people, animals, architec-ture, flowers, and natural scenes, with styles ranging from watercolor and ink drawing to object collages and repeated graphic motifs. Across the sequences, changes occur progressively rather than as a single abrupt switch. Global color and tone typ-ically appear first; contours, repeated elements, and denser textures become more prominent at larger strengths. Mean-while, major structures—including the palace and pyramid outlines, the train track, facial identity, animal pose, and flower arrangement—remain aligned along each row. Even references with highly distinctive motifs, such as skulls or bottle-like objects, enter gradually instead of immediately replacing the content. The ordered visual progression supports the intended role of spline interpolation: it extends a small set of learned an-chor projectors to intermediate queries while maintaining a coherent content–style trajectory. Together with the user pref-erence results, these examples show that the control variable is both interpretable and visually smooth. content style Instant Style-Plus OmniStyle StyleID StyleSSP CSGO Ours 
+
+! = #. % 
+
+Ours 
+
+! = #. & Figure 9: Fixed-content robustness comparisons. Within each of the two content groups, the content image is held fixed while four style references are varied. Columns show the content image, style reference, our method at s = 0 .4, OmniStyle, StyleID, InstantStyle-Plus, StyleSSP, CSGO, and our method at s = 0 .9. Our two settings illustrate the progression from conservative transfer to stronger reference-specific colors and motifs. content style Instant Style-Plus OmniStyle StyleID StyleSSP CSGO Ours 
+
+! = #. % 
+
+Ours 
+
+! = #. & Figure 10: Additional stylization comparisons across diverse content–style pairs. Columns show the content image, style reference, our method at s = 0 .4, OmniStyle, StyleID, InstantStyle-Plus, StyleSSP, CSGO, and our method at s = 0 .9. The moderate setting emphasizes content preservation, whereas the stronger setting introduces more local patterns from the reference. Figure 11: Additional continuous stylization results. Each row shows a content image on the left, outputs at monotonically increasing queried strengths in the middle, and the style reference on the right. Global appearance and local motifs are introduced progressively while the principal content structure remains stable. References 
+
+Achiam, J.; Adler, S.; Agarwal, S.; Ahmad, L.; Akkaya, I.; Aleman, F. L.; Almeida, D.; Altenschmidt, J.; Altman, S.; Anadkat, S.; et al. 2023. Gpt-4 technical report. arXiv preprint arXiv:2303.08774 .Cao, Y.; Si, C.; Wang, J.; and Liu, Z. 2025. Freemorph: Tuning-free generalized image morphing with diffusion model. In Proceedings of the IEEE/CVF International Con-ference on Computer Vision , 18111–18120. Chen, B.; Zhao, B.; Xie, H.; Cai, Y.; Li, Q.; and Mao, X. 2025. Consislora: Enhancing content and style consistency for lora-based style transfer. arXiv preprint arXiv:2503.10614 .Chen, Z.; Wu, J.; Wang, W.; Su, W.; Chen, G.; Xing, S.; Zhong, M.; Zhang, Q.; Zhu, X.; Lu, L.; et al. 2024. Internvl: Scaling up vision foundation models and aligning for generic visual-linguistic tasks. In Proceedings of the IEEE/CVF con-ference on computer vision and pattern recognition , 24185– 24198. Chung, J.; Hyun, S.; and Heo, J.-P. 2024. Style injection in diffusion: A training-free approach for adapting large-scale diffusion models for style transfer. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 8795–8805. Comanici, G.; Bieber, E.; Schaekermann, M.; Pasupat, I.; Sachdeva, N.; Dhillon, I.; Blistein, M.; Ram, O.; Zhang, D.; Rosen, E.; et al. 2025. Gemini 2.5: Pushing the fron-tier with advanced reasoning, multimodality, long context, and next generation agentic capabilities. arXiv preprint arXiv:2507.06261 .Dehghani, M.; Mustafa, B.; Djolonga, J.; Heek, J.; Minderer, M.; Caron, M.; Steiner, A.; Puigcerver, J.; Geirhos, R.; Alab-dulmohsin, I. M.; et al. 2023. Patch n’ Pack: NaViT, a Vision Transformer for Any Aspect Ratio and Resolution. Advances in Neural Information Processing Systems , 36: 2252–2274. Esser, P.; Kulal, S.; Blattmann, A.; Entezari, R.; Müller, J.; Saini, H.; Levi, Y.; Lorenz, D.; Sauer, A.; Boesel, F.; et al. 2024. Scaling rectified flow transformers for high-resolution image synthesis. In Forty-first international conference on machine learning .Gatys, L. A.; Ecker, A. S.; and Bethge, M. 2016. Image style transfer using convolutional neural networks. In Proceed-ings of the IEEE conference on computer vision and pattern recognition , 2414–2423. Hessel, J.; Holtzman, A.; Forbes, M.; Le Bras, R.; and Choi, Y. 2021. Clipscore: A reference-free evaluation metric for image captioning. In Proceedings of the 2021 conference on empirical methods in natural language processing , 7514– 7528. Heusel, M.; Ramsauer, H.; Unterthiner, T.; Nessler, B.; and Hochreiter, S. 2017. Gans trained by a two time-scale update rule converge to a local nash equilibrium. Advances in neural information processing systems , 30. Ho, J.; Jain, A.; and Abbeel, P. 2020. Denoising diffusion probabilistic models. Advances in neural information pro-cessing systems , 33: 6840–6851. Ho, J.; and Salimans, T. 2022. Classifier-free diffusion guid-ance. arXiv preprint arXiv:2207.12598 .Hu, E. J.; Shen, Y.; Wallis, P.; Allen-Zhu, Z.; Li, Y.; Wang, S.; Wang, L.; Chen, W.; et al. 2022. Lora: Low-rank adaptation of large language models. Iclr , 1(2): 3. Karras, T.; Laine, S.; Aittala, M.; Hellsten, J.; Lehtinen, J.; and Aila, T. 2020. Analyzing and improving the image qual-ity of stylegan. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 8110–8119. Kolkin, N.; Salavon, J.; and Shakhnarovich, G. 2019. Style transfer by relaxed optimal transport and self-similarity. In 
+
+Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 10051–10060. Labs, B. F.; Batifol, S.; Blattmann, A.; Boesel, F.; Consul, S.; Diagne, C.; Dockhorn, T.; English, J.; English, Z.; Esser, P.; et al. 2025. FLUX. 1 Kontext: Flow Matching for In-Context Image Generation and Editing in Latent Space. arXiv preprint arXiv:2506.15742 .Li, W.; Fang, M.; Zou, C.; Gong, B.; Zheng, R.; Wang, M.; Chen, J.; and Yang, M. 2024. Styletokenizer: Defining im-age style by a single instance for controlling diffusion mod-els. In European Conference on Computer Vision , 110–126. Springer. Lipman, Y.; Chen, R. T.; Ben-Hamu, H.; Nickel, M.; and Le, M. 2022. Flow matching for generative modeling. arXiv preprint arXiv:2210.02747 .Liu, C.; Shah, V.; Cui, A.; and Lazebnik, S. 2025. Unzi-plora: Separating content and style from a single image. In 
+
+Proceedings of the IEEE/CVF International Conference on Computer Vision , 16776–16785. Liu, X.; Gong, C.; and Liu, Q. 2022. Flow straight and fast: Learning to generate and transfer data with rectified flow. 
+
+arXiv preprint arXiv:2209.03003 .Mishchenko, K.; and Defazio, A. 2023. Prodigy: An ex-peditiously adaptive parameter-free learner. arXiv preprint arXiv:2306.06101 .Oquab, M.; Darcet, T.; Moutakanni, T.; Vo, H.; Szafraniec, M.; Khalidov, V.; Fernandez, P.; Haziza, D.; Massa, F.; El-Nouby, A.; et al. 2023. Dinov2: Learning robust visual fea-tures without supervision. arXiv preprint arXiv:2304.07193 .Radford, A.; Kim, J. W.; Hallacy, C.; Ramesh, A.; Goh, G.; Agarwal, S.; Sastry, G.; Askell, A.; Mishkin, P.; Clark, J.; et al. 2021. Learning transferable visual models from natural language supervision. In International conference on machine learning , 8748–8763. PmLR. Seedream, T.; Chen, Y.; Gao, Y.; Gong, L.; Guo, M.; Guo, Q.; Guo, Z.; Hou, X.; Huang, W.; Huang, Y.; et al. 2025. See-dream 4.0: Toward next-generation multimodal image gen-eration. arXiv preprint arXiv:2509.20427 .Shenaj, D.; Bohdal, O.; Ozay, M.; Zanuttigh, P.; and Michieli, U. 2025. Lora. rar: Learning to merge loras via hypernet-works for subject-style conditioned image generation. In 
+
+Proceedings of the IEEE/CVF International Conference on Computer Vision , 16132–16142. Shoemake, K. 1985. Animating rotation with quaternion curves. In Proceedings of the 12th annual conference on Computer graphics and interactive techniques , 245–254. Song, Y.; Liu, C.; and Shou, M. Z. 2025. Omniconsistency: Learning style-agnostic consistency from paired stylization data. arXiv preprint arXiv:2505.18445 .Tan, Z.; Liu, S.; Yang, X.; Xue, Q.; and Wang, X. 2025. Ominicontrol: Minimal and universal control for diffusion transformer. In Proceedings of the IEEE/CVF International Conference on Computer Vision , 14940–14950. Vaswani, A.; Shazeer, N.; Parmar, N.; Uszkoreit, J.; Jones, L.; Gomez, A. N.; Kaiser, Ł.; and Polosukhin, I. 2017. Attention is all you need. Advances in neural information processing systems , 30. Virtanen, P.; Gommers, R.; Oliphant, T. E.; Haberland, M.; Reddy, T.; Cournapeau, D.; Burovski, E.; Peterson, P.; Weckesser, W.; Bright, J.; van der Walt, S. J.; Brett, M.; Wilson, J.; Millman, K. J.; Mayorov, N.; Nelson, A. R. J.; Jones, E.; Kern, R.; Larson, E.; Carey, C. J.; Polat, İ.; Feng, Y.; Moore, E. W.; VanderPlas, J.; Laxalde, D.; Perktold, J.; Cimrman, R.; Henriksen, I.; Quintero, E. A.; Harris, C. R.; Archibald, A. M.; Ribeiro, A. H.; Pedregosa, F.; van Mul-bregt, P.; and SciPy 1.0 Contributors. 2020. SciPy 1.0: Fun-damental Algorithms for Scientific Computing in Python. 
+
+Nature Methods , 17: 261–272. Wang, C. J.; and Golland, P. 2023. Interpolating between Images with Diffusion Models. In ICML .Wang, H.; Spinelli, M.; Wang, Q.; Bai, X.; Qin, Z.; and Chen, A. 2024a. Instantstyle: Free lunch towards style-preserving in text-to-image generation. arXiv preprint arXiv:2404.02733 .Wang, H.; Xing, P.; Huang, R.; Ai, H.; Wang, Q.; and Bai, X. 2024b. Instantstyle-plus: Style transfer with content-preserving in text-to-image generation. arXiv preprint arXiv:2407.00788 .Wang, Y.; Liu, R.; Lin, J.; Liu, F.; Yi, Z.; Wang, Y.; and Ma, R. 2025a. Omnistyle: Filtering high quality style transfer data at scale. In Proceedings of the Computer Vision and Pattern Recognition Conference , 7847–7856. Wang, Y.; Yang, S.; Zhao, B.; Zhang, L.; Liu, Q.; Zhou, Y.; and Xie, C. 2025b. Gpt-image-edit-1.5 m: A million-scale, gpt-generated image dataset. arXiv preprint arXiv:2507.21033 .Wang, Y.; Yi, Z.; Zhang, Y.; Zheng, P.; Xie, X.; Lin, J.; Wang, Y.; and Ma, R. 2025c. OmniStyle2: Scalable and High Quality Artistic Style Transfer Data Generation via Destylization. arXiv preprint arXiv:2509.05970 .Wang, Z.; Zhao, L.; and Xing, W. 2023. Stylediffusion: Controllable disentangled style transfer via diffusion models. In Proceedings of the IEEE/CVF international conference on computer vision , 7677–7689. Wright, M.; and Ommer, B. 2022. Artfid: Quantitative eval-uation of neural style transfer. In DAGM German Conference on Pattern Recognition , 560–576. Springer. Wu, C.; Li, J.; Zhou, J.; Lin, J.; Gao, K.; Yan, K.; Yin, S.-m.; Bai, S.; Xu, X.; Chen, Y.; et al. 2025. Qwen-image technical report. arXiv preprint arXiv:2508.02324 .Xing, P.; Wang, H.; Sun, Y.; Wang, Q.; Bai, X.; Ai, H.; Huang, R.; and Li, Z. 2024. Csgo: Content-style composition in text-to-image generation. arXiv preprint arXiv:2408.16766 .Xu, R.; Xi, W.; Wang, X.; Mao, Y.; and Cheng, Z. 2025. Stylessp: Sampling startpoint enhancement for training-free diffusion-based method for style transfer. In Proceedings of the Computer Vision and Pattern Recognition Conference ,18260–18269. Zhang, K.; Zhou, Y.; Xu, X.; Dai, B.; and Pan, X. 2024. Diffmorpher: Unleashing the capability of diffusion mod-els for image morphing. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,7912–7921. Zhang, R.; Isola, P.; Efros, A. A.; Shechtman, E.; and Wang, O. 2018. The unreasonable effectiveness of deep features as a perceptual metric. In Proceedings of the IEEE conference on computer vision and pattern recognition , 586–595. Zhong, M.; Shen, Y.; Wang, S.; Lu, Y.; Jiao, Y.; Ouyang, S.; Yu, D.; Han, J.; and Chen, W. 2024. Multi-lora composition for image generation. arXiv preprint arXiv:2402.16843 .

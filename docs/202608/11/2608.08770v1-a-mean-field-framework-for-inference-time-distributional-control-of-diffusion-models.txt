@@ -1,0 +1,2715 @@
+Title: A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models
+
+URL Source: https://arxiv.org/pdf/2608.08770v1
+
+Published Time: Tue, 11 Aug 2026 01:47:41 GMT
+
+Number of Pages: 35
+
+Markdown Content:
+# A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models 
+
+Samuel Howard 1 Nikolas N ¨ usken 2
+
+# Abstract 
+
+Diffusion models are increasingly used as con-trollable samplers, whose generations can be steered at inference time according to a chosen reward function. While such rewards are typ-ically defined on individual samples, for many applications it is desirable to steer according to distribution-level rewards, for example to cali-brate with population-level information or to en-courage diversity. In both cases, simply incor-porating the reward gradient into the dynam-ics, while often effective, comes with few the-oretical guarantees on the sampled distribution. For pointwise rewards, recent work has there-fore sought to develop a principled framework for targeting a prescribed tilted distribution us-ing particle reweighting. However, an analo-gous theoretically-grounded approach for distri-butional rewards is currently lacking. In this work, we formulate inference-time distributional control as targeting a tilted measure under a mean-field framework, and derive a weighted in-teracting particle scheme to target it in a princi-pled manner. Our framework recovers pointwise-reward steering as a special case, while providing a theoretical foundation for existing batch-level steering methods. Empirically, we verify that the procedure correctly targets the prescribed distri-bution in tractable low-dimensional settings, and investigate its behaviour in higher-dimensional protein conformation tasks. 
+
+# 1. Introduction 
+
+Diffusion and Flow Models Diffusion and flow-based generative models (Song et al., 2021; Lipman et al., 2023; Liu et al., 2023; Albergo & Vanden-Eijnden, 2023) gener-
+
+> 1
+
+Department of Statistics, University of Oxford 2Department of Mathematics, King’s College London. Correspondence to: Samuel Howard <howard@stats.ox.ac.uk >.
+
+Accepted to the Structured Probabilistic Inference & Generative Modeling workshop at ICML 2026 
+
+ate novel samples from a data distribution by learning time-dependent dynamics that transport an initial Gaussian dis-tribution p0 to the target p1. Such models have achieved state-of-the-art performance across a wide range of do-mains, including images (Rombach et al., 2022), molecules (Watson et al., 2023), and videos (Ho et al., 2022). 
+
+Inference-Time Steering In many applications, the goal is not only to sample from the base distribution p1, but to instead obtain samples that exhibit certain desired proper-ties. To this end, one can ‘steer’ the generative process by including additional drift terms in the inference dynam-ics. Such steering mechanisms can be used to direct a pre-trained generative model towards higher-quality samples, or samples that fulfil certain task-specific properties, with-out requiring further training. Most existing inference-time steering methods aim to improve samples with respect to a pointwise reward function r : Rd → R defined on indi-vidual generated samples. Early steering approaches gen-erally incorporated the reward gradient ∇r(Xt) into the in-ference dynamics, to ‘push’ the generations towards areas of higher reward (Dhariwal & Nichol, 2021; Chung et al., 2023; Bansal et al., 2024). While effective at improving sample quality, these heuristic modifications to the dynam-ics come with a poor theoretical understanding of the sam-pled distribution. This limitation has motivated a large number of recent works aiming to place inference-time steering on a firmer theoretical footing. To do so, the dominant paradigm aims to sample from the KL -regularised objective, 
+
+arg max 
+
+> μ
+
+EX∼μ[r(X)] − KL( μ∥p1) (1) which corresponds to the exponentially-tilted distribution 
+
+μ∗
+
+> 1
+
+(x1) ∝ p1(x1)er(x1). Since gradient-steering alone does not sample from this target tilted measure, recent works have sought to correct for the discrepancy using Feynman-Kac particle reweighting schemes, enabling correct track-ing of the desired distributional path via SMC resampling procedures (Wu et al., 2023; Thornton et al., 2025; Sing-hal et al., 2025; Skreta et al., 2025; He et al., 2026; Sabour et al., 2025). 1arXiv:2608.08770v1 [stat.ML] 9 Aug 2026 A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models                       
+
+> Figure 1. (Left) Standard Inference-Time Steering: For pointwise rewards, the reward-gradients ∇rtcan be incorporated into the inference dynamics, to steer the particles independently towards areas of higher reward. Feynman-Kac corrections are applied to the log-weights Atto ensure the weighted particles trace the correct marginals μ∗
+> t(·)∝pt(·)ert(·).(Right) Mean-Field Inference-Time Steering: For a measure-defined reward function R(μ), we incorporate the gradient of the first-variation, ∇Ψt(·, μ t)as the steering term, leading to interaction between the particles. Through a mean-field framework, we derive the corrective reweighting procedure to ensure the reweighted interacting particles trace out the target tilted measures μ∗
+> t(·)∝pt(·)eΨt(·,μ ∗).
+
+Distributional-Reward Steering Following these recent advances, steering according to pointwise-defined reward functions is now well-understood and based upon a prin-cipled theoretical foundation. However, many important control objectives are inherently distributional rather than pointwise. In many applications, rather than aiming for in-dividual samples to score highly, one may wish to shape the overall generated distribution according to global proper-ties, such as calibration to experimental observations, bal-ancing across modes, or encouraging diversity. To for-malise such distributional-steering, we will instead con-sider optimising according to a measure-defined reward function R : P(Rd) → R,
+
+arg max 
+
+> μ
+
+R(μ) − KL( μ∥p1) . (2) A number of existing works have incorporated steering terms that operate at the distributional level. For exam-ple, Corso et al. (2024); Kirchhof et al. (2025); Lam et al. (2026) steer towards generating diverse samples, Maddi-patla et al. (2025) steer according to experimental obser-vations, Saravanan et al. (2026) steer to increase expected information gain, and Sani et al. (2026) guide with MMD gradients. However, as in the pointwise-reward case, such approaches are largely heuristic in nature and it is not clear precisely what distribution these procedures target. Unlike in the pointwise-reward setting, a theoretically-grounded framework and approach for distributional inference-time steering of diffusion models is currently lacking. 
+
+Contributions In this work, we address this gap by rec-onciling these two currently distinct literatures through a 
+
+mean-field framework , allowing us to place distributional steering on a similarly principled footing to the pointwise case. In particular, we make the following contributions. • We formalise distribution-level steering (2) as aiming to sample from a tilted distribution for a measure-defined reward function R, in which the tilt now depends on the measure itself. This gives a distributional analogue of the reward-tilted targets used in the pointwise case. • Using this mean-field framework, we derive weighted McKean-Vlasov dynamics whose marginals correctly track the desired tilted path. From this, we develop a novel weighted interacting-particle sampling procedure that enables principled distribution-level steering. • We show that our framework recovers standard point-wise reward steering as a special case, and provides a principled counterpart to existing gradient-steering meth-ods for distributional control. Empirically, we validate that our procedure correctly targets the tilted distribution in verifiable low-dimensional settings, and examine its behaviour on higher-dimensional protein conformation tasks relative to standard gradient-steering approaches. 
+
+# 2. Background: Inference-Time Steering for Pointwise Rewards 
+
+In this work, we will largely follow the presentation of Sabour et al. (2025). To begin, let us consider a flow-based model given by the dynamics 
+
+dXt = bt(Xt) + εtst(Xt)dt + √2εt dBt. (3) Here, εt is an arbitrary noise schedule, and st is the score function which can be obtained from a transformation of the vector field bt (see Albergo et al. (2023), for example). These dynamics trace out a path of marginals pt which in-terpolates from p0 to the data distribution p1.Given a reward r defined on the generated samples x1,inference-time steering methods aim to modify the gener-ation procedure to instead sample from the reward-tilted 
+
+2A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models 
+
+distribution, which is the maximiser of the KL-regularised objective (1), 
+
+μ∗(x) ∝ p1(x)er(x). (4) We remark that inference-time steering differs from the fine-tuning paradigm (Clark et al., 2024; Xu et al., 2023; Domingo-Enrich et al., 2025), as there is no additional training. Here, the dynamics are modified for the currently-chosen reward function r, and different choices of r can be used without having to perform extra training. 
+
+Gradient-Steered Dynamics The aim of inference-time steering methods (Singhal et al., 2025; Skreta et al., 2025; He et al., 2026; Sabour et al., 2025) is to ‘push’ the parti-cles towards areas of higher reward during the generation, while performing SMC-style reweighting of the particles to ensure they trace out a prescribed path of marginal dis-tributions from p0 to μ∗. To do so, one chooses a time-dependent reward function rt which satisfies r0 = 0 and 
+
+r1 = r; we aim to trace out the tilted path of marginals 
+
+μ∗ 
+
+> t
+
+(x) ∝ pt(x)ert(x), which will interpolate from p0 to the target tilted distribution μ∗ ∝ p1(x)er(x). A common ap-proach is then to modify the dynamics by incorporating a reward-gradient steering term, 
+
+dXt = bt(Xt) + εtst(Xt) + εt∇rt(Xt)dt + √2εtdBt.
+
+(5) As the original reward function r is defined on data, a nat-ural choice is 
+
+rt(xt) = t r (ˆ x1(t, x t)) , (6) where ˆx1(t, x t) is an estimate of the terminal point x1 given the current point (t, x t) in the trajectory. In this work, we will consider using a reward construction that utilises the denoiser estimate, though we note that this framework is suitable for any such choice of rt (see Sabour et al. (2025), for example). 
+
+Corrective Feynman-Kac Reweighting While the addi-tional steering term pushes the particles towards areas of higher reward, the dynamics (5) do not in general follow the desired tilted marginal path μ∗ 
+
+> t
+
+. To correct for the dis-crepancy, it is necessary to adjust the measure using parti-cle weights, which can then be used in an SMC-style re-sampling scheme to target μ∗ in a theoretically-principled manner. The log-weights Ait evolve according to the dy-namics 
+
+dAt =
+
+h
+
+bt(Xt) · ∇ rt(Xt) + ∂trt(Xt)
+
+i
+
+dt. (7) Note that one can incorporate additional ‘pushing’ terms rather than only weighting by εt in (5), though this would introduce additional divergence terms in the weight dynam-ics (see Sabour et al. (2025), for example); for simplicity, we therefore consider the steering outlined above in our presentation. 
+
+# 3. A Mean-Field Framework for Inference-Time Distributional Control 
+
+3.1. Distributional-Reward Measure Tilting 
+
+Consider now that we want to tilt towards a desirable distri-butional property of the generated measure, quantified by a measure-dependent reward function R : P(Rd) → R de-fined on the terminal distribution μ1. We can formalise this as aiming to sample from 
+
+μ∗ = arg max 
+
+> μ
+
+R(μ) − KL( μ∥p1) , (8) assuming for the moment that the maximiser is unique. To understand the properties of μ∗, let us introduce the func-tional derivative Ψ( x, μ ) := δR 
+
+> δμ
+
+(x, μ ), which quantifies the change of the reward R when the measure μ is perturbed (for a rigorous definition and examples, see Appendix A.2). Using this object, we can characterise μ∗ as an exponential tilt, mirroring (4) for pointwise rewards. 
+
+Proposition 3.1 (First-order optimality condition) . Assum-ing mild regularity properties and concavity of R, the max-imiser in (2) is unique and satisfies 
+
+μ∗(d x) = 1
+
+Z eΨ( x,μ ∗) p1(x) d x, (9) 
+
+for normalising constant Z = R 
+
+> Rd
+
+eΨ( x,μ ∗) p1(x) d x.
+
+The proof, essentially setting the functional derivative of the objective R(μ) − KL( μ∥p1) to zero, can be found in Appendix D.1. In contrast to (4), the tilt (9) is implicit :the target measure μ∗ appears on both sides of the equa-tion, and the tilting potential Ψ( x, μ ∗) is itself measure-dependent. Proposition 3.1 therefore places the problem in a mean-field regime : the optimality condition is a self-consistency relation, in which the target measure is charac-terised by a potential that depends on the measure itself. As in the standard case from Section 2, let us fix a family of measure-defined reward functions Rt : P(Rd) → R
+
+interpolating from R0 = 0 to R1 = R. Extending (9), we can define the curve of distributions 
+
+μ∗ 
+
+> t
+
+(d x) = 1
+
+Zt
+
+eΨt(x,μ ∗  
+
+> t)
+
+pt(x) d x, t ∈ [0 , 1] , (10) tracing from p0 to μ∗
+
+> 1
+
+. As in (2), the measures μ∗
+
+> t
+
+are defined implicitly and self-consistently through the corresponding measure-dependent potentials Ψt(x, μ t),similarly defined as functional derivatives of the time-dependent rewards Rt. We note that these intermedi-ate measures μ∗ 
+
+> t
+
+satisfy analogous variational principles, namely μ∗ 
+
+> t
+
+= arg max μ
+
+Rt(μ) − KL( μ∥pt) . Following (6), in this work we will take Rt = t R(ˆ x1(·, t )# μ), using the denoiser estimate ˆx1.3A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models 
+
+3.2. Idealised Dynamics Distributionally-Steered Dynamics We will use this mean-field framework to develop a probabilistically-principled inference-time steering procedure that traces out this distributional path μ∗ 
+
+> t
+
+during the generation process. As in the standard setting described in Section 2, it is again intuitive to include a gradient-steering term to ‘push’ the generated distribution in the direction of higher reward dur-ing the inference procedure. To do so, one can consider the modified dynamics, 
+
+dXt = bt(Xt) + εtst(Xt) + εt∇xΨt(Xt; μt)dt
+
++ √2εt dBt. (11) In fact, such gradient-steering resembles many existing works for batch-level reward steering that incorporate gra-dient terms into the inference dynamics, for example for repulsive potentials (Corso et al., 2024; Lam et al., 2026), ensemble likelihoods given experimental data (Maddipatla et al., 2025), expected information gain (Saravanan et al., 2026), and maximum mean discrepancy to a reference dataset (Sani et al., 2026). 
+
+Corrective Mean-Field Reweighting Just as in the stan-dard case, merely incorporating a gradient steering term into the dynamics does not in general follow the target marginals μ∗ 
+
+> t
+
+, nor come with any strong theoretical under-standing of the generated distribution. It is therefore again necessary to incorporate a Feynman-Kac style reweighting scheme to correct for this discrepancy. This setting differs from the standard pointwise case, as the particles now inter-act during the inference dynamics due to the dependence of the steering term on the evolving distribution. Fortunately, by appealing to our mean-field framework we can derive the corrective potentials under this interacting particle be-haviour. This yields our main result, in which we construct mean-field type, or McKean-Vlasov, dynamics whose co-efficients are chosen so that the corresponding law follows the desired path μ∗ 
+
+> t
+
+.
+
+Theorem 3.2 (Weighted McKean-Vlasov Dynamics ).
+
+Consider the dynamics 
+
+dXt = bt(Xt) + εtst(Xt) + εt∇xΨt(Xt; μt)dt
+
++ √2εt dBt, X 0 ∼ p0 (12a) 
+
+dAt = bt(Xt) · ∇ xΨt(Xt; μt) + ˙Ψt(Xt)dt, A 0 = 0 
+
+(12b) 
+
+with the weighted measure μt ∝ Law( Xt)eAt , and 
+
+˙Ψt(x) := ddt Ψt(x; μt). Then, under mild conditions, 
+
+μt = μ∗ 
+
+> t
+
+, for all t ∈ [0 , 1] .
+
+Note that these dynamics strongly resemble the pointwise setting (7). However, a key difference is that now the time-derivative term ∂tr(·) has been replaced with the term 
+
+˙Ψt(·) = ddt Ψt(·, μ t); here, the position x is kept fixed but the time-dependence now arises through both Ψt and the measure evolution μt. Again in contrast to the standard case, this induces implicit behaviour in the log-weight up-dates—their dynamics involve the change in the measure 
+
+μt, but the measure evolution is itself dependent on the change in the weights. We remark that the term ˙Ψt can be equivalently characterised as solving the following im-plicit expression, which we will later use in our inference procedure. 
+
+Proposition 3.3. Define the second variation of the reward functional, Φt(x, y, μ ) = δ2Rt 
+
+> δμ 2
+
+(x, y, μ ), and a mean-centred version ˜Φt(x, y, μ ) = Φt(x, y, μ ) −R Φt(x, z, μ ) μ(d z). Then, under the target flow (10) , the time derivatives ˙Ψt satisfy the following implicit equality: 
+
+˙Ψt(x) = ∂tΨt(x, μ ∗ 
+
+> t
+
+) + 
+
+Z
+
+> Rd
+
+ ˜Φt(x, y, μ ∗ 
+
+> t
+
+) ˙Ψt(y)+ bt(y) · ∇ y ˜Φt(x, y, μ ∗ 
+
+> t
+
+)+ ˜Φt(x, y, μ ∗ 
+
+> t
+
+) bt(y) · ∇ y Ψt(y, μ ∗ 
+
+> t
+
+)
+
+
+
+dμ∗ 
+
+> t
+
+(y). (13) 
+
+3.3. Method 
+
+To turn the idealised dynamics of Theorem 3.2 into a finite-particle algorithm, we approximate the McKean-Vlasov system (12) with an ensemble (Xit , w it)Ni=1 , where the weighted empirical measure ˆμt = PNj=1 wjt δXjt
+
+approxi-mates μt. To do so, we need the following terms. 
+
+Gradient-Steering Term ∇xΨt(x; μt) The gradient-steering term ∇xΨt(x; μt) in the positional updates can be easily computed with autodifferentiation, evaluated on the current empirical measure ˆμt = PNj=1 wjt δXjt
+
+with weights wjt ∝ eAjt . When one can analytically compute the first variation (as is often the case; see Appendix A.2), then one can use a finite-sample approximation Ψt(Xit , ˆμt)
+
+and then differentiate with respect to the first argument. Al-ternatively, one could approximate the steering term using 
+
+(wit)−1∇Xit Rt(ˆ μt), by directly evaluating the reward on the empirical measure and differentiating with respect to the positions Xit (see Appendix B). 
+
+Time-Derivative Term ˙Ψt(x) The more challenging term in the dynamics is the time-derivative ˙Ψt(x) =
+
+> ddt
+
+ Ψt(x, μ t) due to its implicit behaviour. We provide two different approaches for computing this term. The first involves solving a linear system based on the implicit ex-pression in (13), which involves only tractable terms, and the second solves for ˙Ψt(x) through a lightweight Picard iteration scheme; we describe these in Algorithms 3 and 4 respectively. We remark that the cost of such procedures is 4A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models 
+
+Algorithm 1 Mean-Field Inference-Time Steering for Diffusion Models (Single Batch) 
+
+Input: Number of particles N , distributional reward function R and corresponding first variation Ψt, time increment δt or alternative time schedule. 
+
+Initialisation: Sample X1: N 
+
+> 0
+
+∼ p⊗N 
+
+> 0
+
+, initialise log-weights Ai 
+
+> 0
+
+= 0 .
+
+For t ∈ { 0, δt, 2δt, . . . , 1 − δt }:• Positional updates: 
+
+◦ Perform discretisation step for positional updates, 
+
+Xit+δt = Xit + bt(Xit ) + εtst(Xit ) + εt∇xΨt(Xit ; ˆ μNt )δt + √2εt δB it ,
+
+where ˆμNt = PNj=1 wjt δXjt
+
+for wjt ∝ eAjt .• Log-weight updates: 
+
+◦ Compute ddt Ψt(·; ˆ μNt ) at points Xit using Algorithm 3 or Algorithm 4. 
+
+◦ Compute mean-field FK potentials git = bt(Xit ) · ∇ xΨt(Xit ; ˆ μNt ) + ddt Ψt(Xit ; ˆ μNt ).
+
+◦ Perform discretisation step for log-weight updates, Ait+δt = Ait + gitδt. 
+
+• Resample: Optionally resample according to current weights wit ∝ eAit .
+
+Return: Weighted particles (Xi
+
+> 1
+
+, w i
+
+> 1
+
+), where wi 
+
+> 1
+
+∝ eAi 
+
+> 1
+
+.low, and the computational cost is often dominated by the network evaluations rather than these lightweight solvers (see Appendix C.4). We found that the choice of solver for ˙Ψt(x) had little effect on the empirical performance of the method and we therefore primarily used the fixed-point iterative solver for simplicity, but we remark that the first approach may be useful in certain settings. 
+
+SMC Resampling As in the pointwise-reward Feynman-Kac steering approaches (Singhal et al., 2025; Skreta et al., 2025), we use an SMC-style resampling scheme to avoid weight degeneracy. Any such scheme could be used; in our experiments we use residual resampling at fixed intervals. 
+
+Algorithm We outline the inference procedure for a sin-gle batch of N particles in Algorithm 1, which will approx-imate the target tilted measure μ∗ as the batch size N goes to infinity. In practice, the batch size is limited by computa-tional constraints; we therefore also provide a multi-batch procedure in Algorithm 2 in Appendix B. 
+
+Convergence in N Under mild assumptions on the dy-namics and the ˙Ψt solver (see Assumption D.4), we can show convergence of the finite-particle system to the ide-alised dynamics (12). In particular, for δN (defined in (42)) quantifying the approximation error when solving for ˙Ψt,we have the following convergence result. 
+
+Theorem 3.4 (Convergence of the Weighted Particle System ). Under mild assumptions, we have that 
+
+E
+
+"
+
+sup 
+
+> t∈[0 ,1]
+
+ˆμNt (ϕ) − μ∗ 
+
+> t
+
+(ϕ)
+
+#
+
+−→ 0, (14) 
+
+for every ϕ ∈ C2 
+
+> b
+
+(Rd), as N → ∞ .
+
+Generalising the Pointwise Setting We remark that the pointwise-reward setting is recovered from our framework by choosing R(μ) = R r(x) d μ(x). In this case, the first variation is Ψ( x, μ ) = r(x), so our mean-field steering pro-cedure recovers the standard procedure from Section 2. 
+
+# 4. Experiments 
+
+In this section, we empirically examine the behaviour of our proposed framework, aiming to verify that the resulting samples are drawn from the prescribed reward-tilted distri-bution. We first consider low-dimensional settings where the reward-tilted target can be tractably computed, allow-ing us to reliably quantify the sampling accuracy. Follow-ing this, we consider larger-scale illustrative case studies on proteins, where we observe similar behaviour in higher-dimensional, realistic settings. 
+
+4.1. Low-dimensional experiments 
+
+We first consider a flow model that samples from a 1-dimensional bimodal Gaussian mixture p1 with means 
+
+(−1.0, 1.0) , both modes with unit variance, and mode weights (1 , 3) respectively. To construct a distributional reward, we consider tilting the output distribution towards a similar Gaussian mixture ν but now with respective weights (3 , 1) using a squared Maximum Mean Discrep-ancy (MMD) reward (similar to Sani et al. (2026)). We aim to sample from 
+
+μ∗ = arg min 
+
+> μ
+
+KL( μ∥p1) + λ∗ MMD 2(μ, ν ) . (15) 
+
+Trajectory Visualisation In Figure 2, we qualitatively compare trajectories for the base dynamics, the gradient-steered dynamics (representative of existing approaches 5A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models                      
+
+> Figure 2. Trajectories and final measures μ1for the base, gradient-steered, and mean-field dynamics, alongside an approximation of the true reward-tilted target μ∗for comparison.
+> Figure 3. Objective gaps J(μ)−J(μ∗)for mean-field sampling and gradient steering in the MMD example with λ∗= 10 . We compare fixed-point iterations KF P = 1 ,3,5for our method against gradient steering with the steering strength varied linearly over [0 ,4] .
+
+such as Corso et al. (2024); Maddipatla et al. (2025); Lam et al. (2026); Saravanan et al. (2026); Sani et al. (2026)), and our mean-field steering approach. We use a constant noise schedule σt = 1 .0 and λ∗ = 10 , and include an ap-proximation to the true tilted solution μ∗ for reference. As expected, the base dynamics sample the original measure 
+
+p1. We see that standard gradient steering does push the particles towards the tilting measure ν, but does not target 
+
+μ∗. In contrast, incorporating the mean-field reweighting procedure accurately samples from the tilted target μ∗.
+
+Quantitative Analysis of Optimality We quantitatively assess how accurately each sampler targets the tilted dis-tribution μ∗. For the objective J(μ) = KL( μ∥p1) + 
+
+λ∗MMD 2(μ, ν ), we report the optimality gap J(μ) −
+
+J(μ∗). In Figure 3, we compare gradient steering with our mean-field sampler using fixed-point iterations to com-pute ˙Ψt. Results are shown for three noise schedules: fixed 
+
+σt = 1 .0, decaying σt = √1 − t, and the memoryless schedule σt = p2(1 − t)/t used in Domingo-Enrich et al. (2025). In all cases, the objective gap is minimised when using mean-field steering with the correct λ value, confirming that our procedure correctly targets the prescribed distri-bution μ∗. The behaviour is consistent across noise sched-ules, indicating that the targeted distribution is invariant to these hyperparameter choices. Gradient-steering, by con-trast, samples from a measure whose form depends on the steering strength and which does not in general coincide with μ∗. The mean-field procedure thus provides a sampler whose target distribution is explicitly characterised by λ,rather than being indirectly induced by the choice of steer-ing parameters. We also note that running KF P = 1 in the fixed-point ˙Ψt
+
+solver appears to give a slight bias as expected, but running 
+
+KF P = 3 , 5 are highly accurate and perform very simi-larly. We provide full experimental details and additional results, including for different tilting strengths λ, different measure-defined rewards R, and a more detailed analysis of the fixed-point solver, in Section C.1. 
+
+4.2. Tilting Protein Conformational Ensembles Towards Experimental Observations 
+
+In the previous section, we verified that our approach pro-vides a principled correction mechanism for distributional steering in controlled low-dimensional settings. We now investigate to what extent this holds in higher-dimensional generative modelling tasks. Diffusion models are widely used for complex modalities such as images, videos, and proteins; among these, protein generation is a particularly natural application for the distributional steering setting, since the generated ensemble is often itself the object of interest and experimental observations frequently provide indirect, distribution-level information. This has motivated recent work on steering generated protein ensembles using distributional reward functions derived from experimental observations (Maddipatla et al., 2025; 2026). 4.2.1. D ISTRIBUTIONS OVER RESIDUE DISTANCES 
+
+We first consider two settings in which we steer confor-mational ensembles generated by Boltz-2 (Passaro et al., 6A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models          
+
+> Figure 4. HIV-1 Protease exhibits two main conformations: closed
+> (left) and semi-open (right) .
+> Figure 5. The objective proxy is minimised at the correct value for the steering coefficient λ.
+> Figure 6. Increasing the strength λincreases the tilt towards the observed data ν, and accurately matches the empirically-observed data when computed on the 55-residue distances.
+
+2025; Wohlwend et al., 2024) towards experimentally ob-served distributions over lower-dimensional features, again comparing relative to gradient-steering. We remark that our aim is not necessarily to improve over gradient-steering; indeed, this is highly effective at steering towards desired distributional behaviour. Rather, we aim to understand to what extent the improved consistency and predictability af-forded by our theoretically grounded correction mechanism extends to these higher-dimensional, challenging settings. 
+
+Protein Conformation Generation Proteins typically occupy ensembles of conformational states rather than a single fixed structure, and characterising these ensembles is crucial for understanding disease. Recent diffusion mod-els can sample plausible conformations conditioned on an amino-acid sequence, but their induced conformational dis-tributions may be miscalibrated, for example collapsing onto certain modes or assigning incorrect mode propor-tions. Experimental methods can probe conformational en-sembles, but they often provide indirect, distribution-level information rather than individual measurements. Such data can nevertheless reveal approximate conformational state proportions; this motivates combining experimental data with generative modelling, by ‘tilting’ the base model toward empirically observed distributional information. 
+
+HIV-1 Protease We first consider HIV-1 protease; this protein exhibits a ‘flap region’ that opens and closes be-tween different conformational states (Figure 4), which can be inferred from the residue-55 Cα − Cα distances. Un-der the base Boltz-2 model, the states are sampled with proportions 83% closed and 17% semi-open. The double electron-electron resonance (DEER) method can be used to infer state proportions; such analysis in Liu et al. (2016) suggests that these relative proportions are 25% and 75%. Based on these findings, we will aim to tilt generations to-wards a Gaussian mixture ν over residue-55 distances with these proportions, using the MMD objective (15). 
+
+Results In Figure 6 we display histograms of the residue-55 distance for different tilt-strengths λ using our method. For reference, we also plot a proxy for the target μ∗ sim-ilarly to before; as the ambient-space KL( μ∥p1) term is intractable, we instead evaluate KL on the 1-dimensional residue distances. We see that, as expected, the genera-tions are pulled towards the observed data as λ increases, and the induced distribution of residue distances accurately matches the ‘ground-truth’ proxy μ∗ (we give similar visu-alisations for gradient-steering in Appendix C.2). As be-fore, in Figure 5 we see that the objective is minimised at the correct λ value when using mean-field steering, demon-strating that our principled approach remains effective even in this challenging, high-dimensional setting. In Appendix C.3, we also consider another Boltz-2 exam-ple in which generations of adenylate kinase are steered to match a two-dimensional distribution over bond angles ob-tained from molecular dynamics simulations. 4.2.2. C RYSTALLOGRAPHIC ELECTRON DENSITIES 
+
+To conclude, we consider a more challenging distributional-reward steering example, in which we steer the generations of a diffusion model to fit an electron density observed using X-ray crystallography. This technique provides a spatial and temporal average of the density over molecules in a crystal lattice, therefore constituting a population-level observation requiring adistribution-level reward. Here, we consider an example from Maddipatla et al. (2025), who steer the Protenix model (ByteDance et al., 2025) so that the generated 7A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models             
+
+> Figure 7. Two conformations of 4OLE, with the region of inter-est (residues 423-431) highlighted in red.
+> (a) Base distribution p1.(b) Steered distribution μ1.
+> Figure 8. X-ray crystallography experiment and figure inspired by Maddipatla et al. (2025), showing the sampled ROI and the target electron density. The base diffusion model samples nearly entirely conformation A. Distributional steering can cover both modes, giving a better fit to the observed density.
+> (a) Cosine alignment between generated and target electron densities, as steering strength increases.
+> (b) Proportion of generations closer to conformation B, as steering strength in-creases.
+> (c) For the same cosine alignment, mean-field steering placed more samples closer to conformation B.
+> Figure 9. Comparing gradient-only and mean-field steering, when steering 4OLE generations according to the observed electron density.
+
+ensemble’s density is guided towards the empirical density. Here, we investigate how this steering mechanism is altered by including our additional mean-field correction. We consider the PDB structure 4OLE, which is known to display heterogeneous conformations within the same crys-tal structure around a small region of interest (ROI) (Fig-ure 7). The base model generates almost entirely from the helical conformation A, which does not explain the bi-modal electron density in this region. By steering accord-ing to a log-likelihood reward function, Maddipatla et al. (2025) show that both modes can be recovered, giving an improved fit to the empirical electron density (Figure 8). Inspired by this experiment, in Figure 9 we compare the behaviour of standard gradient-only steering (similar to the steering used in Maddipatla et al. (2025)) with the addi-tional inclusion of our mean-field reweighting scheme. For full details of the experimental setup, see Appendix C.5. In the absence of a known ground-truth, we instead focus on discussing the qualitative differences between the results. We first observe that for the same steering strength, mean-field steering appears to result in a stronger reward tilt in this setting, giving a larger cosine alignment and more sam-ples closer to conformation B. We also observe that mean-field steering generally placed more samples in the alter-nate conformation for the same cosine alignment. 
+
+# 5. Discussion 
+
+Limitations The primary limitation of our approach is its reliance on resampling. While similar schemes are used in the pointwise-reward steering setting too, this can be a limi-tation in certain modalities (particularly images) as the final generations may include versions of similar images. For settings such as conformation generation, this is typically less of an issue. We anticipate that this can be mitigated us-ing methods to reduce weight variance (Ren et al., 2026). We also require a differentiable reward function and an ad-ditional computational cost for the ˙Ψt solver. Finally, we remark that exact minimisation of a distributional objec-tive is often not strictly necessary in practice, and gradient-steering alone may suffice in such cases; our framework can be seen as providing a principled foundation underly-ing such approaches. 
+
+Conclusion and Future Directions In this work, we have studied distributional reward steering under a mean-field framework, deriving a Feynman-Kac reweighting scheme that exactly targets the prescribed reward-tilted measure μ∗. Our framework provides a principled counter-part to existing batch-level gradient-steering methods, and recovers existing FK-weighted steering for pointwise re-wards as a special case. We empirically verified that our proposed framework targets the true tilted distribution in low-dimensional settings where the target is tractable, and illustrated the extent to which this behaviour transfers to higher-dimensional protein conformation tasks. We hope that future work can build upon the framework developed here, drawing on domain expertise to formulate more ex-pressive distributional steering objectives inspired by prac-tical applications. 8A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models 
+
+# Impact Statement 
+
+This paper presents work whose goal is to advance the field of Machine Learning. Our work concerns inference-time steering methods for diffusion and flow-based generative models, and therefore shares the broader societal impacts associated with these models. 
+
+# Acknowledgements 
+
+SH is supported by the EPSRC CDT in Modern Statistics and Statistical Machine Learning [EP/S023151/1]. 
+
+# References 
+
+Abramson, J., Adler, J., Dunger, J., Evans, R., Green, T., Pritzel, A., Ronneberger, O., Willmore, L., Ballard, A. J., Bambrick, J., et al. Accurate structure prediction of biomolecular interactions with alphafold 3. Nature , 630 (8016):493–500, 2024. Albergo, M. S. and Vanden-Eijnden, E. Building normal-izing flows with stochastic interpolants. In The Eleventh International Conference on Learning Representations ,2023. Albergo, M. S., Boffi, N. M., and Vanden-Eijnden, E. Stochastic interpolants: A unifying framework for flows and diffusions, 2023. Azangulov, I., Zhang, L., and Ashouritaklimi, K. Variance-tilted diffusion models for diverse sampling. In ICML 2026 Workshop on Structured Probabilistic Inference & Generative Modeling , 2026. Bansal, A., Chu, H.-M., Schwarzschild, A., Sengupta, R., Goldblum, M., Geiping, J., and Goldstein, T. Universal guidance for diffusion models. In The Twelfth Interna-tional Conference on Learning Representations , 2024. Beckstein, O., Denning, E. J., Perilla, J. R., and Woolf, T. B. Zipping and unzipping of adenylate kinase: Atom-istic insights into the ensemble of open-closed transi-tions. Journal of Molecular Biology , 394(1):160–176, 2009. ISSN 0022-2836. Black, K., Janner, M., Du, Y., Kostrikov, I., and Levine, S. Training diffusion models with reinforcement learn-ing. In The Twelfth International Conference on Learn-ing Representations , 2024. ByteDance, A. A. T., Chen, X., Zhang, Y., Lu, C., Ma, W., Guan, J., Gong, C., Yang, J., Zhang, H., Zhang, K., Wu, S., Zhou, K., Yang, Y., Liu, Z., Wang, L., Shi, B., Shi, S., and Xiao, W. Protenix - advancing structure predic-tion through a comprehensive AlphaFold3 reproduction. 
+
+bioRxiv , 2025. doi: 10.1101/2025.01.08.631967. Carmona, R. and Delarue, F. Probabilistic Theory of Mean Field Games with Applications I: Mean Field FBSDEs, Control, and Games , volume 83 of Probability Theory and Stochastic Modelling . Springer International Pub-lishing, Cham, 2018. Chung, H., Kim, J., Mccann, M. T., Klasky, M. L., and Ye, J. C. Diffusion posterior sampling for general noisy inverse problems. In The Eleventh International Confer-ence on Learning Representations , 2023. Clark, K., Vicol, P., Swersky, K., and Fleet, D. J. Directly fine-tuning diffusion models on differentiable rewards. In The Twelfth International Conference on Learning Representations , 2024. Corso, G., Xu, Y., Bortoli, V. D., Barzilay, R., and Jaakkola, T. S. Particle guidance: non-i.i.d. diverse sam-pling with diffusion models. In The Twelfth International Conference on Learning Representations , 2024. Del Moral, P. Feynman-Kac Formulae: Genealogical and Interacting Particle Systems with Applications . Springer, 2004. Del Moral, P. and Miclo, L. Branching and interacting par-ticle systems approximations of Feynman-Kac formulae with applications to non-linear filtering. In Seminaire de probabilites XXXIV , pp. 1–145. Springer, 2007. Dhariwal, P. and Nichol, A. Diffusion models beat GANs on image synthesis. In Advances in Neural Information Processing Systems , 2021. Domingo-Enrich, C., Drozdzal, M., Karrer, B., and Chen, R. T. Q. Adjoint matching: Fine-tuning flow and diffu-sion generative models with memoryless stochastic opti-mal control. In The Thirteenth International Conference on Learning Representations , 2025. Douc, R., Capp´ e, O., and Moulines, E. Comparison of resampling schemes for particle filtering. In Proceedings of the 4th International Symposium on Image and Signal Processing and Analysis (ISPA 2005) , pp. 64–69. IEEE, 2005. doi: 10.1109/ISPA.2005.195385. Fadini, A., Li, M., McCoy, A. J., Banjara, S., Okumura, H., Napier, E., Fontana, P., Khan, A. R., Jovine, L., Terwilliger, T. C., Read, R. J., Hekstra, D. R., and AlQuraishi, M. AlphaFold as a prior: experimental structure determination conditioned on a pretrained neu-ral network. Nature Methods , 23(4):785–795, 2026. ISSN 1548-7105. doi: 10.1038/s41592-026-03047-4. Genevay, A., Peyr´ e, G., and Cuturi, M. Learning gen-erative models with Sinkhorn divergences. In Interna-tional Conference on Artificial Intelligence and Statis-tics , 2018. 9A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models 
+
+Giesecke, K., Spiliopoulos, K., and Sowers, R. B. Default clustering in large portfolios: Typical events. The Annals of Applied Probability , 23(1):348–385, 2013. doi: 10. 1214/12-AAP845. Havens, A. J., Miller, B. K., Yan, B., Domingo-Enrich, C., Sriram, A., Levine, D. S., Wood, B. M., Hu, B., Amos, B., Karrer, B., Fu, X., Liu, G.-H., and Chen, R. T. Q. Ad-joint sampling: Highly scalable diffusion samplers via adjoint matching. In International Conference on Ma-chine Learning , 2025. He, J., Hern´ andez-Lobato, J. M., Du, Y., and Vargas, F. RNE: plug-and-play diffusion inference-time control and energy-based training. In The Fourteenth Interna-tional Conference on Learning Representations , 2026. Ho, J., Salimans, T., Gritsenko, A., Chan, W., Norouzi, M., and Fleet, D. Video diffusion models. In Advances in Neural Information Processing Systems , 2022. Hofbauer, J. and Sigmund, K. Evolutionary Games and Population Dynamics . Cambridge University Press, 1998. Holderrieth, P., Chen, D., Eyring, L., Shah, I., Ananthara-man, G., He, Y., Akata, Z., Jaakkola, T., Boffi, N. M., and Simchowitz, M. Diamond maps: Efficient reward alignment via stochastic flow maps. In Forty-third Inter-national Conference on Machine Learning , 2026. Howard, S., N¨ usken, N., and Pidstrigach, J. Control con-sistency losses for diffusion bridges. In Forty-third In-ternational Conference on Machine Learning , 2026. Jakubowski, A. On the skorokhod topology. Annales de l’Institut Henri Poincar´ e, Probabilit´ es et Statistiques , 22 (3):263–285, 1986. Joint Center for Structural Genomics (JCSG). Crystal structure of a neighbor of BRCA1 gene 1 (NBR1) from Homo sapiens at 2.52 A resolution. Protein Data Bank (PDB ID: 4OLE), 2014. URL https://www.rcsb. org/structure/4OLE .Kabsch, W. A solution for the best rotation to relate two sets of vectors. Acta Crystallographica Section A: Crys-tal Physics, Diffraction, Theoretical and General Crys-tallography , 32(5):922–923, Sep 1976. Kirchhof, M., Thornton, J., B´ ethune, L., Ablin, P., Ndiaye, E., and Cuturi, M. Shielded diffusion: Generating novel and diverse images using sparse repellency. In Forty-second International Conference on Machine Learning ,2025. Lam, H., Pujalte Ojeda, S., Brezinova, M., Hanke, J., Ong, X. E., Mu, Y., and Vendruscolo, M. Metadiffusion: inference-time meta-energy biasing of biomolecular dif-fusion models. bioRxiv , 2026. doi: 10.64898/2026.02. 10.704873. Levy, A., Chan, E. R., Fridovich-Keil, S., Poitevin, F., Zhong, E. D., and Wetzstein, G. Solving inverse prob-lems in protein space using diffusion-based priors, 2024. Li, M., Han, J., Cossio, P., and Wu, L. Robust inference-time steering of protein diffusion models via embedding optimization, 2026. Lipman, Y., Chen, R. T. Q., Ben-Hamu, H., Nickel, M., and Le, M. Flow matching for generative modeling. In The Eleventh International Conference on Learning Repre-sentations , 2023. Liu, G.-H., Choi, J., Chen, Y., Miller, B. K., and Chen, R. T. Q. Adjoint Schr¨ odinger bridge sampler. In Conference on Neural Information Processing Systems , 2025a. Liu, X., Gong, C., and Liu, Q. Flow straight and fast: Learning to generate and transfer data with rectified flow. In The Eleventh International Conference on Learning Representations , 2023. Liu, Y., Yu, Z., Lindsay, R. J., Lin, G., Chen, M., Sa-hoo, A., and Hanson, S. M. Exendiff: An experiment-guided diffusion model for protein conformational en-semble generation. PRX Life , 3:023013, Jun 2025b. doi: 10.1103/PRXLife.3.023013. Liu, Z., Casey, T. M., Blackburn, M. E., Huang, X., Pham, L., de Vera, I. M. S., Carter, J. D., Kear-Scott, J. L., Veloro, A. M., Galiano, L., and Fanucci, G. E. Pulsed epr characterization of hiv-1 protease conforma-tional sampling and inhibitor-induced population shifts. 
+
+Phys. Chem. Chem. Phys. , 18:5819–5831, 2016. doi: 10.1039/C5CP04556H. Luan, H., Ng, S.-K., and Ling, C. K. Inference-time at-tribute distribution alignment for unconditional diffu-sion. In ReALM-GEN Workshop, ICLR 2026 , 2026. Maddipatla, A., Sellam Bojan, N., Bojan, M., Masalitin, V., Vedula, S., Schanda, P., Marx, A., and Bronstein, A. M. Experiment-guided AlphaFold3 resolves measurement-consistent protein ensembles. Nature Biotechnology ,2026. ISSN 1546-1696. Maddipatla, S. A., Bojan, N., Bojan, M., Vedula, S., Schanda, P., Marx, A., and Bronstein, A. Inverse problems with experiment-guided AlphaFold. In Forty-second International Conference on Machine Learning ,2025. Neal, R. M. Annealed importance sampling. Statistics and Computing , 11:125–139, 2001. 10 A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models 
+
+Passaro, S., Corso, G., Wohlwend, J., Reveiz, M., Thaler, S., Somnath, V. R., Getz, N., Portnoi, T., Roy, J., Stark, H., Kwabi-Addo, D., Beaini, D., Jaakkola, T., and Barzi-lay, R. Boltz-2: Towards accurate and efficient binding affinity prediction. bioRxiv , 2025. Potaptchik, P., Saravanan, A., Mammadov, A., Prat, A., Al-bergo, M. S., and Teh, Y. W. Meta flow maps enable scalable reward alignment. In Forty-third International Conference on Machine Learning , 2026. Ren, Y., Gao, W., Ying, L., Rotskoff, G. M., and Han, J. Driftlite: Lightweight drift control for inference-time scaling of diffusion models. In The Fourteenth Interna-tional Conference on Learning Representations , 2026. Rombach, R., Blattmann, A., Lorenz, D., Esser, P., and Ommer, B. High-resolution image synthesis with la-tent diffusion models. In Proceedings of the IEEE Con-ference on Computer Vision and Pattern Recognition (CVPR) , 2022. Sabour, A., Albergo, M. S., Domingo-Enrich, C., Boffi, N. M., Fidler, S., Kreis, K., and Vanden-Eijnden, E. Test-time scaling of diffusions with flow maps, 2025. Sani, M. M., Jamali, N., Jalali, M., and Farnia, F. Training-free distribution adaptation for diffusion models via maximum mean discrepancy guidance, 2026. Santambrogio, F. Optimal Transport for Applied Mathe-maticians . Birkh¨ auser/Springer, 2015. Santi, R. D., Vlastelica, M., Hsieh, Y.-P., Shen, Z., He, N., and Krause, A. Flow density control: Generative opti-mization beyond entropy-regularized fine-tuning. In The Thirty-ninth Annual Conference on Neural Information Processing Systems , 2025. Saravanan, A., Knowles, R., Kerrigan, G., and Rainforth, T. DiffBED: Scaling bayesian experimental design to high-dimensions. In The Fourteenth International Conference on Learning Representations , 2026. Singhal, R., Horvitz, Z., Teehan, R., Ren, M., Yu, Z., McK-eown, K., and Ranganath, R. A general framework for inference-time scaling and steering of diffusion models. In Forty-second International Conference on Machine Learning , 2025. Skreta, M., Akhound-Sadegh, T., Ohanesian, V., Bonde-san, R., Aspuru-Guzik, A., Doucet, A., Brekelmans, R., Tong, A., and Neklyudov, K. Feynman-Kac correctors in diffusion: Annealing, guidance, and product of ex-perts. In Forty-second International Conference on Ma-chine Learning , 2025. Smith, H., Diamant, N. L., and Trippe, B. L. Calibrat-ing generative models to distributional constraints. In 
+
+Forty-third International Conference on Machine Learn-ing , 2026. So, O., Karrer, B., Fan, C., Chen, R. T. Q., and Liu, G.-H. Discrete adjoint matching. In The Fourteenth Interna-tional Conference on Learning Representations , 2026. Song, Y., Sohl-Dickstein, J., Kingma, D. P., Kumar, A., Ermon, S., and Poole, B. Score-based generative model-ing through stochastic differential equations. In Interna-tional Conference on Learning Representations , 2021. Thornton, J., B´ ethune, L., Zhang, R., Bradley, A., Nakki-ran, P., and Zhai, S. Controlled generation with distilled diffusion energy models and sequential Monte Carlo. In 
+
+The 28th International Conference on Artificial Intelli-gence and Statistics , 2025. Vinograd, G., Achituve, I., and Fetaya, E. Diverse sam-pling in diffusion models with marginal preserving par-ticle guidance, 2026. Wang, Z., Santi, R. D., Mo, X., Zavlanos, M. M., Krause, A., and Johansson, K. H. Efficient tail-aware generative optimization via flow model fine-tuning. In ICLR 2026 Workshop on Foundation Models for Science: Real-World Impact and Science-First Design , 2026. Watson, J. L., Juergens, D., Bennett, N. R., Trippe, B. L., Yim, J., Eisenach, H. E., Ahern, W., Borst, A. J., Ragotte, R. J., Milles, L. F., Wicky, B. I. M., Hanikel, N., Pellock, S. J., Courbet, A., Sheffler, W., Wang, J., Venkatesh, P., Sappington, I., Torres, S. V., Lauko, A., De Bortoli, V., Mathieu, E., Ovchinnikov, S., Barzilay, R., Jaakkola, T. S., DiMaio, F., Baek, M., and Baker, D. De novo design of protein structure and function with RFdiffusion. Nature , 620(7976):1089–1100, 2023. ISSN 1476-4687. Wohlwend, J., Corso, G., Passaro, S., Getz, N., Reveiz, M., Leidal, K., Swiderski, W., Atkinson, L., Portnoi, T., Chinn, I., Silterra, J., Jaakkola, T., and Barzilay, R. Boltz-1: Democratizing biomolecular interaction mod-eling. bioRxiv , 2024. Wu, L., Trippe, B. L., Naesseth, C. A., Cunningham, J. P., and Blei, D. Practical and asymptotically exact condi-tional sampling in diffusion models. In Thirty-seventh Conference on Neural Information Processing Systems ,2023. Xu, J., Liu, X., Wu, Y., Tong, Y., Li, Q., Ding, M., Tang, J., and Dong, Y. Imagereward: learning and evaluat-ing human preferences for text-to-image generation. In 
+
+Conference on Neural Information Processing Systems ,2023. 11 A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models 
+
+# Appendix 
+
+The Appendix is structured in the following way. In Appendix A, we discuss related work and required background information. In Appendix B, we provide additional details regarding implementation of the mean-field steering procedure. In Appendix C, we provide details of the experimental settings, along with additional experimental results. In Appendix D, we provide the proofs of the results stated in the main body. Finally, Appendix E includes the licenses for assets used. 
+
+# A. Background 
+
+A.1. Related Work Pointwise-Reward Gradient-Steering Methods Since the development of diffusion and flow-based generative models, there has been an extensive literature concerning incorporating additional steering terms into the inference dynamics to encourage desirable behaviour. Important examples include classifier-guidance (Dhariwal & Nichol, 2021), diffusion posterior sampling (Chung et al., 2023), and universal guidance (Bansal et al., 2024) to name a few. While effective, simply incorporating gradient terms comes with few theoretical guarantees on the generated distribution, so a more recent line of works has incorporated Feynman-Kac reweighting procedures to correct the dynamics to trace out a prescribed path of measures (Wu et al., 2023; Thornton et al., 2025; Singhal et al., 2025; Skreta et al., 2025; He et al., 2026; Sabour et al., 2025). Our presentation largely follows that in Sabour et al. (2025), though they focus on using a flow-map as their ˆx1
+
+prediction. Recent works Potaptchik et al. (2026); Holderrieth et al. (2026) also consider inference-time steering according to pointwise rewards, but sidestep the issues of requiring reweighting schemes by using a stochastic flow map to estimate the value function under a stochastic optimal control framework. 
+
+Batch-Reward Gradient-Steering Methods Recently there have been a number of works that have used steering terms that incorporate particle interactions in order to encourage desirable distributional properties in the generated samples. Similarly to the pointwise setting, these approaches are effective but largely heuristic in nature, and come with a weak understanding of the sampled distribution. In fact, many of these methods use gradient-steered dynamics; our framework can thus be interpreted as providing a theoretical grounding for such methods through our derived reweighting scheme. Many of these works focus on steering to encourage diversity in the generated samples. For a sequence of kernels kt, the 
+
+Particle Guidance method of Corso et al. (2024) modifies the inference dynamics to be 
+
+dXit = bt(Xit ) + εtst(Xit ) − εt∇Xit
+
+> N
+
+X
+
+> j=1
+
+kt(Xit , X jt )dt + √2εtdBit . (16) which corresponds to gradient-steering for a batch-reward function RNt (x1: N ) = − 12N
+
+PNi,j =1 kt(xi, x j ). As commented in Corso et al. (2024), this does not in general sample from μ∗ 
+
+> 1
+
+as the dynamics do not correspond to a reversed diffusion process. To correct for this, Corso et al. (2024) also introduce a learned potential steering approach, but this requires addi-tional training and thus falls under the fine-tuning paradigm (see below) rather than the inference-time steering paradigm that we consider in this work. Recent work by Lam et al. (2026) from the computational biology literature similarly incorporates the gradient of biasing potentials into the inference dynamics, including a diversity-encouraging potential 
+
+Ei = kN −1
+
+P 
+
+> i̸=j
+
+exp   − (CV i−CV j )2
+
+> 2σ2
+
+ defined on chosen collective variables. Kirchhof et al. (2025) include a sparse-repellency term in the inference dynamics, that steers the generations out of shielded areas. While similar in spirit to particle guidance (in that the base dynamics are modified to include a repulsive interaction term), the control terms cannot be directly interpreted as gradients of a potential. Their steering terms are ‘sparse’ in the sense that the base dynamics are only modified where necessary to avoid shielded areas. Finally, we also note the concurrent works Azangulov et al. (2026); Vinograd et al. (2026) that have similarly targeted principled techniques for distributional steering, under the particular setting of encouraging diversity, and Luan et al. (2026) who consider attribute distribution alignment through an optimal control formulation. We remark that our reweighting corrections are somewhat ill-suited to the diversity setting due to the reliance on resampling; we anticipate that combining with approaches to mitigate weight changes, such as Ren et al. (2026), can help to address this, and we believe this is a valuable direction for future work. Batch-level gradient steering has also been considered beyond the diversity setting. Such works include Maddipatla et al. (2025; 2026), who consider steering the Protenix diffusion model (ByteDance et al., 2025) according to experimental obser-vations that provide distributional information. These works formulate the task as an inverse problem in which one aims to sample from the ensemble’s posterior distribution p(X | a, y ) ∝ p(y|X , a )·p(X | a); here, X = {X1, ..., X N } is the sampled 12 A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models 
+
+ensemble, p(y|X , a ) denotes a chosen likelihood function, and the prior p(X | a) is given by the base diffusion model (con-ditioned on amino acid sequence a). This corresponds to choosing a log-likelihood reward function R(μ) = log p(y|μ, a )
+
+in our framework. Sani et al. (2026) consider steering according to an MMD-based reward R(ˆ μ) = −MMD 2(μ, ν ) for a reference dataset ν, similar to several of our experimental settings. DiffBED (Saravanan et al., 2026) steers according to the expected information gain R(ˆ μ) = EIG(ˆ μ), for applications in Bayesian experimental design. We summarise the position of our work within the surrounding pointwise-reward and distributional-reward literature in Table 1. 
+
+Heuristic Gradient Steering Principled Targeting of μ∗
+
+Pointwise Reward 
+
+r(X1)
+
+∇r(Xt) steering 
+
+> (e.g. Dhariwal & Nichol (2021); Chung et al. (2023); Bansal et al. (2024))
+
+Reweighting approaches 
+
+> (e.g. Wu et al. (2023); Singhal et al. (2025); Skreta et al. (2025); He et al. (2026); Sabour et al. (2025))
+
+Distributional Reward 
+
+R(μ)
+
+∇Xi R(ˆ μ) steering 
+
+> (e.g. Corso et al. (2024); Maddipatla et al. (2025); Sani et al. (2026); Lam et al. (2026); Saravanan et al. (2026))
+
+Mean-Field Steering (Ours) 
+
+Table 1. Positioning of our work within the pointwise-reward and distributional-reward steering literatures. 
+
+Fine-tuning Flow-based Generative Models In this work, we consider the inference-time steering literature for control-ling diffusion models. A separate but related literature concerns fine-tuning diffusion models. Similarly to inference-time steering, such methods aim to improve the quality of the generations according to a chosen reward function. However, unlike inference-time steering methods, these approaches involve additional training of the generative model, and must be re-trained for different reward functions. For the pointwise-reward case, such methods are now widespread; prominent examples of such methods include DRaFT (Clark et al., 2024), ReFL (Xu et al., 2023), and DDPO (Black et al., 2024), to name a few. Adjoint Matching (Domingo-Enrich et al., 2025) provides a scalable method for finetuning diffusion models from the perspective of stochastic optimal control (SOC), and has subsequently seen extensions to sampling, discrete settings, and wider SOC problems (Havens et al., 2025; Liu et al., 2025a; So et al., 2026; Howard et al., 2026). A recent line of works Santi et al. (2025); Wang et al. (2026) have considered fine-tuning flow-based models according to measure-valued rewards, and Smith et al. (2026) consider calibrating generative models to distributional constraints. These approaches therefore consider a similar setting to the one studied in this work, but under the fine-tuning paradigm rather than inference-time steering. 
+
+A.2. Functional derivatives 
+
+In this section, we briefly recall the notion of a functional derivative with respect to a probability measure. For a complete and rigorous reference, we refer to Santambrogio (2015) for an accessible introduction. Let F : P(Rd) → R be a functional on probability measures. We say that a measurable function 
+
+δF
+
+δμ (x, μ ) : Rd × P (Rd) → R
+
+is a functional derivative (or first variation ) of F at μ if, for measures ν close to μ,
+
+F(ν) − F (μ) = 
+
+Z
+
+> Rd
+
+δF
+
+δμ (x, μ ) ( ν − μ)( dx ) + o(ν − μ). (17) Informally, δF 
+
+> δμ
+
+(x, μ ) measures the first-order change in F when one adds a small amount of mass near the point x. Since 
+
+ν − μ has total mass zero, the functional derivative is only defined up to an additive constant depending on μ. In most formulas this ambiguity is harmless. A convenient equivalent characterisation is obtained by considering perturbations of the form 
+
+με = (1 − ε)μ + εν, 
+
+for ε > 0 small enough. Then δF 
+
+> δμ
+
+is characterised by 
+
+ddε F(με)
+
+> ε=0
+
+=
+
+Z
+
+> Rd
+
+δF
+
+δμ (x, μ ) ( ν − μ)( dx ). (18) 13 A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models                                                
+
+> Table 2. Examples of first variations of functionals on probability measures. Functional derivatives on probability spaces are defined up to additive constants.
+> Name Functional F(μ)Functional derivative δF
+> δμ
+> Linear reward
+> Z
+> f(x)μ(dx )f(x)
+> Non-linear moment reward F
+> Z
+> φ(x)μ(dx )
+> 
+> F′
+> Z
+> φ(y)μ(dy )
+> 
+> φ(x)
+> Quadratic moment reward
+> Z
+> φ(x)μ(dx )
+> 2
+> 2
+> Z
+> φ(y)μ(dy )
+> 
+> φ(x)
+> Squared Maximum Mean Dis-crepancy ( MMD 2)
+> Z Z
+> k(x, y ) ( μ−ν)( dx )( μ−ν)( dy )2
+> Z
+> k(x, y ) ( μ−ν)( dy )
+> Entropy
+> Z
+> ρμ(x) log ρμ(x)dx log ρμ(x) + 1
+> Quadratic Wasserstein cost to fixed ν
+> 12W22(μ, ν )Kantorovich potential ϕ(x)from μto νfor cost
+> 12∥x−y∥2
+> Entropic transport cost to fixed νOT ε(μ, ν )Schr¨ odinger potential φε(x)
+
+Examples In Table 2 we record the functional derivatives of common measure-defined functionals F that could be used under our framework (typically one would use R = −F as a reward). 
+
+# B. Implementation Details 
+
+In this section, we provide additional implementation details for the mean-field steering procedure. Recall from Section 3.3 that we make a finite-particle approximation to the idealised weighted McKean-Vlasov dynamics (12). For N particles, letting ˆμt = PNi=1 witδXit for weights wit ∝ eAit , these dynamics are given by 
+
+dXit = bt(Xit ) + εtst(Xit ) + εt∇xΨt(Xit ; ˆ μt)dt + √2εt dBit , Xi 
+
+> 0
+
+∼ p0 (19a) 
+
+dAit = bt(Xit ) · ∇ xΨt(Xit ; ˆ μt) + ˙Ψt(Xit )dt, Ai 
+
+> 0
+
+= 0 . (19b) We now provide additional details regarding computation of the steering terms. 
+
+Gradient-Steering Term ∇xΨt(x; μt) As explained in the main text, the gradient-steering term ∇xΨt(x; μt) appearing in the positional updates can be computed directly with autodifferentiation, evaluated on the current empirical measure ˆμt.When one can analytically compute the first variation (as one can do, for example, for functionals in Table 2), then one can use a finite-sample approximation Ψt(Xit , ˆμt) and then differentiate with respect to the first argument. Alternatively, one can directly differentiate Rt(ˆ μt) evaluated on the empirical measure with respect to the positions Xit and rescale according to the particle weights, giving (wit)−1∇Xit Rt(ˆ μt) as the i-th steering term. Note that in the first case, the derivative with respect to the position is passed solely through the position x with the measure μ kept fixed, while in the second the dependence on x is passed through both—this is an algorithmic choice, as under standard smoothness assumptions these both converge to the desired mean-field steering term ∇xΨt(x; μt) in the large-N limit – this follows from arguments similar to those in the proof of Theorem D.5. In practice we found both choices to behave very similarly, and so use the first approach in our experiments. 
+
+Time-Derivative Term ˙Ψt(x) The more challenging term in the dynamics is the time-derivative ˙Ψt(x) = ddt
+
+ Ψt(x, μ t),in which the position x is kept fixed but the time-dependence arises through both Ψt and the measure evolution μt (note that the dependence of ˙Ψt(x) on μt is suppressed for notational convenience). In contrast to the standard case, this induces 
+
+implicit behaviour in the log-weight updates—their dynamics involve the change in the measure μt, but the measure evolution is itself dependent on the change in the weights. We provide two different methods to overcome this. The first is mathematically more explicit, building a tractable linear system of size N which can be solved cheaply. The second considers a simple fixed-point iterative procedure to approximate the weight updates. We outline both below. For the implicit expression in (13), all terms are generally tractable (in the proof of Proposition 3.3, we use integration-by-parts to remove troublesome divergence terms on the score function). In many of the most standard cases (such as MMD, 14 A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models 
+
+Algorithm 2 Mean-Field Inference-Time Steering for Diffusion Models (Multi-Batch) 
+
+Input: Number of batches M , number of particles per batch N , distributional reward function R and corresponding first variation Ψt, time increment δt or alternative time schedule. 
+
+Initialisation: Initialise an empty set of completed samples and log-weights H0 = ∅.
+
+For m ∈ { 1, . . . , M }:
+
+Initialise batch: Sample Xm, 1: N 
+
+> 0
+
+∼ p⊗N 
+
+> 0
+
+, initialise log-weights Am,i  
+
+> 0
+
+= 0 .
+
+For t ∈ { 0, δt, 2δt, . . . , 1 − δt }:• Construct combined terminal measure: 
+
+◦ Let Hm−1 = {( ¯Xℓ
+
+> 1
+
+, ¯Aℓ
+
+> 1
+
+)}(m−1) Nℓ=1 denote the retained samples and log-weights from previous batches. 
+
+◦ Define ˆμm,N  
+
+> 1
+
+= P(m−1) Nℓ=1 ¯wℓ
+
+> 1
+
+δ ¯Xℓ 
+
+> 1
+
++ PNj=1 wm,j t δˆx1(Xm,j t ,t ), where ¯wℓ
+
+> 1
+
+, w m,j t ∝ e ¯Aℓ 
+
+> 1
+
+, e Am,j t , with nor-malisation over both previously sampled and denoised current particles. • Positional updates: 
+
+◦ Perform discretisation step for positional updates, 
+
+Xm,i t+δt = Xm,i t + bt(Xm,i t ) + εtst(Xm,i t ) + εt∇xΨt(Xm,i t ; ˆ μm,N t )δt + √2εt δB m,i t ,
+
+where, by slight abuse of notation, using ˆμm,N t denotes using the combined terminal measure approxi-mation induced by ˆμm,N  
+
+> 1
+
+when evaluating the reward terms. • Log-weight updates: 
+
+◦ Compute ddt Ψt(·; ˆ μm,N t ) at points Xm,i t .
+
+◦ Compute mean-field FK potentials 
+
+gm,i t = bt(Xm,i t ) · ∇ xΨt(Xm,i t ; ˆ μm,N t ) + ddt Ψt(Xm,i t ; ˆ μm,N t ).
+
+◦ Perform discretisation step for log-weight updates, Am,i t+δt = Am,i t + gm,i t δt. 
+
+• Resample: Optionally resample according to current weights wm,i t ∝ eAm,i t .
+
+Update completed set: Update completed set with the completed batch samples and corresponding log-weights 
+
+Hm = Hm−1 ∪ { (Xm,i  
+
+> 1
+
+, A m,i  
+
+> 1
+
+)}Ni=1 .
+
+Return: Weighted particles (Xi
+
+> 1
+
+, w i
+
+> 1
+
+).and diversity kernel rewards, for example) the second variation has an analytical expression. In other cases, one can take derivatives with respect to the particle weights for the finite sample approximations (which is cheap, as these are scalar). Note that the integral in (13) is linear in ˙Ψt(y), so when evaluated using the current empirical measure this gives a linear system for the terms ˙Ψt(Xit ) with tractable coefficients, which can be solved cheaply. The resulting procedure is outlined in Algorithm 3. As a simpler alternative, one can instead use a small fixed-point iterative procedure based on finite differences. For example, one can first approximate using ˙Ψt(x) ≈ Ψt+δt (x, ˜μt+δt (wt)) −Ψt(x,μ t) 
+
+> δt
+
+where ˜μt+δt (wt) = P 
+
+> j
+
+wjt δXjt+δt 
+
+, then use this to approximate the weights wjt+δt . These new weights can be used as a new approximation to the next measure μt+δt , and repeating the iterations a few times quickly gives accurate weights updates. In most settings this iterative procedure adds little computational overhead, as the expensive parts of the reward computations are usually independent of the weights (indeed, the expensive part is usually evaluating the denoiser estimates). For strong tilt strengths, we sometimes found it necessary to used damped Picard iterations, though for more reasonable tilt-strengths this was not necessary. We outline this fixed-point procedure in Algorithm 4. We found that the choice of solver for ˙Ψt(x) had little effect on the empirical performance of the method, which we verify in Appendix C.1. We therefore used the fixed-point iterative solver in our higher-dimensional experiments for simplicity, but note that practitioners might find the first approach useful in certain settings. 
+
+Details on the finite-difference computation As mentioned above, the simplest finite difference implementation would be to use ˙Ψt(x) ≈ Ψt+δt (x, ˜μt+δt (wt)) −Ψt(x,μ t) 
+
+> δt
+
+. While simple, this does come with the downside that it involves evaluating the network on Xt at the time t + δt . It is in fact possible to avoid any such time-offset by using a combination of 15 A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models 
+
+autodifferentiation and finite-differences, as we now outline. We are considering rewards of the form Rt(μt) = α(t)R(ˆ x1(t, ·)# μ), which involves projecting to the current predicted endpoint. We can therefore write the first variation of the form Ψt(x, μ ) = α(t) ψ ˆx1(t, x ), ˆx1(t, ·)# μ for some ψ. Using the shorthand notation θi = ˆ x1(t, X it ) and ˆπt = ˆ x1(t, ·)# μ, we can write the following approximation 
+
+˙Ψt(Xit ) ≈ α(t+δt ) ψ θi, ˆπ(k)
+
+> t+δt
+
+ − α(t) ψ(θi, ˆπt)
+
+δt + α(t) dds ψ ˆx1(s, x ), ˆπt
+
+
+
+> s=t
+
+(20) In this expression, the first term is a finite-difference approximation that includes the dependence on the time-evolution of 
+
+μt, and the second term can be implemented easily using autodifferentiation. By implementing in this manner, one avoids evaluating the network at any points with a time-offset. We use this implementation in the protein experiments. 
+
+Multi-Batch Algorithm We outline the inference procedure for a single batch of N particles in Algorithm 1, which will approximate the target tilted measure μ∗ as the batch size N goes to infinity. In practice, the batch size is limited by computational constraints; we therefore also provide a multi-batch procedure in Algorithm 2. Specifically, one can simulate multiple batches of N particles, and retain the generated samples along with the obtained weights. For each subsequent batch simulation, we evaluate the steering terms using the combined measure of the previously generated samples (with their respective weights) along with the particles currently being simulated. The procedure for updating the positions and log-weights of the current simulated particles remains unchanged. 
+
+Additional Steering Terms We remark here that one can also include additional steering terms in the positional updates, if one accounts for these in the log-weight dynamics. In particular, if one includes an additional ut(Xt; μt) term as follows, 
+
+dXt = bt(Xt) + εtst(Xt) + εt∇xΨt(Xt; μt) + ut(Xt; μt)dt + √2εt dBt, (21) then the necessary log-weight dynamics become 
+
+dAt = bt(Xt) · ∇ xΨt(Xt; μt) + ˙Ψt(Xt) + ∇x · ut(Xt; μt) + ut(Xt; μt) · (st(Xt) + ∇xΨt(Xt; μt)) dt. (22) In particular, a natural choice might be to add in additional gradient steering by taking ut(Xt; μt) = χt∇xΨt(Xt; μt) for a coefficient function χt (similar to the presentation in Sabour et al. (2025)). In this case, the dynamics become 
+
+dXt = bt(Xt) + εtst(Xt) + εt∇xΨt(Xt; μt) + χt∇xΨt(Xt; μt)dt + √2εt dBt, (23a) 
+
+dAt = bt(Xt) · ∇ xΨt(Xt; μt) + ˙Ψt(Xt) + χt
+
+ ∥∇ xΨt(Xt; μt)∥2 + ∆ xΨt(Xt; μt) + st(Xt) · ∇ xΨt(Xt; μt) dt. 
+
+(23b) These dynamics are again analogous to those in the corresponding pointwise case (see Sabour et al. (2025)). Note too that there is no additional implicit dependence on the measure evolution; this is all captured by the terms already present in the standard dynamics (12). In this work, we used the dynamics (12) in our experiments. We note, however, that a possible limitation of this approach is that it can only redistribute mass among regions populated by existing particles. If the target tilt requires adding mass in an unpopulated area, this would not be possible by reweighting alone. To mitigate this issue, one could include additional steering into the positional updates using the above dynamics, to help ensure that there are particles covering the support of the target measures that can then be reweighted appropriately. 
+
+Optional Poisson Equation Solver To combat weight degeneracy in Feynman-Kac steering inference schemes, recent work Ren et al. (2026) subsequently approximately solves the Poisson equation ∇ · (ρtut) = −ρtgt for an additional drift term ut. By solving this Poisson equation, the resulting update offloads the changes in log-weights into changes in position. Ren et al. (2026) parameterise ut with a small set of basis functions, and approximately solve the Poisson equation by solving a resulting linear system. We remark here that this method can also be directly applied in our setting. The exact parameterisation can be chosen by the user; for example, given that we are already considering an interacting particle system, one could consider parameterising the additional drift to be of form ut(x) = P 
+
+> j
+
+αj ∇xk(x, X jt ), for a suitably chosen kernel k. We leave investigating combining our approach with that of Ren et al. (2026) to future work; in particular, we anticipate that reducing the changes in the weights could enable applications for diversity steering, for which a resampling procedure is not well-suited. 16 A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models 
+
+Algorithm 3 Implicit Linear System ˙Ψt Solver 
+
+1: Input: Weighted particles (Xit , w it)Ni=1 , functions bt, ∂tΨt, ∇y Ψt, ˜Φt, ∇y ˜Φt.
+
+2: Output: Values ˙ψi ≈ ˙Ψt(Xit ).
+
+3: Set ˆμt = PNi=1 witδXit .
+
+4: For each i, j ∈ {1, . . . , N }, set ϕij = ˜Φt(Xit , X jt , ˆμt), gij = ∇y ˜Φt(Xit , X jt , ˆμt), bj = bt(Xjt ), and hj =
+
+∇y Ψt(Xjt , ˆμt).
+
+5: For each i, j ∈ { 1, . . . , N }, set Aij = δij − wjt ϕij .
+
+6: For each i ∈ { 1, . . . , N }, set ri = ∂tΨt(Xit , ˆμt) + PNj=1 wjt
+
+ bj · gij + ϕij bj · hj
+
+.
+
+7: Solve A ˙ψ = r for ˙ψ = ( ˙ψ1, . . . , ˙ψN )⊤.
+
+8: return ( ˙ψi)Ni=1 .
+
+Algorithm 4 Fixed-Point ˙Ψt Solver 
+
+1: Input: Particles and log-weights (Xit , A it)Ni=1 , next-step particles (Xit+δt )Ni=1 , bt, ∇xΨt, step size δt , iterations KF P ,optional damping parameter α ∈ (0 , 1] .
+
+2: Output: Values ˙ψi ≈ ˙Ψt(Xit ) and updated weights wit+δt .
+
+3: Set ˆμt = PNi=1 witδXit , and a(0)  
+
+> i
+
+= Ait, for i = 1 , . . . , N 
+
+4: for k = 0 , . . . , K F P − 1 do 
+
+5: Construct candidate weighted next-step measure ˆμ(k) 
+
+> t+δt
+
+= PNj=1 w(k) 
+
+> j
+
+δXjt+δt 
+
+.
+
+6: Compute finite differences ˙ψ(k) 
+
+> i
+
+=  Ψt+δt (Xit , ˆμ(k)
+
+> t+δt
+
+) − Ψt(Xit , ˆμt)/δt (or using (20)). 
+
+7: Update candidate log-weights updates ˜a(k+1)  
+
+> i
+
+= Ait + δt  ˙ψ(k) 
+
+> i
+
++ bt(Xit ) · ∇ xΨt(Xit , ˆμt).
+
+8: Update next-step weights as a(k+1)  
+
+> i
+
+= (1 − α)a(k) 
+
+> i
+
++ α ˜a(k+1)  
+
+> i
+
+.
+
+9: Construct updates next-step weights w(k+1)  
+
+> i
+
+∝ ea(k+1)  
+
+> i
+
+.
+
+10: end for 
+
+11: Set ˙ψi = ˙ψ(KF P −1)  
+
+> i
+
+and wit+δt = w(KF P ) 
+
+> i
+
+, for i = 1 , . . . , N .
+
+12: Return: Final iterations ( ˙ψi, w it+δt )Ni=1 .
+
+Relation to Pointwise Rewards Recall from Section 3.3 that our framework recovers the standard pointwise steering approach outlined in Section 2 when using the reward R(μ) = R r(x)d μ(x). Given this, one might ask whether a pointwise reward could simply be used in place of a distributional one. We emphasise that the two settings solve fundamentally different problems. As an illustration, consider what happens as the reward strength λ grows towards infinity. In the pointwise case, the tilted distribution becomes increasingly concentrated on the single point that maximises r. In the distributional case, the tilt pushes μ towards the maximiser of the reward functional; for a divergence reward D(μ, ν ),this means μ approaches the entire target measure ν rather than any individual point. More fundamentally, matching a prescribed target measure ν via a pointwise reward would require choosing r(x) = log( ν(x)/p 1(x)) , and hence require explicit access to the base density p1 which is typically not available. Distributional rewards therefore enable forms of control that are not naturally expressible in the pointwise setting. 
+
+# C. Experimental Details and Additional Results 
+
+C.1. Low-dimensional experiments Experimental setting For the base model, we train a simple flow-matching model to sample from a bimodal Gaussian mixture base distribution p1, with means (−1.0, 1.0) , both modes with unit variance, and mode weights (1 , 3) respectively. To construct a distributional reward, we consider tilting the model’s output distribution towards a similar Gaussian mixture 
+
+ν but now with respective weights (3 , 1) . For the results in the main paper, we use the squared MMD reward 
+
+μ∗ = arg min 
+
+> μ
+
+KL( μ∥p1) + λ∗ MMD 2(μ, ν ) . (24) 17 A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models        
+
+> Figure 10. Low-dimensional MMD Example: Objective optimality gap plots, similar to Figure 3, for additional λ∗values 5.0 (top)
+> and 15.0 (bottom) . As in Figure 3, the objective gap is minimised when using mean-field steering with the correct value of λ.
+
+We also demonstrate similar results for other reward functions below. By optimising a Gaussian mixture model, we also obtain a highly accurate approximation to the true tilted solution μ∗ from which we aim to sample; the resulting density is plotted in Figure 2 to give a visual indication of how well μ∗ has been targeted. For the reward function, we use a Gaussian radial basis kernel with bandwidth 5.0 (we note that results were robust across different kernel widths, provided they were sufficiently wide to give meaningful gradients). The results in Figure 2 are for 
+
+λ∗ = 10 .0, and again we note that similar behaviour was observed across λ values. We generated 4,000 samples with 100 steps, and for mean-field sampling we resampled using residual resampling every 34 steps for the visualisation in Figure 2, and every 10 steps in the other examples (we observed very similar performance for different resampling schemes). For the results in Figures 2 and 3 we used the fixed-point iterations with no damping, and used 3 fixed-point iterations for the visualisation in Figure 2. To evaluate the KL divergence, we used a leave-one-out estimator on pointclouds, using a Gaussian RBF kernel with bandwidth 0.2. The low-dimensional experiments were run on a single NVIDIA GeForce RTX 2080Ti GPU. C.1.1. A DDITIONAL RESULTS 
+
+Objective results for different λ values In Figure 3, we showed how the value of the objective optimality gap J(μ) −
+
+J(μ∗) changes for different steering strengths, for standard gradient steering and mean-field steering. Here, J(μ) = 
+
+λ∗ MMD 2(μ, ν ) + KL( μ∥p1), and we took λ∗ = 10 .0. In particular, we saw that the optimum steering strength for mean-field steering coincided with the true λ∗, and that this was consistent across different σt schedules, indicating that the mean-field sampling is correctly targeting the tilting measure μ∗. In contrast, the best choice of steering strength for standard gradient steering did not correspond to the λ∗ in the objective, and thus would need searching over. In Figure 10, we report the same results for different values of λ∗, and observe a similar pattern. 
+
+Comparison of different ˙Ψt solvers In Section 3.3, we provide two possible approaches for computing the term ˙Ψt,namely a fixed-point procedure (Algorithm 4), and also an implicit linear solver Algorithm 3. In the majority of our experiments, we use the fixed-point solver for simplicity, however here we provide a comparison and discussion regarding the choice of solver. We generally found the fixed-point solver to converge quickly and accurately. When the tilt strength is not too high, damp-ing in Algorithm 4 is not required, however for large tilt strengths we found it helped to ensure the iterations converged. The implicit linear solver worked reliably in all cases, though its implementation is more involved. We visualise results for 18 A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models         
+
+> Figure 11. Sinkhorn divergence SD ε(μ, μ ∗)relative to approximated ‘ground-truth’ μ∗, for the generated mean-field steering samples using different batch sizes N(mean ±std over 8 runs, using entropic regularisation ε= 0 .1).
+
+Grad KFP = 1 KFP = 4 KFP = 10 Implicit Linear 1.6 3.9 3.9 3.9 5.8  
+
+> Table 3. Runtime comparison across steering and solver variants, in the MMD example. Time taken for 100 step simulations (s).
+
+standard and large tilt strengths λ ∈ { 10 .0, 40 .0} in Figure 12, which reflect the discussion here. 
+
+Dependence on N To assess the dependence on the batch size N , we plot the Sinkhorn divergence relative to approx-imated ‘ground-truth’ μ∗ for different values of N in Figure 11. As expected, the approximation becomes increasingly accurate as N increases, and for large N is very consistent between runs. 
+
+Runtime Analysis In Table 3, we also report runtimes for the different approaches in the MMD example. In this low-dimensional setting, the main additional cost comes from the kernel evaluations required to compute ˙Ψt, which explains the increased inference time relative to gradient steering. However, we can re-use these kernel evaluations across the fixed-point iterations, meaning that subsequent fixed-point iterations do not noticeably increase the sampling time. Generally, we found the implicit linear solver to be slower than the fixed-point approach. We note that in the higher-dimensional cases, the bottleneck increasingly becomes the network evaluation rather than such reward-based computations, meaning the cost of the ˙Ψt solver becomes less pronounced. C.1.2. D IFFERENT REWARD FUNCTIONS 
+
+To verify that the same behaviour holds in other settings, we also consider the same experimental setup as above but for some alternative choices of the reward function R(μ).
+
+Sinkhorn Divergence The Sinkhorn Divergence SD ε (Genevay et al., 2018) is a smooth, debiased approximation to the Wasserstein distance between two measures, regularised by an entropic parameter ε. As it is differentiable, we can steer to minimise the objective 
+
+J(μ) = λ SD ε(μ, ν ) + KL( μ∥p1). (25) We display obtained trajectories and the corresponding objective optimality gaps for this choice of reward in Figure 13, using ε = 0 .1 as the regularisation value. Again, J(μ) is generally minimised by mean-field steering with λ = λ∗,confirming that our procedure is targeting the correct μ∗ in this setting too. This is also confirmed visually in the histogram plots. 
+
+Entropy We also do similarly using the entropy R(μ) = − R log μ dμ. Rather than steering towards a ‘tilting’ measure 
+
+ν, such a reward encourages the particles to spread out. We plot the same results as above for this new reward in Figure 14, and observe similar behaviour in this setting too. 19 A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models            
+
+> Figure 12. Comparison of ˙Ψtsolvers, low-dimensional MMD example: (Top) For smaller tilt strength λ= 10 .0, the fixed-point procedure converges accurately for all damping levels. (Bottom) A stronger tilt strength necessitates using a larger damping factor in order to converge. (Right) The implicit linear solver computes the solution accurately in both cases.
+
+C.1.3. G AUSSIAN GROUND -T RUTH VALIDATION IN HIGHER DIMENSIONS 
+
+Above, we validated that our mean-field steering procedure correctly targets the true μ∗ in several 1 d settings, in which the ground-truth is not available in closed form but can nevertheless be accurately approximated in a tractable manner. We now provide an additional example to validate our method in higher dimensions. Numerical optimisation to obtain an approximation to the ground-truth μ∗ is no longer tractable, so we consider a setting in which μ∗ is available in closed form. Specifically, we consider a setting where the base diffusion samples a standard Gaussian p1 = N (0 , I d), and the reward is defined based on the mean of μ as R(μ) = − λ 
+
+> 2
+
+∥Eμ[X] − a∥22 for some a ∈ Rd. In this setting, the ground-truth can be computed analytically and is given in closed form as μ∗ = N ( λ 
+
+> 1+ λ
+
+a, I d).In Table 4 below, we report the Bures-Wasserstein distance to the ground-truth when λ∗ = 1 .0 and a = 1. We run the procedure for different values of λ, and as in the existing examples we again see that the value is minimised for the true value λ = λ∗, indicating that our approach again targets the correct μ∗ (mean ± std, over 8 runs). The experiments are run with 100 steps, and 10,000 samples. 
+
+Steering λ: 0.6 0.8 λ∗ = 1 .0 1.2 1.4d = 5 0.305 ± 0.009 0.196 ± 0.025 0.150 ± 0.013 0.192 ± 0.017 0.245 ± 0.014 
+
+d = 10 0.515 ± 0.022 0.379 ± 0.018 0.346 ± 0.014 0.366 ± 0.018 0.429 ± 0.018 
+
+d = 20 0.830 ± 0.011 0.664 ± 0.021 0.610 ± 0.021 0.625 ± 0.014 0.675 ± 0.028             
+
+> Table 4. Bures-Wasserstein distance to the ground-truth μ∗corresponding to a true tilting strength λ∗= 1 .0in the Gaussian example, for different steering strengths λ. The distance is minimised for the correct value λ=λ∗, indicating that μ∗is being targeted correctly.
+
+We also report the dependence on the number of particles N in Table 5, for the same Gaussian example with d = 10 .
+
+C.2. HIV-1 Protease 
+
+Recently, there have been many works that have considered steering diffusion models for protein conformation generation according to experimental observations (see Fadini et al. (2026); Liu et al. (2025b); Levy et al. (2024); Maddipatla et al. 20 A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models                           
+
+> Figure 13. Low-dimensional Sinkhorn Divergence Example: (Top) Comparison of trajectories obtained using mean-field steering, for increasing λ. The ˙Ψtuse iterations {3,3,10 ,20 }with damping parameters {1.0,1.0,0.6,0.2}respectively. (Bottom) Comparison of the optimality gap J(μ)−J(μ∗)for λ∗= 0 .5, for mean-field and gradient-only steering. The gradient-steering coefficient is varied linearly in [0 ,3.0] .
+
+N = 1,000 N = 3,000 N = 10 ,000 N = 30 ,000 
+
+0.742 ± 0.073 0.478 ± 0.023 0.330 ± 0.018 0.287 ± 0.016         
+
+> Table 5. Bures-Wasserstein distance to the ground-truth μ∗corresponding to a true tilting strength λ∗= 1 .0in the Gaussian example, for different numbers of particles N.
+
+(2025; 2026); Li et al. (2026), to name a few). In Section 4.2.1, we first considered an example in which we steer gen-erations for HIV-1 protease according to an experimentally observed distribution over residue distances (Liu et al., 2016). HIV-1 protease is a symmetric homodimer with 99-residues in each monomer, resulting in generating a 1536 atom system giving a full dimensionality of 4608. The system exhibits an important ‘flap region’, which opens and closes between different conformational states (Figure 4). The double electron-electron resonance (DEER) method can be used to infer proportions across different states by attaching spin-labels to selected residues and approximately measuring the distance between them, aggregated over the conformational ensemble. We will consider the v6 variant of the protease as studied in Liu et al. (2016); this is known from X-ray crystallography and MD modelling to exhibit four different states: closed ,
+
+semi-open , wide-open , and tucked . The DEER data analysed by Liu et al. (2016) suggests that these states are occupied by proportions 21% closed, 61% semi-open, 8% wide-open, and 10% tucked respectively. However, samples from Boltz-2 are strongly biased towards the closed state by comparison, with the states being sampled with proportions 83% closed, 17% semi-open with no tucked or wide-open generations (Figure 6, left). Following the analysis from Liu et al. (2016), we will aim to tilt towards a Gaussian mixture ν defined over residue 55 distances, with relative proportions 25% and 75% (adjusted for removing the tucked and wide-open states), and optimise the objective 
+
+μ∗ = arg min 
+
+> μ
+
+KL( μ∥p1) + λ MMD 2(T #μ, ν ) , (26) where T denotes the map to the residue-55 Cα − Cα distance. For the MMD computation, we used a Gaussian RBF kernel on this residue-distance space, with bandwidth 2.5. 
+
+Experimental Setting We implement our mean-field steering method in Boltz-2, performing the appropriate modifica-tions for the variance-exploding formulation used by the model. We use 50 steps, and slightly adjust the time schedule to spend longer in the middle of the generative procedure (according to a sigmoid CDF), as this is where the bifurcation 21 A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models                         
+
+> Figure 14. Low-dimensional Entropy Example: (Top) Comparison of trajectories obtained using mean-field steering, for increasing λ.The ˙Ψtuse iterations {3,3,5,10 }with damping parameter α∈ { 1.0,1.0,1.0,0.5}respectively. (Bottom) Comparison of the optimality gap J(μ)−J(μ∗)for λ∗= 1 .0, for mean-field and gradient-only steering.
+
+into the distinct states appears to occur. We set the step-scale parameter of Boltz-2 to 1.5, which is a common value to control the temperature from which the distribution is sampled. In all Boltz-2 experiments, we use a sample size of 64 and generate 1024 samples, using the multi-batch procedure in Algorithm 2. We use residual resampling at every step (though we also obtained similar results with less resampling). We observed occasional spikes in the derivative through the denoiser, so for stability we clipped the maximum change in the log-weights to 1.0 at each step, and clipped the steering term ∇Ψt(Xit , ˆμt) so that its norm did not exceed 10% of the norm of the standard drift bt + εtst. As the cost of the Picard iterations is negligible (see Table 7), we used KF P = 50 fixed-point iterations with a damping factor of α = 0 .5 to be confident of convergence (we remark that this is likely very conservative). The Boltz-2 experiments were run on a single NVIDIA L40S GPU. Note that when evaluating the objective J(μ), it is intractable to evaluate the KL( μ∥p1) term in the full ambient space, so instead we compute a proxy on the 1 d projection onto the residue-55 distances. As the data exhibits two prominent modes with different scales, we use a bandwidth of 0.2 for the left mode and 0.4 for the right mode when computing the KL divergence proxy; other than this, we follow the same procedure as in the low-dimensional experiments. C.2.1. A DDITIONAL RESULTS 
+
+In Figure 15, we provide similar histogram plots to the ones in Figure 6 for the standard gradient-steering approach, which corresponds to the mean-field steering but without the corrective weights, with the mean-field steering results plotted again for comparison. We see that the standard gradient-steering, while steering towards the targets, results in a generated distribution that is slightly different in shape to μ∗, with a stronger peak. In contrast, mean-field steering exhibits an accurate fit to μ∗.In Figure 16, we also plot the objective curves for values λ∗ ∈ { 1, 3}, in addition to λ∗ = 2 also reported in Figure 5. For each, we again see that the best choice of λ indeed coincides with the true value λ∗, indicating that our method is correctly targeting μ∗. In contrast, using strength λ = λ∗ is not the best choice of steering strength when using gradient-only steering. In Table 6, we show how the approximation to the proxy ‘ground-truth’ in the induced 1-dimensional projected space changes as the number of batches increases, as measured by Sinkhorn-divergence using entropy-regularisation 0.1. This experiment used 8 sequential batches sampled using the multi-batch procedure. As expected, the approximation quality improves as the number of batches increases; we anticipate that this is helped by using the already-generated terminal 22 A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models                   
+
+> Figure 15. HIV-1 Protease Histogram Comparison: Comparison of the histograms generated for using gradient-only steering (top) ,and the same steering but now using the mean-field reweighting (bottom) . The mean-field steering gives a better fit to the ‘true’ distribu-tion μ∗, as it is targeting this measure in a principled way, whereas gradient steering gives a distribution that is a slightly different shape.
+> (a) λ∗= 1 .0(b) λ∗= 2 .0(c) λ∗= 3 .0
+> Figure 16. HIV-1 Protease Objective: Values of J(μ) = λ∗MMD 2(μ, ν ) + KL( μ∥p1), for the different steering mechanisms with varying steering strengths.
+
+samples in the empirical approximation of ˆμ1, which are better quality than the Tweedie estimates. 
+
+C.3. Adenylate Kinase 
+
+Another route towards observing a protein’s conformational landscape is through molecular dynamics (MD) simulations. Atomistic MD is accurate but very expensive; this has motivated cheaper coarse-grained simulations to infer information about the higher-level structure. Such simulations could be used to infer approximate distributions over certain collective variables, such as important angles or residue distances. Given such information, one may then wish to ‘tilt’ the full-atom generations of a diffusion model towards such approximate distributional properties of the higher-level structure. As an illustrative example of this idea, we consider another example using Boltz-2 in which we sample the conformational ensemble of adenylate kinase (AdK). This consists of 1664 atoms giving a dimensionality of 4992. AdK is known to transition between open and closed states through motions that are well-characterised through two collective variables: the LID-CORE angle and the NMP-CORE angle (Figure 17). From MD simulations, one can observe the joint distribution over these two angles. In our experiment, we consider tilting according to data from Beckstein et al. (2009), which is displayed as the underlying heatmap in Figure 20. We generate the tilting data by sampling 4,000 points according to the densities provided by Beckstein et al. (2009). We again optimise for an MMD objective as in (26), in which the MMD is now evaluated on the 2-dimensional angle space using an isotropic kernel bandwidth of 10.0. We stop the reweighting procedure at time 0.75 so that the duplicated particles 23 A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models 
+
+2 Batches (N = 128) 4 Batches (N = 256) 6 Batches (N = 384) 8 Batches (N = 512) 2.60 0.24 0.10 0.05             
+
+> Table 6. Sinkhorn-divergence between the proxy ‘ground-truth’ and the induced distribution of residue-55 distances in the projected 1-dimensional space, as the number of batches increases. Experiment ran for 8 batches of 64, with 5 Picard iterations and damping parameter 0.8.
+> Figure 17. Open and closed conforma-tions of Adenylate Kinase.
+> Figure 18. The proportion of generations in the ‘upper-left’ region, for different λ.
+> Figure 19. MMD 2(T#μ, ν )for increas-ing steering strength λ.
+> (a) Gradient-only steering. (b) Mean-field steering.
+> Figure 20. Scatter plots for the LID and NMP angles for the generated data, with overlaid empirical heatmap from Beckstein et al. (2009).
+
+become sufficiently dispersed in the remaining generation time. For the plot in Figure 18, we classify a generation as in the ‘upper-left’ region if the NMP and LID angles are in the ranges (40 ◦, 50 ◦) and (112 ◦, 150 ◦) respectively. We remark that we observed negligible change in the proportion of steric clashes in the generations for the steering strengths we considered. Across both steering mechanisms, the mean clash rate per 1000 heavy atoms varied between 6.0 and 6.7 across the different strengths. It is unfortunately difficult to reliably evaluate a 2 d proxy for the KL divergence in this example, as p1 does not place sufficient mass in the upper-left region. In Figure 19 we plot just the squared MMD value, which similarly to Figures 18 and 20 demonstrate that mean-field steering produces a stronger shift towards ν.
+
+C.4. Analysis of Computational Cost 
+
+We now examine the additional computational cost of our approach compared to standard gradient-only distributional steering. The cost of the interactions between the particles in the positional updates is the same as in standard gradient-only steering; the additional overhead incurred by our approach is limited to the solving of the 1-dimensional log-weight dynamics. We note that as network size increases, the cost is dominated by the network evaluations. Generally, our approach will require an additional ∼50% of runtime and no additional peak memory usage compared to gradient-only steering; we explain this by breaking down the cost of each operation below. Our approach requires 3 different types of network evaluation: the evaluation at Xt (a forward pass), the evaluation of 
+
+∇xΨt and ∂tΨt (a backward pass), and the drift evaluation at the next step Xt+δt for the finite-difference computation of ˙Ψt (a forward pass). Gradient-only steering already requires the first two passes; our approach incurs only the final forward pass at the next step as an additional cost, leading to an approximately 50% increase in runtime per step. The peak memory requirements are unchanged because the final additional forward pass can be computed without gradient tracking so it incurs comparatively little memory overhead. The cost of the Picard iterations is negligible compared to the cost of the network evaluations. These observations are confirmed by the profiling of the per-step computational cost (reported in Table 7) in the HIV-1 24 A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models 
+
+Sampler operation 1 Picard iteration 5 iterations 10 iterations Peak memory usage 
+
+Network forward at Xt 32.41% 32.38% 32.34% 38.4 GB Backward for ∇xΨ and ∂Ψt 35.56% 35.33% 35.29% 37.47 GB Network forward at Xt+δt 32.19% 32.16% 32.12% 4.42 GB 
+
+Ψ evaluation and Picard iterations 0.036% 0.128% 0.244% 2.01 GB  
+
+> Table 7. Breakdown of computational costs for the different operations performed in each sampling step, in the HIV-1 protease experi-ment. Note that the first two operations are required for gradient-only steering too.
+
+Grad KFP = 1 KFP = 4 KFP = 10 
+
+HIV-1 44s 69s 69s 69s AdK 48s 75s 75s 75s  
+
+> Table 8. Runtime comparison across steering and solver variants, in the protein examples. Time taken for 50 step simulations, with a batch size of 64.
+
+Protease example, which reports the proportion of per-step runtime and the peak memory usage of each of these operations (similar results are observed in the other experiments too). As expected, increasing the number of Picard iterations adds negligible computational cost. In Table 8, we also report sampling runtimes for both steering mechanisms in the two protein examples, which are consistent with the runtime discussion above. As expected, the proportional overhead of the 
+
+˙Ψt solver is lower compared to the timings in Table 3, as the cost of evaluating the network is now much higher. Again, the results confirm that the additional cost of further fixed point iterations is negligible. 
+
+C.5. Tilting Towards X-ray Crystallographic Electron Densities X-Ray Crystallography Another approach for probing the conformational behaviour of proteins is X-ray crystallog-raphy. This process involves crystallising a purified sample of the protein, and analysing the resulting X-ray diffraction pattern to produce an experimentally-observed 3-dimensional electron density. This electron density is an average over all molecules in the crystal, so when the molecules exhibit heterogeneous conformations in the structure then the density cannot be explained by a single conformation prediction alone. Aligning a generative model towards such experimentally-observed information therefore again requires using a distributional reward function. Motivated by the fact that many experimental techniques give ensemble-level information, recent works Maddipatla et al. (2025; 2026) have considered steering Protenix (ByteDance et al., 2025) (an open-source implementation of AlphaFold3 (Abramson et al., 2024)) using the gradient of distribution-level reward functions to guide the generation. For an amino acid sequence a, and experimental observation y dependent on the ensemble X = {X1, ..., X n}, they aim to sample an ensemble from the posterior p(X | a, y ), which by Bayes’ rule satisfies p(X | a, y ) ∝ p(y|X , a ) · p(X | a). Here, p(y|X , a )
+
+denotes a chosen likelihood function, and the prior p(X | a) is given by the base diffusion model. This corresponds to a finite-sample version of our framework, using the log-likelihood reward function R(μ) = log p(y|μ, a ). Steering according to X-ray crystallographic electron densities is an important experimental setting considered in these works. As with other examples of gradient-only steering, steering with the gradient alone will not sample from the exact pos-terior distribution μ∗. We therefore here compare standard gradient-steering, akin to the approach in Maddipatla et al. (2025; 2026), along with our mean-field steering procedure, to investigate how the inclusion of the FK weights affects the behaviour. 
+
+Reward Function We largely follow the experimental settings of Maddipatla et al. (2025; 2026), with a few modifica-tions to make suitable for our setting. The reward function is chosen as 
+
+R(ˆ μ) = −λ Fo − 1
+
+> NN
+
+X
+
+> i=1
+
+Fc(Xi)
+
+> 22
+
+, (27) 25 A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models 
+
+where Fo denotes the experimentally-observed density, Fc(Xi) denotes a constructed density for the generated structure 
+
+Xi, and λ is a strength parameter. We remark that Maddipatla et al. (2025; 2026) used an L1 distance rather than L2
+
+considered here; we chose to use L2 here as we found it gave more consistent behaviour between experiments. Following Maddipatla et al. (2025), we steer only the atoms that are in the region of interest (ROI) that exhibits the variations in structure. To do so, the electron density Fc(Xi) is constructed using the current generation’s ROI atoms combined with non-ROI atoms from the known reference structure in the PDB dataset. For 4OLE, the ROI consists of the residues 423-431 (highlighted in red in Figure 7). As the densities will not necessarily be on the same scale, we centre and normalise both densities (we stop the gradient with respect to atom positions through the standardisation constants). Similar to Maddipatla et al. (2025), the density Fc(Xi)
+
+for the generated samples is constructed as a mixture of Gaussian kernels, 
+
+Fc(ξ) = 
+
+> m
+
+X
+
+> i=1 6
+
+X
+
+> j=1
+
+aij 
+
+ 4πbij + Bi
+
+3/2
+
+exp 
+
+
+
+− 4π2
+
+bij + Bi
+
+xi − ξ 22
+
+
+
+. (28) Here, ξ ∈ R3 is the point where the density is being evaluated, and xi ∈ R3 is the 3d position of the i-th atom, and aij , b ij 
+
+are per-atom constants. The Bi factors additionally determine the width of the kernels; the work Maddipatla et al. (2025) sets this to B = 4 /N , but we choose to use the B factors from the PDB data as we simulate larger ensembles. As we are interested in the behaviour of the atoms in the ROI, we construct this density using the predicted ROI atoms, along with non-ROI atom positions from the known reference structure. Therefore the steering acts only on the ROI atoms. Note that before evaluating the reward, the generations are aligned to the reference structure using the non-ROI atoms using the Kabsch algorithm (Kabsch, 1976). We use the 2mF o − DF c map of 4OLE as the target density, whose values are given on the FFT grid at approximately 0.84 ˚ A spacing. We evaluate the reward using the 13,247 points on the grid within 5 ˚ A of the ROI atoms. The implementation in Maddipatla et al. (2025) also includes an additional substructure-conditioning term, which steers the non-ROI atoms towards their known positions in the reference structure. We omit this steering in our implementation, as it would mean that the base generative process would not follow the trajectory of a trained flow model which is required for us to have access to the score of the marginals. In practice, we found the base diffusion process already had good alignment with the structure outside of the ROI, so the generations were reasonable without requiring this additional steering term. 
+
+Sampling We sample 16 batches of 64 samples, using our multi-batch sampling procedure. We note that the sampled distribution became more consistent as the number of batches increased, which we anticipate may be due to using more terminal samples in the empirical approximation of ˆμ1 which gives a better approximation (as the terminal samples are more realistic than the Tweedie estimates). We used 100 sampling steps, using residual sampling at each reweighting step. Similarly to in the Boltz-2 examples, we used a middle-heavy schedule to spend more time in the period in which the modes were determined. As before, we used KF P = 50 Picard iterations with damping factor α = 0 .5 to be confident of convergence (this is again likely very conservative, but adds negligible cost). We stopped applying the reweighting procedure after time 0.75 to allow the particles to become sufficiently dispersed in the final generated ensemble (since in the Protenix sampling procedure, the noise becomes increasingly small towards the terminal time). The experiments were run on a single NVIDIA L40S GPU. 
+
+Results We report results in Figure 9. In Figure 9a, we report how the cosine alignment between the target density Fo and the constructed density P 
+
+> i
+
+Fc(Xi) of the generated ensemble changes as the steering strength increases, which reflects changes in the reward R(μ). In Figure 9b we do likewise for the proportion of the generations closer to conformation B. In Figure 9c, we also plot this same proportion against the cosine-alignment obtained using different steering strengths; the displayed results use strengths λ ∈ { 0.0, 0.001 , 0.002 , 0.003 , 0.004 , 0.005 , 0.0075 , 0.01 } for gradient-only steering, and λ ∈ { 0.0, 0.001 , 0.0015 , 0.002 , 0.0025 , 0.003 , 0.0035 , 0.004 , 0.005 } for mean-field steering. The visualisation of the experimental setting in Figure 8 is inspired by Figure 3 in Maddipatla et al. (2025); Figure 8a displays three samples from the base diffusion model, and Figure 8b shows samples obtained using mean-field steering with strength λ = 0 .003 . For clear visualisation, we display three samples close to conformation A and the three samples closest to conformation B. In the absence of a known ground-truth, we instead focus on discussing the qualitative differences between the results. We first note that for the same steering strength, mean-field steering appears to result in a stronger reward tilt, suggesting that gradient-only steering understeers relative to the true inverse-problem target μ∗ in this instance. We also observe that 26 A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models 
+
+mean-field steering placed more samples in the alternate conformation (which appeared more difficult for gradient-only steering); these values are generally closer to the known conformation proportions (65% and 35%). We note that the accuracy of these results is likely limited by using a simple KDE approximation for the generated electron density; as noted by Maddipatla et al. (2025), we anticipate these results could be improved by using a more accurate electron density model. 
+
+# D. Proofs 
+
+In this section, we provide the proofs of the theoretical results in the paper. 
+
+D.1. Proof of Proposition 3.1 
+
+We establish the result under the following (mild) regularity assumption on R:
+
+Assumption D.1. The reward functional R admits a functional derivative, is upper semicontinuous with respect to weak convergence and bounded from above. Proof of Proposition 3.1. Denote the objective by 
+
+J (μ) := R(μ) − KL( μ∥p1).
+
+1) We first show that J admits a maximiser. Since R is bounded from above (say sup μ∈P (Rd) R(μ) ≤ CR) and 
+
+KL( μ∥p1) ≥ 0, we have sup μ∈P (Rd) J (μ) < ∞.Let (μn)n≥1 be a maximising sequence. Then, for n large enough, we have that J (μn) ≥ R(p1) − 1, because 
+
+KL( p1∥p1) = 0 . It follows that 
+
+KL( μn∥p1) = R(μn) − J (μn) ≤ CR − R (p1) + 1 ,
+
+and thus the sequence (KL( μn∥p1)) n≥1 is bounded. The sublevel sets of the relative entropy are weakly compact, so, after passing to a subsequence, we may assume that μn ⇒ μ∗, weakly for some candidate maximiser μ∗ ∈ P (Rd).Since R is upper semicontinuous with respect to weak convergence, and since KL( ·∥ p1) is lower semicontinuous, we have 
+
+J (μ∗) = R(μ∗) − KL( μ∗∥p1) ≥ lim sup 
+
+> n→∞
+
+(R(μn) − KL( μn∥p1)) .
+
+Hence, μ∗ is indeed a maximiser. This maximiser is also unique by concavity of R and strict convexity of KL( ·∥ p1).2) We now derive the first-order optimality condition (9). For an arbitrary perturbation ν ∈ P (Rd), set 
+
+με = (1 − ε)μ∗ + εν. 
+
+By optimality of μ∗, the derivative of ε 7 → J (με) at ε = 0 vanishes. By definition, we have 
+
+ddε R(με)
+
+> ε=0
+
+=
+
+Z
+
+> Rd
+
+Ψ( x, μ ∗) ( ν − μ∗)(d x).
+
+We also compute the functional derivative of the KL -regulariser: 
+
+ddε KL( με∥p1)
+
+> ε=0
+
+=
+
+Z
+
+> Rd
+
+
+
+log dμ∗
+
+dp1
+
+(x) + 1 
+
+
+
+(ν − μ∗)(d x).
+
+As a consequence, Z
+
+> Rd
+
+
+
+Ψ( x, μ ∗) − log dμ∗
+
+dp1
+
+(x) − 1
+
+
+
+(ν − μ∗)(d x) = 0 .
+
+Since ν is arbitrary, and ν − μ∗ has total mass zero, we see that 
+
+log dμ∗
+
+dp1
+
+(x) = Ψ( x, μ ∗) − C, 
+
+for some constant C ∈ R. Equivalently, 
+
+μ∗(d x) = e−C eΨ( x,μ ∗)p1(x) d x, 
+
+leading to (9) after enforcing normalisation. 27 A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models 
+
+D.2. Proof of Proposition D.2 
+
+In order to construct a particle system that realises the interpolating measures defined in (10), we need the following intermediate result about μ∗ 
+
+> t
+
+.
+
+Proposition D.2. The targets (10) satisfy the evolution equation 
+
+∂tμ∗ 
+
+> t
+
+(x) = μ∗ 
+
+> t
+
+(x)
+
+
+
+ht(x) −
+
+Z
+
+> Rd
+
+ht(y)μ∗ 
+
+> t
+
+(y) dy 
+
+
+
+, (29) 
+
+where we define the log-growth rate ht(x) := ddt (Ψ t(x, μ ∗ 
+
+> t
+
+)) −∇· bt(x)−∇ log pt(x)·bt(x), which is measure-dependent. 
+
+Remark D.1. As described by (29) , the target μ∗ 
+
+> t
+
+is instantaneously reweighted by ht (relative to its mean). This type of equation appears in several related settings, including SMC and Feynman-Kac type flows (Del Moral, 2004), tempering and annealed importance sampling (Neal, 2001), and evolutionary replicator dynamics (Hofbauer & Sigmund, 1998). In our setting, much like Ψt(x; μ∗ 
+
+> t
+
+) in (10) , ht itself depends on the targets μ∗ 
+
+> t
+
+.Proof of Proposition D.2. We take logarithms on both sides of (10), leading to 
+
+log μ∗ 
+
+> t
+
+(x) = Ψ t(x, μ ∗ 
+
+> t
+
+) + log pt(x) − log Zt.
+
+Differentiating in time yields 
+
+∂tμ∗ 
+
+> t
+
+(x)
+
+μ∗ 
+
+> t
+
+(x) = ddt Ψt(x, μ ∗ 
+
+> t
+
+) + ∂t log pt(x) − ∂t log Zt.
+
+The time marginals associated to the base dynamics (3) satisfy the continuity equation 
+
+∂tpt + ∇ · (ptbt) = 0 ,
+
+and thus we obtain 
+
+∂t log pt(x) = ∂tpt(x)
+
+pt(x) = − ∇ · (ptbt)( x)
+
+pt(x) = −∇ · bt(x) − ∇ log pt(x) · bt(x).
+
+Therefore, by the definition of ht,
+
+∂tμ∗ 
+
+> t
+
+(x)
+
+μ∗ 
+
+> t
+
+(x) = ht(x) − ∂t log Zt. (30) It remains to identify ∂t log Zt. Differentiating under the integral sign gives 
+
+∂tZt =
+
+Z
+
+> Rd
+
+eΨt(y,μ ∗ 
+
+> t)
+
+pt(y)
+
+ ddt Ψt(y, μ ∗ 
+
+> t
+
+) + ∂t log pt(y)
+
+
+
+dy =
+
+Z
+
+> Rd
+
+eΨt(y,μ ∗ 
+
+> t)
+
+pt(y)ht(y) d y, 
+
+using the definition of ht in the second equality. Therefore, we have 
+
+∂t log Zt = ∂tZt
+
+Zt
+
+=
+
+Z
+
+> Rd
+
+ht(y) μ∗ 
+
+> t
+
+(y) d y, 
+
+and combining with (30) gives (29). 
+
+D.3. Proof of Theorem 3.2 
+
+We establish the result under the following assumption: 
+
+Assumption D.3. The McKean-Vlasov dynamics (12) is well posed: for the initial condition X0 ∼ p0, the solution exists and is unique. 
+
+This assumption holds true under mild growth and regularity conditions on the base drift bt and the reward R (see, for example, Del Moral & Miclo (2007, Section 3) or Carmona & Delarue (2018, Section 4.2)). We highlight the following subtlety: to convert (12) into standard form covered by those references, it is necessary to define ˙Ψ via the linear equation (13) (and verify appropriate assumptions on the associated solution operator), because time derivatives with respect to the measure μt are non-standard in this context. 28 A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models 
+
+Proof of Theorem 3.2. For convenience, let us introduce the short-hands 
+
+Bt(x, μ ) := bt(x) + εtst(x) + εt∇xΨt(x; μ), gt(x, μ ) := bt(x) · ∇ xΨt(x; μ) + ˙Ψt(x), (31) and define the unnormalised weighted law 
+
+νt(ϕ) := E[ϕ(Xt)eAt ].
+
+By Itˆ o’s formula, νt satisfies the Feynman–Kac equation (Del Moral & Miclo, 2007, Section 3.1) 
+
+∂tνt = ( Lμt 
+
+> t
+
+)†νt + gt(·, μ t)νt,
+
+where 
+
+Lμt ϕ = Bt(·, μ ) · ∇ ϕ + εt∆ϕ (32) is the μ-dependent generator of (12a), and (Lμt 
+
+> t
+
+)† is its adjoint in L2(Rd). Since μt = νt/ν t(1) , the normalised law satisfies 
+
+∂tμt = ( Lμt 
+
+> t
+
+)†μt + ( gt(·, μ t) − μt(gt(·, μ t))) μt. (33) We now check that the path of target measures μ∗ 
+
+> t
+
+satisfies the same equation. Since μ∗ 
+
+> t
+
+(x) = 1 
+
+> Zt
+
+eΨt(x;μ∗ 
+
+> t)
+
+pt(x) and 
+
+st = ∇ log pt, we can write the score of the target measures as 
+
+st + ∇xΨt(·; μ∗ 
+
+> t
+
+) = ∇ log μ∗ 
+
+> t
+
+.
+
+Consequently, looking at the expression for (Lμ∗ 
+
+> t
+> t
+
+)∗μ∗ 
+
+> t
+
+, the εt-terms cancel, 
+
+(Lμ∗ 
+
+> t
+> t
+
+)∗μ∗ 
+
+> t
+
+= −∇ ·  (bt + εt∇ log μ∗ 
+
+> t
+
+) μ∗
+
+> t
+
+ + εt∆μ∗
+
+> t
+
+= −∇ · (btμ∗ 
+
+> t
+
+) − εt∇ · (μ∗ 
+
+> t
+
+∇ log μ∗ 
+
+> t
+
+) + εt∆μ∗
+
+> t
+
+= −∇ · (btμ∗ 
+
+> t
+
+).
+
+Expanding this divergence, we have 
+
+−∇ · (btμ∗ 
+
+> t
+
+) = −(∇ · bt) μ∗ 
+
+> t
+
+− bt · ∇ μ∗
+
+> t
+
+= −(∇ · bt) μ∗ 
+
+> t
+
+− bt ·  μ∗ 
+
+> t
+
+(st + ∇Ψt)
+
+=  −∇ · bt − bt · st − bt · ∇ Ψt
+
+ μ∗
+
+> t
+
+Noting that gt(x, μ ∗ 
+
+> t
+
+)μ∗ 
+
+> t
+
+=  bt · ∇ Ψt + ˙Ψt
+
+μ∗ 
+
+> t
+
+, we therefore have 
+
+(Lμ∗ 
+
+> t
+> t
+
+)∗μ∗ 
+
+> t
+
++ gt(·, μ ∗ 
+
+> t
+
+)μ∗ 
+
+> t
+
+=   ˙Ψt − ∇ · bt − bt · st
+
+ μ∗
+
+> t
+
+= ht μ∗ 
+
+> t
+
+,
+
+where ht is the function from Proposition D.2. Integrating this expression, and noting that the first term integrates to 0, we see that μ∗ 
+
+> t
+
+(gt(·, μ ∗ 
+
+> t
+
+)) = μ∗ 
+
+> t
+
+(ht). After subtracting this, we have 
+
+(Lμ∗ 
+
+> t
+> t
+
+)∗μ∗ 
+
+> t
+
++ ( gt(·, μ ∗ 
+
+> t
+
+) − μ∗ 
+
+> t
+
+(gt(·, μ ∗ 
+
+> t
+
+))) μ∗ 
+
+> t
+
+= μ∗ 
+
+> t
+
+(ht − μ∗ 
+
+> t
+
+(ht)) .
+
+By Proposition D.2, the right-hand side equals ∂tμ∗ 
+
+> t
+
+. Thus μ∗ 
+
+> t
+
+solves the same normalised Feynman–Kac equation (33) as 
+
+μt. Since the initial conditions agree and the equation is unique by assumption, we conclude that 
+
+μt = μ∗ 
+
+> t
+
+, t ∈ [0 , T ].
+
+29 A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models 
+
+D.4. Proof of Proposition 3.3 
+
+Proof. We use the definition ˙Ψt(x) = ddt
+
+ Ψt(x, μ t) and the chain rule to compute 
+
+˙Ψt(x) = ∂tΨt(x, μ t) + 
+
+Z
+
+> Rd
+
+Φ( x, y, μ t) ∂tμt(d y)= ∂tΨt(x, μ t) + 
+
+Z
+
+> Rd
+
+Φ( x, y, μ t)
+
+
+
+ht(y) −
+
+Z
+
+> Rd
+
+ht(z)μt(z) d z
+
+
+
+μt(d y)= ∂tΨt(x, μ t) + 
+
+Z
+
+> Rd
+
+˜Φ( x, y, μ t) ht(y) μt(d y)= ∂tΨt(x, μ t) + 
+
+Z
+
+> Rd
+
+˜Φ( x, y, μ t)  ˙Ψt(y) − ∇ · bt(y) − ∇ log pt(y) · bt(y) μt(d y),
+
+where we have used Proposition D.2 in the second line. From a computational standpoint, the problematic term here is R 
+
+> Rd
+
+˜Φ( x, y, μ t)∇ · bt(y)μt(d y), as this divergence is required to be computed in the data space which could be large. Fortunately, we can use integration by parts to obtain a more tractable expression. For any test function ϕ(y), we have 
+
+Z
+
+ϕ(x)∇ · bt(x) μt(d x) = −
+
+Z
+
+bt(x) · ∇  ϕ(x)μt(x) dx
+
+= −
+
+Z
+
+bt(x) · μt(x)∇ϕ(x) + ϕ(x)∇μt(x) dx
+
+= −
+
+Z
+
+bt(x) · μt(x)∇ϕ(x) d x −
+
+Z
+
+ϕ(x)bt(x) · ∇ log μt(x) μt(d x)= −
+
+Z
+
+bt(x) · μt(x)∇ϕ(x)d x −
+
+Z
+
+ϕ(x) bt(x) · ∇ Ψt(x, μ t) μt(d x)
+
+−
+
+Z
+
+ϕ(x) bt(x) · ∇ log pt(x) μt(d x),
+
+where we used the log-derivative trick ∇μt = ( ∇ log μt)μt, and in the final line used the fact that ∇ log μt = ∇Ψt(·, μ t)+ 
+
+∇ log pt (which follows from (10)). Taking ϕ(y) = ˜Φt(x, y, μ t) and noting that the terms involving the score ∇ log pt
+
+cancel, we obtain (13). 
+
+D.5. Proof of Theorem 3.4 
+
+Consider the dynamics 
+
+dXi,N t =
+
+h
+
+bt(Xi,N t ) + εtst(Xi,N t ) + εt∇xΨt(Xi,N t ; ˆ μNt )
+
+i
+
+dt + √2εt dBit , Xi,N  
+
+> 0
+
+∼ p0, (34a) 
+
+dAi,N t =
+
+h
+
+bt(Xi,N t ) · ∇ xΨt(Xi,N t ; ˆ μNt ) + ˙Ψ(N ) 
+
+> t
+
+(Xi,N t )
+
+i
+
+dt, Ai,N  
+
+> 0
+
+= 0 . (34b) where the weighted empirical measure is 
+
+ˆμNt := 
+
+> N
+
+X
+
+> i=1
+
+wi,N t δXi,N t
+
+, (35) with normalised weights 
+
+wi,N t := exp( Ai,N t )
+
+PNj=1 exp( Aj,N t ) . (36) In (34b), ˙Ψ(N ) 
+
+> t
+
+denotes a computable approximation of ˙Ψt = ddt Ψt(·; μt), in the following sense: For an arbitrary proba-bility measure μ, define ˙Ψexact  
+
+> t
+
+(·, μ ) as the solution to (13) where all occurrences of μ∗ 
+
+> t
+
+are replaced by μ. In other words, 
+
+˙Ψexact  
+
+> t
+
+(·, μ ) is defined to be the solution to 
+
+˙Ψexact  
+
+> t
+
+(x, μ ) = ∂tΨt(x, μ ) (37) 
+
++
+
+Z
+
+> Rd
+
+ ˜Φt(x, y, μ ) ˙Ψexact  
+
+> t
+
+(y, μ ) + bt(y) · ∇ y ˜Φt(x, y, μ ) + ˜Φt(x, y, μ ) bt(y) · ∇ y Ψt(y, μ )
+
+
+
+dμ(y).
+
+30 A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models 
+
+In particular, for the weighted empirical measure ˆμNt = PNj=1 wj,N t δXj,N t
+
+, this equation reads 
+
+˙Ψexact  
+
+> t
+
+(x, ˆμNt ) = ∂tΨt(x, ˆμNt ) + 
+
+> N
+
+X
+
+> j=1
+
+wj,N t
+
+h ˜Φt(x, X j,N t , ˆμNt ) ˙Ψexact  
+
+> t
+
+(Xj,N t , ˆμNt )+ bt(Xj,N t ) · ∇ y ˜Φt(x, X j,N t , ˆμNt ) + ˜Φt(x, X j,N t , ˆμNt ) bt(Xj,N t ) · ∇ y Ψt(Xj,N t , ˆμNt )
+
+i
+
+; (38) evaluating this at x = Xi,N t leads to an N × N linear system that forms the basis of Algorithm 3. The implemented quantity ˙Ψ(N ) 
+
+> t
+
+used in (34b) may instead only be approximately equal to ˙Ψexact  
+
+> t
+
+(·, ˆμNt ), for example coming from a finite number of Picard iterations as in Algorithm 4. The solver-consistency condition in the third item of Assumption D.4 quantifies the resulting numerical error. 
+
+Assumption D.4 (Regularity, well-posedness and solver consistency) . Assume the following. 1. The McKean-Vlasov dynamics (12) are well posed, in the sense that the corresponding Feynman-Kac equation (33) 
+
+has a unique solution in C([0 , T ], P(Rd)) .2. The drift coefficients of (12) (denoted by Bt and gt in (31) ) are bounded and Lipschitz in (x, μ ), uniformly for 
+
+t ∈ [0 , T ]. More precisely, for some constant L > 0,
+
+|Bt(x, μ ) − Bt(y, ν )| ≤ L |x − y| + dBL (μ, ν ), (39) 
+
+|gt(x, μ ) − gt(y, ν )| ≤ L |x − y| + dBL (μ, ν ), (40) 
+
+and 
+
+|Bt(x, μ )| + |gt(x, μ )| ≤ L. (41) 
+
+We also assume that sup t∈[0 ,T ] εt < ∞.3. The approximation ˙Ψ(N ) 
+
+> t
+
+is consistent in the sense that 
+
+δN := E
+
+"Z T
+
+> 0
+> N
+
+X
+
+> i=1
+
+wit ˙Ψ(N ) 
+
+> t
+
+(Xit ) − ˙Ψexact  
+
+> t
+
+(Xit , ˆμNt ) dt
+
+#
+
+−→ 0 as N → ∞ , (42) 
+
+where ˙Ψexact  
+
+> t
+
+(·, ˆμNt ) denotes the exact solution for ˙Ψ to equation (13) in which every occurrence of μ∗ 
+
+> t
+
+is replaced by 
+
+ˆμNt , and t ∈ [0 , T ] is fixed. 
+
+Under this assumption, the weighted empirical measure in (35) converges to the target μ∗ 
+
+> t
+
+:
+
+Theorem D.5 (Convergence of the Weighted Particle System ). Suppose Assumption D.4 holds. Then 
+
+E
+
+"
+
+sup  
+
+> t∈[0 ,T ]
+
+ˆμNt (ϕ) − μ∗ 
+
+> t
+
+(ϕ)
+
+#
+
+−→ 0 as N → ∞ , (43) 
+
+for every ϕ ∈ C2 
+
+> b
+
+(Rd),
+
+With this in place, a similar result holds if the particle system (34) is rejuvenated by resampling: 
+
+Corollary D.5.1 (Convergence with residual resampling) . Suppose the assumptions of Theorem D.5 hold, and suppose that residual resampling is performed at a fixed finite collection of times 
+
+0 < τ 1 < · · · < τ K ≤ T, 
+
+where the maximum number of resampling steps K is uniformly bounded in N . After each resampling event, the particles are assigned equal weights 1 
+
+> N
+
+, i.e. Ajτi = 0 for j = 1 , . . . , N and i = 1 , . . . , K . Then, for every ϕ ∈ C2 
+
+> b
+
+(Rd),
+
+E
+
+"
+
+sup  
+
+> t∈[0 ,T ]
+
+ˆμNt (ϕ) − μ∗ 
+
+> t
+
+(ϕ)
+
+#
+
+−→ 0 as N → ∞ .
+
+31 A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models 
+
+Before proceeding to the proof, we need the following auxiliary result: 
+
+Lemma D.6. Defining the squared sum of weights SNt := PNi=1 (wi,N t )2, we have that 
+
+E
+
+"
+
+sup  
+
+> t∈[0 ,T ]
+
+SNt
+
+#
+
+≤ e4LT 
+
+ 1
+
+N + 4 δN
+
+
+
+−→ 0, as N → ∞ . (44) 
+
+Proof. For each particle, define the shorthand 
+
+gi,N t := gt
+
+
+
+Xi,N t , bμNt
+
+
+
+and the solver error 
+
+ei,N t := ˙Ψ(N )
+
+> t
+
+
+
+Xi,N t
+
+
+
+− ˙Ψexact 
+
+> t
+
+
+
+Xi,N t , bμNt
+
+
+
+.
+
+We also define the weighted averages 
+
+gNt := 
+
+> N
+
+X
+
+> j=1
+
+wj,N t gj,N t , eNt := 
+
+> N
+
+X
+
+> j=1
+
+wj,N t ej,N t .
+
+Differentiating (36), and using (34b), gives 
+
+ddt wi,N t = wi,N t
+
+
+
+gi,N t − gNt + ei,N t − eNt
+
+
+
+.
+
+Consequently, 
+
+ddt SNt = 2 
+
+> N
+
+X
+
+> i=1
+
+
+
+wi,N t
+
+2 
+
+gi,N t − gNt
+
+
+
++ 2 
+
+> N
+
+X
+
+> i=1
+
+
+
+wi,N t
+
+2 
+
+ei,N t − eNt
+
+
+
+. (45) We proceed by estimating the right-hand side of (45): By the boundedness assumption (41), we have gi,N t ≤ L and 
+
+gNt ≤ PNj=1 wj,N t gj,N t ≤ L, and hence 
+
+2
+
+> N
+
+X
+
+> i=1
+
+
+
+wi,N t
+
+2 
+
+gi,N t − gNt
+
+
+
+≤ 4LS Nt .
+
+By the definition (36), the weights wi,N t are nonnegative and sum to one, and so 
+
+
+
+wi,N t
+
+2
+
+≤ wi,N t and SNt ≤ 1. Therefore, 
+
+2
+
+> N
+
+X
+
+> i=1
+
+
+
+wi,N t
+
+2 
+
+ei,N t − eNt
+
+
+
+≤ 2
+
+> N
+
+X
+
+> i=1
+
+
+
+wi,N t
+
+2
+
+ei,N t + 2 SNt eNt ≤ 4
+
+> N
+
+X
+
+> i=1
+
+wi,N t ei,N t .
+
+Combining the preceding estimates with (45) gives 
+
+ddt SNt ≤ 4LS Nt + 4 
+
+> N
+
+X
+
+> i=1
+
+wi,N t ei,N t .
+
+Since the weights are initialised uniformly, wi,N  
+
+> 0
+
+= 1 /N , we have SN 
+
+> 0
+
+= PNi=1 1  
+
+> N2
+
+= 1 
+
+> N
+
+. Gr¨ onwall’s inequality therefore yields 
+
+sup  
+
+> t∈[0 ,T ]
+
+SNt ≤ e4LT 
+
+"
+
+1
+
+N + 4 
+
+Z T
+
+> 0
+> N
+
+X
+
+> i=1
+
+wi,N t ei,N t dt
+
+#
+
+.
+
+Taking expectations then implies the claim. 32 A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models 
+
+Proof of Theorem D.5. We fix ϕ ∈ C2 
+
+> b
+
+(Rd) and derive the evolution equation for the empirical measure ˆμNt (ϕ) =
+
+PNi=1 wi,N t ϕ(Xi,N t ). Itˆ o’s formula gives 
+
+ˆμNt (ϕ) = ˆ μN 
+
+> 0
+
+(ϕ) + 
+
+Z t
+
+> 0
+
+Fϕs (ˆ μNs ) d s + EN,ϕ t + M N,ϕ t , (46) where 
+
+Fϕt (μ) := μ (Bt(·, μ ) · ∇ ϕ + εt∆ϕ) + μ(gt(·, μ )ϕ) − μ(gt(·, μ )) μ(ϕ) (47) refers to the integrated right-hand side of (33), the solver error is encoded in 
+
+EN,ϕ t := 
+
+Z t
+
+> 0
+
+RN,ϕ s ds, RN,ϕ t := 
+
+> N
+
+X
+
+> i=1
+
+wi,N t ei,N t
+
+
+
+ϕ(Xi,N t ) − ˆμNt (ϕ)
+
+
+
+, (48) and 
+
+M N,ϕ t := 
+
+Z t
+
+> 0
+
+√2εsNX
+
+> i=1
+
+wi,N s ∇ϕ(Xi,N s ) · dBis (49) is the martingale part. Notice that |RN,ϕ t | ≤ 2∥ϕ∥∞
+
+PNi=1 wi,N t ei,N t ; the assumption in (42) therefore implies 
+
+E
+
+"
+
+sup  
+
+> t∈[0 ,T ]
+
+|EN,ϕ t |
+
+#
+
+≤ 2∥ϕ∥∞δN −→ 0. (50) The quadratic variation of the martingale part can be estimated as 
+
+⟨M N,ϕ ⟩T ≤ 2∥ε∥∞T ∥∇ ϕ∥2 
+
+> ∞
+
+sup  
+
+> t∈[0 ,T ]
+
+SNt .
+
+Itˆ o’s isometry, Doob’s L2 maximal inequality, and Lemma D.6 therefore imply 
+
+E
+
+"
+
+sup  
+
+> t∈[0 ,T ]
+
+|M N,ϕ t |2
+
+#
+
+≤ CT ∥∇ ϕ∥2
+
+> ∞
+
+ 1
+
+N + δN
+
+
+
+−→ 0, (51) where the constant CT is independent of N . Formally, we thus conclude that (46) converges term-by-term to a weak form of the Feynman-Kac equation (33) which governs the target law μ∗ 
+
+> t
+
+. To make this argument precise, we argue as follows: 
+
+Tightness. We show that the family {Law(ˆ μN ) : N ≥ 1} is tight in C([0 , T ], P(Rd)) . To this end, fix ϕ ∈ C∞ 
+
+> c
+
+(Rd). By the boundedness assumption (41) and sup t∈[0 ,T ] εt < ∞, we have that sup t,μ |F ϕt (μ)| < ∞. Therefore, the drift paths 
+
+t 7 → R t 
+
+> 0
+
+Fϕs (ˆ μNs ) d s have a common deterministic Lipschitz constant, while (50) and (51) show that the remaining error 
+
+EN,ϕ t + M N,ϕ t in (46) vanishes uniformly in probability. It now follows from Arzela–Ascoli that the family of real-valued processes (ˆ μN (ϕ)) N ≥1 is tight in C([0 , T ], R). To obtain tightness of {Law(ˆ μN ) : N ≥ 1}, we verify the conditions of Jakubowski’s tightness criterion (Jakubowski, 1986, Theorem 3.1(i)): indeed, we may choose a countable convergence-determining family G ⊂ C∞ 
+
+> c
+
+(Rd); compact containment follows from Lemma D.7 below. Finally, since every ˆμN has continuous paths, and the Skorokhod topology restricted to continuous paths is the uniform topology (Jakubowski, 1986, Proposition 1.6(i)), the laws {Law(ˆ μN ) : N ≥ 1} are indeed tight in C([0 , T ], P(Rd)) .
+
+Subsequential limits. We conclude by showing that every subsequence of ˆμN has a further subsequence whose law converges weakly to the Dirac measure at μ∗ in P(C([0 , T ], P(Rd))) : Let (Nj ) ⊂ N be an arbitrary subsequence. By tightness, it has a further subsequence, not relabelled, such that 
+
+ˆμNj =⇒ μ in C([0 , T ], P(Rd)) .
+
+For every ϕ ∈ C∞ 
+
+> c
+
+(Rd), Assumption D.4 implies the Lipschitz property 
+
+|F ϕt (μ) − F ϕt (ν)| ≤ CϕdBL (μ, ν ), (52) 33 A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models 
+
+uniformly in t. Together with the facts that EN,ϕ t + M N,ϕ t converges to zero in probability and that the initial empirical measures converge to p0 by the law of large numbers, the continuous mapping theorem and Slutsky’s lemma imply that, almost surely, 
+
+μt(ϕ) = p0(ϕ) + 
+
+Z t
+
+> 0
+
+Fϕs (μs) d s
+
+for every rational t and every ϕ in a countable dense subset of C∞ 
+
+> c
+
+(Rd). Continuity in time and density extend this identity to every t ∈ [0 , T ] and every ϕ ∈ C∞ 
+
+> c
+
+(Rd). As a consequence, μ is a weak solution of the Feynman–Kac equation (33). Uniqueness in Assumption D.4 gives μ = μ∗ almost surely. Every subsequence therefore has a further subsequence converging in law to the same deterministic path μ∗. Hence the full sequence converges in probability to μ∗ in C [0 , T ], P(Rd). Since every ϕ ∈ C2 
+
+> b
+
+(Rd) is bounded and Lipschitz, it follows that sup t∈[0 ,T ] ˆμNt (ϕ) − μ∗ 
+
+> t
+
+(ϕ) −→ 0 in probability. Moreover, 
+
+sup  
+
+> t∈[0 ,T ]
+
+ˆμNt (ϕ) − μ∗ 
+
+> t
+
+(ϕ) ≤ 2∥ϕ∥∞
+
+shows that the sequence is uniformly integrable, and thus the claim follows. The following technical lemma is used in the tightness step of the preceding proof. 
+
+Lemma D.7 (Compact containment) . For every η > 0, there exists a weakly compact set Kη ⊂ P (Rd) such that 
+
+lim inf   
+
+> N→∞
+
+P  ˆμNt ∈ Kη for every t ∈ [0 , T ] ≥ 1 − η. 
+
+Proof. For any radius r > 0, we denote the open ball in Rd by Br := x ∈ Rd : |x| < r . Choose a radial, nondecreasing function χ ∈ C∞(Rd; [0 , 1]) such that χ = 0 on B1 and χ = 1 on Bc
+
+> 2
+
+, and set 
+
+χR(x) := χ(x/R ), R > 0.
+
+Notice the following properties, 
+
+1Bc 
+
+> 2R
+
+≤ χR ≤ 1BcR , ∥∇ χR∥∞ ≤ CR , ∥∆χR∥∞ ≤ CR2 , (53) for some constant C < ∞, as well as 
+
+|Cov μ (gt(·, μ ), χ R)| ≤ 2Lμ (χR), (54) which follows directly from 0 ≤ ξR ≤ 1 and (41). We now apply (46) with ϕ = χR, take the supremum over time and expectations. Using the estimates (50), (51), (53), as well as Cauchy-Schwarz, we arrive at 
+
+E
+
+"
+
+sup 
+
+> r∈[0 ,t ]
+
+ˆμNr (χR)
+
+#
+
+≤ p0(χR) + CT
+
+ 1
+
+R + 1
+
+R2
+
+
+
++ 2 δN
+
++ CT
+
+R
+
+ 1
+
+N + δN
+
+1/2
+
++ 2 L
+
+Z t
+
+> 0
+
+E
+
+"
+
+sup 
+
+> u∈[0 ,s ]
+
+ˆμNu (χR)
+
+#
+
+ds, 
+
+with a constant CT < ∞ that may depend on T , but not on N or R. Gr¨ onwall’s inequality then yields 
+
+E
+
+"
+
+sup  
+
+> t∈[0 ,T ]
+
+ˆμNt (χR)
+
+#
+
+≤ CT
+
+"
+
+p0(χR) + 1
+
+R + δN + 1
+
+R
+
+ 1
+
+N + δN
+
+1/2#
+
+, (55) with a different constant CT < ∞, denoted by the same symbol. Since p0(χR) → 0 as R → ∞ and δN → 0 as N → ∞ ,it follows that 
+
+lim  
+
+> R→∞
+
+lim sup  
+
+> N→∞
+
+E
+
+"
+
+sup  
+
+> t∈[0 ,T ]
+
+ˆμNt (χR)
+
+#
+
+= 0 .
+
+This uniform control of the probability mass at spatial infinity yields the claim by a relatively standard countable-tail construction; see, for example, Giesecke et al. (2013, Lemma 6.1). 34 A Mean-Field Framework for Inference-Time Distributional Control of Diffusion Models 
+
+Proof of Corollary. Between resampling times, the proof of Theorem D.5 is unchanged. Moreover, resampling resets all weights to 1 
+
+> N
+
+, and hence 
+
+> N
+
+X
+
+> i=1
+
+ wi,N τk
+
+2 = 1
+
+N ≤
+
+> N
+
+X
+
+> i=1
+
+
+
+wi,N τk −
+
+2
+
+,
+
+where wi,N τk − are the weights just before, and wi,N τk are the weights just after resampling. As a consequence, the conclusion of Lemma D.6 remains valid. For a bounded test function ϕ, define the jump induced by the k-th resampling step by 
+
+∆N,ϕ k := ˆ μNτk (ϕ) − ˆμNτk −(ϕ).
+
+In (46), the effect of resampling is the appearance of an additional jump term 
+
+JN,ϕ t := X  
+
+> k:τk≤t
+
+∆N,ϕ k . (56) Residual resampling is conditionally unbiased and its conditional variance is bounded by that of multinomial resampling; see Douc et al. (2005, Sections 2.2 and 3.2). Consequently, 
+
+E
+
+h
+
+∆N,ϕ k Fτ Nk −
+
+i
+
+= 0 , E
+
+
+
+∆N,ϕ k
+
+> 2
+
+Fτ Nk −
+
+
+
+≤ ∥ϕ∥2
+
+> ∞
+
+N .
+
+Therefore, (56) is a martingale, and we have the estimate 
+
+E
+
+"
+
+sup  
+
+> t∈[0 ,T ]
+
+JN,ϕ t
+
+> 2
+
+#
+
+≤ CK ∥ϕ∥2
+
+> ∞
+
+N −→ 0,
+
+where the limit statement rests on the fact that K is uniformly bounded. The tightness and subsequential-identification arguments proceed exactly as in the proof of Theorem D.5, yielding the result. 
+
+# E. Licenses 
+
+The following assets were used in this work. • Boltz-2 (Passaro et al., 2025) MIT License 
+
+https://github.com/jwohlwend/boltz 
+
+• Protenix (ByteDance et al., 2025) Apache-2.0 License 
+
+https://github.com/bytedance/Protenix 
+
+• Guided Protein Structure Prediction (Maddipatla et al., 2025; 2026) 
+
+https://github.com/sai-advaith/guided_alphafold 
+
+• Adenylate Kinase Potential of Mean Force (Beckstein et al., 2009) Creative Commons Attribution-ShareAlike 4.0 International License 
+
+https://becksteinlab.physics.asu.edu/research/52/adk-apo-pmf 
+
+• 4OLE PDB entry (Joint Center for Structural Genomics (JCSG), 2014) CC0 1.0 Universal (CC0 1.0) Public Domain Dedication 
+
+https://www.rcsb.org/structure/4OLE 
+
+35

@@ -1,0 +1,265 @@
+Title: Beyond Reconstruction: Full-Context Generative DiT for Music Generation
+
+URL Source: https://arxiv.org/pdf/2608.08787v1
+
+Published Time: Tue, 11 Aug 2026 01:26:51 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# Beyond Reconstruction: Full-Context Generative DiT for Music Generation 
+
+Yunjia Li 1,2, †, Menglin Wu 2, †, Junyu Dai 2, †, Xinyue Fan 2, †, Xiangang Li 2, †,Haoxu Wang 2, †, Jianwei Yu 2, †, Huaicheng Zhang 2, †, Han Zhao 2, †, Weiqin Li 2, ‡,Yufei Shi 2, ‡, Cheng Wen 2, ‡, Sitong Zhao 2, ‡, Qixi Zheng 2, ‡, Haina Zhu 2, ‡, Wei Li 1, ‡
+
+> 1
+
+College of Computer Science and Artificial Intelligence, Fudan University 
+
+> 2
+
+Alibaba Token Foundry 
+
+Abstract 
+
+Hybrid music generators combine the long-range planning of an autoregressive language model with the fidelity of a diffusion- or flow-based acoustic renderer. Yet renderers are trained with clean, target-derived codec tokens but deployed with imperfect language-model predictions, creating codec-interface exposure bias . Rather than treating rendering as a simple reconstruction task, we formulate it as full-context gen-eration from an imperfect discrete plan. We introduce FullDiT, a conditional DiT that fuses eight frame-aligned RVQ streams with independently encoded captions and lyrics and uses non-causal self-attention over the complete acoustic latent sequence. During training, Error-Matched Distractor Condi-tioning (EMDC) matches per-codebook replacement rates to teacher-forced top-1 error rates and samples near-miss to-kens from cosine-KNN neighborhoods without changing the acoustic target. At inference, four-way classifier-free guid-ance (4-CFG) independently scales codec, lyric, and caption guidance increments. Matched ablations show that EMDC improves ViSQOL by 0.77 under synthetic corruption and is clearly preferred in non-tied comparisons with fixed language-model tokens. Further ablations show gains from full-song context and renderer-side text conditioning. The complete sys-tem outperforms five commercial systems on 15 of 18 auto-matic metrics and ranks among the top three on the Artificial Analysis Music with Vocals Leaderboard. The demo page is available at https://selinacloudl.github.io/fulldit-demo/. 
+
+# 1 Introduction 
+
+Music generation must coordinate long-range form, lyrics, and instrumentation with fine-grained acoustics over several minutes. Existing systems use direct diffusion or flow gener-ation (Huang et al. 2023; Evans et al. 2024; Ning et al. 2025; Gong et al. 2025), autoregressive codec modeling (Dhariwal et al. 2020; Agostinelli et al. 2023; Copet et al. 2023), or hybrid pipelines that separate discrete planning from gener-ative acoustic rendering (Lam et al. 2023; Bai et al. 2024; Zhang et al. 2025a; Yang et al. 2025). This hybrid design can combine long-range musical planning with high-fidelity acoustic realization, but it creates an interface shift: renderers are typically trained with clean codec tokens extracted from their acoustic targets but deployed with imperfect language-model predictions. Unrealistically clean training conditions 
+
+> †
+
+Core authors. ‡ Contributors. 
+
+can make a generative renderer behave like a paired recon-struction decoder and propagate token errors at inference. We call this shift codec-interface exposure bias .Uniform corruption is an incomplete remedy because pre-diction difficulty varies across RVQ codebooks and incor-rect tokens can remain locally plausible. The renderer must also reconcile frame-aligned codec tokens, sequential lyrics, global captions, and full-song dependencies, deciding when to trust the plan and when to complete it from text, context, and its acoustic prior. We formulate rendering as full-context generation from an imperfect discrete plan. Architecturally, FullDiT fuses eight frame-aligned RVQ streams with independently encoded captions and lyrics, and applies non-causal self-attention over the complete acoustic latent sequence. During training, Error-Matched Distractor Conditioning (EMDC) matches each codebook’s replacement rate to its teacher-forced top-1 error rate and samples near-miss tokens from cosine-KNN neighborhoods while leaving the acoustic target unchanged. At inference, four-way classifier-free guidance (4-CFG) in-dependently scales codec, lyric, and caption increments. Our contributions are: 
+
+• We introduce a full-context conditional generative acous-tic DiT that combines frame-aligned multi-codebook RVQ conditions, renderer-side caption and lyric condi-tioning, and non-causal full-song context in a continu-ous flow model. At inference time, 4-CFG independently scales codec, lyric, and caption increments. 
+
+• We propose EMDC, an error-rate-matched, geometry-guided corruption scheme that exposes the renderer to realistic codec-token errors during training while pre-serving the acoustic target. 
+
+• We validate FullDiT under clean, synthetically corrupted, and LM-generated codec conditions. Matched ablations isolate EMDC, full-song context, and renderer-side text conditioning; additional studies cover a 4-CFG sweep, comparisons with five commercial systems, and an exter-nal public blind test. EMDC improves ViSQOL by 0.77 under synthetic token corruption and is clearly preferred in blind listening with fixed language-model tokens; the complete system outperforms five commercial systems on 15 of 18 automatic quality metrics and ranks in the top three on the Artificial Analysis Music with Vocals arXiv:2608.08787v1 [eess.AS] 9 Aug 2026 Leaderboard. 
+
+# 2 Related Work 
+
+2.1 Three Paradigms of Music Generation 
+
+Direct diffusion and flow generation. Noise2Music, Sta-ble Audio, DiffRhythm, and ACE-Step generate spectro-grams, waveforms, or continuous latents with diffusion or flow models (Huang et al. 2023; Evans et al. 2024; Ning et al. 2025; Gong et al. 2025; Peebles and Xie 2023). They avoid a discrete planning interface but must jointly represent long-range structure, text alignment, and local acoustics in one generator. 
+
+Autoregressive codec-token generation. SoundStream and EnCodec establish the encoder–RVQ–decoder pattern (Zeghidour et al. 2022; Défossez et al. 2023), while Jukebox, MusicLM, and MusicGen model multi-scale, hierarchical, or interleaved music tokens (Dhariwal et al. 2020; Agostinelli et al. 2023; Copet et al. 2023). Low-frame-rate discretization shortens the planning sequence, but quality still depends on both token prediction and acoustic decoding. 
+
+Hybrid token planning and generative rendering. Hy-brid systems couple an autoregressive language model for discrete planning with a diffusion- or flow-based renderer for high-fidelity acoustic realization. MeLoDy, Seed-Music, InspireMusic, SongBloom, and HeartMuLa instantiate this pattern with different intermediate representations and cou-pling strategies (Lam et al. 2023; Bai et al. 2024; Zhang et al. 2025a; Yang et al. 2025, 2026). This decomposition makes the planning–rendering interface explicit. When a renderer is trained with target-derived codec tokens but deployed with planner predictions, the interface induces the codec-interface exposure bias studied here. 
+
+2.2 Full-Context Conditional Acoustic Rendering 
+
+The key renderer-side distinction is which conditions are available and over what temporal span. In Seed-Music’s audio-token pipeline, multimodal controls condition the au-toregressive generator, while the diffusion renderer receives the generated audio tokens (Bai et al. 2024). InspireMusic likewise sends text to the autoregressive model and condi-tions its super-resolution flow renderer on a single coarse to-ken stream (Zhang et al. 2025a). SongBloom operates patch-wise: its diffusion stage receives current-patch sketch tokens, an autoregressive hidden vector that can carry text seman-tics, and acoustic latents from the preceding patch (Yang et al. 2025). HeartMuLa conditions its language model on style, lyrics, and reference audio, whereas HeartCodec’s flow decoder is described as receiving low-rate quantized fea-tures rather than separately encoded text (Yang et al. 2026). Across these hybrid pipelines, no renderer is described as jointly consuming a frame-aligned multi-codebook plan, in-dependently encoded captions and lyrics, and the complete predicted codec sequence through non-causal attention. Closely related renderer-level work studies generative codec resynthesis. Multi-Band Diffusion synthesizes high-fidelity audio from low-bitrate discrete representations, while Liu et al. study speech resynthesis from coarse codec tokens and show that both the learning target and the generative resynthesis design materially affect output quality (San Ro-man et al. 2023; Liu et al. 2024). These results establish that a generative renderer can recover acoustic detail beyond a deterministic codec decoder. FullDiT advances this direc-tion from codec resynthesis to full-song conditional genera-tion from a language-model-predicted multi-codebook plan, with renderer-side text conditioning and bidirectional song context. 
+
+2.3 Robust Conditioning from Imperfect Upstream Outputs 
+
+Imperfect discrete conditioning can produce audible artifacts (San Roman et al. 2023), motivating training procedures that expose a downstream renderer to realistic deviations from oracle codec tokens. Related techniques address different forms of condition mismatch. Scheduled sampling reduces exposure bias in autoregressive sequence models by occa-sionally feeding model-generated previous tokens instead of ground-truth tokens during training (Bengio et al. 2015). Like EMDC, it exposes a model to imperfect conditions dur-ing training, but it perturbs the model’s own autoregressive history rather than an external codec plan. Conditioning aug-mentation in cascaded image diffusion perturbs an upstream continuous output with Gaussian noise or blur (Ho et al. 2022). Condition dropout jointly trains conditional and un-conditional predictions for classifier-free guidance (Ho and Salimans 2022). These techniques motivate perturbing or dropping training conditions, but do not specify how to cor-rupt a multi-codebook codec plan according to the error pro-file of a frozen music language model. EMDC fills this gap by matching replacement frequency to teacher-forced error rates for each codebook and sampling plausible error to-kens from cosine-KNN neighborhoods in the corresponding codec space. 
+
+# 3 Method 
+
+3.1 System Overview 
+
+Given user-provided lyrics and a caption, the complete mu-sic generation system comprises a semantic-aware RVQ to-kenizer, a hierarchical autoregressive language model, an optional two-level melody module, and FullDiT. The tok-enizer maps raw music to eight RVQ token streams and uses Conformer-based (Gulati et al. 2020) BEST-RQ-style pretraining (Chiu et al. 2022), multi-task fine-tuning, and discrete-token training to preserve semantic content and re-construction fidelity. The hierarchical language model pairs an 8B global LLM, which autoregressively predicts the first-level stream from lyrics, captions, and musical attributes, with a 0.4B local LLM that predicts the residual streams, supporting both vocal and instrumental generation. For cover generation, the melody module discretizes note- and frame-level pitch cues into coarse and fine tokens that control the global vocal melody and local pitch detail. This work focuses on FullDiT, an 8B-parameter non-causal DiT that performs full-song flow matching in a continuous VAE latent space, conditioned on the complete codec sequence, caption, and lyrics; a frozen VAE decoder maps its output to 48-kHz Full-Context Genera/ve DiT 
+
+# VAE 
+
+# Lyrics Caption 
+
+# Recovered Clean-Target Waveform 
+
+Caption Token Lyrics Token 
+
+VAE Latent 
+
+Near-miss RVQ Token 
+
+Clean RVQ Token 
+
+# ❄
+
+# "Figure 1: FullDiT acoustic renderer. Independently encoded lyrics and captions provide textual conditions, while frame-aligned multi-codebook RVQ tokens provide the discrete song plan. The illustrated plan mixes clean tokens with plausible near-miss substitutions. EMDC constructs this imperfect condition to approximate errors in a language-model-predicted plan, but changes only the codec condition: the paired clean target waveform and its target VAE latent remain unchanged. Rather than reconstructing the corrupted token plan, FullDiT uses text and non-causal full-song context to generatively recover a complete VAE-latent sequence consistent with the unchanged clean target. A frozen VAE decoder then maps the recovered latents to waveform. stereo audio. Accordingly, Figure 1 shows only FullDiT and its conditioning interface. Controlled studies use separately trained, matched 1.5B variants. 
+
+3.2 Full-Context Conditional Acoustic Rendering 
+
+For a paired training example (x, y cap , y lyr ), the tokenizer extracts codec tokens cgt , while a fixed VAE encoder pro-duces the target acoustic latent z0:
+
+cgt = QRVQ (x),z0 = EVAE (x),
+
+ec ∼ qEMDC (· | cgt ).
+
+(1) EMDC perturbs only the codec condition and leaves the target latent z0 unchanged. FullDiT models pθ (z0 |
+
+ec, y cap , y lyr ). At inference, the language-model-generated plan bc ∼ pLM (· | ycap , y lyr ) replaces ec as the renderer input. 
+
+Frame-Aligned Codec Conditioning and Full-Song Con-text Let ci,k be the token at frame i in codebook k. FullDiT performs a codebook-specific lookup and injects the fused embedding into the matching audio frame: 
+
+ecodec  
+
+> i
+
+= Fuse 7
+
+> k=0
+
+Ek(ci,k ),a(0)  
+
+> i
+
+= Eaudio (zt,i ) + ecodec  
+
+> i
+
+. (2) Frame-wise addition preserves the temporal correspondence between the discrete plan and the acoustic latent. The eight codebook embeddings are summed and projected to the au-dio hidden dimension. FullDiT then applies non-causal self-attention over the complete acoustic sequence. Each frame can therefore combine its aligned codec condition with both past and future acoustic states, allowing a repeated chorus, a later motif, or a distant section to inform local realization. 
+
+Renderer-Side Caption and Lyric Conditioning Al-though captions and lyrics are already provided to the hi-erarchical autoregressive language model, relying on its pre-dicted codec plan as the sole interface creates an information bottleneck: textual details may be omitted or attenuated dur-ing plan generation. We therefore provide the original cap-tions and lyrics directly to FullDiT as renderer-side condi-tions, allowing the acoustic renderer to consult the source text directly rather than relying entirely on the predicted codec plan to convey all conditioning information. At every block, audio states form the queries, and lyric, caption, and audio states form the key–value context: 
+
+hcap = Ecap (ycap ),hlyr = Elyr (ylyr ),Q = WQa, K = [ WK hlyr ; WK hcap ; WK a],V = [ WV hlyr ; WV hcap ; WV a].
+
+(3) Captions provide genre, instrumentation, mood, and produc-tion semantics; lyrics provide phonetic content, vocal cues, and section structure. 
+
+Flow-Matching Objective Following flow matching (Lip-man et al. 2023), let σ ∈ [0 , 1] denote the path coordinate, with σ = 0 corresponding to data and σ = 1 to Gaussian noise. Given a target latent z0, we define the linear condi-CB Loss PPL Acc@1 pk Kk                                        
+
+> 02.27 10 0.375 0.625 20 12.26 10 0.379 0.621 20 22.51 12 0.340 0.660 20 32.82 17 0.302 0.698 30 43.25 26 0.230 0.770 50 53.65 39 0.189 0.811 80 64.13 62 0.141 0.859 125 74.49 89 0.108 0.892 180
+
+Table 1: Codebook-wise EMDC calibration. Perplexity is approximated by exp(loss) . Kk is a heuristic neighborhood width. tional path and its target velocity as 
+
+ϵ ∼ N (0 , I ),zσ = (1 − σ)z0 + σϵ, v⋆σ = ∂z σ
+
+∂σ = ϵ − z0.
+
+(4) Let y = ( ycap , y lyr ). The model regresses the conditional vector field with 
+
+LFM = Ez0,ec,y,ϵ,σ 
+
+h
+
+∥vθ (zσ , σ, ec, y ) − v⋆σ ∥22
+
+i
+
+. (5) At inference, sampling starts from z1 ∼ N (0 , I ) and inte-grates the learned field backward from σ = 1 to σ = 0 .EMDC changes only the codec input ec; it never changes z0
+
+or v⋆σ . A replacement token therefore does not become a new acoustic label. 
+
+3.3 Error-Matched Distractor Conditioning 
+
+We apply EMDC during training to construct a corrupted codec condition ec from the clean sequence cgt while keeping the target latent z0 unchanged. For each frame i and codebook 
+
+k ∈ { 0, . . . , 7}, we independently sample a replacement mask: 
+
+Mi,k ∼ Bernoulli( pk), pk = 1 − Acc@1 k. (6) If Mi,k = 0 , the clean token is retained. Otherwise, a replace-ment j is sampled from the cosine top-Kk neighborhood 
+
+Nk(ci,k ), excluding the token itself: 
+
+qk(j | c) = softmax   
+
+> j∈N k(c)
+
+(cos( ek(j), e k(c)) /τ ) . (7) The teacher-forced top-1 error rate determines how fre-quently tokens in each codebook are replaced. Cosine-KNN is an embedding-geometry-guided heuristic for selecting the replacement token. As Table 1 shows, deeper residual codebooks are substan-tially harder for the upstream predictor. A uniform replace-ment rate would therefore understate their uncertainty. We choose Kk by rounding approximately 2 exp(loss k) and in-creasing the neighborhood with codebook depth. This is an engineering bandwidth heuristic, not a theoretical equiva-lence between perplexity and KNN radius. The temperature is τ = 1 .0, and every KNN table is constructed within the corresponding codebook while excluding the query token. We use a three-stage EMDC curriculum: clean codec con-ditions for steps 0–30k, a linear ramp of each replacement rate from zero to pk over 30k–40k, and the target rate pk
+
+through 150k. Codec embeddings are initialized from the tokenizer codebooks, frozen for the first 5k steps, and then optimized with FullDiT. 
+
+3.4 Four-Way Classifier-Free Guidance 
+
+Codec, lyrics, and caption serve different purposes. Stan-dard classifier-free guidance compares fully conditioned and unconditional predictions with one scale (Ho and Salimans 2022). We instead form four predictions from the same model and flow state: fklc uses codec, lyrics, and caption; fkl uses codec and lyrics; fk uses codec only; and fu is unconditional. The guided field is 
+
+f4CFG = fu + scodec (fk − fu)+ slyr (fkl − fk) + scap (fklc − fkl ). (8) Thus, the three scales control the incremental vector fields contributed by codec, lyrics, and caption, rather than condi-tion accuracies. When all scales are one, Equation 8 reduces to fklc , equivalent in output to joint 2-way CFG with scale one. When lyric and caption scales are equal, their terms combine, reducing the expression to 3-way codec/joint-text CFG. When lyrics and captions use different guidance strengths, the full four-way formulation is required. 
+
+# 4 Experiments 
+
+4.1 Research Questions and Evaluation Design 
+
+Following the method components, we evaluate FullDiT’s full-context rendering, EMDC, 4-CFG, and the complete system in sequence. Matched 1.5B variants support renderer-level component attribution, whereas evaluations of the 8B renderer with the upstream planning stack support only end-to-end claims. 
+
+• RQ1: How do full-song context and renderer-side text conditioning affect rendering? M1–M2a isolates full-song non-causal versus local-window training con-text, while M1–M2b isolates renderer-side caption and lyric conditioning under the same frame-aligned multi-codebook plan. 
+
+• RQ2: Does EMDC improve robustness to predicted codec tokens? M1–M3 isolates error-rate-matched, geometry-guided EMDC while holding architecture, training bud-get, full-song context, and renderer-side text conditioning fixed. Additional cross-codec stress tests appear in the supplement. 
+
+• RQ3: Does full 4-way CFG outperform its 2- and 3-way reductions? With M1 fixed, we sweep seven guidance tu-ples spanning 2-, 3-, and 4-way CFG. Automatic screen-ing followed by blind listening selects the best tested op-erating point and tests whether separate lyric and caption scales are preferable to collapsed guidance. 
+
+• RQ4: How competitive is the complete system? We com-pare it with five commercial systems on a common set using four automatic evaluation frameworks and evaluate it on the Artificial Analysis Music with Vocals Leader-board. Section 4.3 specifies the codec sources, comparison sys-tems, metrics, and listening protocols used to answer these four questions. 
+
+4.2 Experimental Setup 
+
+Scope and Data The complete system uses an 8B FullDiT for end-to-end results. All component claims use the matched 1.5B variants M1, M2a, M2b, and M3 defined in Table 2. The controlled models are trained on the same amount of internal music data. Audio is read as 48-kHz stereo and encoded by a fixed LeVo VAE (Lei et al. 2025) into 25-Hz, 64-dimensional acoustic latents. Offline RVQ tokens from the semantic-aware tokenizer use the same frame rate. 
+
+Architecture The 1.5B FullDiT contains 28 Transformer layers, hidden width 1,536, 12 query heads, two key–value heads, and head dimension 128. Each of the eight RVQ streams uses a 1,024-entry, 32-dimensional embedding ta-ble. Captions are compact JSON strings encoded by a frozen Qwen3-Embedding-0.6B model (Zhang et al. 2025b) and projected to the model width. Lyrics use a shared token em-bedding followed by an eight-layer encoder. The combined text limit is 2,048 tokens, with at most 1,024 each for caption and lyrics. 
+
+Training Flow matching samples σ from a logit-normal distribution with shift 1.0. Training uses three independent condition masks for codec, caption, and lyrics. For M1, M2a, and M3, each condition has a dropout probability of 0.1. M2b replaces the renderer-side caption and lyric conditions with the learned null condition. The training-time context, text, and EMDC settings for each model are summarized in Table 2. We use AdamW with peak learning rate 10 −4, (β1, β 2) = (0 .8, 0.99) , weight decay 0.1, and gradient clipping at 1.0. A 4k-step linear warm-up precedes cosine decay. Models train in bfloat16 for 150k steps with global batch size 384. The random seed is 666. 
+
+Inference All controlled inference uses 50-step UniPC (Zhao et al. 2023) with sampling shift 3.0. The 4-CFG study evaluates the seven tuples specified in the evaluation protocol below. To keep the remaining comparisons con-trolled, they use the same listener-preferred operating point 
+
+(scodec , s lyr , s cap ) = (1 , 2, 1) and keep all other sampling parameters fixed. 
+
+4.3 Evaluation Protocols and Metrics 
+
+FullDiT Component Evaluation (RQ1–RQ2) The matched 1.5B variants are evaluated under three codec-token conditions: Clean GT codec , extracted from held-out target audio; Synthetic corruption , constructed by perturbing the corresponding clean tokens; and LM-generated codec , pre-dicted by the upstream hierarchical autoregressive language model rather than extracted from reference audio by the tok-enizer. The clean and synthetic-corrupted conditions use the same 
+
+N = 200 held-out songs with paired acoustic targets. We re-port ViSQOL (Chinen et al. 2020), log-mel L1 distance, and multi-resolution STFT distance (Yamamoto, Song, and Kim 2020); higher ViSQOL and lower distances are better. Every controlled model receives exactly the same synthetic-corrupted token sequences. Their replacement rates come from teacher-forced top-1 errors, while replacement identi-ties come from M1’s step-150k cosine-KNN tables. For the LM-generated codec condition, we render N =200 songs from one fixed cache of predicted token sequences. Because these outputs do not have paired acoustic targets, we assess rendering quality using the reference-free Audiobox-Aesthetics Production Quality (PQ) score (Tjandra et al. 2025) and blind human preference judgments. PQ is com-puted on all N = 200 songs. For human evaluation, blind pairwise comparisons of M1 against M2a, M2b, and M3 use a common set of N = 100 songs and five expert judges with music backgrounds. Each judge chooses audio A, audio B, or tie without knowing model identity. After unblinding, we report song-level preference after excluding per-song ties: 
+
+wins /(wins + losses) . Clean GT codec and synthetic cor-ruption use paired automatic metrics only. 
+
+Four-Way CFG Evaluation (RQ3) Fixing M1, we score seven tuples— (1 , 1, 1) and the six obtained by changing one scale to 0.5 or 2—with Audiobox PQ on N = 200 . The top three enter a blind three-way forced-choice test on N = 100 :five expert judges each select one candidate per song, with no ties. We report song-weighted selection shares, comparing the automatic optimum with listeners’ choice. 
+
+Complete-System Evaluation (RQ4) We compare the complete system with Suno V5.5 (Shulman 2026), Suno V5 (Suno 2025), Mureka V8 (Mureka 2026), Lyria 3 Pro (Google 2026), and MiniMax Music 2.6 (MiniMax 2026). For each case, every system receives the same user-provided caption and lyrics. All systems are evaluated on the same 
+
+N = 500 vocal-music set, spanning eight major genres and balanced across Chinese, English, Japanese, Korean, and Spanish. SongBench (Wu et al. 2026) reports Melody, Arrangement, Musicality, Vocal, Instrument, Mixing, and Structure. SongEval (Yao et al. 2025) reports overall coher-ence, overall musicality, memorability, structural clarity, and vocal breathing/phrasing naturalness. Audiobox-Aesthetics reports Content Enjoyment, Content Usefulness, Production Complexity, and Production Quality. CMI-RM (Ma et al. 2026) reports Alignment and Musicality. The complete system also participates in the Artificial Analysis Music with Vocals Leaderboard (Artificial Analy-sis 2026), a public website for blind human preference eval-uation of music generation systems. We report an archived, dated snapshot together with its evaluation count, Elo esti-mate, confidence interval, and rank interval. 
+
+# 5 Results and Analysis 
+
+5.1 Controlled FullDiT Ablations 
+
+All models in Table 2 use the selected 4-CFG tuple (1 , 2, 1) .Clean and synthetic tests share held-out targets; the language-model study fixes the upstream cache, caption/lyrics, length, seed, and sampling recipe. 
+
+Frame-Aligned Codec Conditioning and Full-Song Con-text All four controlled models receive the same eight Configuration Clean GT codec Synthetic corruption LM-generated codec Model EMDC Audio ctx. Caption + lyrics ViSQOL Log-mel L1 MR-STFT ViSQOL Log-mel L1 MR-STFT PQ Preference                                                    
+
+> ↑↓↓↑↓↓↑↑
+> M1 ✓Full ✓3.3388 1.1363 1.7806 3.2036 1.1842 1.7943 8.213 Ref.
+> M2a ✓30 s ✓2.8863 1.5381 1.8707 2.6868 2.0034 2.0190 6.011 0.0%
+> M2b ✓Full ✗3.3021 1.1865 1.8253 3.1838 1.2069 1.8327 8.135 0.0%
+> M3 ✗Full ✓3.4578 0.9248 1.7896 2.4342 2.2372 2.3346 8.122 30.3%
+
+Table 2: Matched 1.5B FullDiT configurations and controlled results across three codec-token conditions. ✓/✗ denote en-abled/disabled settings; preference is measured against M1. Arrows indicate the better direction, and bold marks the best value in each metric column.                                                                                                                        
+
+> Evaluator Metric Ours Suno 5.5 Suno 5 Mureka 8 Lyria 3 Pro MiniMax 2.6 SongBench Melody 7.2001 6.6939 6.9202 7.0660 7.0377 6.7245 Arrangement 7.3879 6.8406 7.0805 7.2601 7.1511 6.8167 Musicality 6.3678 5.8297 6.0096 6.2559 6.1810 5.8823 Vocal 7.6234 7.0981 7.3160 7.6248 7.4560 7.2513 Instrument 7.3517 7.0080 7.1487 7.2585 7.0583 6.8458 Mixing 7.3047 7.0332 7.1101 7.1433 7.0093 6.7397 Structure 6.9650 6.6158 6.7363 7.0237 7.0565 6.5637
+> SongEval Coherence 4.5094 4.2905 4.3278 4.3870 4.4673 4.2772 Musicality 4.4098 4.1547 4.1970 4.2875 4.3466 4.1781 Memorability 4.4663 4.2123 4.2473 4.3680 4.4153 4.2180 Clarity 4.3838 4.1246 4.1741 4.2431 4.3099 4.1448 Naturalness 4.2600 4.0046 4.0679 4.1767 4.2021 3.9919
+> Audiobox Content Enjoyment 7.7089 7.5289 7.5507 7.5921 7.6950 7.6844 Content Usefulness 7.9989 7.9535 7.8020 7.8634 7.8919 7.9578 Prod. Complexity 6.8774 6.6486 6.8118 6.8768 6.7561 6.7514 Production Quality 8.2986 8.2083 8.1411 8.1098 8.2780 8.2923
+> CMI-RM Alignment 2.1786 1.9216 1.9119 2.3089 2.0377 2.1546 Musicality 2.7611 2.3665 2.3756 2.7590 2.5280 2.6661
+
+Table 3: Automatic comparison on the common multilingual vocal-music set. Bold marks the best point estimate for each metric. frame-aligned codec streams; the matched M1–M2a com-parison isolates context span as the only varying factor. M1 and M2a both use EMDC, renderer-side text conditioning, and the same architecture, but M2a is restricted to a local 30-second context window during training. It underperforms M1 on every clean and corrupted metric, and its language-model-conditioned PQ drops from 8.213 to 6.011. M2a wins 0.0% of non-tied songs against M1. These results show that local training windows are inadequate for the renderer even when the upstream token plan is held fixed; non-causal full-song training context is central to acoustic realization. M2b replaces the renderer-side caption and lyric condi-tions with the learned null condition while retaining M1’s full-song context, EMDC, and architecture. M1 is better on all six paired objective metrics, and its language-model-conditioned PQ is 8.213 rather than 8.135. M2b wins 0.0% of non-tied songs against M1. Codec tokens remain the dom-inant local plan, but direct text access provides complemen-tary semantic and vocal information that is not fully trans-mitted through the finite-rate token sequence. 
+
+Error-Matched Distractor Conditioning M1 and M3 have identical 1.5B architecture, full-song context, renderer-side text conditioning, and 150k-step budget; only EMDC differs. EMDC’s advantage is concentrated at the imper-fect codec interface. Under synthetic corruption, M1 raises ViSQOL from 2.4342 to 3.2036, reduces log-mel L1 from 2.2372 to 1.1842, and reduces MR-STFT from 2.3346 to 1.7943. These three complementary measures agree in both direction and magnitude. With fixed language-model tokens, PQ also rises from 8.122 to 8.213. M1 wins 69.7% of non-tied songs against M3. EMDC therefore exchanges some clean-condition reconstruction for substantially stronger recovery from synthetic token errors and better rendering from the deployed interface. 
+
+5.2 Four-Way CFG Analysis 
+
+We fix M1 and denote each guidance tuple as 
+
+(scodec , s lyr , s cap ). Starting from (1 , 1, 1) , independently set-ting one scale to 0.5 or 2 yields seven configurations. The anchor reduces to fully conditioned output; (0 .5, 1, 1) and 
+
+(2 , 1, 1) reduce to 3-way codec/joint-text CFG; the remain-ing four require distinct lyric and caption increments. As Figure 2 shows, we submit the top three settings by au-tomatic PQ— (2 , 1, 1) , (1 , 2, 1) , and (1 , 1, 1) —to blind lis-Figure 2: Four-way CFG analysis: (a) Audiobox PQ screening of seven guidance tuples; (b) song-weighted selection shares from the blind three-way forced-choice evaluation of the three selected candidates. 
+
+Figure 3: Archived Artificial Analysis Music with Vocals Leaderboard snapshot used in this paper. The highlighted Lucky Dolphin entry, listed as Lucky-Dolphin-Music-WQ-0618, corresponds to our complete system. tening. The human three-way forced-choice evaluation se-lects (1 , 2, 1) with 51.0% of the song-weighted selections; we use this tuple for the controlled comparisons in Table 2. 
+
+5.3 Complete-System Results (RQ4) 
+
+Common-Set Automatic Evaluation Table 3 evaluates the production system, including upstream codec planning and the 8B renderer. Given user-provided captions and lyrics, our system outperforms the five commercial systems on 15 of 18 metrics: five of seven SongBench dimensions, all five SongEval dimensions, all four Audiobox dimensions, and CMI-RM Musicality. 
+
+External Public Blind Evaluation Our complete system appears as the highlighted Lucky Dolphin entry, listed as Lucky-Dolphin-Music-WQ-0618, in the archived snapshot in Figure 3. It receives 1,129 Elo from 2,289 samples, with point-estimate rank 3, rank interval 2–3, and a 95% Elo interval of ±14 . This external result measures end-to-end caption-and-lyrics-to-song preference and supports the com-plete system’s competitiveness. 
+
+# 6 Conclusion 
+
+We identify codec-interface exposure bias in hybrid mu-sic generation: an acoustic renderer trained on perfectly paired codec conditions is deployed on imperfect predic-tions from an upstream token language model. FullDiT re-sponds by combining frame-aligned multi-codebook codec embeddings, independently encoded captions and lyrics, and non-causal full-song context in one conditional flow gener-ator. EMDC adds error-rate-matched, geometry-guided in-dependent substitutions during training, and 4-CFG sepa-rates codec, lyric, and caption increments at inference time. Controlled experiments expose a trade-off. EMDC produces large, consistent gains across ViSQOL, log-mel, and MR-STFT under synthetic corruption, alongside higher produc-tion quality and listener preference with fixed language-model tokens. Full-song context and renderer-side text con-ditioning both contribute under matched ablation, while the 4-CFG study selects (1 , 2, 1) as the listener-preferred guid-ance tuple. Together, the component and complete-system evaluations show that our method preserves the planning benefits of discrete tokens while improving the robustness of acoustic realization. 
+
+# References 
+
+Agostinelli, A.; Denk, T. I.; Borsos, Z.; Engel, J.; Verzetti, M.; Caillon, A.; Huang, Q.; Jansen, A.; Roberts, A.; Tagliasac-chi, M.; Sharifi, M.; Zeghidour, N.; and Frank, C. 2023. MusicLM: Generating Music From Text. arXiv preprint arXiv:2301.11325 .Artificial Analysis. 2026. Music with Vocals Leaderboard. https://artificialanalysis.ai/music/leaderboard/vocals. Ac-cessed 2026-07-20; the manuscript reports a dated archived snapshot. Bai, Y.; Chen, H.; Chen, J.; Chen, Z.; Deng, Y.; Dong, X.; Hantrakul, L.; Hao, W.; Huang, Q.; Huang, Z.; Jia, D.; La, F.; Le, D.; Li, B.; Li, C.; Li, H.; Li, X.; Liu, S.; Lu, W.-T.; Lu, Y.; Shaw, A.; Spijkervet, J.; Sun, Y.; Wang, B.; Wang, J.-C.; Wang, Y.; Wang, Y.; Xu, L.; Yang, Y.; Yao, C.; Zhang, S.; Zhang, Y.; Zhang, Y.; Zhao, H.; Zhao, Z.; Zhong, D.; Zhou, S.; and Zou, P. 2024. Seed-Music: A Unified Framework for High Quality and Controlled Music Generation. arXiv preprint arXiv:2409.09214 .Bengio, S.; Vinyals, O.; Jaitly, N.; and Shazeer, N. 2015. Scheduled Sampling for Sequence Prediction with Recur-rent Neural Networks. In Advances in Neural Information Processing Systems , volume 28. Curran Associates, Inc. Chinen, M.; Lim, F. S. C.; Skoglund, J.; Gureev, N.; O’Gorman, F.; and Hines, A. 2020. ViSQOL v3: An Open Source Production Ready Objective Speech and Audio Met-ric. In 2020 Twelfth International Conference on Quality of Multimedia Experience , 1–6. Chiu, C.-C.; Qin, J.; Zhang, Y.; Yu, J.; and Wu, Y. 2022. Self-Supervised Learning with Random-Projection Quan-tizer for Speech Recognition. In Proceedings of the 39th International Conference on Machine Learning , volume 162 of Proceedings of Machine Learning Research , 3915–3924. PMLR. Copet, J.; Kreuk, F.; Gat, I.; Remez, T.; Kant, D.; Synnaeve, G.; Adi, Y.; and Défossez, A. 2023. Simple and Control-lable Music Generation. In Advances in Neural Information Processing Systems , volume 36, 47704–47720. Curran As-sociates, Inc. Défossez, A.; Copet, J.; Synnaeve, G.; and Adi, Y. 2023. High Fidelity Neural Audio Compression. Transactions on Machine Learning Research .Dhariwal, P.; Jun, H.; Payne, C.; Kim, J. W.; Radford, A.; and Sutskever, I. 2020. Jukebox: A Generative Model for Music. arXiv preprint arXiv:2005.00341 .Evans, Z.; Carr, C.; Taylor, J.; Hawley, S. H.; and Pons, J. 2024. Fast Timing-Conditioned Latent Audio Diffusion. In 
+
+Proceedings of the 41st International Conference on Ma-chine Learning , volume 235 of Proceedings of Machine Learning Research , 12652–12665. PMLR. Gong, J.; Zhao, S.; Wang, S.; Xu, S.; and Guo, J. 2025. ACE-Step: A Step Towards Music Generation Foundation Model. 
+
+arXiv preprint arXiv:2506.00045 .Google. 2026. Lyria 3 Expands to More Google Products and Adds More Features. https://blog.google/innovation-and-ai/technology/ai/lyria-3-pro/. Product release, accessed 2026-07-20. Gulati, A.; Qin, J.; Chiu, C.-C.; Parmar, N.; Zhang, Y.; Yu, J.; Han, W.; Wang, S.; Zhang, Z.; Wu, Y.; and Pang, R. 2020. Conformer: Convolution-Augmented Transformer for Speech Recognition. In Interspeech 2020 , 5036–5040. Ho, J.; Saharia, C.; Chan, W.; Fleet, D. J.; Norouzi, M.; and Salimans, T. 2022. Cascaded Diffusion Models for High Fidelity Image Generation. Journal of Machine Learning Research , 23(47): 1–33. Ho, J.; and Salimans, T. 2022. Classifier-Free Diffusion Guidance. arXiv preprint arXiv:2207.12598 .Huang, Q.; Park, D. S.; Wang, T.; Denk, T. I.; Ly, A.; Chen, N.; Zhang, Z.; Zhang, Z.; Yu, J.; Frank, C.; Engel, J.; Le, Q. V.; Chan, W.; Chen, Z.; and Han, W. 2023. Noise2Music: Text-Conditioned Music Generation with Diffusion Models. 
+
+arXiv preprint arXiv:2302.03917 .Lam, M. W. Y.; Tian, Q.; Li, T.; Yin, Z.; Feng, S.; Tu, M.; Ji, Y.; Xia, R.; Ma, M.; Song, X.; Chen, J.; Wang, Y.; and Wang, Y. 2023. Efficient Neural Music Generation. In Advances in Neural Information Processing Systems , volume 36, 17450– 17463. Lei, S.; Xu, Y.; Lin, Z.; Zhang, H.; Tan, W.; Chen, H.; Zhang, Y.; Yang, C.; Zhu, H.; Wang, S.; Wu, Z.; and Yu, D. 2025. LeVo: High-Quality Song Generation with Multi-Preference Alignment. In Advances in Neural Information Processing Systems , volume 38. Lipman, Y.; Chen, R. T. Q.; Ben-Hamu, H.; Nickel, M.; and Le, M. 2023. Flow Matching for Generative Modeling. In 
+
+The Eleventh International Conference on Learning Repre-sentations .Liu, A. H.; Wang, Q.; Gong, Y.; and Glass, J. 2024. ACloser Look at Neural Codec Resynthesis: Bridging the Gap between Codec and Waveform Generation. arXiv preprint arXiv:2410.22448 . NeurIPS 2024 Audio Imagination Work-shop. Ma, Y.; Xia, H.; Gao, H.; Chen, W.; Ye, Y.; Yang, Y.; Chang, S.; Ding, M.; Li, Y.; Yuan, R.; Dixon, S.; and Bene-tos, E. 2026. CMI-RewardBench: Evaluating Music Reward Models with Compositional Multimodal Instruction. arXiv preprint arXiv:2603.00610 . Accepted by ICML 2026. MiniMax. 2026. MiniMax Music 2.6: Four Stories We Want to Tell. https://www.minimax.io/news/music-26. Product release, accessed 2026-07-20. Mureka. 2026. Mureka API Platform Changelog. https:// platform.mureka.ai/docs/en/changelog.html. Documents the enhanced mureka-8 release; accessed 2026-07-20. Ning, Z.; Chen, H.; Jiang, Y.; Hao, C.; Ma, G.; Wang, S.; Yao, J.; and Xie, L. 2025. DiffRhythm: Blazingly Fast and Embar-rassingly Simple End-to-End Full-Length Song Generation with Latent Diffusion. arXiv preprint arXiv:2503.01183 .Peebles, W.; and Xie, S. 2023. Scalable Diffusion Models with Transformers. In Proceedings of the IEEE/CVF Inter-national Conference on Computer Vision , 4195–4205. San Roman, R.; Adi, Y.; Deleforge, A.; Serizel, R.; Synnaeve, G.; and Défossez, A. 2023. From Discrete Tokens to High-Fidelity Audio Using Multi-Band Diffusion. In Advances in Neural Information Processing Systems , volume 36. Shulman, M. 2026. Suno v5.5: More Expressive. More You. https://suno.com/blog/v5-5. Product release, accessed 2026-07-20. Suno. 2025. Introducing v5. https://suno.com/release-notes/introducing-v5-the-world-s-best-music-model. Prod-uct release note, accessed 2026-07-20. Tjandra, A.; Wu, Y.-C.; Guo, B.; Hoffman, J.; Ellis, B.; Vyas, A.; Shi, B.; Chen, S.; Le, M.; Zacharov, N.; Wood, C.; Lee, A.; and Hsu, W.-N. 2025. Meta Audiobox Aesthetics: Uni-fied Automatic Quality Assessment for Speech, Music, and Sound. arXiv preprint arXiv:2502.05139 .Wu, D.; Lei, S.; Tan, W.; Li, G.; Wang, Y.; Zhang, H.; Zuo, L.; and Wu, Z. 2026. SongBench: A Fine-Grained Multi-Aspect Benchmark for Song Quality Assessment. arXiv preprint arXiv:2604.25937 .Yamamoto, R.; Song, E.; and Kim, J.-M. 2020. Paral-lel WaveGAN: A Fast Waveform Generation Model Based on Generative Adversarial Networks with Multi-Resolution Spectrogram. In 2020 IEEE International Conference on Acoustics, Speech and Signal Processing , 6199–6203. Yang, C.; Wang, S.; Chen, H.; Tan, W.; Yu, J.; and Li, H. 2025. SongBloom: Coherent Song Generation via Inter-leaved Autoregressive Sketching and Diffusion Refinement. In Advances in Neural Information Processing Systems , vol-ume 38. Yang, D.; Xie, Y.; Yin, Y.; Wang, Z.; Yi, X.; Zhu, G.; Weng, X.; Xiong, Z.; Ma, Y.; Cong, D.; Liu, J.; Huang, Z.; Ru, J.; Huang, R.; Wan, H.; Wang, P.; Yu, K.; Wang, H.; Liang, L.; Zhuang, X.; Wang, Y.; Wang, D.; Guo, H.; Cao, J.; Ju, Z.; Liu, S.; Cao, Y.; Weng, H.; and Zou, Y. 2026. HeartMuLa: A Family of Open Sourced Music Foundation Models. arXiv preprint arXiv:2601.10547 .Yao, J.; Ma, G.; Xue, H.; Chen, H.; Hao, C.; Jiang, Y.; Liu, H.; Yuan, R.; Xu, J.; Xue, W.; Liu, H.; and Xie, L. 2025. SongEval: A Benchmark Dataset for Song Aesthetics Eval-uation. arXiv preprint arXiv:2505.10793 .Zeghidour, N.; Luebs, A.; Omran, A.; Skoglund, J.; and Tagliasacchi, M. 2022. SoundStream: An End-to-End Neural Audio Codec. IEEE/ACM Transactions on Audio, Speech, and Language Processing , 30: 495–507. Zhang, C.; Ma, Y.; Chen, Q.; Wang, W.; Zhao, S.; Pan, Z.; Wang, H.; Ni, C.; Nguyen, T. H.; Zhou, K.; Jiang, Y.; Tan, C.; Gao, Z.; Du, Z.; and Ma, B. 2025a. InspireMusic: In-tegrating Super Resolution and Large Language Model for High-Fidelity Long-Form Music Generation. arXiv preprint arXiv:2503.00084 .Zhang, Y.; Li, M.; Long, D.; Zhang, X.; Lin, H.; Yang, B.; Xie, P.; Yang, A.; Liu, D.; Lin, J.; Huang, F.; and Zhou, J. 2025b. Qwen3 Embedding: Advancing Text Embedding and Reranking Through Foundation Models. arXiv preprint arXiv:2506.05176 .Zhao, W.; Bai, L.; Rao, Y.; Zhou, J.; and Lu, J. 2023. UniPC: A Unified Predictor-Corrector Framework for Fast Sampling of Diffusion Models. In Advances in Neural Information Processing Systems , volume 36, 49842–49869. Curran As-sociates, Inc.

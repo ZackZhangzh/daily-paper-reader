@@ -1,0 +1,1284 @@
+Title: NewtonGS: Physics-Structured Object-Level Neural Newtonian Dynamics for Gaussian Scene Animation
+
+URL Source: https://arxiv.org/pdf/2608.07598v1
+
+Published Time: Tue, 11 Aug 2026 00:04:56 GMT
+
+Number of Pages: 40
+
+Markdown Content:
+# NEWTON GS: P HYSICS -S TRUCTURED OBJECT -L EVEL NEURAL 
+
+# NEWTONIAN DYNAMICS FOR GAUSSIAN SCENE ANIMATION 
+
+Lianlei Shan Feiyang Ye ∗ Yan Chen Yong Wu †
+
+## ABSTRACT 
+
+Animating objects in a static 3D Gaussian scene requires an explicit object-level dynamic state and a controllable model of object motion. Existing dynamic Gaussian methods primarily reconstruct time-varying scenes or simulate deformation, rather than provide compact object states for direct control. To address this gap, we present NewtonGS, a physics-structured framework for object-level state rollout and Gaussian scene animation. NewtonGS represents each object with a 22-dimensional state covering pose, linear and angular velocity, anisotropic scale and its rate, mass, and contact properties. Its Gaussian Neural Newtonian Dynamics (Gaussian-NND) model combines analytic translation, quaternion kinematics, gravity, damping, and scale-restoration dynamics with learned continuous and contact residuals. A discrete event map handles floor contact. Predicted poses and scales define a shared affine transformation that updates the means and covariances of all Gaussians associated with each object. We construct two procedurally generated datasets: State-32 for state-rollout evaluation and Gaussian-32 for state-to-Gaussian transformation. On both the in-distribution and velocity-range-shift splits of State-32, NewtonGS achieves lower trajectory RMSE, final displacement error, and velocity RMSE than five analytic baselines. Experiments on Gaussian-32 further demonstrate effective conversion from predicted states to animated Gaussian objects. 
+
+## 1 Introduction 
+
+3D Gaussian Splatting (3DGS) represents a scene with explicit three-dimensional primitives and supports high-quality differentiable rendering at interactive rates (Kerbl et al., 2023). Recent Gaussian-based generation and reconstruction methods have made it increasingly efficient to obtain static 3D assets from textual, visual, or multi-view inputs (Tang et al., 2024b,a; Xu et al., 2024). A static Gaussian scene provides a static description of an object’s geometry and appearance. It contains neither an explicit dynamic state nor a rule that determines how the object should evolve over time. Controlling this evolution requires an explicit representation of the object’s dynamic state, including its position, orientation, velocity, scale, and contact properties, together with a model that determines how these variables change over time. Such control is important for Gaussian scene animation, interactive content creation, and physics-guided motion. Several lines of work extend Gaussians beyond a static scene. Dynamic and 4D Gaussian methods represent time-varying geometry and appearance (Luiten et al., 2024; Wu et al., 2024; Yang et al., 2024), while physics-aware approaches connect visual representations with simulation, material models, or learned motion controls (Yuan et al., 2026; Xie et al., 2024; Zhang et al., 2024). These advances provide flexible ways to reconstruct, generate, or simulate dynamic content. However, these approaches are primarily designed to reconstruct dynamic appearance or simulate deformation, rather than to propose an object-level state for controlling the motion of an existing Gaussian object. Such a state is important for applications that require predictable and editable object motion, including scene animation, interactive content creation, and physics-guided control, because it allows motion variables to be specified and evaluated directly. This motivates us to study how to represent an existing Gaussian object with an explicit dynamic state, evolve that state over time, and map the predicted motion back to the Gaussian scene. Addressing this problem presents three main challenges. First, a large set of Gaussians must be summarized by a compact object-level state whose variables retain clear geometric and dynamical meanings. Second, the state evolution 
+
+Email: {shanlianlei,yefeiyang,chenyan12,wuyong5}@lixiang.com. 
+
+> ∗
+
+Corresponding author 
+
+> †
+
+Project lead arXiv:2608.07598v1 [cs.CV] 6 Aug 2026 must capture both continuous motion and discrete events. Translation, rotation, and scale change evolve continuously, whereas contact can produce an instantaneous change in velocity. A purely analytic model provides useful structure but may not account for model mismatch and unmodeled effects, while an unconstrained neural predictor makes the resulting motion more difficult to control and interpret (Chen et al., 2018, 2021). Third, the predicted object state must update all Gaussians coherently while preserving the object’s internal structure, without assigning a separate trajectory to each primitive. We introduce NewtonGS, a structured framework for object-level state rollout in Gaussian scenes. At its core, we propose Gaussian Neural Newtonian Dynamics (Gaussian-NND), a structured hybrid dynamics model that represents each Gaussian object with a 22-dimensional state containing pose, motion, anisotropic scale, and contact-related variables. Gaussian-NND combines explicit gravity, damping, quaternion, and scale dynamics with learned continuous and contact residuals. Both residual branches are initialized to produce zero outputs, so the initial rollout follows the analytic model. Contact is handled as a discrete horizontal-floor event outside the continuous solver. At each timestamp, the predicted pose and scale define a shared transformation for all Gaussian means and covariances belonging to the object. We evaluate NewtonGS on State-32, a synthetic benchmark comprising 32 procedural motion families. Given identical labeled initial states and timestamps, NewtonGS achieves the lowest observed trajectory RMSE, final-displacement error, and velocity RMSE among five hand-specified analytic baselines on both the in-distribution and velocity-range-shift validation splits. We further apply the predicted trajectories to Gaussian objects to illustrate the deterministic state-to-Gaussian transformation. Our contributions are threefold: • We introduce NewtonGS, an object-level framework that formulates Gaussian object animation as the rollout of an explicit 22-dimensional state followed by a deterministic, shared transformation of the object’s Gaussian primitives. • We develop Gaussian-NND, a structured hybrid dynamics model that combines continuous quaternion and scale evolution, a discrete horizontal-floor contact event, and zero-output-initialized learned residuals. • We evaluate NewtonGS across 32 procedural motion families under both in-distribution and velocity-range-shift settings. NewtonGS achieves lower trajectory, endpoint, and velocity errors than five analytic baselines, and its predicted states can directly animate appearance-conditioned Gaussian objects. 
+
+## 2 Related Work 
+
+2.1 Gaussian Generation and Dynamic Representation 
+
+Diffusion-guided methods such as DreamFusion and Magic3D established text-driven optimization of static 3D repre-sentations (Poole et al., 2022; Lin et al., 2023). Following the introduction of 3DGS (Kerbl et al., 2023), DreamGaussian, LGM, and GRM improved the efficiency of generating or reconstructing canonical Gaussian assets (Tang et al., 2024b,a; Xu et al., 2024). These methods supply the geometry and appearance of an initial scene, but do not by themselves specify how the resulting object should move. Dynamic 3D Gaussians and 4D Gaussian Splatting (4DGS) reconstruct time-varying scenes using persistent moving primitives, deformation fields, or native space–time representations (Luiten et al., 2024; Wu et al., 2024; Yang et al., 2024). DreamGaussian4D, Align Your Gaussians, PLA4D, STP4D, and Splat4D further combine dynamic representations with video or multi-view priors for 4D generation (Ren et al., 2023; Ling et al., 2024; Miao et al., 2024; Deng et al., 2025; Yin et al., 2025). These representations are well suited to flexible local deformation and appearance change. NewtonGS instead starts from an existing Gaussian object and assigns it one compact object-level state, favoring a coherent object frame and direct state-space control over independently predicted primitive motion. 
+
+2.2 Structured and Physics-Aware Dynamics 
+
+Neural Ordinary Differential Equations (ODEs) provide a continuous-time formulation for learned state evolution (Chen et al., 2018), while Hamiltonian and Lagrangian neural networks incorporate mechanics into their parameteriza-tion (Greydanus et al., 2019; Cranmer et al., 2020). Neural event models extend continuous dynamics with discrete state transitions (Chen et al., 2021). Most directly related, NewtonGen introduces Neural Newtonian Dynamics to predict an image-space physical state that guides video generation (Yuan et al., 2026). Its formulation motivates structured state evolution, although the predicted state ultimately serves as a control signal for a video generator. 2Physics-aware Gaussian methods attach simulation or material models to explicit primitives. PhysGaussian couples 3D Gaussians with the Material Point Method, PhysDreamer estimates material behavior from video priors, and OmniPhysGS represents diverse constitutive responses (Xie et al., 2024; Zhang et al., 2024; Lin et al., 2025). They are designed for spatially varying or continuum deformation. NewtonGS targets an object-level regime: it represents translation, rotation, aggregate scale, and simple contact in a compact object-level state defined in 3D space, directly applies that state to a persistent Gaussian scene, and uses learned residuals only to correct a structured analytic update. 
+
+## 3 Method 
+
+Figure 1: Overview of NewtonGS. Given an object-centric Gaussian scene, we represent each dynamic object by a compact state and predict its evolution with a structured hybrid Gaussian-NND. Continuous motion is integrated by RK4, while floor contact and the nonlinear part are handled by a discrete response followed by a learned residual. The predicted pose and scale are then converted into a shared affine transformation for all Gaussians belonging to the object. 
+
+3.1 Overview 
+
+We denote the initial Gaussian scene by the set G0 = {(g0 
+
+> i
+
+, Σ0 
+
+> i
+
+)}Ni=1 , where g0 
+
+> i
+
+and Σ0 
+
+> i
+
+denote the mean and covariance of the i-th Gaussian. We write only the geometric attributes needed by the dynamics; color, opacity, and other appearance attributes remain attached to each primitive. We associate each dynamic object k with an index set Ck ⊆ { 1, . . . , N }
+
+and keep all unassigned background Gaussians static. NewtonGS first summarizes each object by a compact state Zk 
+
+> 0
+
+,predicts its states at requested timestamps t1: T , and maps the predicted object motion back to its Gaussians: 
+
+G0 → {C k, Z k 
+
+> 0
+
+}Kk=1 → { Zk 
+
+> 1: T
+
+}Kk=1 → G1: T . (1) As illustrated in Fig. 1, the method has three main components: an object-centric Gaussian state, a hybrid dynamics model that combines an analytic prior with learned residuals, and a deterministic state-to-Gaussian transformation. Because the dynamics operate on one state per object, the network predicts one object trajectory instead of one path per primitive. The Gaussian scene remains explicit and can be rendered from any specified camera. 3We distinguish the general inference pipeline from the path used to train the dynamics. At inference, object grouping together with a supplied or lifted state provides Zk 
+
+> 0
+
+, Gaussian-NND rolls each state forward, and the resulting transformations produce G1: T . In the reported state benchmark, the model takes labeled Z0 as input and uses future states only for supervision. Grouping, state lifting, and rendering are not jointly optimized. 
+
+3.2 Object-Centric Gaussian State Representation 
+
+For each object k, we use the 22-dimensional state 
+
+Zk = [ pk, qk, vk, ωk, sk, uk, m k, e k, μ k], uk = ˙ sk, (2) where pk ∈ R3 and qk ∈ H are the object center and unit orientation quaternion; vk, ωk ∈ R3 are its linear and angular velocities; and sk, uk ∈ R3 describe aggregate anisotropic scale and its rate. The remaining scalars are mass 
+
+mk, restitution ek, and tangential attenuation μk. These material channels are supplied with the initial state and remain constant during a rollout; the current model does not estimate them from appearance. The state describes an object aggregate rather than an individual Gaussian: pk is the cluster center, qk specifies the aggregate axes, and sk records scale independently of primitive covariances. A unit quaternion avoids the singularities of Euler angles (Shoemake, 1985). We normalize it during integration and treat q and −q as equivalent in both training and evaluation. Under the implemented Hamilton-product convention, ˙q = 12 q ⊗ [0 , ω], so ω is expressed in the corresponding body-coordinate convention. The 22-dimensional representation uses aggregate scale to cover size-changing and simple deformation trajectories; it does not introduce a separate high-dimensional deformation code. When a Gaussian object is provided, a deterministic lifting interface obtains its pose and scale from the assigned primitives. Motion rates can be estimated by finite differences when multiple frames are available; for a single frame, they must be supplied by the user or initialized to zero. Material values are likewise supplied as metadata or set to fixed defaults. The reported supervised experiments instead read the labeled initial state directly, separating dynamics evaluation from grouping and state-estimation errors. 
+
+3.3 Structured Hybrid Gaussian-NND Continuous dynamics. Between contacts, Gaussian-NND evolves the object state with a structured vector field. The analytic part encodes translation, quaternion kinematics, gravity, damping, and scale restoration. A neural residual accounts for dynamics not captured by this prior. Specifically, the continuous network produces 
+
+[rv , rω , rs] = tanh fθ (Z), fθ : R22 → R9, (3) where the three outputs are bounded corrections to linear, angular, and scale acceleration, respectively. The resulting dynamics are 
+
+˙p = v,
+
+˙q = 12 q ⊗ [0 , ω],
+
+˙v = g − | cv |v/m + αrv ,
+
+˙ω = −| cω |ω + αrω ,
+
+˙s = u,
+
+˙u = −| ks|(s − 1) − | cs|u + αrs,
+
+˙m = 0 , ˙e = 0 , ˙μ = 0 ,
+
+(4) where g = (0 , −9.81 , 0) , and cv , c ω , k s, c s, and α are learned global coefficients. The residuals are acceleration corrections: rv is not divided by mass, and rω is not divided by an inertia tensor. The final layer of fθ is initialized to zero, so the initial model follows the analytic prior while the residual is learned from data. We evaluate the complete right-hand side, including fθ , at the intermediate stages of fixed-substep RK4 integration (Hairer et al., 1993). 
+
+Contact event. Continuous integration alone does not represent the discontinuous velocity change at impact. We therefore use a separate event map for contact with the horizontal floor y = 0 . Let Z− be the state after a continuous substep, define the tangential velocity v−∥ = [ v− 
+
+> x
+
+, v − 
+
+> z
+
+]⊤, and use the proxy vertical extent ry = max( |s− 
+
+> y
+
+|, 10 −3). A contact is detected when 
+
+p− 
+
+> y
+
+− ry ≤ 0 and v− 
+
+> y
+
+< 0. (5) For a detected hit, the analytic response first gives 
+
+˜p+ 
+
+> y
+
+= ry , ˜v+ 
+
+> y
+
+= −ev − 
+
+> y
+
+,
+
+˜v+ 
+
+> ∥
+
+= (1 − μ)v−∥ , ˜ω+ = (1 − 0.5μ)ω−. (6) 4Algorithm 1 Forward Prediction Path 
+
+Require: Labeled initial state Z0, requested timestamps ti, and object Gaussians G0
+
+Ensure: Predicted object states Zi and, optionally, transformed Gaussian proxies Gi 
+
+> 1:
+
+Initialize Z ← Z0 and project its quaternion, scale, and material channels onto their valid ranges  
+
+> 2:
+
+for each frame interval [ti, t i+1 ] do  
+
+> 3:
+
+Partition [ti, t i+1 ] into RK4 substeps  
+
+> 4:
+
+for each RK4 substep do  
+
+> 5:
+
+Evaluate the structured vector field, advance Z by one RK4 step, and project it onto the valid state domain  
+
+> 6:
+
+if the horizontal-floor event is triggered then  
+
+> 7:
+
+Apply the analytic collision response and bounded residual correction, then reproject Z 
+
+> 8:
+
+end if  
+
+> 9:
+
+end for  
+
+> 10:
+
+Store the projected state as Zi+1  
+
+> 11:
+
+end for  
+
+> 12:
+
+if Gaussian proxy prediction is required then  
+
+> 13:
+
+for each requested timestamp ti do  
+
+> 14:
+
+Compute the pose and scale relative to Z0 and construct the corresponding affine map Ai 
+
+> 15:
+
+Apply Ai to all Gaussians in G0 and store the result as Gi 
+
+> 16:
+
+end for  
+
+> 17:
+
+end if  
+
+> 18:
+
+return Zi and, if required, Gi
+
+All state channels not listed above are copied from Z−. A contact-specific network then predicts a bounded correction, 
+
+[∆ v, ∆ω] = αimp tanh hϕ( ˜Z+), hϕ : R22 → R6, (7) and sets v+ = ˜ v+ +∆ v and ω+ = ˜ ω+ +∆ ω. Here αimp is a learned global residual scale. As with fθ , the output layer of hϕ is initialized to zero, and the contact residual is evaluated only for detected hits. We use distinct functions because they model different operations: fθ corrects a continuous acceleration field, whereas hϕ corrects the instantaneous post-impact velocity. The state variable μ directly attenuates tangential and angular velocity; it is not a calibrated Coulomb-friction coefficient. 
+
+Hybrid rollout. For each requested frame interval, we divide time into fixed substeps. Each substep first applies RK4 to Eq. (4), projects the quaternion and bounded state channels back to their valid domains, and then tests the contact condition. If a hit occurs, the analytic response and hϕ are applied before the next substep. The projected state is stored at each requested timestamp. The evaluated event model treats each rollout as one object interacting with a horizontal floor; wall, slope, and pairwise-object contacts are not modeled by the current event map. 
+
+3.4 State-to-Gaussian Transformation 
+
+The predicted object state is converted into a shared transformation for every i ∈ C k. For clarity, we omit the object index below. Relative to the initial state, define 
+
+ρt = st ⊘ s0, Rt = R(qt),
+
+R0 = R(q0), At = Rt diag( ρt)R⊤ 
+
+> 0
+
+, (8) where ⊘ denotes element-wise division and R(·) converts a unit quaternion into its corresponding rotation matrix. The Gaussian mean and covariance then evolve as 
+
+gti = At(g0 
+
+> i
+
+− p0) + pt, Σti = AtΣ0 
+
+> i
+
+A⊤ 
+
+> t
+
+. (9) Color, opacity, and semantic attributes remain attached to the corresponding primitive, and background Gaussians remain unchanged. This update has three useful properties. First, the initial and predicted rotation matrices together with the relative scale ratio give A0 = I for a consistent initial state, since ρ0 = 1 and R0R⊤ 
+
+> 0
+
+= I. Second, centering at p0 separates object translation from rotation and scaling. Third, covariance congruence preserves positive semidefiniteness. The number of dynamics parameters and predicted trajectories is independent of the number of Gaussians, although applying Eq. (9) and rendering still scale linearly with the number of primitives. 5Split Method Traj ↓ FDE ↓ Vel ↓ Quat ↓ Scale ↓ Plane Viol. ↓                                                                        
+
+> ID Hold-Z03.4104 3.9595 4.9891 0.3917 0.0256 0.062500 Const-Vel-SE(3) 6.0296 8.5449 4.9891 0.0815 0.1386 0.047335 Damped-Vel-SE(3) 4.7956 6.5425 4.1143 0.2590 0.1043 0.047339 Gravity-Bounce-SE(3) 3.3238 4.1197 3.7467 0.2111 0.1386 0.001189 Physics-Prior-SE(3) 3.2854 4.1143 3.7342 0.2330 0.2893 0.003909
+> NewtonGS (Ours) 3.1669 3.8576 3.6469 0.1956 0.1626 0.002006 OOD Hold-Z04.3073 4.8948 5.7827 0.3938 0.0256 0.062500 Const-Vel-SE(3) 7.0243 9.8954 5.7827 0.0790 0.1387 0.047162 Damped-Vel-SE(3) 5.4222 7.5384 4.5955 0.2799 0.1044 0.047164 Gravity-Bounce-SE(3) 3.9078 4.8428 4.1008 0.2123 0.1387 0.001103 Physics-Prior-SE(3) 3.8557 4.8298 4.0991 0.2386 0.2894 0.003620
+> NewtonGS (Ours) 3.7377 4.5762 4.0059 0.2023 0.1608 0.001905
+
+Table 1: State prediction results on the in-distribution (ID) and velocity-range-shift (OOD) splits of State-32. NewtonGS results are averaged over three independent runs, and its maximum across-run standard deviation is 0.0032. The analytic baselines are deterministic and seed-independent. Bold denotes the lowest mean error for each ranked metric within a split. Plane Viol. is reported as a diagnostic metric and is not ranked.                                           
+
+> Method Traj ↓FDE ↓Vel ↓Quat ↓Scale ↓Plane Viol. ↓
+> Hold-Z02.6304 3.2268 4.8566 0.4132 0.0875 0.312500 Gravity-Bounce-SE(3) 2.6747 3.3534 3.5683 0.1641 0.3666 0.010204 Physics-Prior-SE(3) 2.6586 3.3399 3.5669 0.1720 0.3205 0.010204 L4GM video-to-4DGS 2.9884 3.6727 2.9919 0.7676 0.3787 1.000000
+> NewtonGS (Ours) 2.5751 3.2052 3.5116 0.1547 0.3129 0.010204
+
+Table 2: Exploratory cross-representation comparison with L4GM on the fixed Same-32 subset. NewtonGS results are averaged over three independent runs, with a maximum standard deviation of 0.0132. The analytic baselines and L4GM evaluation are deterministic. Bold denotes the lowest mean error in each ranked metric, while Plane Viol. is diagnostic and unranked. 
+
+3.5 Training and Inference 
+
+The dynamics model is trained from labeled state sequences. Given Z0 and t1: T , it performs the same unrolled hybrid integration used at inference; ground-truth future states are loss targets and are never fed into the rollout. The training objective is 
+
+L = Lstate + 0 .05 Lpen + 0 .01 Lsmooth , (10) with 
+
+Lstate = Lp + 0 .25 Lq + 0 .5Lv + 0 .2Lω + 0 .2Ls + 0 .1L ˙s. (11) 
+
+Lp, Lq , Lv , Lω , Ls, and L ˙s constrain the object’s position, orientation, linear velocity, angular velocity, scale, and scale rate, respectively; Lpen penalizes floor penetration, while Lsmooth encourages temporal smoothness of the position and scale trajectories. Due to the page limitation, detailed formulations are provided in the Appendix. All non-orientation terms are component-wise mean squared errors, while Lq = 1 − |⟨ ˆq, q⟩| 2 accounts for the quaternion sign ambiguity. The penetration term is E[ReLU( |sy | − py )2]. The smoothness term penalizes Lpen second temporal differences of position and, with relative weight 0.1, scale. It is applied across the full sequence, including contact intervals. The reported objective contains no direct loss on (m, e, μ ), Gaussian trajectories, rendered RGB, depth, masks, or Gaussian correspondences. At inference, the predicted states are passed through Eq. (9) to obtain the dynamic Gaussian scene. The overall inference phase is shown in Algorithm 1. 
+
+## 4 Experiments 
+
+In this section, we evaluate the proposed NewtonGS. 
+
+4.1 Datasets 
+
+Procedurally generated benchmarks have been widely used to provide controlled physical interactions, exact state supervision, and systematic generalization splits Bakhtin et al. (2019); Bear et al. (2021). Following this evaluation 6Method Evaluated output N PIS p ↑ BC p ↑ MS p ↑                                                       
+
+> PhyT2V (Xue et al., 2025) released single-view video 12 0.6914 ±0.0770 0.8112 ±0.1967 0.6862 ±0.2120 Sora (Brooks et al., 2024) released single-view video 12 0.6185 ±0.1003 0.5967 ±0.2175 0.5035 ±0.2270 Veo 3 (Google DeepMind, 2025) released single-view video 12 0.6458 ±0.0891 0.7911 ±0.2117 0.6204 ±0.2170 Wan (Wan Team, 2025) seeded single-view video 12 0.7109 ±0.0912 0.8727 ±0.1852 0.7678 ±0.2350
+> NewtonGS (Ours) rendered 4DGS view 12 0.7322 ±0.0426 0.9231 ±0.0720 0.8679 ±0.0953
+
+Table 3: Common-12 proxy comparison with video-generation methods across 12 coarsely aligned motion categories. Values are mean ± sample s.d. over one video per category. NewtonGS and Wan use fixed-seed generations, while PhyT2V, Sora, and Veo use their released videos. paradigm, we use two synthetic datasets to evaluate NewtonGS. State-32 is the primary benchmark for object-state rollout, whereas Gaussian-32 evaluates the state-to-Gaussian transformation and cross-representation interfaces. 
+
+Complete generation procedures and details are provided in the Appendix. 
+
+State-32. State-32 contains 1,048,576 training sequences and 131,072 sequences in each of the in-distribution (ID) and out-of-distribution (OOD) evaluation splits. Each sequence consists of 64 object states sampled at 24Hz and belongs to one of 32 procedurally defined motion families, whose labels are not provided to the model. The ID split is sampled from the same parameter ranges as the training set. The OOD split preserves the motion families and all non-velocity parameter ranges, but increases the maximum horizontal, vertical, and angular velocities to 1.6 times their corresponding training limits. State-32 contains state trajectories only and provides no appearance, Gaussian, or rendering supervision. 
+
+Gaussian-32. Gaussian-32 contains 320 appearance-conditioned synthetic sequences obtained by combining 10 object–scene templates with the same 32 motion families used in State-32. Each sequence provides Gaussian primitives, camera parameters, and rendering information. We additionally define a fixed Same-32 subset containing one sequence from each motion family for comparisons with methods that operate on videos or independently reconstructed 4D Gaussian representations. The Same-32 subset is separate from the ID and OOD splits of State-32 and is not used to train NewtonGS. 
+
+4.2 Implementation Details Training setup. The State-32 experiments use labeled initial states Z0, whereas Gaussian grouping and state lifting are used only for Gaussian-32. We train models for 100 epochs with three independent runs using seeds 7301, 7302, and 7303, respectively. The model has 81,429 trainable parameters and is trained solely with the state-space objective in Eq. (10), without Gaussian-level or rendering supervision. Checkpoints are selected on a held-out ID validation set and evaluated on the ID and OOD test sets. Additional training details are provided in the Appendix. 
+
+Network and rollout. The continuous and contact residuals use MLPs with dimensions 22 → 256 → 256 → 9 and 
+
+22 → 256 → 6, respectively. Both use SiLU activations, Xavier-initialized hidden layers (Glorot & Bengio, 2010), and zero-initialized output layers. Rollouts use RK4 with a maximum step of 1/30 s, resulting in two 1/48 s substeps per frame at 24 Hz. After each substep, we normalize the quaternion, project bounded state variables to their valid ranges, and apply the horizontal-floor contact test using |sy | as the vertical support-radius proxy. 
+
+Gaussian grouping and state lifting. We project each Gaussian mean into the binary object masks across all cameras, discard projections with nonpositive depth, and assign Gaussians whose average mask membership is at least 0.5. The deterministic state lifter estimates the object center, orientation, and aggregate scale using opacity- and membership-weighted PCA (Jolliffe, 2002). Motion rates are estimated by finite differences when multiple frames are available and initialized to zero otherwise. Material parameters are obtained from metadata or fixed defaults. 
+
+4.3 Evaluation Metrics 
+
+We compute the state-prediction metrics over all evaluated sequences and frames. Trajectory RMSE (Traj) is the root mean square of the Euclidean position error, while final displacement error (FDE) is the mean Euclidean position error at the final frame. Velocity RMSE (Vel) is defined analogously using the predicted and ground-truth velocities, and Scale RMSE is computed over the individual scale components. Quaternion error (Quat) is the mean bounded, sign-invariant discrepancy 1 − |⟨ ˆq, q⟩| 2, and it lies in [0 , 1] . Position, velocity, and scale errors are reported in synthetic generator units rather than physical units such as meters. Plane Viol. denotes the fraction of predicted states satisfying 
+
+|sy | − py > 10 −6 under the horizontal-floor proxy. Because it measures consistency with the prescribed floor constraint rather than agreement with the target trajectory, we report it without ranking or bolding methods. PIS p measures physical consistency, BC p measures background stability, and MS p measures the continuity and smoothness of motion. 74.4 Baselines and Comparison Protocol 
+
+All state-space methods are initialized with the same labeled state Z0, evaluated at the same timestamps, and they do not receive future states or the hidden motion-family label. Hold-Z0 repeats the initial state at every timestamp. Const-Vel-SE(3) extrapolates translation, orientation, and scale using their initial rates, whereas Damped-Vel-SE(3) applies exponential decay to these rates. Gravity-Bounce-SE(3) additionally incorporates gravity, semi-implicit Euler integration, and the analytic horizontal-floor response used by NewtonGS, but does not include a learned contact residual. Physics-Prior-SE(3) further introduces fixed linear and angular damping together with a scale-restoring acceleration. L4GM Ren et al. (2024) reconstructs a time-varying 4DGS with its own Gaussian topology from foreground video, rather than receiving labeled Z0 or predicting State-32-aligned trajectories. Public-video methods generate single-view RGB videos from method-specific conditions; because their inputs and outputs differ from NewtonGS, these methods are evaluated separately as cross-representation interface checks. 
+
+Figure 2: Visualization of different methods. Blue identifies the proposed NewtonGS. 
+
+4.5 Quantitative Results and Analysis 
+
+Table 1 evaluates 131,072 sequences on each of the full ID and OOD splits of State-32. NewtonGS achieves the lowest trajectory RMSE, final displacement error, and velocity RMSE on both splits, ranking first in all six core translational-dynamics comparisons. Relative to the best-performing baseline in each column, NewtonGS reduces the trajectory, endpoint, and velocity errors by 3.61% , 2.57% , and 2.34% on ID, and by 3.06% , 5.25% , and 2.27% on OOD, respectively. NewtonGS maintains its lead when moving from ID to OOD with an expanded velocity range, indicating that its advantage is not confined to the training parameter range. Moreover, the maximum standard deviation across its three training runs is only 0.0032 , substantially smaller than the performance gaps to the competing methods, demonstrating good run-to-run stability. NewtonGS does not achieve the lowest quaternion or scale error because Const-Vel-SE(3) directly extrapolates the initial angular velocity, whereas Hold-Z0 keeps the initial scale unchanged; these strong priors specifically favor their corresponding metrics. Plane Viol. measures only compatibility with a simplified horizontal-floor constraint rather than prediction accuracy and is therefore excluded from the method ranking. Overall, the results show that the structured continuous dynamics and learned residuals of NewtonGS consistently improve trajectory, endpoint, and velocity prediction under both ID and OOD conditions, constituting its main advantage over fixed analytic dynamics. 
+
+4.6 Comparison with Video-to-4DGS Methods 
+
+Table 2 shows that NewtonGS achieves the lowest trajectory RMSE, final displacement error, and quaternion error. Relative to the best-performing baseline in each corresponding column, NewtonGS reduces three errors by 2.10% ,
+
+0.67% , and 5.73% , respectively. Compared with Physics-Prior-SE(3), it reduces the trajectory, endpoint, velocity, quaternion, and scale errors by 3.14% , 4.03% , 1.55% , 10 .06% , and 2.37% , respectively, demonstrating that learned 8residuals consistently improve individual state components beyond the structured physics prior. Although L4GM achieves the lowest velocity error and Hold-Z0 achieves the lowest scale error, NewtonGS provides a more balanced overall performance across position, orientation, velocity, and scale. 
+
+4.7 Comparison with Video Generation Methods 
+
+Table 3 aligns the number of evaluation categories, sample count, and proxy evaluator under the common-12 protocol. NewtonGS achieves the highest mean on all metrics while exhibiting the lowest cross-video standard deviations, indicating that its advantages generalize consistently across motion categories. Compared with Wan, the strongest single-view video method in the table, NewtonGS improves PIS p, BC p, and MS p by 3.00% , 5.78% , and 13 .03% ,respectively. The corresponding standard deviations are reduced by 53 .29% , 61 .12% , and 59 .45% , demonstrating more consistent performance across motion categories. These results indicate that the structured dynamics and time-varying 4DGS representation of NewtonGS produce renderings with greater motion plausibility, background consistency, and motion stability. Figure 2 shows 14 motion cases. Across the five sampled frames, NewtonGS accurately preserves the direction, curvature, and temporal evolution of the ground-truth motion. For ballistic motion, it captures acceleration and landing; for bouncing and rolling motion, it more accurately predicts changes in contact states; and for oscillatory and orbital motion, it recovers curved or reversing trajectories. In contrast, the analytic baselines often remain static, drift linearly, over-damp the motion, or predict incorrect contact timing. These results demonstrate that, by combining structured dynamics with learned residual corrections, NewtonGS can model diverse motion patterns that fixed analytic rules fail to capture. 
+
+## 5 Conclusion 
+
+We present NewtonGS, an object-level dynamics framework that assigns explicit states to Gaussian objects, evolves them through structured continuous dynamics, learned residuals, and discrete contact events, and converts the predicted pose and scale into shared transformations of the associated Gaussian primitives. On the procedurally generated State-32 dataset, NewtonGS achieves lower trajectory, final displacement, and velocity errors than five analytic baselines on both the ID and velocity-range-shift OOD splits. Results on Gaussian-32 further illustrate state-driven Gaussian object animation. Future work will explore automatic state estimation from videos, richer contact and multi-object interactions, articulated and topology-changing motion, and evaluation on real multi-view scenes and learned baselines. 9References 
+
+Anton Bakhtin, Laurens van der Maaten, Justin Johnson, Laura Gustafson, and Ross Girshick. Phyre: A new benchmark for physical reasoning. Advances in Neural Information Processing Systems , 32, 2019. Daniel M Bear, Elias Wang, Damian Mrowca, Felix J Binder, Hsiao-Yu Fish Tung, RT Pramod, Cameron Holdaway, Sirui Tao, Kevin Smith, Fan-Yun Sun, et al. Physion: Evaluating physical prediction from vision in humans and machines. arXiv preprint arXiv:2106.08261 , 2021. Tim Brooks, Bill Peebles, Connor Holmes, Will DePue, Yufei Guo, Li Jing, David Schnurr, Joe Taylor, Troy Luhman, Eric Luhman, Clarence Ng, Ricky Wang, and Aditya Ramesh. Video generation models as world simulators. OpenAI Technical Report, 2024. URL https://openai.com/index/video-generation-models-as-world-simulators/ .Ricky T. Q. Chen, Yulia Rubanova, Jesse Bettencourt, and David Duvenaud. Neural ordinary differential equations. In 
+
+Advances in Neural Information Processing Systems , 2018. Ricky T. Q. Chen, Brandon Amos, and Maximilian Nickel. Learning neural event functions for ordinary differential equations. In International Conference on Learning Representations , 2021. Miles Cranmer, Sam Greydanus, Stephan Hoyer, Peter Battaglia, David N. Spergel, and Shirley Ho. Lagrangian neural networks. arXiv preprint arXiv:2003.04630 , 2020. doi: 10.48550/arXiv.2003.04630. Yunze Deng, Haijun Xiong, Bin Feng, Xinggang Wang, and Wenyu Liu. STP4D: Spatio-temporal-prompt consistent modeling for text-to-4d gaussian splatting. In IEEE International Conference on Multimedia and Expo , 2025. doi: 10.1109/ICME59968.2025.11209788. Xavier Glorot and Yoshua Bengio. Understanding the difficulty of training deep feedforward neural networks. In Proceedings of the Thirteenth International Conference on Artificial Intelligence and Statistics , volume 9 of 
+
+Proceedings of Machine Learning Research , pp. 249–256. PMLR, 2010. Google DeepMind. Veo 3: Our state-of-the-art video generation model. Google DeepMind model documentation, 2025. URL https://deepmind.google/technologies/veo/ .Sam Greydanus, Misko Dzamba, and Jason Yosinski. Hamiltonian neural networks. In Advances in Neural Information Processing Systems , 2019. Ernst Hairer, Syvert P. Nørsett, and Gerhard Wanner. Solving Ordinary Differential Equations I: Nonstiff Problems .Springer Series in Computational Mathematics. Springer, Berlin, Heidelberg, 2 edition, 1993. doi: 10.1007/978-3-540-78862-1. I. T. Jolliffe. Principal Component Analysis . Springer Series in Statistics. Springer, New York, 2 edition, 2002. doi: 10.1007/b98835. Bernhard Kerbl, Georgios Kopanas, Thomas Leimkühler, and George Drettakis. 3d gaussian splatting for real-time radiance field rendering. ACM Transactions on Graphics , 42(4), 2023. doi: 10.1145/3592433. Chen-Hsuan Lin, Jun Gao, Luming Tang, Towaki Takikawa, Xiaohui Zeng, Xun Huang, Karsten Kreis, Sanja Fidler, Ming-Yu Liu, and Tsung-Yi Lin. Magic3D: High-resolution text-to-3d content creation. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2023. doi: 10.1109/CVPR52729.2023.00037. Yuchen Lin, Chenguo Lin, Jianjin Xu, and Yadong Mu. OmniPhysGS: 3d constitutive gaussians for general physics-based dynamics generation. arXiv preprint arXiv:2501.18982 , 2025. doi: 10.48550/arXiv.2501.18982. Huan Ling, Seung Wook Kim, Antonio Torralba, Sanja Fidler, and Karsten Kreis. Align your gaussians: Text-to-4d with dynamic 3d gaussians and composed diffusion models. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2024. doi: 10.1109/CVPR52733.2024.00819. Jonathon Luiten, Georgios Kopanas, Bastian Leibe, and Deva Ramanan. Dynamic 3d gaussians: Tracking by persistent dynamic view synthesis. In International Conference on 3D Vision , 2024. doi: 10.1109/3DV62453.2024.00044. Qiaowei Miao, Jinsheng Quan, Kehan Li, and Yawei Luo. PLA4D: Pixel-level alignments for text-to-4d gaussian splatting. arXiv preprint arXiv:2405.19957 , 2024. doi: 10.48550/arXiv.2405.19957. Ben Poole, Ajay Jain, Jonathan T. Barron, and Ben Mildenhall. DreamFusion: Text-to-3d using 2d diffusion. arXiv preprint arXiv:2209.14988 , 2022. doi: 10.48550/arXiv.2209.14988. Jiawei Ren, Liang Pan, Jiaxiang Tang, Chi Zhang, Ang Cao, Gang Zeng, and Ziwei Liu. DreamGaussian4D: Generative 4d gaussian splatting. arXiv preprint arXiv:2312.17142 , 2023. doi: 10.48550/arXiv.2312.17142. Jiawei Ren, Kevin Xie, Ashkan Mirzaei, Hanxue Liang, Xiaohui Zeng, Karsten Kreis, Ziwei Liu, Antonio Torralba, Sanja Fidler, Seung Wook Kim, and Huan Ling. L4GM: Large 4d gaussian reconstruction model. In Advances in Neural Information Processing Systems , volume 37, 2024. 10 Ken Shoemake. Animating rotation with quaternion curves. In Proceedings of the 12th Annual Conference on Computer Graphics and Interactive Techniques , pp. 245–254. ACM, 1985. doi: 10.1145/325334.325242. Jiaxiang Tang, Zhaoxi Chen, Xiaokang Chen, Tengfei Wang, Gang Zeng, and Ziwei Liu. LGM: Large multi-view gaussian model for high-resolution 3d content creation. In European Conference on Computer Vision , 2024a. doi: 10.1007/978-3-031-73235-5_1. Jiaxiang Tang, Jiawei Ren, Hang Zhou, Ziwei Liu, and Gang Zeng. DreamGaussian: Generative gaussian splatting for efficient 3d content creation. In International Conference on Learning Representations , 2024b. Wan Team. Wan: Open and advanced large-scale video generative models. arXiv preprint arXiv:2503.20314 , 2025. doi: 10.48550/arXiv.2503.20314. Guanjun Wu, Taoran Yi, Jiemin Fang, Lingxi Xie, Xiaopeng Zhang, Wei Wei, Wenyu Liu, Qi Tian, and Xinggang Wang. 4d gaussian splatting for real-time dynamic scene rendering. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2024. doi: 10.1109/CVPR52733.2024.01920. Tianyi Xie, Zeshun Zong, Yuxing Qiu, Xuan Li, Yutao Feng, Yin Yang, and Chenfanfu Jiang. PhysGaussian: Physics-integrated 3d gaussians for generative dynamics. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2024. doi: 10.1109/CVPR52733.2024.00420. Yinghao Xu, Zifan Shi, Yifan Wang, Hansheng Chen, Ceyuan Yang, Sida Peng, Yujun Shen, and Gordon Wetzstein. GRM: Large gaussian reconstruction model for efficient 3d reconstruction and generation. In European Conference on Computer Vision , 2024. doi: 10.1007/978-3-031-72633-0_1. Qiyao Xue, Xiangyu Yin, Boyuan Yang, and Wei Gao. PhyT2V: Llm-guided iterative self-refinement for physics-grounded text-to-video generation. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pp. 18826–18836, 2025. doi: 10.1109/CVPR52734.2025.01754. Zeyu Yang, Zijie Pan, Xiatian Zhu, Li Zhang, Jianfeng Feng, Yu-Gang Jiang, and Philip H. S. Torr. 4d gaussian splatting: Modeling dynamic scenes with native 4d primitives. arXiv preprint arXiv:2412.20720 , 2024. doi: 10.48550/arXiv.2412.20720. Vickie Ye, Ruilong Li, Justin Kerr, Matias Turkulainen, Brent Yi, Zhuoyang Pan, Otto Seiskari, Jianbo Ye, Jeffrey Hu, Matthew Tancik, and Angjoo Kanazawa. gsplat: An open-source library for gaussian splatting. Journal of Machine Learning Research , 26(34):1–17, 2025. Minghao Yin, Yukang Cao, Songyou Peng, and Kai Han. Splat4D: Diffusion-enhanced 4d gaussian splatting for temporally and spatially consistent content creation. arXiv preprint arXiv:2508.07557 , 2025. doi: 10.48550/arXiv. 2508.07557. Yu Yuan, Xijun Wang, Tharindu Wickremasinghe, Zeeshan Nadir, Bole Ma, and Stanley H. Chan. NewtonGen: Physics-consistent and controllable text-to-video generation via neural newtonian dynamics. In International Conference on Learning Representations , 2026. Tianyuan Zhang, Hong-Xing Yu, Rundi Wu, Brandon Y. Feng, Changxi Zheng, Noah Snavely, Jiajun Wu, and William T. Freeman. PhysDreamer: Physics-based interaction with 3d objects via video generation. In European Conference on Computer Vision , 2024. doi: 10.1007/978-3-031-72627-9_22. 11 Appendix 
+
+This appendix is organized as follows. • Section A documents the model objective, state conventions, Gaussian transformation, initialization, optimiza-tion, evaluation, and inference. • Section B specifies the Gaussian-32 evaluation set, State-32 procedural corpus, Same-32 fixed subset, and Common-12 manifest. • Section C specifies the L4GM/Same-32 cross-representation evaluation, the Common-12 video proxy compar-ison, and analytic baselines. • Section D reports the residual and branch ablations. • Section E presents motion-wise results, parameter-response tests, and the PIS-3D diagnostic. • Section F presents qualitative comparisons and Gaussian-scene rollouts. • Section G defines the method’s applicability, failure modes, and observation-to-state gap. 
+
+## A Implementation Details 
+
+This section specifies the exact implementation used in all reported experiments. We describe the training objective, state representation, Gaussian-to-state lifting and state-to-Gaussian transformation, parameter initialization, optimization, evaluation metrics, and inference procedure. 
+
+A.1 Training Loss 
+
+For any vector-valued state field x with dx components, the implementation defines 
+
+MSE x = 1
+
+BT d xBX
+
+> b=1
+> T
+
+X
+
+> t=1
+
+∥bxb,t − xb,t ∥22. (12) Here Z is the ground-truth state tensor, bZ is its prediction, and bZ, Z ∈ RB×T ×22 . B is batch size, T is the number of sampled timestamps, and 22 is the number of channels in one state. The indices b ∈ { 1, . . . , B } and t ∈ { 1, . . . , T }
+
+identify a batch element and a timestamp. xb,t ∈ Rdx and bxb,t ∈ Rdx are the target and predicted values of field x
+
+at that entry; dx is the number of scalar components in that field. The two summation signs aggregate all batch and time entries, ∥ · ∥ 22 is squared Euclidean distance over the dx components, and the denominator BT d x makes MSE x aper-component mean squared error. The sign-invariant quaternion term is reduced over batch and time, 
+
+Lq = 1
+
+BT 
+
+X
+
+> b,t
+
+1 −
+
+ bqb,t 
+
+∥bqb,t ∥2
+
+, qb,t 
+
+∥qb,t ∥2
+
+ 2!
+
+, (13) where Lq is the orientation loss and bqb,t and qb,t are the predicted and target quaternions. Each fraction normalizes a quaternion to unit length, ⟨· , ·⟩ is the Euclidean inner product in R4, | · | removes the physically irrelevant sign ambiguity between q and −q, and the outer square converts alignment to a bounded discrepancy. The shorthand P 
+
+> b,t
+
+means summation over all b = 1 , . . . , B and t = 1 , . . . , T . Both normalizations use a 10 −8 denominator floor, and the absolute inner product is clamped to [0 , 1] before squaring. The executed state loss is 
+
+Lstate = 1 .0 MSE p +0 .25 Lq + 0 .5 MSE v
+
++ 0 .2 MSE ω +0 .2 MSE s +0 .1 MSE u
+
++ 0 .0 MSE m,e,μ .
+
+(14) In Eq. 14, Lstate is the weighted state-reconstruction loss; p, v, ω, s, and u denote position, linear velocity, angular velocity, scale, and scale rate. The terms MSE p, MSE v , MSE ω , MSE s, and MSE u use the preceding MSE defini-tion on those fields. MSE m,e,μ applies it to the concatenated material tuple (m, e, μ ). The numerical coefficients 
+
+1.0, 0.25 , 0.5, 0.2, 0.2, 0.1, and 0.0 are fixed loss weights. In particular, the zero coefficient means that material channels are carried in the state but receive no direct reconstruction penalty. 12 For a floor at yf = 0 , the two regularizers are 
+
+Lpen = 1
+
+BT 
+
+X
+
+> b,t
+
+ReLU( yf + |bsy,b,t | − bpy,b,t )2,
+
+Lsmooth = mean (∆ 2 
+
+> t
+
+bp)2 + 0 .1 mean (∆ 2 
+
+> t
+
+bs)2 .
+
+(15) Here Lpen is the floor-penetration penalty and Lsmooth is the temporal smoothness penalty. yf is the vertical coordinate of the floor; bpy,b,t is the predicted vertical position and bsy,b,t is the predicted vertical scale component. The absolute value |bsy,b,t | supplies a nonnegative support extent. ReLU( z) = max(0 , z ) retains only positive penetration depth, and its square penalizes larger violations more strongly. bp and bs are the full predicted position and scale sequences. The temporal second-difference operator is ∆2 
+
+> t
+
+xt = xt+1 − 2xt + xt−1; it measures discrete curvature rather than velocity. Squaring a vector inside mean is component-wise, and each mean includes all valid batch, interior-time, and vector-component entries. The coefficient 0.1 gives scale smoothness one tenth of the weight of position smoothness. The complete optimized objective is 
+
+L = Lstate + 0 .05 Lpen + 0 .01 Lsmooth . (16) In Eq. 16, L is the scalar objective minimized by the optimizer. The three addends are the state, penetration, and smoothness losses defined above, while 1, 0.05 , and 0.01 are their fixed global weights. All 64 timestamps, including the supplied initial state and contact intervals, participate. 
+
+A.2 State Conventions 
+
+For the state defined in the main paper, the exact zero-based implementation slices are position 0-2, quaternion 3-6, velocity 7-9, angular velocity 10-12, scale 13-15, scale rate 16-18, and material variables 19-21. Equivalently, one state contains (p, q, v, ω, s, u, m, e, μ ): p, v, ω, s, u ∈ R3 are position, linear velocity, angular velocity, scale, and scale rate; q ∈ R4 is orientation; and m, e, μ ∈ R are mass, restitution, and tangential attenuation. Their dimensions sum to 22. The loader accepts a tensor of shape (T, C ) or (B, T, C ), where B is batch size, T is the number of timestamps, and C
+
+is the number of supplied channels. It adds a batch dimension when necessary, retains the first 22 channels, converts the result to contiguous float32, and performs no dataset-level centering, standardization, or whitening. A state projection is applied initially, at the intermediate RK4 stages (Hairer et al., 1993), after every RK4 step, and after contact response: 
+
+∥q∥2 = 1 , sj ≥ 10 −4,m ≥ 10 −4, e, μ ∈ [0 , 1] . (17) Here q ∈ R4 is the orientation quaternion and ∥q∥2 is its Euclidean norm. The symbol sj denotes component 
+
+j ∈ { x, y, z } of the three-dimensional scale vector s. The scalars m, e, and μ denote mass, normal restitution, and tangential attenuation, respectively. The constant 10 −4 is the numerical lower bound used to prevent zero scale or mass, and [0 , 1] is the closed admissible interval for e and μ.Quaternions are scalar-first, q = [ qw, q x, q y , q z ], where qw is the real component and (qx, q y , q z ) are the three imaginary components; multiplication is the Hamilton product. In particular, the executed kinematic update is 
+
+˙q = 12 q ⊗ [0 , ω]. (18) In Eq. 18, ˙q = dq/dt is the time derivative of orientation, t denotes continuous time, ω = ( ωx, ω y , ω z ) ∈ R3 is angular velocity, [0 , ω] is the pure quaternion with zero real part, ⊗ denotes the Hamilton product, and the factor 1/2 is the standard quaternion kinematic coefficient under this multiplication order. 
+
+A.3 Gaussian Grouping and State Lifting 
+
+This deterministic interface draws on the explicit scene representation of 3D Gaussian Splatting (Kerbl et al., 2023), the standard covariance-eigenvector interpretation of principal component analysis (Jolliffe, 2002), and the unit-quaternion convention of Shoemake (Shoemake, 1985). It is used only for the Gaussian experiments; the state-only training benchmark starts directly from labeled initial states. 13 A.4 Object-Level Gaussian Transformation 
+
+For the state-to-Gaussian update defined in the main paper, the implementation constructs its affine matrix as 
+
+Rrel ,t = R(qt ⊗ q∗
+
+> 0
+
+),
+
+ρt = ( st ⊘ max( s0, 10 −6)) ≥10 −6 ,
+
+Aimpl  
+
+> t
+
+= Rrel ,t diag( ρt).
+
+(19) In Eq. 19, subscript 0 denotes the initial state and subscript t the state at time t. The function R(·) maps a unit quaternion to its 3 × 3 rotation matrix; q∗ 
+
+> 0
+
+is the conjugate (and, for a unit quaternion, inverse) of the initial orientation; and qt ⊗ q∗
+
+> 0
+
+is the relative orientation. Thus Rrel ,t is the corresponding relative rotation matrix. The vector ρt ∈ R3 contains the component-wise scale ratios, ⊘ denotes component-wise division, and max( s0, 10 −6) applies the lower bound separately to all three entries. The subscript ≥ 10 −6 means that the resulting ratios are again clamped component-wise from below. The operator diag( ρt) places the three ratios on the diagonal of a 3 × 3 matrix. Finally, Aimpl  
+
+> t
+
+∈ R3×3 is the implemented linear transform, and the superscript “impl” distinguishes it from an idealized local-frame transform. Equation 19 is the column-vector equivalent of the row-vector implementation: centered means are scaled component-wise in their stored coordinate components and then rotated by the relative orientation. For nonidentity q0, this is not equivalent to anisotropic scaling in a continuously rotating local object frame. If no initial state is supplied, the fallback uses the identity quaternion, unit scale, and mean Gaussian center. The sequence converter applies the mean and covariance updates from the main paper using Aimpl  
+
+> t
+
+and emits covariance when it is present. 
+
+A.5 Parameter Initialization 
+
+The trainable continuous-dynamics scalars are initialized as cv = cω = 0 .05 , ks = 0 .25 , cs = 0 .08 , and α = 0 .01 .Here cv and cω control linear and angular damping, ks controls scale restoration, cs controls scale-rate damping, and α
+
+scales the continuous learned residual. The implementation applies absolute values to cv , c ω , k s, and cs so that their effective coefficients are nonnegative, whereas α retains its learned sign. For both residual networks, hidden-layer weights use Xavier uniform initialization and hidden-layer biases are initialized to zero. Output-layer weights and biases are also initialized to zero, making both residual functions exactly zero at initialization while still allowing gradients to update their output layers. The contact-residual scale αimp is initialized to 
+
+0.01 and, like α, retains its sign rather than being passed through an absolute value. 
+
+A.6 Optimization                            
+
+> Setting Executed value Optimizer AdamW, learning rate 10 −4, default β= (0 .9,0.999) ,ϵ= 10 −8, weight decay 0.01 , no AMSGrad Schedule Cosine annealing with Tmax = 100 and ηmin = 10 −6; scheduler state restored on resume Updates 16 optimizer updates per epoch Randomness For each run seed slisted in the main paper, Python, NumPy, and CPU PyTorch use s, and the epoch permutation uses s+epoch Checkpointing Epoch 1 and every 5 epochs; best checkpoint selected by the complete val_id objective; epoch 100 selected in all three runs Numerics Float32; no automatic mixed precision; no gradient clipping
+
+Table 4: Optimization settings shared by all three independently initialized runs. In Table 4, β = ( β1, β 2) contains AdamW’s first- and second-moment decay coefficients, ϵ is its denominator-stabilization constant, and weight decay is the decoupled ℓ2 regularization coefficient. For the cosine scheduler, Tmax 
+
+is the 100-epoch cycle length and ηmin is the terminal learning rate. In the randomness row, s is the run seed, and 
+
+s + epoch makes the epoch permutation deterministic and reproducible. 
+
+A.7 Evaluation Execution 
+
+Prediction uses batches of at most 65,534 trajectories and GPU data parallelism. The larger evaluator output also contains a ground-truth oracle, which is omitted from method comparisons. 14 For completeness, let epb,t = bpb,t − pb,t and evb,t = bvb,t − vb,t . The executed aggregate metrics are 
+
+Traj = 
+
+s 1
+
+BT 
+
+X
+
+> b,t
+
+∥epb,t ∥22,
+
+FDE = 1
+
+B
+
+X
+
+> b
+
+∥epb,T ∥2,
+
+Vel = 
+
+s 1
+
+BT 
+
+X
+
+> b,t
+
+∥evb,t ∥22,
+
+Scale = 
+
+s 13BT 
+
+X
+
+> b,t,j
+
+(bsb,t,j − sb,t,j )2,
+
+AngVel = 
+
+s 13BT 
+
+X
+
+> b,t,j
+
+(bωb,t,j − ωb,t,j )2,
+
+Quat = 1
+
+BT 
+
+X
+
+> b,t
+
+ 1 − |⟨ bqb,t , qb,t ⟩| 2 .
+
+(20) In Eq. 20, B is the number of evaluated trajectories, T is the number of timestamps per trajectory, b ∈ { 1, . . . , B }
+
+indexes trajectories, t ∈ { 1, . . . , T } indexes timestamps, and j ∈ { x, y, z } indexes the three Cartesian components. A hat marks a prediction and an unhatted symbol its target. epb,t and evb,t are the three-dimensional position and velocity error vectors defined immediately above the equation. ∥ · ∥ 2 is Euclidean norm, the summations average the indicated samples, and the square roots convert mean squared errors back to the units of the underlying fields. Traj is position RMSE over the full trajectory; FDE is mean final displacement error at terminal index T ; Vel is velocity RMSE; Scale 
+
+and AngVel are component-wise RMSEs for scale and angular velocity. The factor 3 in their denominators accounts for the three vector components. 
+
+Quat is mean sign-invariant quaternion discrepancy. bqb,t and qb,t are normalized predicted and target quaternions, ⟨· , ·⟩ 
+
+is their four-dimensional inner product, and the absolute value identifies the equivalent signs q and −q. The legacy evaluator key quaternion_geodesic therefore denotes this bounded discrepancy, not a geodesic angle in radians. For the contact diagnostics, db,t = ReLU( |bsy,b,t | − bpy,b,t ) is predicted penetration depth relative to the zero-height floor: bsy,b,t is predicted vertical scale, bpy,b,t is predicted vertical position, and ReLU retains only positive violations. Penetration MSE is 1
+
+> BT
+
+P 
+
+> b,t
+
+d2
+
+> b,t
+
+. Plane Viol. is 1
+
+> BT
+
+P 
+
+> b,t
+
+⊮[db,t > 10 −6], where ⊮ is the indicator function and 10 −6
+
+is the numerical violation threshold. For class c, the code computes the class diagnostic error Ec described below and 
+
+PIS -3D = X
+
+> c
+
+nc
+
+B exp( −Ec). (21) Here PIS -3D is the aggregate diagnostic score, c indexes the motion classes present in the evaluated split, Ec ≥ 0 is the class-specific diagnostic error defined in Table 5, and nc is the number of evaluated trajectories in class c. The total number of trajectories is B = P 
+
+> c
+
+nc, so nc/B is the empirical class weight. The exponential exp( −Ec) maps zero error to one and monotonically decreases toward zero as the error increases. The outer sum forms a class-frequency-weighted mean. This quantity is not a target-state distance and is not included in the ranked main metrics. For each motion class c, PIS-3D computes a class-specific nonnegative error Ec and returns exp( −Ec) with coefficient one. The implemented diagnostics are normalized speed variance for uniform motion; horizontal-velocity variance and vertical-acceleration error for projectile, gravity, or acceleration labels; radius and angular-speed variance for circular or orbital labels; angular-speed variance for rotation; penetration plus observed-restitution error for bouncing or collision; acceleration error for slope motion using a fixed 22-degree slope; scale-rate norm variance for size change; normalized volume variance for deformation; and acceleration norm for unmatched labels. Split-level PIS-3D is the sample-count-weighted mean of per-class scores. Since several terms assess invariance rather than target displacement, a stationary sequence can score highly; PIS-3D is therefore treated as a diagnostic. For an exact specification, let V(x) = B−1 P 
+
+> b
+
+Var t(xb,t ), where the executed torch.var uses its default sample-variance correction; let M(x) denote the mean over all supplied entries; and let at = ( vt+1 − vt−1)/(2 h). Table 5 gives the class error selected by substring matching. Here xb,t is any scalar diagnostic for trajectory b at time t, B is the number of trajectories supplied for the class, and 
+
+Var t is sample variance across timestamps. V therefore averages temporal variance across trajectories; M averages 15 Motion-name trigger Executed Ec                                    
+
+> uniform V(∥v∥)/[M(∥v∥)2+ 10 −6]
+> projectile ,
+> gravity , or
+> acceleration
+> V(vx) + V(vz) + M(|ay+ 9 .81 |)
+> circular or orbital V(∥p− M t(p)∥) + V(∥ω∥)
+> rotation V(∥ω∥)
+> bouncing or
+> collision
+> M[ReLU( |sy| − py)] , plus | M sign flip [v+
+> y/(−v−
+> y)] − M (e)|if at least one negative-to-positive vytransition exists
+> slope M{| ax−[9 .81 sin 22 ◦− M (μ)9 .81 cos 22 ◦] cos 22 ◦|}
+> size V(∥u∥)
+> deformation V(sxsysz)/[M(sxsysz)2+ 10 −6]
+> otherwise M(∥a∥)
+
+Table 5: Exact PIS-3D class-error dispatch. The first matching branch is used; the diagnostic is computed from predictions only and does not compare with the target state. every supplied entry; and Mt averages only over time. The vector at is centered finite-difference acceleration, vt is velocity, and h is the frame interval. Within Table 5, p, v, ω, u, and a are predicted position, velocity, angular velocity, scale rate, and acceleration; subscripts x, y, z select Cartesian components; and sxsy sz is the product of the three predicted scale components. ∥ · ∥ denotes Euclidean norm. Superscripts − and + denote the samples immediately before and after a detected vertical-velocity sign change, and Msign flip averages only those events. e and μ are predicted restitution and tangential attenuation. The constant 9.81 is the gravity magnitude, 22 ◦ is the fixed slope angle, and 10 −6
+
+prevents division by zero. All absolute-value, ReLU, sine, cosine, variance, and mean operations in the table have their standard scalar meanings. 
+
+A.8 Inference Procedure 
+
+Beyond the forward path in the main paper, user-specified values can replace initial linear velocity, angular velocity, mass, restitution, and tangential attenuation. The time grid includes t = 0 , and the first returned state is the projected input state. When cameras are unavailable for qualitative rendering, inference constructs equally spaced orbit views with a 55-degree pinhole field of view, radius 5, elevation 1.2, and target equal to the mean predicted position. The rendering implementation can use the CUDA gsplat rasterizer (Ye et al., 2025) or the lightweight fallback. Neither renderer affects the state metrics. 
+
+## B Dataset Construction 
+
+This section defines four data resources in order. Gaussian-32 is the appearance-conditioned Gaussian evaluation set; State-32 is the procedural state-trajectory corpus; Same-32 is the fixed 32-sample cross-representation subset; and Common-12 is the aligned 84-video manifest used by the video proxy comparison. 
+
+B.1 Gaussian-32 
+
+Beyond the Gaussian-32 summary in the main paper, its executed construction used one sample per object-motion pair, 49 frames, ∆t = 1 /24 seconds, hard-profile sampling, seed 2026, object scale 0.9 with per-axis jitter U (0 .85 , 1.18) ,1,536 object Gaussians, and 3,200 static background Gaussians. Thus each full scene contains 4,736 Gaussians. Supported objects are aligned to the plane with a clearance of 0.015 ; airborne classes use class-specific heights. The set stores four orbit views at 128 × 128 . Cameras are evenly spaced in azimuth, have radius 5, elevation 1.35, and a 55-degree field of view, and look at the mean trajectory position plus the template’s target-height offset. We use the lightweight renderer with 2D splat standard deviation 1.6, a semantic 3D Gaussian background, and no 2D-flow export. Every sample contains color and RGB/depth/mask supervision. In the fast no-flow lightweight renderer, camera-space y is negated before pixel projection. A square kernel of radius 
+
+⌈2σ⌉ is evaluated around the rounded center, where σ = 1 .6 pixels is the 2D Gaussian standard deviation, the factor 2 truncates the footprint at two standard deviations, and ⌈·⌉ rounds upward to an integer pixel radius. Weights are the 2D Gaussian kernel times opacity and are discarded below 10 −4, the fixed contribution threshold. Pixel alpha, 16 alpha-weighted depth, and alpha-weighted color are accumulated with scatter-add; alpha is clamped to [0 , 1] , and the remaining weight is filled with the specified background color. This path does not use the 3D covariance when computing the 2D footprint, so it is a point-splat proxy rather than a full 3DGS rasterizer.                       
+
+> Scene identifier Procedural object template Scene description
+> living_room_table red toy car wooden table in a bright living room
+> studio_tabletop blue ceramic mug tabletop under soft studio lighting
+> sunny_park black-and-white soccer ball short grass in a sunny park
+> kitchen_counter green glass bottle counter with a warm wall
+> orbit_space cratered moon sphere starry space scene
+> playroom_floor red cube simple playroom floor
+> desk_blue_sphere blue sphere gray desktop
+> construction_floor yellow cone simple concrete floor
+> lab_table_cylinder purple cylinder clean laboratory table
+> display_orange_pyramid orange pyramid simple display surface
+
+Table 6: The ten procedural object-scene templates used by Gaussian-32. Geometry, color, and background Gaussians are generated procedurally; these entries are not downloaded third-party assets. 
+
+Gaussian-32 sample schema. Every sample is a PyTorch dictionary. The labeled state tensor has shape (49 , 22) . The canonical object contains local_means , colors , opacities , and covariances with shapes (1536 , 3) , (1536 , 3) ,
+
+(1536) , and (1536 , 3, 3) . Static-background means, colors, opacities, and covariances have corresponding shapes with 3,200 primitives. The transformed object means and covariances have shapes (49 , 1536 , 3) and (49 , 1536 , 3, 3) ; the composed scene uses (49 , 4736 , 3) and (49 , 4736 , 3, 3) . Object and full-scene 3D flows have shapes (48 , 1536 , 3) and 
+
+(48 , 4736 , 3) . Event metadata contains a collision indicator, contact normal, and impulse at each of the 49 timestamps. Camera intrinsics, world-to-camera transforms, and camera-to-world transforms are stored as K, w2c , and c2w with shapes (4 , 3, 3) , (4 , 4, 4) , and (4 , 4, 4) . Render supervision stores float32 RGB, depth, and mask tensors with shapes 
+
+(49 , 4, 128 , 128 , 3) , (49 , 4, 128 , 128) , and (49 , 4, 128 , 128) . Metadata records the sample and scene identifiers, motion type, prompts, object template, asset and background provenance, rendering mode, and initial physical controls. 
+
+B.2 State-32 
+
+We refer to the final state corpus as State-32 . It contains 32 motion labels: 3D uniform motion, gravity acceleration, free fall, projectile motion, airplane flight, helical flight, circular orbit, 3D rotation, size change, damped pendulum, slope sliding, rolling with friction, planar bouncing, wall collision, nonlinear force field, nonrigid deformation, hybrid collision impulse, figure-eight flight, decaying spiral orbit, damped bouncing, rolling followed by collision, sliding to a stop, throwing and landing, vertical launch, wind-drag projectile motion, spring oscillation, stop-and-go motion, two-stage motion, banked airplane turns, orbit with precession, tumbling fall, and scale pulse. For the class-specific definitions below, h = 1 /24 seconds is the fixed time step and k ∈ { 0, . . . , 63 } is the zero-based frame index. We write U (a, b ) for an independent sample from the continuous uniform distribution on the closed interval with lower bound a and upper bound b. Subscripts 0, x, y, and z denote the initial frame and Cartesian components. Thus p0y is initial vertical position, s0y is initial vertical scale, and v0y is initial vertical velocity. The hard-profile base ranges are summarized in Table 7. Airborne classes overwrite the sampled height with p0y = ¯hc + U (0 , 0.45) ,where ¯hc is the class-specific nominal height: 3.4 (free fall), 1.8 (projectile and the default airborne case), 1.9 (gravity acceleration and figure eight), 2.3 (airplane), 2.0 (helix), 1.6 (circular orbit and precession), 1.7 (decaying spiral), 1.2 (throw and land), 0.8 (vertical launch), 1.4 (wind projectile), 1.5 (spring), 2.1 (banked turn), or 3.0 (tumbling fall). Non-airborne classes use p0y = s0y + U (0 , 0.04) . Projectile samples additionally enforce v0y ≥ 2.2. All numerical ranges in this subsection are in the synthetic coordinate and time units of State-32. 
+
+Complete Procedural Generator Definition. The following specification records the executed State-32 generator rather than an approximate physical interpretation. The sampled time is tk = kh , where tk is elapsed time at frame k.The fixed gravity vector is g = (0 , −9.81 , 0) , and ¯s = ( s0x + s0y + s0z )/3 is the arithmetic mean of the three initial scale components. For a vector sequence xk, the centered finite-difference operator is Dh[x]k = ( xk+1 − xk−1)/(2 h)
+
+at interior frames, with (x1 − x0)/h and (x63 − x62 )/h at the first and final frames. The forward operator is 
+
+Fh[x]k = ( xk+1 − xk)/h for k < 63 , with the same backward difference at k = 63 . Unless a row states otherwise, 
+
+sk = s0 and ωk = ω0. The notation SI( ak) means the semi-implicit recurrence 
+
+vk+1 = vk + hak, qquad pk+1 = pk + hvk+1 . (22) 17 Variable Train and val_id val_ood 
+
+px, p z U (−0.8, 0.8) same 
+
+vx, v z U (−3.2, 3.2) U (−5.12 , 5.12) 
+
+vy before class rules U (0 .4, 4.8) U (0 .4, 7.68) 
+
+ωx, ω y , ω z U (−4, 4) U (−6.4, 6.4) 
+
+sx, s y , s z U (0 .18 , 0.36) same 
+
+m U (0 .45 , 3.625) same 
+
+e U (0 .35 , 0.96) same 
+
+μ U (0 .12 , 0.75) same 
+
+Table 7: Base sampling ranges in the hard profile. The velocity-range-shift split expands the horizontal-velocity interval, the upper (but not lower) vertical-velocity bound, and the angular-velocity interval by 1.6; it does not hold out motion labels. In Eq. 22, pk, vk, ak ∈ R3 are position, velocity, and acceleration at frame k. The subscript k + 1 denotes the next frame and h is the fixed step defined above. The first assignment updates velocity from acceleration; the second then uses that new velocity vk+1 to update position, which is why the recurrence is semi-implicit rather than fully explicit. 
+
+Notation for the generator tables. Bold symbols are three-dimensional vectors and ordinary italic symbols are scalars unless stated otherwise. The subscripts x, y, z select Cartesian components, 0 selects the sampled initial value, and k selects a frame. p, v, a, ω, s denote position, linear velocity, acceleration, angular velocity, and scale. The symbol 
+
+0 is the zero vector; ∥ · ∥ is Euclidean norm; | · | is scalar absolute value; ⊙ is component-wise multiplication; and max 
+
+and min select the larger or smaller argument, component-wise when a vector is present. The assignment arrow ←
+
+means that the generator overwrites the value on its left. The index j in a sum is a discrete frame index. The functions 
+
+sin , cos , and exp are applied component-wise to vectors, all trigonometric arguments are in radians, and π is the circle constant. Symbols introduced within one motion row are local to that row. In particular, r or ρk denotes an orbital radius, w an angular frequency, θ the slope angle, a∥ acceleration along the slope, d a unit travel direction, dk traveled distance, and uk scalar speed. Depending on the named row, a denotes a scalar acceleration or oscillation amplitude, while a
+
+denotes a three-axis amplitude vector. The symbols yf , eb, w, ϕ, P , bk, c, τk, and ν denote the support height, current bounce restitution, wind vector, phase-offset vector, stop-go period, binary motion gate, second-stage orbit center, elapsed second-stage time, and precession frequency. The symbol ⊮[·] is one when its bracketed condition is true and zero otherwise. Every decimal coefficient in the tables is a fixed procedural-generator constant, not a learned model parameter. These definitions, Table 7, and the seeds below specify the state targets without requiring a motion label at training time. 
+
+Motion Executed hard-profile definition 3D uniform pk = p0 + tk v0, vk = v0.Gravity acceleration ak = [0 .45 + 0 .95 sin(2 .3tk ), −4.2 + 1 .2 cos(1 .7tk ), 0.30 + 0 .80 sin(3 .1tk + 0 .4)] ;
+
+vk = v0 + h Pkj=0 aj and pk = p0 + h Pkj=0 vj .Projectile pk = p0 + tk v0 + 12 t2 
+
+> k
+
+g, vk = v0 + tk g.Circular orbit r = 0 .9 + ¯ s, w = 1 .2 + |ω0y |, ρk = r[1 + 0 .22 sin(2 .1tk )] ;
+
+pk = [ ρk cos( wt k ), p 0y + 0 .35 sin(0 .5wt k ), ρ k sin( wt k )] , v = Dh[p], and 
+
+ωk = [0 .35 sin(2 tk ), w, 0.25 cos(1 .5tk )] .3D rotation pk = p0, vk = 0, ωk = ω0 + [0 , 1.5, 0] .Damped pendulum pk = p0 + [1 .15 e−0.22 tk cos(4 .2tk ), 0.45 e−0.22 tk sin(4 .2tk ), 0.35 sin(7 .14 tk + 0 .3)] ;
+
+v = Dh[p] and ωk = [0 , 0, 4.2] e−0.22 tk .Slope sliding θ = 22 ◦, a∥ = 9 .81 sin θ − 9.81 μ cos θ, dk = v0xtk + 12 a∥t2 
+
+> k
+
+;
+
+pk = [ p0x + dk cos θ, s 0y + dk sin θ, p 0z ] and v = Dh[p].Size changing pk = p0 + 0 .75 tk v0, v = Dh[p];
+
+sk = s0 ⊙ [1 + 0 .32 sin(3 .1tk ), 1 + 0 .28 cos(2 .3tk + 0 .4) , 1 + 0 .24 sin(4 .5tk + 0 .2)] , with each factor lower-bounded by 0.35. Nonrigid deformation pk = p0 + 0 .65 tk v0, v = Dh[p]; for ak = 1 + 0 .42 sin(5 tk ),
+
+sk = s0 ⊙ [ak , 1/ max( ak , 0.2) , 1 + 0 .18 cos(4 tk )] . This is only aggregate anisotropic scaling. 
+
+Table 8: Closed-form generators inherited from the base hard-profile corpus. For the remaining custom generators, the support coordinate is yf = max(0 .5s0y , 0.04) . The operator StopFloor 
+
+finds the first sampled state with py < y f , sets py = yf and vy = 0 from that sample onward, marks those samples 18 Motion Executed hard-profile definition and event rule Planar bouncing Initialize py ← max( py , s 0y + 0 .35) and v ← [v0x + 1 .4, |v0y | + 2 , v 0z − 1.2] . Use Eq. 22 with 
+
+ak = g + [0 .8 sin(3 .4tk ), 0, 0.6 cos(2 .1tk )] . If pk+1 ,y < s 0y and vk+1 ,y < 0, set pk+1 ,y = s0y ,
+
+vk+1 ,y = −ev k+1 ,y , and (vx, v z ) ← (1 − μ)( vx, v z ).Wall collision Initialize px = −1.8 and v = [ |v0x| + 2 .2, 0.2, 0.8] . At each step apply vy ← vy − 2h and 
+
+p ← p + hv. If px + s0x > 1.1 and vx > 0, set px = 1 .1 − s0x, vx = −ev x, and 
+
+vz ← (1 − μ)vz .Rolling with friction d = [1 , 0, 0.3] /∥[1 , 0, 0.3] ∥, u0 = |v0x| + 2 , a = 1 .35(9 .81) μ, dk = max(0 , u 0tk − 12 at 2 
+
+> k
+
+), and 
+
+uk = max(0 , u 0 − at k ). Set pk = p0 + dk d with py = s0y , vk = uk d, and ωk = [0 , 0, u k /¯s].Hybrid collision Initialize py ← max( py , s 0y + 0 .45) and v = [ |v0x| + 1 .8, |v0y | + 2 .8, v 0z ]. Use Eq. 22 with 
+
+ak = g + [0 .45 sin(5 tk ), 0, 0.35 cos(3 tk )] . Floor contact at s0y uses vy ← − ev y ,
+
+vx ← (1 − μ)vx, vz ← (1 − 0.5μ)vz . Wall contact at px + s0x > 1.25 uses px = 1 .25 − s0x,
+
+vx ← − ev x, vz ← vz + 0 .6. Here ωk = [0 .7 sin(3 tk ), |ω0y | + 1 , 0.4 cos(2 .1tk )] .Nonlinear force field Starting from (p0, v0), use Eq. 22 with ak = [ −1.15 px, −0.2( py − 1) , −1.05 pz ] + [0 .85 sin(3 .2tk + pz ), −2.2, 0.85 cos(2 .7tk + px)] − 0.18 min( ∥v∥, 8) v. Floor contact at s0y
+
+uses the planar-bounce rule. Scale factors are 
+
+[1 + 0 .18 sin(3 .7t), 1 + 0 .15 cos(2 .9t), 1 + 0 .12 sin(4 .5t + 0 .2)] , lower-bounded by 0.5; 
+
+ω = ω0 + [0 .5 sin(2 t), 0.5 cos(1 .5t), 0.4 sin(2 .8t)] .
+
+Table 9: Base generators with stopping or collision events. The generated event tensors are metadata and are not model inputs. as contacts, and stores one normal impulse m|vy | from the sample immediately before the first crossing. It does not bounce. This convention differs from the s0y support coordinate in the base collision generators above. 
+
+Motion Executed expanded-set definition Free fall Replace v0 by [0 .25 v0x, 0, 0.18 v0z ], use the projectile equations, then apply StopFloor .Airplane u = 1 .6 + 0 .35 |v0x|; pk = [ p0x + ut k , p 0y + 0 .18 sin(2 πt k /t 63 ), p 0z + 0 .38 sin(1 .6tk )] ,
+
+v = Fh[p], and ω = [0 , 0.35 , 0] .Helical flight r = 0 .72 + 0 .20¯ s, w = 2 .3 + 0 .25 |ω0y |;
+
+pk = [ p0x + r cos( wt k ), p 0y + 0 .28 tk + 0 .16 sin(1 .7wt k ), p 0z + r sin( wt k )] , v = Fh[p],
+
+ω = [0 .25 , w, 0.10] .Figure eight a = 0 .95 + 0 .15¯ s, w = 1 .95 + 0 .2|ω0y |;
+
+pk = [ p0x + a sin( wt k ), p 0y + 0 .20 sin(0 .7wt k + 0 .4) , p 0z + 0 .55 a sin(2 wt k )] , v = Dh[p],and ω = [0 .18 cos( wt k ), 0.45 , 0.22 sin(1 .4wt k )] .Decaying spiral w = 2 .55 + 0 .25 |ω0y | and rk is linearly spaced from 1.25 to 0.35; 
+
+pk = [ p0x + rk cos( wt k ), p 0y + 0 .16 sin(1 .2wt k ), p 0z + rk sin( wt k )] , v = Dh[p],
+
+ω = [0 .10 , w, 0.18] .Throw and land Set v = [1 .15 + 0 .3v0x, |v0y | + 3 .4, 0.55 v0z ], use the projectile equations, and apply StopFloor .After first hit kh, let τ = t − tkh and horizontal u equal the pre-hit velocity with uy = 0 ; add 
+
+τ ue−2.2μτ to stored positions and set v = ue−2.2μτ .Vertical launch Set v = [0 .15 v0x, 4.2 + |v0y |, 0.12 v0z ], use the projectile equations, apply StopFloor , and set 
+
+ω = [0 .35 , 0.10 , 0.20] .Tumbling fall Set v = [0 .45 v0x, 0.25 |v0y |, 0.35 v0z ], use the projectile equations, and apply StopFloor . Set 
+
+ωk = ω0 + [3 .2 + 0 .5 sin(2 tk ), 2.2 + 0 .4 cos(1 .7tk ), 2.6 + 0 .45 sin(2 .4tk )] .
+
+Table 10: Expanded flight and ballistic generators. The initial-height sampling stated above is applied before these equations. 
+
+Event metadata. For each detected base floor contact, the generator marks the current loop index, stores normal 
+
+[0 , 1, 0] , and records normal impulse −(1 + e)mv − 
+
+> y
+
+; wall events analogously use normal [−1, 0, 0] and impulse 
+
+−(1 + e)mv − 
+
+> x
+
+. Hybrid contact uses the corresponding rule for whichever event fires, with a shared event flag if both occur in one step. Damped bouncing substitutes the current eb for e, rolling-then-collision uses the wall rule, and wind-drag contact uses the base floor impulse even though its executed post-impact velocity has the additional factor 0.25. The StopFloor metadata rule was defined above. These arrays document generator events, but only the post-event state trajectory is used as a training target. Here [0 , 1, 0] and [−1, 0, 0] are the inward unit normals of the floor and wall; superscript − denotes the velocity immediately before impact; v− 
+
+> y
+
+and v− 
+
+> x
+
+are its normal components; m is mass; and e
+
+is normal restitution. The leading minus sign makes the stored scalar impulse nonnegative for an incoming negative normal velocity, while (1 + e) accounts for reversal and restitution. 19 Motion Executed expanded-set definition and event rule Damped bouncing Initialize py ← max( py , y f + 1 .55) , v = [0 .75 v0x + 0 .7, |v0y | + 2 .2, 0.45 v0z ], and 
+
+eb = min(0 .85 , max(0 .25 , e )) . Use Eq. 22 with g. At a floor crossing set py = yf , vy = −ebvy ,
+
+(vx, v z ) ← (1 − 0.45 μ)( vx, v z ), then eb ← 0.76 eb; set vy = 0 when |vy | < 0.22 . Set 
+
+ωk = ω0 + [0 .35 sin(4 tk ), 0.20 cos(2 .6tk ), 0.50 sin(3 .2tk )] .Rolling then collision Initialize px = −1.65 , d = [1 , 0, 0.18] /∥[1 , 0, 0.18] ∥, and v = (1 .65 + 0 .25 |v0x|)d. Advance 
+
+p ← p + hv; at px + s0x > 1.2, set px = 1 .2 − s0x, vx = −ev x, and vz ← vz + 0 .35 . Every step multiplies v by max(0 , 1 − 0.55 μh ); ω = [0 , 0, ∥v∥/ max(¯ s, 10 −3)] .Sliding then stop d = [1 , 0, −0.28] /∥[1 , 0, −0.28] ∥, u0 = 1 .8 + 0 .4|v0x|, a = max(0 .35 , 1.4(9 .81) μ),
+
+uk = max(0 , u 0 − at k ), and dk = min[ u20/(2 a), max(0 , u 0tk − 12 at 2 
+
+> k
+
+)] . Set p = p0 + dk d
+
+with constant py , v = uk d, and ω = 0.Wind-drag projectile Initialize v = [1 .55 + 0 .25 v0x, |v0y | + 2 .6, 0.55 + 0 .15 v0z ], w = [0 .65 , 0, 0.35] , and 
+
+d = 0 .20 + 0 .08 μ. Use Eq. 22 with 
+
+ak = g + [0 .25 + 0 .15 sin(2 .4tk )] w − d min( ∥v − w∥, 8)( v − w)/ max( m, 10 −4). At the floor set py = yf , vy = −0.25 ev y , and (vx, v z ) ← (1 − μ)( vx, v z ). Set 
+
+ωk = ω0 + [0 .4 sin(2 tk ), 0.3 cos(1 .7tk ), 0.4 sin(2 .5tk + 0 .4)] .Spring oscillation With a = [0 .85 , 0.42 , 0.38] , ϕ = [0 , 0.8, 1.6] , and anchor p0 + [0 , 0.2, 0] , set 
+
+pk = anchor + e−0.35 tk a ⊙ sin(4 .2tk + ϕ), v = Dh[p], and 
+
+ω = [0 .35 sin(4 .2t), 0.25 cos(4 .2t), 0.30 sin(2 .94 t)] .Stop and go P = t63 /3, bk = ⊮[sin(2 πt k /P ) > 0] , uk = [1 .25 + 0 .25 sin(3 .5tk )] bk , and 
+
+d = [1 , 0, 0.35] /∥[1 , 0, 0.35] ∥. Set vk = uk d, pk = p0 + h Pkj=0 vj with constant py , and 
+
+ω = [0 , 0, u k ].Two stage For k < 32 , pk = p0 + tk [1 .05 , 0, 0.25] and ω = [0 , 0.25 , 0] . Let c = p31 + [0 , 0, 0.55] and 
+
+τk = tk − t32 ; for k ≥ 32 ,
+
+pk = [ cx + 0 .55 sin(2 .4τk ), p 31 ,y + 0 .12 sin(3 .6τk ), c z + 0 .55 cos(2 .4τk )] and 
+
+ω = [0 .35 , 2.4, 0.18] . Use v = Dh[p].Banked airplane turn r = 1 .10 , w = 1 .65 ; pk = [ p0x + r sin( wt k ), p 0y + 0 .16 sin(0 .8wt k ), p 0z + r(1 − cos( wt k ))] ,
+
+v = Dh[p], ω = [0 .55 sin( wt ), w, −0.45 sin( wt )] .Orbit with precession r = 0 .95 , w = 2 .15 , ν = 0 .55 ;
+
+pk = [ p0x + r cos( wt k ) cos( νt k ), p 0y + 0 .42 sin( wt k ), p 0z + r sin( wt k ) + 0 .35 sin( νt k )] ,
+
+v = Dh[p], ω = [0 .20 sin( νt ), w, 0.25 cos( νt )] .Scale pulse pk = p0 + [0 .12 sin(1 .5tk ), 0, 0.10 cos(1 .2tk )] and v = Dh[p]. Scale factors are 
+
+[1 + 0 .38 sin(4 t), 1 + 0 .28 sin(4 t + 1 .2) , 1 + 0 .33 cos(3 .2t)] , lower-bounded by 0.35; 
+
+ω = [0 .10 , 0.45 , 0.15] .
+
+Table 11: Remaining expanded generators. 
+
+State assembly. After constructing (pk, vk, ωk, sk), the generator sets uk = Dh[s]k and 
+
+qk = QAA 
+
+ ωk
+
+∥ωk∥ , ∥ωk∥tk
+
+
+
+, (23) where qk ∈ R4 is the orientation quaternion at frame k. The function QAA (n, ϑ ), implemented by 
+
+AxisAngleToQuaternion , converts a unit rotation axis n and rotation angle ϑ to a scalar-first quaternion. Here 
+
+n = ωk/∥ωk∥ is the normalized angular-velocity direction and ϑ = ∥ωk∥tk is the accumulated angle implied by holding its current magnitude constant from time zero to tk. ∥ωk∥ is Euclidean angular speed and 10 −6 is the threshold below which normalization is avoided. The identity quaternion [1 , 0, 0, 0] is used below that threshold. This constructs each orientation from the current angular-velocity vector and absolute time; it does not numerically integrate angular velocity. The sampled (m, e, μ ) are copied to all 64 states. Collision indicators, normals, and impulses are saved as metadata but are not part of the 22 state channels and are not given to NewtonGS. 
+
+Hidden-label mixture and identifiability. The dataset contains the motion index for analysis, but training and evaluation pass only (Z0, t 1: T ) to every predictor. Class c has a uniform prior, but after observing the class-dependent initial state the actual task distribution is 
+
+p(Z1: T | Z0) = 
+
+> 32
+
+X
+
+> c=1
+
+p(c | Z0)p(Z1: T | Z0, c ). (24) Here p(· | · ) denotes a conditional probability distribution; Z0 is the observed initial 22-dimensional state; and 
+
+Z1: T = ( Z1, . . . , Z T ) is the future state sequence. The discrete variable c ∈ { 1, . . . , 32 } is the hidden motion class. The factor p(c | Z0) is the posterior probability of class c after observing the initial state, and p(Z1: T | Z0, c ) is that 20 class’s conditional trajectory distribution. The summation marginalizes the unobserved class, producing the trajectory distribution presented to a predictor that receives no class label. The posterior weights need not equal the uniform prior 
+
+1/32 because height rules, initial velocities, and angular rates can correlate with c. Nevertheless, the construction does not enforce disjoint supports of Z0 across classes and therefore does not prove that the generator is identifiable from Z0.Generation used 32 CPU shards. Shard i ∈ { 0, . . . , 31 } used seed 7301 + 1000 i for training, an offset of 10,000 for 
+
+val_id , and an offset of 20,000 for val_ood . Each shard generated 1,024 training, 128 ID-test, and 128 OOD-test samples per motion; merging recovered the split sizes stated in the main paper. All tensors were checked for the expected shapes and finite values. 
+
+Serialization and split manifests. Each State-32 file is a PyTorch dictionary. Its float32 states entry has shape (N, 64 , 22) , where N is the corresponding split size reported in the main paper. The remaining entries record state_names , dt , profile , split , per-sequence motion_types and motion_indices , the ordered list 
+
+motion_type_names , and a generation note. The CSV manifest has one row per sequence and records the sample identifier, split, motion name and index, motion category, number of steps, time step, collision-event count, source shard, and source identifier. Motion names and indices are retained for stratified analysis but are not read by the predictor. The executed corpus contains exactly three partitions named train , val_id , and val_ood . The val prefix is an implementation-level filename retained for compatibility: val_id and val_ood are exactly the ID and OOD test sets reported in the main paper, rather than validation subsets in addition to a missing test set. Both are generated independently of and are disjoint from the training set. Model selection uses the complete val_id objective, and the reported ID and velocity-shift results are evaluations on val_id and val_ood , respectively; val_ood is not used for checkpoint selection. The serialized state files occupy approximately 5.6 GB, 706 MB, and 706 MB, respectively. 
+
+B.3 Same-32 
+
+Same-32 selects the construction_floor -yellow_cone Gaussian-32 sample with repeat index 0000 for each of the 32 ordered motion types. It therefore contains exactly 32 samples. Appearance, scene, primitive counts, reference view, and repeat index are fixed across the subset, while only the motion family changes. The manifest records the exact sample identifier, motion type, source path, and time interval ∆t for every row. 
+
+B.4 Common-12 
+
+The Common-12 manifest contains 84 videos: 12 categories for each of NewtonGS, CogVideoX, PhyT2V, Sora, Veo3, Wan, and NewtonGen. NewtonGS uses reference-camera view 0 from the seed-7301 Same-32 render. CogVideoX, Wan, and NewtonGen are regenerated from the same 12 recorded prompts. PhyT2V, Sora, and Veo3 use the corresponding videos distributed in the NewtonGen comparison release; their prompt and random-seed metadata are absent from the release and are therefore not reconstructed here. CogVideoX uses THUDM/CogVideoX-5b at 720 × 480 , 49 frames, 8 fps, 30 inference steps, and guidance 6.0. Wan uses Wan2.1-T2V-1.3B-Diffusers at 832 × 480 , 49 frames, 16 fps, 30 steps, and guidance 5.0. NewtonGen uses the CogVideoX-5B base with its released T2V5B_blendnorm_i18000_DATASET LoRA, 30 steps, guidance 6.0, degradation 0.5, and its selected noise-warp cartridge. For each generated row, the actual generator seed is 
+
+hrow = SHA1( method|motion|prompt_id ),srow = 7301 + int( hrow ,1:8 ) mod 10 6. (25) Here method , motion , and prompt_id are the manifest strings identifying the generator, semantic motion category, and prompt. The vertical bar inside the typewriter string is a literal field separator. SHA1 maps the concatenated UTF-8 string to a hexadecimal digest, and hrow denotes that digest for the current manifest row. The slice hrow ,1:8 contains its first eight hexadecimal digits; int converts that substring to an integer. The operation mod10 6 keeps the integer remainder in {0, . . . , 999999 }, and 7301 is the fixed base-seed offset. srow is the resulting generator seed for that row. Because the method name is hashed, numerically identical row seeds are not forced across CogVideoX, Wan, and NewtonGen. The “fixed seed” statement means that this deterministic rule and base seed are fixed. Released methods have no known seed. 21 Common category NewtonGS label Recorded generated-method prompt Uniform motion 3d_uniform_motion A small metal cube sliding steadily along a smooth laboratory bench, reflections visible on the surface, scattered tools in the background, captured from a fixed side camera. Acceleration 3d_acceleration_gravity A red sedan accelerating in a straight line on a clean highway, the road flat and clear, with only a pale sky and distant horizon in the background, captured from a fixed roadside camera. Deceleration sliding_then_stop A red sedan brakes and decelerates in a straight line on a wet city street, with lights reflecting on the road and buildings in the background, captured by a fixed side-view camera. Parabolic motion projectile_motion A single apple is thrown at an angle with an initial speed. The camera captures the motion from the side, showing the apple rising, reaching its peak, and then descending under gravity. The scene takes place in a bright open field under a clear blue sky, with soft sunlight casting gentle shadows on the ground. The background shows green grass and distant trees, adding depth and realism. Circular motion circular_orbital_motion A comet with a glowing tail orbits a distant star along a stable circular path. A top-down perspective emphasizes the symmetrical orbit and the stationary central star. 3D motion airplane_flight A small metal cube slides from the distance along a laboratory bench towards the camera, reflections visible on the surface, scattered tools in the background, captured from a fixed oblique side camera. Rotation 3d_rotation A metal rod spinning on a concrete floor, faint scratches and dust visible, captured from a fixed top-down camera. Parabolic motion with rotation 
+
+tumbling_fall A thin cylindrical rod gently tossed, rotating along its long axis, fixed side camera, realistic reflections, ground shadows visible, subtle motion blur.A chalkboard eraser spinning while falling in a tilted arc, side camera captures, scattered chalk pieces in the classroom background, realistic shadows and lighting. Slope sliding slope_sliding A small metal cube sliding down a laboratory ramp, shiny reflections on its surface, scattered tools and wires in the background, captured from a fixed side camera parallel to the ramp. Damped oscillation pendulum_damped_ oscillation 
+
+A realistic pendulum with a spherical bob swinging from a fixed pivot. The fixed camera captures the entire motion. Size changing size_changing A red helium balloon gradually inflating in a sunny park, children playing in the background, trees casting soft shadows, captured from a stationary side camera. Deformation non_rigid_deformation A piece of soft dough is evenly flattened on a workbench, captured by a fixed overhead camera. 
+
+Table 12: Fixed Common-12 mapping and prompt inventory. The prompt column is used by CogVideoX, Wan, and NewtonGen. NewtonGS does not consume it, and prompt metadata is unavailable for the three released-video methods. The stored parabolic-with-rotation prompt concatenates two scene descriptions without a separator; this is retained by the generator. 
+
+## C Cross-Representation and Video-Generation Evaluation Protocols 
+
+Using the data resources defined in Section B, this section specifies the L4GM/Same-32 cross-representation comparison and the unmatched Common-12 video proxy evaluation. It also records the constants used by the analytic state baselines. 
+
+C.1 L4GM/Same-32 Cross-Representation Protocol 
+
+The executed L4GM comparison uses the official repository at commit b857d670bda83a569e2bad774afe56 483d7a8674 and the official recon.safetensors and interp.safetensors checkpoints from jiawei011/L4GM .Inference invokes infer_4d.py with mode big ; temporal interpolation is disabled, although the interpolation check-point path remains an argument required by the launcher. For every Same-32 row, the input is the ground-truth Gaussian-32 render-supervision video from reference view 0, not a NewtonGS prediction. The 49 RGB frames are resized to 256 × 256 , the stored object mask is bilinearly resized, and the foreground is composited on white. The video is encoded at 24 fps. Four first-frame masked views are also exported to the L4GM workspace using the same white composite. Samples are selected by sorting the manifest by motion name and sample identifier and retaining one repeat per motion; metric values do not enter selection. Each normalized L4GM artifact contains 49 frames and 65,536 Gaussians, compared with 1,536 dynamic object Gaussians in the target. The adapter preserves the method’s own Gaussian topology, canonicalizes field names, and applies the opacity-weighted PCA lifter in this appendix independently at every frame. Finite differences then provide velocity, angular velocity, and scale rate; (m, e, μ ) = (1 , 0.75 , 0.2) are inserted because L4GM does not predict these channels. Temporal correspondence is frame-index correspondence at ∆t = 1 /24 . No Procrustes fit, center translation, axis permutation, unit rescaling, or target-dependent spatial alignment is applied to the L4GM output before state evaluation. Consequently the reported position, scale, and plane diagnostics also reflect L4GM’s reconstruction coordinate gauge. NewtonGS receives the labeled target Z0, whereas L4GM receives masked RGB video and reconstructs its own topology. This is therefore an exploratory interface check rather than a controlled same-input dynamics comparison. The single 22 deterministic set of 32 L4GM predictions is reused beside all three NewtonGS seeds; the displayed zero L4GM standard deviation does not represent three independent L4GM runs. 
+
+C.2 Common-12 Proxy Evaluation Protocol 
+
+The evaluator converts every video to RGB in [0 , 1] , uniformly subsamples to at most 32 frames, and downsamples only when the long edge exceeds 256 pixels. It does not align objects, cameras, duration, frame rate, crop, scene, or appearance. Thus the mapping in Table 12 is semantic category alignment rather than matched input. Let δb be the mean absolute consecutive-frame difference in the outer 8% image border and δa the mean absolute second temporal difference over the full image. The reported background and smoothness proxies are 
+
+BC p = exp( −12 δb), MS p = exp( −10 δa). (26) Here BC p is the background-consistency proxy and MS p is the motion-smoothness proxy; subscript p marks both quantities as proxy metrics rather than official benchmark scores. δb ≥ 0 is the mean absolute RGB difference between consecutive frames restricted to the outer 8% image border, while δa ≥ 0 is the mean absolute second temporal difference over all RGB pixels. The function exp is the natural exponential. The fixed sensitivities 12 and 10 determine how quickly each score decays: zero difference produces score one and larger difference approaches zero. The normalized motion term is D = clip( δt/0.05 , 0, 1) , where δt is mean full-image consecutive-frame L1 difference, 
+
+0.05 is the fixed normalization scale, and clip( x, 0, 1) = min(1 , max(0 , x )) bounds the result. Subject consistency S
+
+is the mean similarity between the first frame and later frames, computed as one minus the Bhattacharyya distance between 24-by-16 HSV histograms over the centered 55% crop. The composite score is 
+
+PIS p = 0 .35MS p + 0 .25BC p + 0 .20 D + 0 .20 S. (27) In this expression, PIS p is the composite video proxy; MS p, BC p, D, and S are the smoothness, background, motion-magnitude, and subject-consistency terms defined above. Their fixed weights 0.35 , 0.25 , 0.20 , and 0.20 sum to one, so the composite is a convex weighted average when all four inputs lie in [0 , 1] . The table reports the arithmetic mean and sample standard deviation over the 12 categories. These image-statistic proxies are not official metrics of any listed generator. NewtonGS is conditioned on a Gaussian scene and physical state, generated methods are conditioned on the prompt inventory above, and released methods use undocumented release-time conditions. Accordingly the Common-12 table is an unmatched qualitative proxy inventory, not evidence for a controlled cross-method quality ranking. 
+
+C.3 Analytic-Baseline Constants 
+
+All baselines receive the same projected labeled Z0 and preserve (m, e, μ ). Hold-Z0 repeats all 22 initial channels. Const-Vel-SE(3) uses 
+
+pt = p0 + tv0, vt = v0,
+
+st = max(10 −4, s0 + tu0), ut = u0. (28) Here t ≥ 0 is elapsed time; subscripts 0 and t denote initial and current quantities. The vectors p, v, s, u ∈ R3 are position, velocity, scale, and scale rate. The first line integrates constant linear velocity. The second line integrates constant scale rate and then applies max(10 −4, ·) component-wise, with 10 −4 serving as the minimum valid scale. The baseline orientation is qt = q0 ⊗ AxisAngle( ω0/∥ω0∥, t ∥ω0∥) with constant ω0. Here q0 and qt are initial and current unit quaternions, ω0 is constant initial angular velocity, ∥ω0∥ is angular speed, ω0/∥ω0∥ is the rotation axis, 
+
+t∥ω0∥ is the angle, AxisAngle converts that axis-angle pair to a quaternion, and ⊗ is Hamilton multiplication. Damped-Vel-SE(3) sets d(t) = exp( −0.35 t) and a(t) = (1 − d(t)) /0.35 , replacing t above by a(t) and multiplying 
+
+v0, ω0, u0 by d(t). Its quaternion angle is a(t)∥ω0∥. The function d(t) is the remaining-velocity fraction under damping rate 0.35 , and a(t) is its time integral, i.e., the effective displacement-time coefficient. The natural exponential is denoted by exp .Gravity-Bounce-SE(3) and Physics-Prior-SE(3) use semi-implicit Euler once per dataset frame, not RK4 substeps. At each frame, 
+
+v ← v + h (g − cv v/m ) ,
+
+p ← p + hv,
+
+ω ← max(0 , 1 − cω h)ω,
+
+q ← q ⊗ AxisAngle( ω, h ∥ω∥).
+
+(29) In this semi-implicit update, ← means in-place assignment, h = 1 /24 seconds is one dataset-frame step, and g =(0 , −9.81 , 0) is gravity. The vectors v, p, ω, q are current linear velocity, position, angular velocity, and orientation. 23 The scalar m is mass; cv and cω are linear and angular damping constants. cv v/m is mass-normalized linear damping, while max(0 , 1 − cω h) is a nonnegative per-step angular-velocity retention factor. AxisAngle( ω, h ∥ω∥) uses the direction of ω as its axis and h∥ω∥ as its incremental rotation angle; ⊗ composes this increment with the current quaternion. If scale restoration is active, it then applies u ← u+h[−0.25( s−1)−0.08 u] and s ← max(10 −4, s+hu);otherwise s ← max(10 −4, s + hu). The same horizontal-floor hit test and analytic restitution/tangential response as NewtonGS follow the update, without a learned impulse. Gravity-Bounce uses cv = cω = 0 and no scale restoration. Physics-Prior uses cv = cω = 0 .05 and scale restoration. None of the analytic baselines receives the hidden motion label or future target states. In these scale updates, s is scale, u is scale rate, 1 = (1 , 1, 1) is unit-scale equilibrium, 
+
+0.25 is the restoration coefficient, 0.08 is scale-rate damping, and the component-wise lower bound 10 −4 prevents nonpositive scale. 
+
+## D Ablation Analysis 
+
+This section presents the residual diagnostics and clarifies the execution status of additional ablation variants. 
+
+D.1 Residual Analysis Initialization Comparison. Unless stated otherwise, the checkpoint-specific diagnostics from this subsection through the PIS-3D analysis use the seed-7301 reference checkpoint. We compare the corrected zero-last model with the legacy zero-all checkpoint. Both use State-32, seed 7301, the same objective, hidden width, learning-rate schedule, and 100-epoch budget. The distributed batch schedules differ slightly: the legacy run used eight processes before resuming with six, whereas the corrected run uses seven processes throughout. There is one run per setting, so this comparison diagnoses the initialization defect but does not estimate seed variation.                
+
+> Split Traj FDE Vel Quat Scale ID 3.03% 5.50% 1.45% 5.18% 17.54% OOD 2.33% 4.71% 1.40% 3.08% 18.40%
+
+Table 13: Relative error reduction from the legacy zero-all checkpoint to the corrected zero-last checkpoint. These are two single-run observations, not confidence intervals. 24 0 20 40 60 80 100 
+
+> Epoch
+> 5.9 6.0 6.1 6.2 6.3
+> Train Loss
+
+Training objective      
+
+> Zero-all (legacy) Zero-last 020 40 60 80 100
+> Epoch
+> 5.9 6.0 6.1 6.2 6.3
+> Val Loss
+
+Validation objective 
+
+Residual initialization under the same data, objective, width, and epoch budget Trajectory FDE Velocity Quaternion Scale 0.0 2.5 5.0 7.5 10.0 12.5 15.0 17.5 
+
+> Error reduction from zero-all to zero-last (%)
+> +3.0% +5.5% +1.5% +5.2% +17.5%
+
+ID 
+
+> Trajectory FDE Velocity Quaternion Scale
+> Error reduction from zero-all to zero-last (%)
+> +2.3% +4.7% +1.4% +3.1% +18.4%
+
+OOD 
+
+Effect of trainable state-dependent residual weights Figure 3: Zero-all versus zero-last initialization. Top: recorded training and full-ID objectives. Bottom: relative changes in the five reported prediction errors. Both variants use one run; their distributed batch schedules are not identical. The final recorded ID objective decreases from 6.183299 to 5.842536. Table 13 reports changes in the complete-split metrics; every listed error is lower with zero-last initialization. Figure 3 shows the objective curves and relative error changes. Each table entry is 100( Ezero -all − Ezero -last )/E zero -all , where Ezero -all is the error of the legacy initialization and Ezero -last is the error of the corrected initialization. The subtraction gives the error decrease, division makes it relative to the legacy value, and multiplication by 100 expresses it as a percentage. 
+
+Post-Hoc Branch Removal. To measure whether the trained branches affect the selected checkpoint, we set the continuous-residual parameters, contact-residual parameters, or both to zero at evaluation time. We do not retrain the remaining model, so Table 14 measures reliance on the learned branches rather than the performance of independently optimized ablations. 25 Split Variant Traj FDE Vel Quat Scale ID Full 3.167391 3.859234 3.648077 0.195692 0.163042 ID No continuous residual 3.229521 4.020150 3.678065 0.209841 0.229285 ID No contact residual 3.210038 3.945315 3.677260 0.195715 0.160706 ID No residual branches 3.271227 4.100753 3.705204 0.208083 0.229285 OOD Full 3.738382 4.577842 4.006419 0.202348 0.161367 OOD No continuous residual 3.790889 4.729918 4.042617 0.215592 0.229312 OOD No contact residual 3.779623 4.668812 4.033973 0.199591 0.159074 OOD No residual branches 3.831341 4.818889 4.068905 0.210234 0.229312 Table 14: Checkpoint branch removal on the complete ID and OOD splits. Lower is better. The variants are evaluated without retraining. Removing both branches increases trajectory RMSE by 3.28% on ID and 2.49% on OOD; FDE increases by 6.26% and 5.27%, respectively. Removing either branch alone also increases all three translation metrics, although removing the contact branch slightly lowers scale RMSE and the OOD quaternion discrepancy. 
+
+D.2 Coverage and Execution Status 
+
+Requested variant Evidence available Interpretation Zero-all vs. zero-last initialization Two single runs Table 13; schedules are not identical and no seed variance is available. Remove continuous residual Post-hoc, full splits Table 14; selected checkpoint is not retrained. Remove contact residual Post-hoc, full splits Table 14; selected checkpoint is not retrained. Remove both residuals Post-hoc, full splits Equivalent to evaluating the learned scalar analytic branch after zeroing both networks, not a separately optimized prior. Disable contact event Evaluator/model flag only No matched 100-epoch retrained result is stored. Remove analytic physics prior No matched artifact Requires a new model definition and retraining. Euler or changed RK4 step size No matched artifact max_dt exists in the model constructor, but the training launcher does not expose a reported sweep. Remove individual state, penetration, or smoothness losses Weight flags/code support only No matched 100-epoch retrained checkpoints are stored. 
+
+Table 15: Status of the requested ablations. Numerical claims are limited to stored full-split evaluations and the single-run initialization comparison. Table 15 separates reported evidence from variants that the code can express but for which no matched run artifact exists. This prevents an inference-time switch from being presented as a retrained ablation. The repository also contains compact development/smoke ablations with different widths, epoch budgets, and checkpoints; they are not comparable to the three reported 100-epoch runs and are excluded. 
+
+## E Additional Experimental Results 
+
+This section reports motion-wise results and physical-parameter and metric diagnostics. 
+
+E.1 Motion-Wise Results 
+
+The signed gain in Table 16 is 100( Eprior − Eours )/E prior ; positive values favor NewtonGS. These are seed-7301 class aggregates over all 4,096 samples per class. Here Eprior is the class-level trajectory RMSE of Physics-Prior-SE(3), 
+
+Eours is the corresponding NewtonGS RMSE, their difference is the absolute error reduction, division by Eprior 
+
+normalizes it relative to the baseline, and multiplication by 100 expresses the result as a percentage. 26 ID OOD Motion NewtonGS Prior Gain % NewtonGS Prior Gain % 3d_acceleration_gravity 3.564 3.657 +2.5 4.202 4.264 +1.5 3d_rotation 0.437 0.233 -87.1 0.452 0.233 -93.5 3d_uniform_motion 4.919 4.903 -0.3 7.298 7.325 +0.4 airplane_flight 2.111 2.104 -0.3 2.307 2.258 -2.2 banked_airplane_turn 2.558 2.724 +6.1 2.558 2.727 +6.2 bouncing_on_plane 0.406 0.464 +12.5 0.548 0.539 -1.7 circular_orbital_motion 3.975 4.319 +8.0 5.352 5.689 +5.9 damped_bouncing 0.453 0.486 +6.7 0.579 0.569 -1.7 figure_eight_flight 3.342 3.727 +10.3 3.601 3.994 +9.8 free_fall 0.979 1.028 +4.8 1.054 1.100 +4.1 helical_flight 2.689 2.946 +8.7 2.834 3.097 +8.5 hybrid_collision_impulse 5.494 5.715 +3.9 8.294 8.549 +3.0 non_rigid_deformation 3.384 3.437 +1.5 5.016 5.089 +1.4 nonlinear_force_field 2.272 2.281 +0.4 3.825 3.879 +1.4 object_wall_collision 3.515 3.705 +5.1 4.164 4.279 +2.7 orbit_with_precession 2.256 2.581 +12.6 2.254 2.579 +12.6 pendulum_damped_oscillation 2.563 2.812 +8.8 2.563 2.812 +8.9 projectile_motion 10.282 10.392 +1.1 9.023 9.114 +1.0 rolling_then_collision 1.280 1.624 +21.2 1.262 1.594 +20.8 rolling_with_friction 0.942 0.984 +4.3 1.759 1.803 +2.5 scale_pulse 0.450 0.390 -15.4 0.452 0.390 -15.9 size_changing 3.853 3.839 -0.4 5.807 5.821 +0.2 sliding_then_stop 0.647 0.424 -52.6 0.693 0.542 -27.9 slope_sliding 3.619 3.639 +0.5 4.583 4.656 +1.6 spiral_orbit_decay 3.506 3.824 +8.3 3.817 4.139 +7.8 spring_oscillation 3.394 3.664 +7.4 3.394 3.665 +7.4 stop_and_go_motion 0.839 1.153 +27.2 0.839 1.153 +27.2 throw_and_land 1.174 1.212 +3.2 1.273 1.327 +4.1 tumbling_fall 0.998 1.040 +4.0 1.190 1.224 +2.8 two_stage_motion 1.136 1.379 +17.7 1.138 1.381 +17.6 vertical_launch 0.805 0.855 +5.8 0.810 0.893 +9.2 wind_drag_projectile 0.976 0.959 -1.7 1.409 1.393 -1.1 
+
+Table 16: Complete motion-wise trajectory RMSE for NewtonGS and Physics-Prior-SE(3). “Prior” is one fixed method rather than a post-hoc per-class best-baseline envelope. 27 ID OOD 
+
+Evaluation split 
+
+3D rotation Sliding Then Stop Scale Pulse Wind Drag Projectile Airplane Flight Size Changing 3D Uniform Motion Nonlinear Force Field Projectile Slope sliding Non-rigid 3D Acceleration Gravity Damped Bouncing Rolling With Friction Tumbling Fall Hybrid Collision Impulse Throw And Land Wall collision Free Fall Floor bounce Banked Airplane Turn Circular Orbital Motion Spring Oscillation Vertical Launch Spiral Orbit Decay Helical Flight Pendulum Damped Oscillation Figure Eight Flight Orbit With Precession Two Stage Motion Rolling Then Collision Stop And Go Motion 
+
+-87.1% -93.5% -52.6% -27.9% -15.4% -15.9% -1.7% -1.1% -0.3% -2.2% -0.4% +0.2% -0.3% +0.4% +0.4% +1.4% +1.1% +1.0% +0.5% +1.6% +1.5% +1.4% +2.5% +1.5% +6.7% -1.7% +4.3% +2.5% +4.0% +2.8% +3.9% +3.0% +3.2% +4.1% +5.1% +2.7% +4.8% +4.1% +12.5% -1.7% +6.1% +6.2% +8.0% +5.9% +7.4% +7.4% +5.8% +9.2% +8.3% +7.8% +8.7% +8.5% +8.8% +8.9% +10.3% +9.8% +12.6% +12.6% +17.7% +17.6% +21.2% +20.8% +27.2% +27.2% 
+
+Trajectory RMSE gain over Physics-Prior-SE(3) 
+
+−20 −10 010 20 
+
+> Relative reduction; positive favors NewtonGS
+
+Figure 4: Per-motion trajectory-RMSE reduction relative to Physics-Prior-SE(3). Positive values favor NewtonGS. Colors are clipped for readability, while the printed values are not clipped. 28 Relative to Physics-Prior-SE(3), NewtonGS has lower trajectory RMSE on 25 of 32 motion classes in both splits. The median class-wise reduction is 4.52% on ID and 2.75% on OOD. The largest consistent reductions occur for stop-and-go motion, rolling followed by collision, and two-stage motion. The principal failures are also consistent: pure 3D rotation, sliding to a stop, and scale pulse have higher trajectory RMSE than the physics prior. In particular, the large relative percentage for 3D rotation arises because its target translation is small; the learned residual introduces position drift. Figure 4 reports every class instead of hiding these failures in an aggregate mean.                                    
+
+> Motion Global ID Traj. RMSE Motion Global ID Traj. RMSE Stop and go 48,450 0.216858 Pendulum 13,532 2.113756 Rolling then collision 80,410 0.421288 Helical flight 58,102 2.043598 Two stage 73,180 0.453353 Spiral decay 76,110 2.325643 Orbit with precession 69,297 1.782550 Circular orbit 94,981 1.846519 Planar bounce 38,416 0.082722 Spring oscillation 113,837 2.490296 Figure eight 67,718 2.218789 Damped bouncing 84,369 0.126762
+
+Table 17: Exact sample identifiers for the trajectory figures. Every plot uses all 64 timestamps, k = 0 , . . . , 63 , and directly plots stored state coordinates; there is no frame crop, color adjustment, or visual replacement. 29 0.5 1.0 1.5 2.0 2.5 x −0.6 −0.4 −0.2 
+
+z
+
+> 0.3 0.4 0.5 0.6 0.7 0.8
+
+y
+
+Stop And Go Motion best sample 48450 
+
+> −1.5 −1.0 −0.5 0.0 0.5 1.0
+
+x 0.6 0.8 1.0 1.2 1.4 1.6 
+
+z
+
+> 0.3 0.4 0.5 0.6 0.7 0.8
+
+y
+
+Rolling Then Collision best sample 80410    
+
+> 0.0 0.5 1.0 1.5 2.0
+
+x 0.0 0.5 1.0 
+
+z
+
+> 0.2 0.4 0.6 0.8
+
+y
+
+Two Stage Motion best sample 73180   
+
+> −0.5 0.0 0.5
+
+x 0.0 0.5 1.0 1.5 2.0 2.5 
+
+z
+
+> 0.5 1.0 1.5 2.0
+
+y
+
+Orbit With Precession best sample 69297 
+
+> 0.2 0.3 0.4 0.5 0.6 0.7
+
+x −2.0 −1.5 −1.0 −0.5 
+
+z
+
+> 0.4 0.6 0.8 1.0 1.2
+
+y
+
+Floor bounce best sample 38416 
+
+> −1.0 −0.5 0.0 0.5 1.0 1.5
+
+x −0.5 0.0 0.5 1.0 1.5 2.0 
+
+z
+
+> 0.5 1.0 1.5 2.0
+
+y
+
+Figure Eight Flight best sample 67718 
+
+Best-case ID trajectories (set A) 
+
+Ground truth Ours Gaussian-NND Physics-Prior-SE(3) Gravity-Bounce-SE(3) Hold-Z0 Figure 5: ID trajectory visualizations, set A: stop-and-go motion, rolling then collision, two-stage motion, orbit with precession, floor bounce, and figure-eight flight. Dots and crosses mark initial and final states. 30 −0.5 0.0 0.5 1.0 1.5 x 0.0 0.5 1.0 1.5 2.0 2.5 
+
+z
+
+> 0.5 1.0 1.5 2.0
+
+y
+
+Pendulum Damped Oscillation best sample 13532 
+
+> −1.5 −1.0 −0.5 0.0
+
+x 012
+
+z
+
+> 0.5 1.0 1.5 2.0 2.5
+
+y
+
+Helical Flight best sample 58102  
+
+> 0.0 0.5 1.0 1.5
+
+x 012
+
+z
+
+> 0.5 1.0 1.5 2.0
+
+y
+
+Spiral Orbit Decay best sample 76110 
+
+> −1.0 −0.5 0.0 0.5 1.0 1.5
+
+x 0.00 0.25 0.50 0.75 1.00 1.25 
+
+z
+
+> 0.5 1.0 1.5 2.0
+
+y
+
+Circular Orbital Motion best sample 94981     
+
+> 01234
+
+x −0.6 −0.4 −0.2 0.0 
+
+z
+
+> 0.5 1.0 1.5 2.0
+
+y
+
+Spring Oscillation best sample 113837   
+
+> −0.5 0.0 0.5 1.0
+
+x −0.5 0.0 0.5 1.0 1.5 2.0 
+
+z
+
+> 01234
+
+y
+
+Damped Bouncing best sample 84369 
+
+Best-case ID trajectories (set B) 
+
+Ground truth Ours Gaussian-NND Physics-Prior-SE(3) Gravity-Bounce-SE(3) Hold-Z0 Figure 6: ID trajectory visualizations, set B: damped pendulum, helical flight, spiral-orbit decay, circular-orbital motion, spring oscillation, and damped bouncing. 31 Figures 5 and 6 visualize ID trajectories for 12 motion classes. Table 17 records the global sample identifier and trajectory RMSE for every panel. Each panel plots all 64 timestamps directly from the stored state coordinates. 
+
+E.2 Physical-Parameter Response and Metric Diagnostics E.2.1 Response to Explicit Physical Parameters 0.0 0.5 1.0 Input restitution e
+
+> 0.0 0.2 0.4 0.6 0.8 1.0 Observed normal-speed ratio
+
+Restitution response    
+
+> 0.0 0.5 1.0 Input friction μ
+> 0.0 0.2 0.4 0.6 0.8 1.0 Observed tangential-speed ratio
+
+Friction response   
+
+> 24Input mass m
+> 0.6 0.7 0.8 0.9 1.0 Horizontal-speed retention at 1 s
+
+Mass-dependent damping 
+
+Response to explicit physical-parameter inputs   
+
+> Full residual model Calibrated structured model Analytic target
+
+Figure 7: Response to explicit restitution, tangential-attenuation, and mass inputs. The calibrated structured model zeros both learned residual branches while retaining the trained scalar coefficients. Dotted lines show the analytic restitution and attenuation targets. Figure 7 varies one supplied parameter at a time in fixed synthetic probes. The observed normal-speed ratio is monotonic in restitution (Spearman 1.00 ), tangential-speed retention is nearly monotonic in the attenuation parameter ( −0.983 ), and one-second horizontal-speed retention is monotonic in mass ( 1.00 ). These probes show that the inputs influence the implemented response, but they do not test parameter estimation or identify ground-truth materials. The learned residual also perturbs the analytic endpoints: at e = 0 the measured normal ratio is −0.0284 , at μ = 1 tangential retention is 0.0855 , and at m = 4 horizontal-speed retention is 1.0056 . We therefore describe the checkpoint as parameter responsive rather than perfectly calibrated or physically guaranteed. 
+
+E.2.2 PIS-3D Diagnostic 
+
+32 3.5 4.0 4.5 5.0 5.5 6.0 
+
+> Trajectory RMSE ↓
+> 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9
+> PIS-3D ↑
+> Ours Hold Const-Vel Damped Gravity Physics
+
+ID: rank corr. = +0.60       
+
+> 4.0 4.5 5.0 5.5 6.0 6.5 7.0
+> Trajectory RMSE ↓
+> Ours Hold Const-Vel Damped Gravity Physics
+
+OOD: rank corr. = +0.66 
+
+PIS-3D is not aligned with target-state accuracy Figure 8: PIS-3D versus trajectory RMSE for six non-oracle methods. The positive rank correlation is opposite to the sign expected of a score aligned with target-state accuracy. Figure 8 compares PIS-3D with trajectory RMSE across the six non-oracle methods. Their Spearman correlation is 
+
++0 .600 on ID and +0 .657 on OOD. Since lower trajectory error should correspond to a higher diagnostic score, an aligned ranking would have a negative sign. 
+
+## F Qualitative Visualization Results 
+
+This section presents the cross-method motion inventory, the pretrained first-frame 3DGS-to-dynamics example, scene-aware background stress tests, and an explicit analysis of the observed qualitative behavior. 
+
+F.1 Cross-Method Motion Inventory 
+
+Figure 9 retains the intermediate-frame comparison for parabolic motion with rotation from the public NewtonGen comparison set (Yuan et al., 2026). Each public-video column is taken from the released example for that method, and the column labeled NewtonGen corresponds to the release’s our.mp4 . NewtonGS uses the fixed Same-32 proxy mapping and reference-camera view 0. 
+
+Panel construction. Blue borders identify NewtonGS. Each strip displays t ∈ { 0, 1/3, 2/3, 1}. The visualization script chooses frame index round( f (T −1)) , preserves aspect ratio with neutral padding, and applies no color, exposure, or content editing. Showing intermediate frames helps distinguish a visible state change from an isolated endpoint difference. Here f ∈ { 0, 1/3, 2/3, 1} is normalized sequence time, T is the total number of video frames, T − 1 is the largest zero-based frame index, and round selects the nearest integer index. For NewtonGS, the fixed semantic mapping for this proxy category is tumbling fall. The mapping is fixed before visual inspection. 33 Figure 9: Four-frame sequences for parabolic motion with rotation. The NewtonGS column shows coupled displacement and orientation change while preserving the Gaussian object’s identity across the sampled times. All panels retain their fixed-camera crops. 
+
+Bouncing on plane Vertical launch Throw and land 
+
+Figure 10: Six-frame State-32 comparisons for bouncing on a plane, vertical launch, and throwing followed by landing. Within each panel, ground truth is shown on the left and NewtonGS on the right, with t ∈ { 0, 0.2, 0.4, 0.6, 0.8, 1.0}
+
+ordered from top to bottom. The source panels are cropped only to remove the other baseline columns; no displayed frame is altered or replaced. To complement the video-proxy comparison, Figure 10 shows three State-32 cases in which the NewtonGS rollout remains visually close to the target over the displayed sequence. The panels retain the complete temporal sampling from the original method-comparison figures but show only the ground-truth and NewtonGS columns for legibility. 34 F.2 Pretrained First-Frame 3DGS Followed by Gaussian-NND 
+
+We additionally instantiate the complete appearance-to-dynamics path requested in the main paper. A pretrained LGM front end (Tang et al., 2024a) provides a single canonical 3DGS of a bowling ball in a complete bowling-alley scene. The asset contains 62,710 Gaussians, including the ball, lane, pins, walls, and ceiling lights. From the stored reference camera, a fixed circular image region and depth interval select 347 foreground Gaussians. To prevent the layered LGM representation from leaving a second static copy of the ball, 273 nonforeground Gaussians inside a smaller projected footprint are omitted; the remaining 62,090 scene Gaussians are static throughout the rollout. This projection-and-depth grouping is a documented visualization heuristic, not a learned segmentation result. The pretrained 3DGS and its reference camera define the appearance and first-frame coordinate system. Gaussian-NND predicts a 49-frame object-state rollout. We convert state positions to displacements relative to Z0, anchor those displacements at the selected foreground centroid, and apply the predicted relative rotation and scale to the foreground Gaussians. This coordinate conversion preserves the pretrained scene at t = 0 while avoiding the incorrect assumption that the physical-state origin equals the LGM scene origin. The background is neither regenerated nor evolved. For this qualitative probe, the initial physical input is chosen before rendering by minimizing a fixed state-space score over 65,536 pseudorandom candidates with seed 7302. The score targets a +x displacement of 0.72 over two seconds and penalizes vertical/lateral drift and scale change. This selection is analogous to specifying a forward-motion physical prompt; it is not a test-set result and is excluded from all quantitative tables. 
+
+Figure 11: Pretrained LGM (Tang et al., 2024a) first-frame 3DGS followed by Gaussian-NND. The top row shows the complete static-background scene, and the bottom row magnifies the moving foreground region. Only selected ball Gaussians receive the predicted relative transform; no post-render frame editing is applied. Figure 11 shows every uniformly spaced displayed frame, including visible grouping and reconstruction artifacts. 35 Figure 12: Top: LGM (Tang et al., 2024a) supplies the bowling-alley 3DGS at t = 0 , after which Gaussian-NND predicts foreground transforms while the background stays fixed; the second row magnifies the highlighted region. Bottom: exact-prompt public-video comparison from the NewtonGen release (Yuan et al., 2026) (first/final frames). The shared prompt is “A dark gray sports car accelerating in a straight line on an empty road at dusk, wet road reflecting light, orange sunset casting colors on the car, slight wind rustling the grass along the roadside, viewed from a stationary side-angle camera.” NewtonGS is omitted from the bottom panel because it is conditioned on a Gaussian scene and physical state rather than text. Figure 12 provides a compact juxtaposition of this appearance-to-dynamics example and one exact-prompt public-video comparison. The top panel is included to show object/background composition, whereas the bottom panel documents the appearance variation among public generators under one common text prompt. 
+
+F.3 Procedural Scene-Aware Background Stress Tests 
+
+The original NewtonGS comparison column uses a fixed construction-floor sample to keep the proxy mapping simple. To show the model in less uniform contexts, we additionally run the same selected checkpoint on 12 appearance-conditioned benchmark samples. Each sample contains a semantically matched colored object-centric Gaussian cluster and a static scene Gaussian set, such as a toy car on a living-room table, a soccer ball in a park, or a moon sphere in space. At inference, NewtonGS evolves only the object Gaussians. We then compose that predicted sequence with the sample’s unchanged background Gaussians and render from the stored reference camera. Uncovered pixels use a scene-appropriate constant renderer color. No frame is retouched, inpainted, relit, or generated for presentation. 36 Figure 13: Six-frame NewtonGS sequences with static scene backgrounds: 3D motion, acceleration, circular motion, and damped oscillation (top to bottom). The denser sampling exposes changes that can be hidden by endpoint-only display. Figure 13 shows six uniformly spaced times for 3D motion, acceleration, circular motion, and damped oscillation. The static background makes the predicted object displacement directly visible, while the 3D-motion and circular-motion rows also expose loss of coherent Gaussian extent. 37 Figure 14: Six-frame NewtonGS sequences with static scene backgrounds: deceleration, deformation, parabolic motion, and parabolic motion with rotation (top to bottom). Missing or clipped objects are shown without frame replacement. Figure 14 shows deceleration, deformation, parabolic motion, and parabolic motion with rotation. The panels preserve missing or clipped objects and therefore expose both the requested motion trend and the fixed-camera visibility failures. 38 Figure 15: Six-frame NewtonGS sequences with static scene backgrounds: rotation, size changing, slope sliding, and uniform motion (top to bottom). The background remains unchanged while the selected object Gaussians receive the predicted transform. Figure 15 shows rotation, size changing, slope sliding, and uniform motion. The backgrounds remain fixed while the object Gaussians receive the predicted transform. Together with the preceding two figures, these procedural scenes test the implemented object/background composition path rather than learned background dynamics or photorealistic generation. 
+
+F.4 Qualitative Visualization Analysis Observed behavior and failure modes. In Figure 9, the NewtonGS samples visibly change position and orientation over time, so the state rollout is reflected in the rendered object rather than only in an unrendered numerical trajectory. The fixed reference camera can crop an object or let it leave the field of view; this is a rendering-view limitation and should not be interpreted as object deletion. Figure 10 presents three additional cases. NewtonGS follows the alternating contact and airborne phases of the bouncing sequence, the ascent and descent of the vertical launch, and the coupled translation and rotation of the throw-and-land sequence. The appearance-conditioned examples test a complementary part of the pipeline. Figure 11 keeps the bowling-alley Gaussians fixed while the selected foreground subset moves through the six displayed times, demonstrating the 39 implemented composition path from a pretrained first-frame 3DGS to an object-level rollout. The enlarged row also reveals speckling, blur, and an imperfect foreground grouping, so this example does not support a claim of reconstruction-quality preservation. In Figures 13-15, the static backgrounds remain temporally consistent and several objects exhibit the requested translation, rotation, or scale trend. At the same time, the 3D-motion, circular-motion, and size-changing rows show loss of coherent Gaussian extent, while some trajectories are partly outside the stored view. Taken together, the visualizations support the limited conclusion that the current implementation can transform selected object Gaussians and compose them with a static scene. They do not demonstrate photorealistic 4D reconstruction, local nonrigid dynamics, learned camera control, or superiority to text-to-video systems. 
+
+## G Applicability, Failure Modes, and Observation Gap 
+
+Contact and interaction scope. The event module detects only one object against the horizontal plane y = 0 . It has no wall normal, inclined-plane normal, rolling constraint, pairwise object broad phase, or multi-contact resolution. Wall collision, slope sliding, rolling, and hybrid-contact labels in State-32 are therefore learned only through the continuous residual and a floor event when that event happens to trigger. This explains why wrong contact time, missing wall response, and incorrect post-impact direction are expected failure modes rather than violations of an implemented wall or slope solver. 
+
+Representation scope. Every selected object receives one shared relative rotation, translation, and diagonal scale ratio. The method cannot represent articulated joints, topology change, fracture, or a spatially varying deformation field. “Non-rigid” State-32 examples are only aggregate anisotropic-scale trajectories. Covariance congruence can also exaggerate anisotropy when a predicted scale component is inaccurate. Multiple objects can be stored in a scene, but the reported rollout evolves one selected cluster at a time and leaves every other Gaussian static. 
+
+Lifting failures. Opacity/object-weighted PCA is ill-conditioned when two eigenvalues are equal or nearly equal. The code enforces a right-handed basis but does not perform temporal axis-sign matching or eigenvector permutation tracking, so symmetric objects can exhibit quaternion flips or unstable angular velocity. Soft mask leakage changes the weighted center and extent; missing or fragmented masks can move the state origin or split a coherent object. A single Gaussian frame produces zero finite-difference linear, angular, and scale rates, and inserts default material values; it cannot infer velocity, restitution, attenuation, or mass from appearance. 
+
+Units and data domain. State-32 positions, velocities, and scales are synthetic generator units, not calibrated meters, seconds-derived SI material parameters, or measured object extents. The floor radius uses |sy | even though PCA lifting defines scale as twice a weighted standard deviation. Gaussian-32 contains procedural objects, procedural static backgrounds, known cameras, and labeled state trajectories; it is not equivalent to reconstructing a real dynamic scene from images. 
+
+Observation-to-state gap. The headline State-32 results start from labeled Z0, including velocities and material controls. They do not evaluate automatic observation-to-state inference. Projection grouping and PCA lifting are separate deterministic interfaces used for Gaussian experiments and are not jointly trained with Gaussian-NND. Consequently, State-32 accuracy is evidence about conditional state rollout, while the bowling and scene-aware figures are interface demonstrations. They do not establish end-to-end state estimation accuracy, real-scene 4D reconstruction quality, or dynamic-background modeling. 
+
+View and presentation failures. The stored cameras are fixed and are not optimized to keep a predicted object visible. Objects can leave the view, be cropped, or appear fragmented even when the underlying state remains finite. Qualitative panels retain those outcomes. Displayed temporal sequences use uniformly indexed normalized times; rendering figures preserve aspect ratio with neutral padding and apply no color, exposure, inpainting, or content correction. 40

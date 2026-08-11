@@ -1,0 +1,923 @@
+Title: SC-Diff: Semantically Calibrated Diffusion for Visible-to-Infrared Image Translation
+
+URL Source: https://arxiv.org/pdf/2608.08555v1
+
+Published Time: Tue, 11 Aug 2026 01:10:34 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+> 1
+
+# SC-Diff: Semantically Calibrated Diffusion for Visible-to-Infrared Image Translation 
+
+Junyin Zhang, Siyu Huang, Jianxiong Ye, Haowei Gong, Ruicheng Zhang, Deyu Meng, Member, IEEE ,Chenqiang Gao, Member, IEEE 
+
+Abstract —Visible-to-infrared image translation offers a practi-cal way to expand infrared training data using abundant visible images. Diffusion models have emerged as a promising approach to this task due to their strong generative performance. However, existing diffusion-based approaches typically use semantic priors as external conditions, without explicitly regulating token inter-actions inside the denoising network. This makes it difficult to preserve object locations, shapes, and semantic layouts required for reliable annotation reuse. To address this issue, we propose SC-Diff, a semantically calibrated latent diffusion framework that uses semantic priors for both conditional guidance and internal self-attention calibration. Specifically, a pretrained SAM3 model with predefined text prompts first extracts category-specific semantic masks from visible images. These masks are merged into a semantic map and fused with the visible image to form the input condition. The same semantic map is then converted into token-level semantic labels to calibrate self-attention inside the denoising network. Based on these labels, we propose Semantic-Guided Self-Attention Calibration (SGSC), which adaptively introduces positive biases for same-category query-key pairs. The query-wise calibration strength is determined by the dispersion of attention across semantic categories and the attention assigned to the query’s own category. The original attention strengths further modulate the bias so that same-category keys with stronger responses receive greater calibration. This soft calibration re-duces cross-category interference while retaining global contex-tual interactions, thereby improving semantic consistency in the generated infrared images. Extensive experiments demonstrate that SC-Diff improves perceptual generation quality and provides more effective synthetic training data for downstream infrared object detection. 
+
+Index Terms —Visible-to-infrared image translation, latent dif-fusion model, semantic-guided self-attention, infrared object detection 
+
+I. I NTRODUCTION 
+
+# INFRARED imaging is widely used in perception tasks because it records thermal radiation and remains reliable under varying illumination. These properties support robust perception in adverse conditions, such as low illumination, smoke, and challenging weather. In particular, infrared object detection has attracted increasing attention in safety-critical applications [4]–[6]. However, collecting large-scale infrared datasets remains expensive, as it requires dedicated thermal 
+
+Junyin Zhang, Siyu Huang, Jianxiong Ye, Haowei Gong and Chenqiang Gao are with the School of Intelligent Systems Engineering, Shenzhen Campus of Sun Yat-sen University, Shenzhen, Guangdong 518107, P.R. China. Corresponding author: Chenqiang Gao (e-mail: gaochq6@mail.sysu.edu.cn). Ruicheng Zhang is with the Tsinghua Shenzhen International Graduate School, Tsinghua University, Shenzhen, Guangdong 518055, P.R. China. Deyu Meng is with the School of Mathematics and Statistics, Xi’an Jiaotong University, Xi’an, Shaanxi 710049, P.R. China. (b) 
+
+> PID Ours
+
+(a) 
+
+> GT
+> Ours
+> PID
+
+(i)  (ii)  (iii) 
+
+(i)  (ii)  (iii) 
+
+(i)  (ii)  (iii) 
+
+(i)  (ii)  (iii) 
+
+(i)  (ii)  (iii) 
+
+(i)  (ii)  (iii) 
+
+Fig. 1. Comparison between PID [1], a recent representative diffusion-based method, and the proposed SC-Diff on the FLIR [2] dataset. (a) Image translation comparison. The first column shows three regions of interest marked by yellow boxes. PID tends to lose fine structures and local details; for example, the bicycle and pedestrian in region (ii) of the third row are largely missing. In contrast, SC-Diff preserves finer structures and stronger local contrast, resulting in more realistic infrared images. (b) Object detection comparison. Using the same detector [3], structural distortions and missing local details in translated infrared images may lead to missed detections (yellow boxes). By preserving local object structures, SC-Diff leads to fewer missed detections and more complete detection results. 
+
+sensors and additional annotation effort. In contrast, visible images are readily available at scale. This makes visible-to-infrared image translation a practical way of expanding infrared training datasets using abundant visible images. Despite recent progress, generating infrared images that ef-fectively benefit downstream infrared object detection remains challenging. Detection-oriented data augmentation requires not only realistic infrared appearance but also faithful preservation of object positions, shapes, and semantic layouts. Otherwise, structural distortions may invalidate the annotations inher-ited from visible images and reduce their value for detector training. This makes object-detail preservation particularly important for detection-oriented data augmentation [7]. As illustrated in Fig. 1, insufficient structural preservation results in missing local details and incomplete object structures. Visible-to-infrared translation has been explored under dif-ferent generative paradigms, from adversarial models to re-cent diffusion-based models. Early adversarial methods can synthesize infrared-like appearances but often suffer from unstable optimization and structural distortions. More recently, arXiv:2608.08555v1 [cs.CV] 9 Aug 2026 2
+
+diffusion-based methods have shown stronger generation ca-pability and have become a promising solution for visible-to-infrared translation. While diffusion-based methods can generate more realistic infrared appearances, their use of structural or semantic priors is still largely limited to external conditioning. Such priors provide spatial guidance for the generation process, but they do not explicitly regulate token interactions inside the self-attention layers of the denoising U-Net. As a result, unrestricted token aggregation may introduce excessive cross-category interference, leading to weakened object shapes and loss of fine structures, as further examined in Section IV-F. Motivated by this observation, we propose SC-Diff, a se-mantically calibrated latent diffusion framework for visible-to-infrared image translation. SC-Diff introduces semantic priors into both condition encoding and self-attention calibration. Specifically, we employ a pretrained SAM3 model [8] to extract category-specific semantic masks from visible im-ages. These masks are merged into a semantic map, which is combined with the visible image to provide spatial and semantic guidance. Meanwhile, the semantic map is converted into token-level semantic labels and used by the proposed Semantic-Guided Self-Attention Calibration (SGSC) module to regulate token interactions within the denoising U-Net. SGSC adaptively introduces positive biases for same-category token pairs. It uses the original attention weights to emphasize more relevant interactions and enhance semantic consistency. In this way, semantic priors provide external conditional guidance while also calibrating internal feature interactions during denoising. By improving semantic and structural consistency during translation, SC-Diff makes the annotations inherited from visible images more reliable for reuse. These translated images can serve as effective training samples for infrared object detection, providing a practical way to expand infrared training data and reduce the reliance on large-scale real infrared data collection and manual annotation. The main contributions of this paper are summarized as follows:  
+
+> •
+
+We propose SC-Diff, a semantically calibrated latent diffusion framework for visible-to-infrared image trans-lation, aiming to improve semantic and structural consis-tency for detection-oriented data augmentation.  
+
+> •
+
+We introduce SAM3-derived semantic priors and design a Semantic-Guided Self-Attention Calibration (SGSC) module. The module uses token-level semantic labels to enhance same-category token interactions and reduce cross-category feature interference during denoising.  
+
+> •
+
+Extensive experiments demonstrate that SC-Diff im-proves perceptual generation quality and provides more effective augmented data for downstream infrared object detection. The remainder of this paper is organized as follows. Section II reviews related work. Section III presents the proposed SC-Diff framework in detail. Section IV reports the experimental results and analysis. Finally, Section V concludes the paper. II. R ELATED WORK 
+
+In recent years, advances in generative modeling have significantly reshaped image-to-image (I2I) translation. This section first reviews representative methods for general I2I translation, and then discusses recent progress in visible-to-infrared translation. 
+
+A. General Image-to-Image Translation 
+
+Generative Adversarial Networks (GANs) have long been a dominant paradigm for image translation. Early supervised methods, such as Pix2Pix [9], use conditional CNNs together with an L1 reconstruction loss to learn pixel-aligned map-pings from paired data. To reduce the dependence on paired samples, CycleGAN [10] introduces cycle consistency and enables unsupervised bidirectional translation between two domains. However, when the source and target domains do not form a strictly bijective mapping, unsupervised transla-tion can easily introduce semantic hallucinations or struc-tural changes. StegoGAN [11] addresses this issue by using feature-space steganography to disentangle matchable and un-matchable features, thereby improving semantic preservation. PanopticGAN [12] leverages panoptic priors from foreground instances and background regions to improve semantic and structural consistency during translation. Nevertheless, GAN-based translation may still suffer from unstable optimization and inconsistent structural preservation. Diffusion models have recently emerged as strong alter-natives to GANs for image translation. DDPMs [13] es-tablish the iterative denoising framework, while LDMs [14] perform diffusion in a compressed latent space to reduce computational cost. Built on the latent diffusion framework, ControlNet [15] introduces an additional control branch to inject spatial priors, such as depth or edge maps, and en-ables more precise structural guidance. Other studies fur-ther adapt diffusion models to I2I translation. BBDM [16] models domain translation as a stochastic Brownian bridge connecting two data distributions, while DMT [17] improves inference efficiency through single-step domain transfer at an intermediate timestep. AdaNoise [18] uses adaptive noise and dual diffusion with cycle consistency to improve control and preserve semantics. These advances establish diffusion models as flexible frameworks for image translation, while semantic and structural preservation remains particularly important in cross-modal tasks. 
+
+B. Visible-to-Infrared Image Translation 
+
+Visible-to-infrared image translation aims to convert visible images into infrared representations, providing a low-cost approach to expanding infrared datasets. Early studies predom-inantly adopted GAN-based frameworks. ThermalGAN [19] translates visible person images into thermal representations for cross-modality person re-identification. InfraGAN [20] incorporates reconstruction constraints into a conditional ad-versarial framework to improve source-target correspondence. EGGAN [21] introduces explicit edge maps into a shared backbone to enhance geometric consistency under limited 3
+
+semantic supervision. Despite these efforts, consistently pre-serving object structures across diverse scenes remains chal-lenging. Such distortions reduce annotation reliability and limit the utility of generated data for infrared object detection. More recently, diffusion-based and flow-based methods have shown strong potential for visible-to-infrared image translation due to their generation quality and diversity. Nevertheless, it remains challenging to synthesize realistic infrared appear-ance while preserving object semantics and local structures from the visible input. To improve generation quality and cross-modal consistency, recent diffusion-based studies in-troduce different forms of auxiliary guidance. F-ViTA [22] employs a two-stage pipeline based on Grounding DINO [23] and SAM [24] to establish semantic correspondences across modalities. DiffV2IR [25] uses progressive learning with a vision-language module and SAM segmentation maps to preserve semantics. PID [1] incorporates physics-informed priors to improve thermal plausibility. TherA [26] employs a thermal-aware vision-language model to generate thermal em-beddings for guiding the diffusion process. Beyond diffusion models, ThermalGen [27] explores style-disentangled flow-based visible-to-infrared translation under varying imaging conditions. Together, these studies highlight the importance of structural guidance and thermal-aware modeling in visible-to-infrared translation. Despite this progress, recent diffusion-based visible-to-infrared methods mainly introduce semantic priors into the denoising U-Net as external conditions. This strategy provides useful spatial and semantic cues but does not directly regulate token interactions in self-attention. SC-Diff addresses this limitation by applying the same priors to both conditional guidance and self-attention calibration, thereby reducing cross-category interference and better preserving object boundaries and local details. III. M ETHODOLOGY 
+
+This section presents a semantically calibrated diffusion framework for visible-to-infrared image translation in Fig. 2. 
+
+A. Latent Diffusion Framework 
+
+Visible-to-infrared translation requires the generated in-frared image to remain spatially aligned with the visible input, especially in terms of object locations and scene layout. To this end, we build a conditional branch that injects the fused visible-image condition and semantic-map condition into the denoising U-Net at multiple scales. Given a visible image 
+
+xvis , its infrared counterpart xir , and the semantic map xseg , a pretrained encoder E maps them into the latent space: 
+
+zvis = E(xvis ), zir = E(xir ), zseg = E(xseg ). (1) Different from designs that encode the noisy target latent to-gether with the source condition, our condition branch extracts guidance from clean external inputs. The visible latent and semantic latent are first projected to the same feature space and directly fused as: 
+
+f con = Conv 1×1(zvis ) + Conv 1×1(zseg ). (2) The condition encoder further extracts multi-scale guidance features from the fused condition: 
+
+ycon = {h(l)con }Ll=1 = c(f con ; θ). (3) where c(·; θ) denotes the condition encoder, l indexes the U-Net layer, and L is the number of guidance layers. The noisy infrared latent is used only as the denoising input, so the condition feature remains clean and is not contaminated by timestep-dependent noise. Following latent diffusion [14], the forward corruption process is applied to the target infrared latent zir :
+
+q(zir  
+
+> t
+
+| zir  
+
+> 0
+
+) = N  zir  
+
+> t
+
+; √¯αt zir  
+
+> 0
+
+, (1 − ¯αt)I, (4) where zir  
+
+> 0
+
+= zir , t is the timestep, and ¯αt = Qts=1 (1 − βs).The denoising network ϵϕ then predicts the injected noise ϵ
+
+from zir  
+
+> t
+
+under the fused clean condition ycon . The training objective is: 
+
+LDiff (ϕ) = Ezir 
+
+> 0,t,ϵ
+
+∥ϵϕ(zir  
+
+> t
+
+, y con , t ) − ϵ∥2. (5) The resulting multi-scale condition features are injected into the corresponding U-Net layers through zero-initialized con-volutions. For the l-th self-attention layer at diffusion step t,the resulting input feature is written as: 
+
+h(l) 
+
+> t
+
+= Concat 
+
+
+
+hir ,(l) 
+
+> b,t
+
+, h ir ,(l) 
+
+> s,t
+
++ h(l)con 
+
+
+
+, (6) where hir ,(l) 
+
+> b,t
+
+and hir ,(l) 
+
+> s,t
+
+denote the backbone feature and skip feature of the denoising U-Net, respectively. The fused representation h(l) 
+
+> t
+
+is then projected into query, key, and value features: 
+
+Q(l) 
+
+> t
+
+= W (l) 
+
+> Q
+
+h(l) 
+
+> t
+
+, K(l) 
+
+> t
+
+= W (l) 
+
+> K
+
+h(l) 
+
+> t
+
+, V (l) 
+
+> t
+
+= W (l) 
+
+> V
+
+h(l) 
+
+> t
+
+.
+
+(7) The self-attention map is computed as: 
+
+A(l) 
+
+> t
+
+= Softmax 
+
+ Q(l) 
+
+> t
+
+K(l)
+
+> t
+> ⊤
+
+√d
+
+ , (8) where d is the scaling factor. The self-attention output is δ(l) 
+
+> t
+
+=
+
+A(l) 
+
+> t
+
+V (l) 
+
+> t
+
+, which updates the decoder representation at diffusion step t. In this way, the fused clean condition provides stable multi-scale guidance while avoiding noise leakage from the target latent. 
+
+B. Semantic-Guided Self-Attention Calibration 
+
+Although the fused clean condition provides multi-scale guidance to the denoising U-Net, the self-attention layers still aggregate token features without explicit semantic awareness. To regulate these internal interactions, we introduce a two-stage soft calibration strategy using token-level semantic la-bels inside the U-Net. The first stage computes an adaptive positive bias from the dispersion of attention across semantic categories. The second stage uses the original attention weights to assign larger biases to same-category keys with stronger responses. 
+
+1) Semantic Mask Generation: We first use a pretrained SAM3 model, denoted by ω, with predefined text prompts to extract category-specific semantic masks from the visible image. This prompt-based strategy provides category-level regions without requiring manual mask annotations. Given a 4Predicted Image 
+
+> Forward Diffusion
+
+Infrared Image 
+
+Visible Image 
+
+Prior Image 
+
+> SAM3
+> Latent Space
+> Condition Encoder
+
+Latent Encoder 
+
+Latent Encoder 
+
+> Zero Convolution
+
+Latent 
+
+Decoder 
+
+> SGSC
+
+Latent Encoder 
+
+Prompt 
+
+person 
+
+car 
+
+tree …
+
+> Conv 1×1
+> Conv 1×1
+> Conv 1×1
+
+Trainable weight 
+
+Frozen weight 
+
+Remove 
+
+> Noisy
+> infrared latent
+> Prior Image
+
+SGSC     
+
+> Adaptive
+> Positive Bias
+> Original-Attention Modulation
+> Softmax Softmax
+> MatMul
+> Addition
+> 𝒉 𝒕 𝒍 𝑸 𝒕 𝒍
+> 𝑲 𝒕 𝒍
+> 𝑽 𝒕 𝒍
+> 𝑺 𝒕 𝒍
+> 𝑨 𝒕 𝒍 𝝀𝜷 𝒕 𝒍 𝑮 𝒕 𝒍
+> ෨𝑺 𝒕 𝒍
+> ෩𝑨 𝒕 𝒍
+> Fig. 2. Overall architecture of the proposed SC-Diff. The visible image and semantic map are encoded as clean conditions to provide spatially aligned guidance for the denoising U-Net. The semantic map is obtained from category-specific semantic masks generated by a pretrained SAM3 model with text prompts. During denoising, SGSC uses token-level semantic labels inside the U-Net self-attention layers and adaptively calibrates same-category token interactions. This allows semantic priors to guide both external condition encoding and internal denoising interactions.
+
+visible image xvis and the k-th prompt pk, the corresponding category-specific semantic mask is predicted as 
+
+mk = ω(xvis , p k), (9) where mk ∈ { 0, 1}H×W indicates the region associated with prompt pk. Applying all prompts gives a set of category-specific semantic masks {mk}Nk=1 .We merge these masks into a semantic label map for at-tention calibration. When multiple masks overlap, the conflict is resolved using the prediction confidence so that each pixel is assigned to at most one category. Let { ¯mk}Nk=1 denote the resulting non-overlapping masks. The semantic label map Y
+
+is defined as: 
+
+Y (i, j ) = 
+
+(
+
+k, ¯mk(i, j ) = 1 ,
+
+0, otherwise , (10) where Y ∈ { 0, 1, . . . , N }H×W denotes the semantic label map, Y (i, j ) = 0 denotes an unlabeled region that is not assigned to any prompted semantic category, and Y (i, j ) = k
+
+indicates that pixel (i, j ) belongs to the k-th category. 
+
+2) Adaptive Positive Bias: For the l-th self-attention layer at diffusion step t, we start from the original attention similarity matrix: 
+
+S(l) 
+
+> t
+
+= Q(l) 
+
+> t
+
+K(l)⊤
+
+> t
+
+√d . (11) Here, Q(l) 
+
+> t
+
+and K(l) 
+
+> t
+
+are the query and key projections, and 
+
+d is the feature scaling factor. The original attention map is 
+
+A(l) 
+
+> t
+
+= Softmax( S(l) 
+
+> t
+
+).We then align the semantic label map with the current attention layer. Specifically, Y is resized to the layer reso-lution and flattened into token-level semantic labels ℓ(l) =
+
+{ℓ(l) 
+
+> i
+
+}i∈Ωl , where Ωl denotes the token index set of this layer, 
+
+ℓ(l) 
+
+> i
+
+∈ { 0, 1, . . . , N }, and ℓ(l) 
+
+> i
+
+= 0 denotes an unlabeled token. For each query token and semantic category c, we aggregate the original attention weights assigned to key tokens in that category: 
+
+P (l) 
+
+> t,i,c
+
+= X
+
+> j∈Ωl
+
+A(l) 
+
+> t,ij
+
+1
+
+h
+
+ℓ(l) 
+
+> j
+
+= c
+
+i
+
+, (12) where 1[·] is the indicator function. Since label 0 does not represent a semantically coherent category, attention assigned to unlabeled tokens cannot be reliably interpreted as cross-category interference. We therefore exclude this attention mass when determining the calibration strength. Accordingly, P (l)
+
+> t,i,c
+
+is normalized over the prompted semantic categories, and the resulting distribution is denoted by bP (l)
+
+> t,i,c
+
+. The semantic-category attention entropy score is then computed as: 
+
+H(l) 
+
+> t,i
+
+= − 1log n(l)
+
+> N
+
+X
+
+> c=1
+
+bP (l) 
+
+> t,i,c
+
+log 
+
+ bP (l) 
+
+> t,i,c
+
++ ε
+
+
+
+, (13) where n(l) is the number of prompted semantic categories present at layer l, ε ensures numerical stability, and H(l) 
+
+> t,i
+
+is set to zero when n(l) < 2.We further consider the proportion of attention assigned to the query token’s own semantic category. For a labeled query token, the adaptive positive-bias strength is defined as 
+
+β(l) 
+
+> t,i
+
+= H(l)
+
+> t,i
+
+
+
+1 − bP (l)
+
+> t,i,ℓ (l)
+> i
+
+
+
+. (14) This formulation assigns stronger calibration when a query distributes its attention across multiple prompted semantic categories while assigning insufficient attention to its own category. Conversely, the entropy term suppresses calibration for highly concentrated attention patterns, thereby avoiding unnecessary modification of confident interactions that may encode useful contextual dependencies. For an unlabeled query token, we set β(l) 
+
+> t,i
+
+= 0 .
+
+3) Original-Attention Modulation: To restrict the modu-lation to same-category keys, we construct a same-category 5
+
+indicator matrix: 
+
+M (l) 
+
+> ij
+
+=
+
+(
+
+1, ℓ(l) 
+
+> i
+
+= ℓ(l) 
+
+> j
+
+, ℓ (l)
+
+> i
+
+̸ = 0 , ℓ (l)
+
+> j
+
+̸ = 0 ,
+
+0, otherwise , (15) where M (l) 
+
+> ij
+
+indicates whether the i-th and j-th tokens be-long to the same prompted semantic category. Although β(l)
+
+> t,i
+
+controls the query-wise calibration magnitude, a uniform logit bias leaves the relative attention distribution among same-category keys unchanged and assigns the same increment to keys with different contextual relevance. Accordingly, we use the original attention weights to modulate the bias: 
+
+G(l) 
+
+> t,ij
+
+= A(l) 
+
+> t,ij
+
+M (l)
+
+> ij
+
+max r∈Ωl A(l) 
+
+> t,ir
+
+M (l) 
+
+> ir
+
++ ε . (16) A scalar factor λ controls the overall calibration magnitude and is set to 10. Finally, we obtain the calibrated attention map: 
+
+eA(l) 
+
+> t,ij
+
+=exp 
+
+
+
+S(l) 
+
+> t,ij
+
++ λβ (l) 
+
+> t,i
+
+G(l)
+
+> t,ij
+
+P 
+
+> r∈Ωl
+
+exp 
+
+
+
+S(l) 
+
+> t,ir
+
++ λβ (l) 
+
+> t,i
+
+G(l)
+
+> t,ir
+
+ . (17) The calibrated response δ(l) 
+
+> t
+
+= eA(l) 
+
+> t
+
+V (l) 
+
+> t
+
+is then used as the output of the current self-attention layer. We further visualize 
+
+A(l) 
+
+> t
+
+and eA(l) 
+
+> t
+
+to compare the self-attention distributions before and after calibration. Details can be found in Section IV-F. 
+
+C. Model Inference 
+
+After training the denoising network ϵϕ, inference starts from a Gaussian latent variable zir  
+
+> T
+
+∼ N (0 , I). The model then progressively denoises this latent variable under the visible-image condition and semantic-map condition. For a Gaussian reverse transition pϕ(zir  
+
+> t−1
+
+| zir  
+
+> t
+
+, y con ) with mean μϕ(zir  
+
+> t
+
+, y con , t )
+
+and covariance Σϕ(zir  
+
+> t
+
+, y con , t ), the reverse diffusion step is written as: 
+
+pϕ(zir  
+
+> t−1
+
+| zir  
+
+> t
+
+, y con ) = N zir 
+
+> t−1
+
+; μϕ(zir  
+
+> t
+
+, y con , t ),
+
+Σϕ(zir  
+
+> t
+
+, y con , t ). (18) The standard DDPM sampler requires a long Markov chain and is therefore computationally expensive. To improve in-ference efficiency, we adopt DDIM [28], which uses anon-Markovian sampling process while preserving the same marginal distributions. The update from step t to t−1 is given by: 
+
+zir  
+
+> t−1
+
+= √¯αt−1 ˆzir  
+
+> 0
+
++
+
+q
+
+1 − ¯αt−1 − σ2 
+
+> t
+
+˜ϵϕ(zir  
+
+> t
+
+, t ) + σtϵ, (19) where σt controls the stochasticity of the sampling process, and ϵ denotes Gaussian noise. The clean infrared latent ˆzir  
+
+> 0
+
+is estimated as: 
+
+ˆzir  
+
+> 0
+
+= 1
+
+√¯αt
+
+ zir  
+
+> t
+
+− √1 − ¯αt ˜ϵϕ(zir  
+
+> t
+
+, t ) . (20) When σt = 0 , DDIM sampling becomes deterministic, en-abling efficient generation from the initial noise. After the final denoising step, the pretrained decoder D reconstructs the translated infrared image as ˆxir = D(ˆ zir  
+
+> 0
+
+).We further apply classifier-free guidance (CFG) [29] to balance the visible-image condition and the semantic-map condition. During training, we randomly drop the two con-ditions to enable CFG at inference. Let y∅
+
+> con
+
+, yv
+
+> con
+
+, and                                                             
+
+> TABLE I HYPERPARAMETERS FOR THE PROPOSED SC-D IFF . SC-D IFF IS TRAINED ON THREE NVIDIA A6000 GPU S.Hyperparameters M3FD FLIR KAIST Input resolution 512 ×512 512 ×512 512 ×512 z shape 64 ×64 ×464 ×64 ×464 ×64 ×4Diffusion steps 1000 1000 1000 Noise schedule linear linear linear Channels 320 320 320 Depth 111Attention resolution 64,32,16,8 64,32,16,8 64,32,16,8 Channel multiplier 1,2,4,4 1,2,4,4 1,2,4,4 Number of heads 888Batch size per GPU 444Number of GPUs 333Batch accumulation 888Epochs 400 400 400 Learning rate 1e-5 1e-5 1e-5 Optimizer AdamW AdamW AdamW Pretrained SD v1.5 SD v1.5 SD v1.5 Default sampling steps 30 30 30 DDIM η000
+
+yv,m  
+
+> con
+
+denote the condition features obtained by dropping both conditions, keeping only the visible-image condition, and keeping both conditions, respectively. For brevity, we denote their corresponding noise predictions by ϵ∅ = ϵϕ(zir  
+
+> t
+
+, y ∅
+
+> con
+
+, t ),
+
+ϵv = ϵϕ(zir  
+
+> t
+
+, y v
+
+> con
+
+, t ), and ϵv,m = ϵϕ(zir  
+
+> t
+
+, y v,m  
+
+> con
+
+, t ). The guided noise estimate is then computed progressively as: 
+
+˜ϵϕ(zir  
+
+> t
+
+, t ) = ϵ∅ + cv (ϵv − ϵ∅) + cs (ϵv,m − ϵv ) , (21) where cv and cs denote the guidance scales for the visible-image condition and the semantic-map condition, respectively. The first guidance term introduces spatial structure from the visible image, while the second term further injects semantic region information from the semantic map. When the two guidance scales are equal, the progressive formulation is equiv-alent to standard CFG applied to the joint visible-image and semantic-map condition. This progressive design allows the denoising process to preserve the input layout and strengthen semantic consistency during infrared generation. IV. E XPERIMENTS 
+
+A. Experimental Settings 
+
+Datasets. We conduct visible-to-infrared translation experi-ments on three widely used paired benchmarks, including M3FD [31], FLIR [2], and KAIST [32]. These datasets cover diverse acquisition conditions and scene distributions, allow-ing us to evaluate in-domain translation performance across different benchmarks. We additionally use Cityscapes [33] as an external visible-image source to evaluate out-of-distribution generation and the effectiveness of translated images for downstream infrared object detection. M3FD contains 4,200 aligned pairs of visible and infrared images collected from diverse daytime and nighttime scenes. We follow the data split released by DiffV2IR [25], using 3,550 pairs for training and 650 pairs for testing. For FLIR and KAIST, we adopt the standard train/test splits commonly used in infrared object detection. FLIR provides paired visible and 6
+
+TABLE II QUANTITATIVE COMPARISON OF GENERATION PERFORMANCE ON THREE PUBLIC DATASETS . F OR PSNR AND SSIM, HIGHER IS BETTER (↑); FOR LPIPS  
+
+> AND
+
+FID, LOWER IS BETTER (↓). T HE BEST RESULTS ARE SHOWN IN BOLD , AND THE SECOND -BEST ARE UNDERLINED . † DENOTES RESULTS QUOTED FROM PRIOR PUBLICATIONS [1], [25] AND NOT REPRODUCED UNDER OUR EVALUATION PIPELINE .                                                                                                                                                                          
+
+> Method M3FD FLIR KAIST Type
+> PSNR (↑)SSIM (↑)LPIPS (↓)FID (↓)PSNR (↑)SSIM (↑)LPIPS (↓)FID (↓)PSNR (↑)SSIM (↑)LPIPS (↓)FID (↓)
+> Pix2Pix [9] 18.07 0.659 0.353 160.85 17.25 0.488 0.396 150.28 19.35 0.714 0.408 169.82 GAN CycleGAN [10] 15.12 0.593 0.356 115.10 15.54 0.326 0.525 98.70 17.83 0.579 0.425 74.74 GAN ThermalGAN [19] 17.89 0.669 0.566 164.29 17.96 0.464 0.512 147.52 21.78 0.750 0.461 123.04 GAN InfraGAN [20] 10.56 0.368 0.567 340.63 14.63 0.389 0.478 320.33 16.45 0.693 0.399 162.21 GAN EGGAN-U [21] 12.70 0.487 0.342 125.56 17.14 0.371 0.350 91.24 20.06 0.705 0.373 76.27 †GAN StegoGAN [11] 13.97 0.454 0.451 208.56 13.48 0.368 0.543 103.61 16.43 0.553 0.408 82.50 †GAN T2V-DDPM [30] 10.45 0.488 0.461 162.69 12.54 0.453 0.442 155.30 15.40 0.626 0.412 146.58 Diffusion F-ViTA [22] 17.96 0.681 0.222 76.46 18.21 0.499 0.333 82.39 19.02 0.703 0.323 68.72 Diffusion DiffV2IR [25] 19.30 †0.662 †0.200 †70.29 †--------Diffusion PID [1] 20.62 0.731 0.214 93.85 18.07 0.475 0.323 83.15 24.25 0.810 0.255 45.13 Diffusion
+> SC-Diff (Ours) 20.63 0.731 0.181 62.91 19.15 0.496 0.262 57.66 23.49 0.799 0.239 27.98 Diffusion
+
+PID DiffV2IR  SC-Diff Visible  F-ViTA  GT 
+
+PID StegoGAN  SC-Diff Visible  F-ViTA  GT GT 
+
+PID StegoGAN  SC-Diff Visible  F-ViTA  GT 
+
+Fig. 3. Qualitative comparison under the standard generation setting on three datasets. Each row presents one representative example from a different dataset, and the yellow boxes highlight local regions for zoomed-in comparison. 
+
+infrared images for traffic-oriented perception, with 4,129 pairs for training and 1,013 pairs for testing. Since some visible images contain black borders that may introduce artificial structures during translation, we remove these borders and apply the same spatial preprocessing to both modalities before resizing them to the model input resolution. KAIST contains 10,845 aligned pairs of visible and infrared images captured in urban driving scenarios, including 8,593 pairs for training and 2,252 pairs for testing. To generate additional infrared training samples for down-stream object detection, we use the 2,975 training images and 500 validation images from Cityscapes as an external visible-image pool. All 3,475 images are translated into the infrared style of the corresponding target dataset, and their annotations are converted into detection labels. According to the category definitions of the target benchmarks, we retain person , car ,
+
+motorcycle , truck , traffic light , and bus for M 3FD, and person ,
+
+car , and bicycle for FLIR. 
+
+Evaluation metrics. We evaluate visible-to-infrared transla-tion from both pixel-level fidelity and perceptual quality. For pixel-level comparison, we report Structural Similarity Index (SSIM) [34] and Peak Signal-to-Noise Ratio (PSNR) between translated infrared images and ground-truth infrared images. SSIM reflects structural consistency, while PSNR measures reconstruction accuracy in the image space. However, high pixel-level similarity does not always indicate realistic infrared generation, especially when multiple plausible thermal appear-ances may correspond to the same visible scene. Therefore, we further report Learned Perceptual Image Patch Similarity (LPIPS) [35] and Fr´ echet Inception Distance (FID) [36], which better capture perceptual similarity and distribution-level realism. For downstream object detection, we adopt standard detection metrics, including mean Average Precision at IoU 0.5 ( mAP 50 ), mean Average Precision at IoU 0.75 7Visible  PID  F-ViTA  SC-Diff Visible  PID  F-ViTA   
+
+> F-ViTA SC-Diff
+> M3FD Style KAIST Style FLIR Style
+> Fig. 4. Out-of-distribution generation results on Cityscapes images. Visible images are translated into the infrared styles of M 3FD, KAIST, and FLIR. Each group shows one visible scene, with each row corresponding to a specific target infrared style. Yellow boxes highlight representative local regions.
+
+(mAP 75 ), and the COCO-style mean Average Precision av-eraged over IoU thresholds from 0.5 to 0.95 ( mAP) [37]. Together, these metrics assess translation fidelity, perceptual quality, distribution-level realism, and downstream detection utility. 
+
+Implementation Details. Our SC-Diff is implemented in PyTorch and trained on three NVIDIA A6000 GPUs. During training, all images are center-cropped into square patches according to the shorter side and then resized to 512 × 512 .The pixel values are normalized to [−1, 1] , following the same preprocessing protocol as PID [1]. We then use the pretrained autoencoder of SD v1.5 to encode visible images, infrared images, and semantic maps into the latent space, and train the diffusion model with 1,000 diffusion steps to predict the timestep noise. For SAM3, we use a fixed set of text prompts covering common urban-scene categories: road ,
+
+sidewalk , person , rider , car , truck , bus , motorcycle , bicycle ,
+
+building , wall , pole , tree , traffic sign , traffic light , ground ,and sky . This prompt set is adopted because M 3FD, FLIR, KAIST, and Cityscapes are all collected from urban street scenes, where these categories frequently appear. During infer-ence, DDIM sampling with 30 steps is adopted to accelerate the generation process. Considering the spatial resolution of intermediate features, the proposed SGSC module is applied only at the 64 × 64 and 32 × 32 resolutions, where token-level semantic labels can still provide sufficiently reliable region guidance. More implementation details are reported in Table I. When reproducing competing methods, we use the official implementations and recommended hyperparameters whenever available. 
+
+B. Main Results on Visible-to-Infrared Image Translation 
+
+To evaluate the effectiveness of SC-Diff, we compare it with representative visible-to-infrared translation methods from both GAN-based and diffusion-based families. The GAN-based methods include Pix2Pix [9], CycleGAN [10],                
+
+> TABLE III OUT -OF -DISTRIBUTION EVALUATION ON CITYSCAPES UNDER THREE TARGET INFRARED STYLES . FID IS COMPUTED AGAINST THE REAL INFRARED TRAINING DISTRIBUTION OF EACH TARGET DATASET ,AND LOWER IS BETTER .Method CS →M3FD CS →FLIR CS →KAIST PID [1] 191.17 100.71 90.76 F-ViTA [22] 156.10 93.56 102.33 SC-Diff (Ours) 142.96 89.83 70.28
+
+ThermalGAN [19], InfraGAN [20], EGGAN-U [21], and StegoGAN [11]. The diffusion-based methods include T2V-DDPM [30], F-ViTA [22], DiffV2IR [25], and PID [1]. We report results under two evaluation settings. The standard setting uses the train/test split from the same benchmark dataset, while the out-of-distribution setting evaluates whether a trained translator can generalize to external visible images. 
+
+1) Standard Generation: As shown in Table II, recent diffusion-based methods generally achieve stronger perceptual performance than most GAN-based baselines. Among all compared methods, SC-Diff achieves the best LPIPS and FID across all three datasets while maintaining competitive PSNR and SSIM. Although PID obtains higher PSNR and SSIM on KAIST, its higher LPIPS and FID indicate weaker perceptual quality and distribution matching. This discrepancy shows that pixel-level metrics alone do not fully capture the visual quality of generated images. Overall, SC-Diff achieves a more favorable balance between perceptual quality and reconstruction fidelity while better preserving local structures. 
+
+2) Out-of-Distribution Generation: We use Cityscapes [33] (CS) to evaluate out-of-distribution generation. Each trans-lation method is trained separately on the three paired datasets and then used to translate images from Cityscapes without fine-tuning. We evaluate three settings: CS →M3FD, CS →FLIR, and CS →KAIST. Under this protocol, we compare SC-Diff with two representative diffusion-based methods, F-8
+
+ViTA [22] and PID [1]. This protocol evaluates whether the model can transfer the target infrared appearance to unseen visible scenes, which is important when external visible im-ages are used for data expansion. Since Cityscapes does not provide paired ground-truth in-frared images, we cannot compute metrics that require paired references. We use FID as the only quantitative metric to compare the generated image distribution with the real in-frared training distribution of each target dataset. As shown in Table III, SC-Diff achieves the lowest FID in all three evaluation settings, outperforming F-ViTA and PID. These results indicate that SC-Diff more closely matches the target infrared distributions when translating unseen visible images from Cityscapes. 
+
+C. Visualization of Visible-to-Infrared Image Translation 
+
+The qualitative comparisons under the standard in-domain setting are shown in Fig. 3. Each row presents a representative example from M 3FD, FLIR, or KAIST, with the highlighted regions focusing on a vehicle, a cyclist, and small foreground targets, respectively. Most compared methods preserve the overall scene layout, but clear differences emerge in local structure preservation. StegoGAN retains coarse scene content but produces uneven contrast and weakened object details. DiffV2IR and F-ViTA generate plausible infrared appearances, although their local intensity distributions and target contours sometimes differ from the paired infrared images. PID exhibits the most noticeable over-smoothing. The vehicle boundary becomes blurred, while the cyclist and pedestrian structures are substantially weakened. In contrast, SC-Diff preserves more complete target structures and clearer boundaries while maintaining coherent local infrared contrast. Overall, these comparisons show that SC-Diff achieves a better balance between infrared appearance synthesis and local structure preservation. The qualitative results for out-of-distribution generation are shown in Fig. 4. In this setting, visible images from Cityscapes are translated into different target infrared styles without fine-tuning or paired infrared references. This setting is more challenging because the scene distribution differs from the paired training datasets. Existing diffusion-based approaches can generate infrared-like images, but they may introduce inconsistent textures or weaken salient targets when the input scene contains unfamiliar layouts. By comparison, SC-Diff produces more stable translations across the three target styles. The generated images preserve the semantic layout of the visible scene while maintaining clearer object boundaries and more coherent thermal contrast. The zoomed regions further show that SC-Diff preserves finer object details and more coherent local contrast under distribution shift. This property is important when the translated Cityscapes images are used for downstream data augmentation. These observations indicate that SC-Diff transfers the target infrared appearance to unseen Cityscapes images while preserving scene content. 
+
+D. Data Augmentation Performance Evaluation 1) Quantitative Comparison: To further examine whether the translated infrared images are useful beyond qualitative evaluation, we assess their effectiveness for downstream in-frared object detection. Specifically, we use Cityscapes as an external visible-image source and translate its images into the infrared styles of M 3FD and FLIR. The translated images are then added to the original training sets, while the test sets remain unchanged. This setting evaluates whether a translation method can generate augmented samples that provide useful supervision rather than merely producing perceptually plausi-ble infrared images. Four representative detectors, including RT-DETR [38], YOLOv8 [39], FCOS [40], and Faster R-CNN [41], are adopted to provide a comprehensive evaluation across different detection architectures. The quantitative results are reported in Table IV. Compared with the vanilla training setting, augmenting the training set with translated infrared images improves detection performance in most cases, con-firming the practical value of visible-to-infrared translation for data expansion. Among the compared augmentation methods, SC-Diff achieves the highest overall mAP 50 , mAP 75 , and 
+
+mAP on both M 3FD and FLIR. On M 3FD, it raises the overall 
+
+mAP from 22.1 to 26.0, a gain of 3.9 points. On FLIR, it raises the overall mAP from 36.0 to 37.6, a gain of 1.6 points. These consistent gains across multiple detectors suggest that the generated images provide useful information about target objects for detector training. The comparison with PID and F-ViTA further shows that perceptual realism alone is not sufficient for effective data augmentation. PID introduces physics-based constraints to improve thermal plausibility, but its translated images can be overly smooth, which may weaken object details that detectors rely on. F-ViTA benefits from vision foundation model guidance, yet it mainly uses priors as external guidance and does not explicitly regulate internal token interaction during denoising. As a result, target structures may still be weakened in challenging scenes. These results suggest that SC-Diff benefits detector training because semantic priors are used to organize feature interactions inside the generator, leading to clearer object contours and more distinguishable target regions. 
+
+2) Qualitative Results: The qualitative detection results in Fig. 5 provide further evidence of the effectiveness of SC-Diff for data augmentation. We select representative samples from M 3FD and FLIR and compare the detection outputs obtained after training with different translated infrared im-ages. Detectors trained with SC-Diff augmentation produce more complete detections and more accurate localization in challenging regions. In contrast, detectors trained with PID or F-ViTA augmentation are more likely to miss difficult objects or generate incomplete bounding boxes. These differences are consistent with the quantitative results in Table IV. By better preserving object contours and local structures while maintaining target saliency during translation, SC-Diff may provide more informative supervision for detector training. 
+
+E. Ablation Study 1) Effect of Clean Condition Encoding and SGSC Compo-nents: Table V evaluates CCE and the two SGSC components, 
+
+β and G. CCE uses only the visible image and semantic map 9
+
+TABLE IV INFRARED OBJECT DETECTION RESULTS ON M3 FD AND FLIR AFTER AUGMENTING THE TRAINING SETS . F OR EACH TARGET DATASET , VISIBLE IMAGES FROM CITYSCAPES ARE TRANSLATED INTO THE CORRESPONDING INFRARED STYLE AND ADDED TO THE ORIGINAL TRAINING SET . T HE BEST RESULTS ARE SHOWN IN BOLD , AND THE SECOND -BEST ARE UNDERLINED .M3FD RT-DETR YOLOv8 FCOS Faster R-CNN Overall 
+
+mAP 50 mAP 75 mAP mAP 50 mAP 75 mAP mAP 50 mAP 75 mAP mAP 50 mAP 75 mAP mAP 50 mAP 75 mAP 
+
+Vanilla 47.2 26.2 27.0 48.6 28.9 28.7 30.5 15.8 15.9 35.2 14.4 16.9 40.4 21.3 22.1 PID [1] 46.3 27.6 27.6 49.7 31.4 30.6 29.4 15.3 15.9 35.8 16.9 18.5 40.3 22.8 23.2 F-ViTA [22] 50.6 30.1 30.1 51.8 31.2 31.1 32.8 16.9 17.7 37.0 17.4 19.2 43.1 23.9 24.5 SC-Diff 52.5 29.8 30.7 53.4 34.1 33.5 34.3 18.7 18.7 39.6 18.9 20.9 45.0 25.4 26.0 
+
+FLIR RT-DETR YOLOv8 FCOS Faster R-CNN Overall 
+
+mAP 50 mAP 75 mAP mAP 50 mAP 75 mAP mAP 50 mAP 75 mAP mAP 50 mAP 75 mAP mAP 50 mAP 75 mAP 
+
+Vanilla 77.2 35.9 40.2 78.0 36.8 41.2 64.0 19.2 27.5 71.5 29.3 34.9 72.7 30.3 36.0 PID [1] 77.5 36.8 41.2 79.3 37.7 42.0 62.2 19.6 27.5 72.9 29.6 34.9 73.0 30.9 36.4 F-ViTA [22] 78.1 36.9 41.1 79.7 38.7 42.3 66.1 20.9 29.0 72.3 28.0 34.2 74.1 31.1 36.7 SC-Diff 78.6 38.2 41.8 80.2 38.6 42.9 65.6 22.3 29.7 73.8 29.7 35.9 74.6 32.2 37.6 Wrong Det.  Imperfect Det.  Missing Det.  Best Det.  Reference Det. 
+
+Wrong Det.  Imperfect Det.  Imperfect Det.  Best Det.  Reference Det. 
+
+Vanilla  PID  Ours F-ViTA  GT 
+
+Fig. 5. Qualitative comparison of YOLOv8 detection results on M 3FD and FLIR under different data augmentation settings. The last column shows the ground-truth annotations, and SC-Diff leads to more complete and accurate detections than the compared augmentation methods. 
+
+as clean conditions, without introducing the noisy infrared latent. This reduces FID from 65.62 to 63.35. With CCE fixed, 
+
+β assigns the same bias to all same-category keys for each query. The resulting improvement is limited, indicating that query-wise scalar calibration alone is insufficient. G uses the original attention weights to assign larger bias increments to same-category keys with stronger responses. This modulation focuses the calibration on more relevant interactions and reduces FID to 57.66, while LPIPS remains comparable. As shown in Fig. 6, the full SGSC also produces clearer contours and better-preserved local structures in the highlighted regions. 
+
+2) Influence of cs and cv : We study the effects of the semantic guidance scale ( cs) and the visible guidance scale (cv ) on FLIR, as shown in Table VI. With cs fixed at 0.5, setting cv to 1.5 produces the lowest FID, whereas setting it to 2.0 gives a slightly higher PSNR. Changing cv from 1.5 to 2.0 has little effect on the reconstruction and perceptual metrics but consistently increases FID. A large cs may impose 
+
+TABLE V ABLATION OF CLEAN CONDITION ENCODING (CCE) AND SGSC  
+
+> COMPONENTS ON
+
+FLIR. T HE BEST RESULT FOR EACH METRIC IS SHOWN IN BOLD .CCE SGSC Metrics 
+
+β G PSNR ( ↑) SSIM ( ↑) LPIPS ( ↓) FID ( ↓)18.32 0.480 0.267 65.62 
+
+✓ 18.70 0.485 0.262 63.35 
+
+✓ ✓ 18.68 0.483 0.270 61.74 
+
+✓ ✓ ✓ 19.15 0.496 0.262 57.66 
+
+excessive constraints on the denoising process and impair infrared texture generation. Based on these results, we use 2.0 and 1.5 as the default values of cs and cv , respectively, because this setting performs consistently well across all metrics. 
+
+3) Influence of sampling steps: We examine the effect of DDIM sampling steps, as shown in Table VII. The results show that 30 steps improve most metrics over 10 steps across all three datasets. This comparison indicates that 10 steps do not 10 Visible  SC-Diff w/o SGSC  SC-Diff  GT    
+
+> Visible SC-Diff w/o SGSC SC-Diff GT
+
+Fig. 6. Qualitative comparison of SGSC. Yellow boxes mark the enlarged regions for comparison. TABLE VI EFFECT OF CFG SCALES ON FLIR. T HE BEST RESULTS ARE SHOWN IN 
+
+> BOLD
+
+, AND THE SECOND -BEST ARE UNDERLINED .CFG Scale PSNR( ↑) SSIM( ↑) LPIPS( ↓) FID( ↓)
+
+cs cv
+
+0.5 0.5 16.00 0.435 0.410 127.63 1.5 18.89 0.496 0.264 56.80 
+
+2.0 18.96 0.495 0.262 61.98 2.0 0.5 16.19 0.437 0.386 98.18 1.5 19.15 0.496 0.262 57.66 2.0 18.94 0.495 0.260 61.71 3.5 0.5 15.48 0.436 0.373 77.54 1.5 18.64 0.491 0.268 59.97 2.0 18.81 0.493 0.263 62.16 TABLE VII EFFECT OF DDIM SAMPLING STEPS ON M3 FD, FLIR, AND KAIST. T HE BEST RESULTS ARE SHOWN IN BOLD , AND THE SECOND -BEST ARE UNDERLINED .Datasets Steps PSNR (↑) SSIM (↑) LPIPS (↓) FID (↓)
+
+M3FD 10 20.09 0.718 0.189 67.09 30 20.63 0.731 0.181 62.91 50 20.54 0.728 0.182 62.42 100 20.54 0.726 0.182 62.23 
+
+FLIR 10 18.63 0.505 0.275 61.38 30 19.15 0.496 0.262 57.66 50 19.02 0.487 0.262 56.51 100 19.01 0.484 0.260 56.41 
+
+KAIST 10 22.07 0.765 0.248 33.77 30 23.49 0.799 0.239 27.98 
+
+50 23.36 0.795 0.242 28.61 100 23.45 0.795 0.243 28.67 
+
+provide sufficient refinement. Across all three datasets, PSNR decreases slightly when the number of steps exceeds 30. FID continues to decrease on M 3FD and FLIR, but increases on KAIST at 50 steps. We select 30 steps as the default setting to balance translation quality and inference cost. 
+
+F. Visualization 1) Visualization of Self-Attention Maps : Fig. 7 visualizes the self-attention maps for selected query points marked by red stars. We compare SC-Diff w/o SGSC and SC-Diff under cross-category and same-category interaction cases. Without SC-Diff w/o SGSC Visible  SC-Diff  SC-Diff w/o SGSC  SC-Diff     
+
+> cross-category interaction same-category interaction
+> SC-Diff w/o SGSC Visible SC-Diff SC-Diff w/o SGSC SC-Diff
+
+Fig. 7. Visualization of self-attention maps from the final U-Net layer. Red stars mark query points, and yellow boxes show enlarged regions. SC-Diff reduces cross-category responses and concentrates more attention on same-category regions. RGB  𝑥 𝑡 
+
+ො𝑥 0 
+
+> RGB
+
+𝑥 𝑡 
+
+ො𝑥 0 
+
+> Step 999 Step 0
+> (a) Inference procedure of PID
+> (b) Inference procedure of SC-Diff
+
+Fig. 8. Visualization of intermediate results during inference. Both PID and SC-Diff progressively generate infrared images through iterative refinement. 
+
+SGSC, attention responses may spread to semantically unre-lated regions, leading to noticeable cross-category attention leakage. After applying SGSC, cross-category attention is reduced, while attention becomes more concentrated on same-category tokens. Meanwhile, SGSC suppresses rather than eliminates cross-category responses, thereby retaining global contextual interactions. This visualization shows that semantic priors regulate internal token aggregation during denoising rather than only serving as external layout guidance. 
+
+2) Visualization of intermediate results : To better under-stand the generation process of SC-Diff, we visualize the intermediate denoising results in Fig. 8. At the early sampling steps, both PID and SC-Diff recover coarse scene layouts from noisy latent representations. As denoising proceeds, SC-Diff first clarifies object boundaries and then refines local structures with more coherent thermal contrast. This process leads to clearer and more complete infrared images. Compared with PID, SC-Diff maintains local details more consistently throughout the sampling trajectory instead of relying on late-stage refinement. This observation suggests that semantic-guided calibration provides stable structural guidance during iterative denoising and helps preserve the correspondence between the visible input and the generated infrared image. V. C ONCLUSION 
+
+This paper presented SC-Diff, a semantically calibrated la-tent diffusion framework for visible-to-infrared image transla-11 
+
+tion. SC-Diff goes beyond conventional external conditioning by introducing semantic priors into the internal self-attention layers of the denoising U-Net. Through the proposed SGSC module, same-category token interactions are adaptively en-hanced when the original attention distribution is semantically dispersed, which reduces cross-category interference while maintaining soft global contextual dependencies. Experiments on multiple public datasets show that SC-Diff improves per-ceptual generation quality and provides effective augmented data for infrared object detection. REFERENCES [1] F. Mao, J. Mei, S. Lu, F. Liu, L. Chen, F. Zhao, and Y. Hu, “PID: Physics-informed diffusion model for infrared image generation,” Pat-tern Recognition , vol. 169, pp. 111816, 2026. [2] FLIR Team, “Free flir thermal dataset for algorithm training,” https: //www.flir.com/oem/adas/adas-dataset-form/. [3] H. Wang, P. Ren, Z. Jie, X. Dong, C. Feng, Y. Qian, L. Ma, D. Jiang, Y. Wang, X. Lan et al. , “OV-DINO: Unified open-vocabulary detection with language-aware selective fusion,” arXiv preprint arXiv:2407.07844 ,2024. [4] R. Li, J. Xiang, F. Sun, Y. Yuan, L. Yuan, and S. Gou, “Multiscale cross-modal homogeneity enhancement and confidence-aware fusion for multispectral pedestrian detection,” IEEE Transactions on Multimedia ,vol. 26, pp. 852–863, 2023. [5] Y. Zeng, T. Liang, Y. Jin, and Y. Li, “Mmi-det: Exploring multi-modal integration for visible and infrared object detection,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 34, no. 11, pp. 11 198–11 213, 2024. [6] K. Hu, Y. He, Y. Li, J. Zhao, S. Chen, and Y. Kang, “Ei²det: Edge-guided illumination-aware interactive learning for visible-infrared object detec-tion,” IEEE Transactions on Circuits and Systems for Video Technology ,vol. 35, no. 7, pp. 7101–7115, 2025. [7] G. Sun, Z. Xiong, and Y. Yuan, “Detail-preserving and diverse image translation for adverse visual object detection,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 34, no. 10, pp. 9139– 9152, 2024. [8] N. Carion, L. Gustafson, Y.-T. Hu, S. Debnath, R. Hu, D. Suris, C. Ryali, K. V. Alwala, H. Khedr, A. Huang et al. , “SAM3: Segment anything with concepts,” in Proceedings of the International Conference on Learning Representations , 2026. [9] P. Isola, J.-Y. Zhu, T. Zhou, and A. A. Efros, “Image-to-image translation with conditional adversarial networks,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition , pp. 1125– 1134, 2017. [10] J.-Y. Zhu, T. Park, P. Isola, and A. A. Efros, “Unpaired image-to-image translation using cycle-consistent adversarial networks,” in Proceedings of the IEEE International Conference on Computer Vision , pp. 2223– 2232, 2017. [11] S. Wu, Y. Chen, S. Mermet, L. Hurni, K. Schindler, N. Gonthier, and L. Landrieu, “StegoGAN: Leveraging steganography for non-bijective image-to-image translation,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition , pp. 7922–7931, 2024. [12] L. Zhang, P. Ratsamee, Z. Luo, Y. Uranishi, M. Higashida, and H. Take-mura, “Panoptic-level image-to-image translation for object recognition and visual odometry enhancement,” IEEE Transactions on Circuits and Systems for Video Technology , vol. 34, no. 2, pp. 938–954, 2024. [13] J. Ho, A. Jain, and P. Abbeel, “Denoising diffusion probabilistic models,” 
+
+Advances in Neural Information Processing Systems , pp. 6840–6851, 2020. [14] R. Rombach, A. Blattmann, D. Lorenz, P. Esser, and B. Ommer, “High-resolution image synthesis with latent diffusion models,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition ,pp. 10 684–10 695, 2022. [15] L. Zhang, A. Rao, and M. Agrawala, “Adding conditional control to text-to-image diffusion models,” in Proceedings of the IEEE International Conference on Computer Vision , pp. 3836–3847, 2023. [16] B. Li, K. Xue, B. Liu, and Y.-K. Lai, “BBDM: Image-to-image transla-tion with brownian bridge diffusion models,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition , pp. 1952– 1961, 2023. [17] M. Xia, Y. Zhou, R. Yi, Y.-J. Liu, and W. Wang, “A diffusion model translator for efficient image-to-image translation,” IEEE Trans. Pattern Anal. Mach. Intell. , vol. 46, no. 12, pp. 10 272–10 283, 2024. [18] X. Yang, H. Shi, F. Gao, and N. Wang, “Adanoise: Cycle-consistent image translation with domain-adaptive noise perturbation,” IEEE Trans-actions on Circuits and Systems for Video Technology , pp. 1–1, 2026. [19] V. V. Kniaz, V. A. Knyaz, J. Hladuvka, W. G. Kropatsch, and V. Mizgi-nov, “ThermalGAN: Multimodal color-to-thermal image translation for person re-identification in multispectral dataset,” in Proceedings of the European Conference on Computer Vision Workshops , 2018. [20] M. A. ¨Ozkano˘ glu and S. Ozer, “InfraGAN: A GAN architecture to transfer visible images to infrared domain,” Pattern Recognition Letters ,pp. 69–76, 2022. [21] D. G. Lee, M. H. Jeon, Y. Cho, and A. Kim, “Edge-guided multi-domain RGB-to-TIR image translation for training vision tasks with challeng-ing labels,” in Proceedings of the IEEE International Conference on Robotics and Automation , pp. 8291–8298, 2023. [22] J. N. Paranjape, C. M. De Melo, and V. M. Patel, “F-vita: Foundation model guided visible to infrared translation,” in Proceedings of the IEEE Winter Conference on Applications of Computer Vision , pp. 5633–5642, 2026. [23] S. Liu, Z. Zeng, T. Ren, F. Li, H. Zhang, J. Yang, Q. Jiang, C. Li, J. Yang, H. Su et al. , “Grounding DINO: Marrying DINO with grounded pre-training for open-set object detection,” in Proceedings of the European Conference on Computer Vision , pp. 38–55, 2024. [24] A. Kirillov, E. Mintun, N. Ravi, H. Mao, C. Rolland, L. Gustafson, T. Xiao, S. Whitehead, A. C. Berg, W.-Y. Lo et al. , “Segment anything,” in Proceedings of the IEEE International Conference on Computer Vision , pp. 4015–4026, 2023. [25] L. Ran, L. Wang, G. Wang, P. Wang, and Y. Zhang, “DiffV2IR: Visible-to-infrared diffusion model via vision-language understanding,” arXiv preprint arXiv:2503.19012 , 2025. [26] D.-G. Lee, T. H. Rhee, H. Jang, Y.-S. Shin, U. Shin, and A. Kim, “Thera: Thermal-aware visual-language prompting for controllable rgb-to-thermal infrared translation,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition , 2026. [27] J. Xiao, R. Nayak, N. Zhang, D. Tortei, and G. Loianno, “ThermalGen: Style-disentangled flow-based generative models for RGB-to-thermal image translation,” Advances in Neural Information Processing Systems ,vol. 38, 2025. [28] J. Song, C. Meng, and S. Ermon, “Denoising diffusion implicit models,” 
+
+arXiv preprint arXiv:2010.02502 , 2020. [29] J. Ho and T. Salimans, “Classifier-free diffusion guidance,” arXiv preprint arXiv:2207.12598 , 2022. [30] N. G. Nair and V. M. Patel, “T2V-DDPM: Thermal to visible face trans-lation using denoising diffusion probabilistic models,” in Proceedings of the IEEE International Conference on Automatic Face and Gesture Recognition , pp. 1–7, 2023. [31] J. Liu, X. Fan, Z. Huang, G. Wu, R. Liu, W. Zhong, and Z. Luo, “Target-aware dual adversarial learning and a multi-scenario multi-modality benchmark to fuse infrared and visible for object detection,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition , pp. 5802–5811, 2022. [32] S. Hwang, J. Park, N. Kim, Y. Choi, and I. S. Kweon, “Multispectral pedestrian detection: Benchmark dataset and baseline,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition ,pp. 1037–1045, 2015. [33] M. Cordts, M. Omran, S. Ramos, T. Rehfeld, M. Enzweiler, R. Be-nenson, U. Franke, S. Roth, and B. Schiele, “The cityscapes dataset for semantic urban scene understanding,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition , pp. 3213– 3223, 2016. [34] Z. Wang, A. C. Bovik, H. R. Sheikh, and E. P. Simoncelli, “Image quality assessment: From error visibility to structural similarity,” IEEE Transactions on Image Processing , pp. 600–612, 2004. [35] R. Zhang, P. Isola, A. A. Efros, E. Shechtman, and O. Wang, “The unreasonable effectiveness of deep features as a perceptual metric,” in 
+
+Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition , pp. 586–595, 2018. [36] M. Heusel, H. Ramsauer, T. Unterthiner, B. Nessler, and S. Hochreiter, “GANs trained by a two time-scale update rule converge to a local nash equilibrium,” Advances in Neural Information Processing Systems , 2017. [37] T.-Y. Lin, M. Maire, S. Belongie, J. Hays, P. Perona, D. Ramanan, P. Doll´ ar, and C. L. Zitnick, “Microsoft COCO: Common objects in context,” in Proceedings of the European Conference on Computer Vision , pp. 740–755, 2014. 12 
+
+[38] Y. Zhao, W. Lv, S. Xu, J. Wei, G. Wang, Q. Dang, Y. Liu, and J. Chen, “DETRs beat YOLOs on real-time object detection,” in Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition , pp. 16 965–16 974, 2024. [39] G. Jocher, J. Qiu, and A. Chaurasia, “Ultralytics YOLO.” [Online]. Available: https://github.com/ultralytics/ultralytics Jan. 2023. [40] Z. Tian, C. Shen, H. Chen, and T. He, “FCOS: Fully convolutional one-stage object detection,” in Proceedings of the IEEE International Conference on Computer Vision , pp. 9627–9636, 2019. [41] S. Ren, K. He, R. Girshick, and J. Sun, “Faster R-CNN: Towards real-time object detection with region proposal networks,” IEEE Transactions on Pattern Analysis and Machine Intelligence , vol. 39, no. 6, pp. 1137– 1149, 2016. 
+
+Junyin Zhang received the B.S. degree in digital media technology from Chongqing University of Posts and Telecommunications, Chongqing, China, in 2019, and the M.S. degree in software engineering from Chongqing University, Chongqing, in 2022. He is currently pursuing the Ph.D. degree in control sci-ence and engineering with the School of Intelligent Systems Engineering, Sun Yat-sen University, Shen-zhen, China. His research interests include computer vision and image generation. 
+
+Siyu Huang is currently pursuing the B.S. degree in Intelligent Science and Technology from Sun Yat-sen University, Guangdong, China. He is particularly interested in long video generation and hope to explore this direction more deeply during his Ph.D. studies. His long-term goal is to develop meaningful and practical AI methods that can contribute to real-world industrial applications. 
+
+Jianxiong Ye received the B.S. degree in electronic and information engineering from Wuyi University, Jiangmen, China, in 2025. He is currently pursuing the M.S. degree in control science and engineering with the School of Intelligent Systems Engineer-ing, Sun Yat-sen University, Shenzhen, China. His research interests include computer vision, pattern recognition, and intelligent robotics. He is working on multi-modal object detection and few-shot learn-ing problems. 
+
+Haowei Gong received the B.S. degree in Intel-ligent Science and Technology from Sun Yat-sen University, China, in 2026. He is currently pursuing the M.S. degree in Control Science and Engineering with the School of Intelligent Engineering, Sun Yat-sen University, Shenzhen, China. His research inter-ests include computer vision and image generation. 
+
+Ruicheng Zhang received the B.S. degree in In-telligent Science and Technology from Sun Yat-sen University, Guangdong, China. He is currently pursuing the M.S. degree in Artificial Intelligence at Tsinghua University, Guangdong, China. He in-terned at Video Rebirth and Tencent Project Up. His research interests include video generation and world models. 13 
+
+Deyu Meng (Member, IEEE) received the BSc, MSc, and PhD degrees in 2001, 2004, and 2008, respectively, from Xi’an Jiaotong University, Xi’an, China. He is currently a professor with School of Mathematics and Statistics, Xi’an Jiaotong Univer-sity, and adjunct professor with Faculty of Infor-mation Technology, The Macau University of Sci-ence and Technology. He currently serves as an associate editor of IEEE Transactions on Pattern Analysis and Machine Intelligence, Science China-Information Sciences, and Frontiers of Computer Science. His current research interests include model-based deep learning, variational networks, and meta-learning. 
+
+Chenqiang Gao (Member, IEEE) received the B.S. degree in computer science from the China Univer-sity of Geosciences, Wuhan, China, in 2004 and the Ph.D. degree in control science and engineering from the Huazhong University of Science and Technology, Wuhan, China, in 2009. In August 2009, he joined the School of Communications and Information Engineering, Chongqing University of Posts and Telecommunications (CQUPT), Chongqing, China. In September 2012, he joined the Informedia Group with the School of Computer Science, Carnegie Mel-lon University, Pittsburgh, PA, USA, working on multimedia event detection (MED) and surveillance event detection (SED) until March 2014, when he returned to CQUPT. In September 2023, he joined the School of Intelligent Systems Engineering, Sun Yat-sen University, Shenzhen, Guangdong, China. His research interests include image processing, infrared target detection, action recognition, and event detection.

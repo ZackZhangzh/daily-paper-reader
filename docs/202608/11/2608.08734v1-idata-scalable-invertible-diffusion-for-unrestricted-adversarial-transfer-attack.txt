@@ -1,0 +1,554 @@
+Title: IDATA: Scalable Invertible Diffusion for Unrestricted Adversarial Transfer Attack
+
+URL Source: https://arxiv.org/pdf/2608.08734v1
+
+Published Time: Tue, 11 Aug 2026 01:44:59 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+# IDATA: Scalable Invertible Diffusion for Unrestricted Adversarial Transfer Attack 
+
+# Yi Pan 
+
+College of Computer Science and Technology National University of Defense Technology Changsha, China panyi_jsjy@nudt.edu.cn 
+
+# Jun-Jie Huang ∗
+
+College of Computer Science and Technology National University of Defense Technology Changsha, China jjhuang@nudt.edu.cn 
+
+# Tianrui Liu 
+
+College of Computer Science and Technology National University of Defense Technology Changsha, China trliu@nudt.edu.cn 
+
+# Zihan Chen 
+
+College of Computer Science and Technology National University of Defense Technology Changsha, China chenzihan21@nudt.edu.cn 
+
+# Lin Liu 
+
+College of Computer Science and Technology National University of Defense Technology Changsha, China liulin16@nudt.edu.cn 
+
+# Zhao Wentao †
+
+College of Computer Science and Technology National University of Defense Technology Changsha, China wtzhao@nudt.edu.cn 
+
+## Abstract 
+
+Unrestricted adversarial transfer attacks are important for evaluat-ing the black-box robustness of deep visual models. Diffusion-based attacks have shown promising transferability and visual impercep-tibility by optimizing adversarial perturbations along denoising tra-jectories in latent space. However, existing methods are limited by two challenges: memory-intensive multistep backpropagation and frequency-agnostic perturbation over intermediate latents. To ad-dress these issues, we propose IDATA , a memory-efficient diffusion framework for unrestricted adversarial transfer attack. IDATA con-sists of two key components: an Invertible Diffusion Module (IDM) and a Low-Frequency Constraint Module (LFCM). Specifically, IDM reformulates adversarial optimization over diffusion trajectories as an invertible process, enabling constant-memory backpropagation through on-demand reconstruction of intermediate states instead of storing the full denoising chain. Moreover, LFCM leverages Dis-crete Wavelet Transform (DWT) to decompose latent variables into low- and high-frequency components, restricting perturbations to semantically stable low-frequency subspaces, thereby improving transferability while preserving visual imperceptibility. Extensive experiments on multiple benchmarks and diverse model architec-tures demonstrate that IDATA consistently outperforms state-of-the-art baselines in attack success rate, memory efficiency, and vi-sual imperceptibility. These results suggest that IDATA is a promis-ing tool for black-box robustness evaluation of deep visual models. Code is available at https://github.com/colourful-pan/IDATA. 
+
+> ∗Corresponding author.
+> †Corresponding author.
+> This work is licensed under a Creative Commons Attribution 4.0 International License.
+> MM ’26, Rio de Janeiro, Brazil.
+> © 2026 Copyright held by the owner/author(s). ACM ISBN 978-1-4503-XXXX-X/2018/06 https://doi.org/XXXXXXX.XXXXXXX
+
+## CCS Concepts 
+
+• Computing methodologies → Computer vision .
+
+## Keywords 
+
+Adversarial attack; Invertible diffusion model; Memory-efficient; Low-frequency 
+
+ACM Reference Format: 
+
+Yi Pan, Jun-Jie Huang, Tianrui Liu, Zihan Chen, Lin Liu, and Zhao Wentao. 2026. IDATA: Scalable Invertible Diffusion for Unrestricted Adversarial Transfer Attack. In Proceedings of the 34th ACM International Conference on Multimedia (MM ’26), November 10–14, 2026, Rio de Janeiro, Brazil. ACM, New York, NY, USA, 10 pages. https://doi.org/XXXXXXX.XXXXXXX 
+
+## 1 Introduction 
+
+Deep visual models are now widely deployed in modern mul-timedia systems, supporting safety-critical applications such as video surveillance [1, 34], biometric authentication [30, 41], and au-tonomous driving [18, 63]. Their widespread deployment has made adversarial robustness a central challenge in multimedia security, since visually inconspicuous adversarial examples can still induce severe model failures in real-world pipelines [3, 24, 42, 60]. Among existing attack paradigms, adversarial transfer attacks are particularly important for practical security evaluation because they remain effective even when the target model is inaccessible. In this setting, compared with conventional 𝐿 𝑝 -bounded attacks [12, 17, 39], unrestricted adversarial transfer attacks [5, 6, 9, 47, 62] offer a more promising direction by relaxing pixel-space constraints and enabling semantically plausible manipulations, thereby improving transferability and imperceptibility. Recently, diffusion models have emerged as a powerful founda-tion for unrestricted attacks [5, 10, 32]. By optimizing perturbations along latent denoising trajectories, diffusion-based attacks can gen-erate adversarial examples with stronger semantic coherence and better transferability. However, existing methods still suffer from two fundamental limitations. arXiv:2608.08734v1 [cs.CV] 9 Aug 2026 MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil. Yi Pan et al. 25               
+
+> 30
+> 35 40 45 50 55
+> 60
+> 65 70 75 1357911 13 15 17 19 21 23 25
+> AVG % Diffusion Steps
+> 20Gb 30Gb 40Gb
+> 30/0.21
+> 13/0.03
+> 16/0.08
+> 23/0.13
+> 38/0.28 13/0.04
+> 22/0.11
+> 13/0.04
+> 13/0.13
+> 13/0.07
+> 30/0.17
+> DiffAttack
+> IDATA
+> VENOM
+> ACA
+> 13/0.08
+> 17/0.15
+> 22/0.21
+> 26/0.35
+> 14/0.08
+> 13/0.16
+> 30/0.39
+> 43/0.32
+> 34/0.25
+
+Figure 1: Comparison of DiffAttack [5], VENOM [28], ACA [6], and IDATA at different diffusion depths. Circle size represents peak GPU memory usage (GB), while color inten-sity indicates LPIPS (darker means higher). The “value/value” label denotes GPU memory usage and LPIPS, respectively. First, trajectory-level optimization is prohibitively mem-ory intensive. Current methods [5, 6, 28, 47, 62] require backprop-agation through multiple denoising steps and must store interme-diate states across the diffusion chain. As diffusion depth increases, memory cost grows rapidly, making deep optimization impractical. As shown in Fig. 1, although deeper trajectories generally improve attack performance, they also incur substantially higher GPU mem-ory overhead. This poor scalability often forces prior methods to use shallow diffusion trajectories, thereby severely limiting the depth that can be practically optimized. 
+
+Second, latent perturbation is largely frequency-unaware. 
+
+Most existing diffusion-based attacks [5, 6, 9, 10, 32, 47, 62] opti-mize perturbations over the full latent space without considering frequency structure, although intermediate diffusion latents exhibit timestep-dependent frequency characteristics. As shown in Fig. 4, such full-space perturbation tends to introduce redundant high-frequency artifacts and may overlook semantically stable struc-tures shared across models. Prior studies [14, 50, 65–67] suggest that low-frequency perturbations are generally more transferable, as they better preserve stable semantic content and are less sensi-tive to architecture-specific biases. However, incorporating such frequency-aware priors into intermediate diffusion latents remains largely unexplored. These observations suggest that effective diffusion-based trans-fer attacks should jointly address deep trajectory optimization and 
+
+frequency-aware perturbation allocation . To this end, we propose 
+
+IDATA , short for Invertible Diffusion for Unrestricted Adversarial 
+
+Transfer Attack. IDATA consists of two tightly coupled components. First, an Invertible Diffusion Module (IDM) reformulates adversar-ial optimization as an invertible diffusion process, enabling exact reverse reconstruction of intermediate states and thus constant-memory backpropagation regardless of diffusion depth. Second, a Low-Frequency Constraint Module (LFCM) decomposes interme-diate latents and constrains perturbations to semantically stable low-frequency subspaces. Together, these two modules enable scal-able deep optimization and more transferable perturbation learning while preserving visual imperceptibility. The main contributions of this work are summarized as follows: 
+
+• We identify two critical bottlenecks in diffusion-based ad-versarial transfer attacks: memory-intensive multistep back-propagation and frequency-agnostic perturbation over inter-mediate latents, which collectively limit their scalability and transferability. 
+
+• To address these issues, we propose IDATA , a novel and scalable framework. It features an Invertible Diffusion Module (IDM) that enables constant-memory backpropaga-tion, and a Low-Frequency Constraint Module (LFCM) 
+
+that explicitly regularizes perturbations in semantically sta-ble low-frequency latent subspaces. 
+
+• Extensive experiments on multiple architectures, defenses, and datasets show that IDATA consistently outperforms state-of-the-art baselines, achieving a favorable balance be-tween transferability and visual imperceptibility. 
+
+## 2 Related Work 
+
+We review prior work from three perspectives relevant to our method and highlight the research gaps addressed in this paper. 
+
+## 2.1 Unrestricted Adversarial Transfer Attack 
+
+Adversarial transfer attacks are widely used for black-box robust-ness evaluation, as they require only a surrogate model to attack unknown targets [12, 61]. Early methods mainly focused on 𝐿 𝑝 -bounded pixel-space perturbations, such as MI-FGSM [12], DI-FGSM [61], and PI-FGSM [16]. Although effective in white-box settings, they often show limited transferability in black-box set-tings due to overfitting to surrogate decision boundaries and sensi-tivity to common preprocessing operations. To boost transferability, several studies introduced frequency-domain priors. SSA [37] enhances attack diversity via DCT/IDCT-based spectrum simulation, FRM [31] improves generalization via low-frequency regularization, and SSAH [38] further considers se-mantic similarity, imperceptibility, and cross-model transferability. However, these still operate under rigid pixel-space 𝐿 𝑝 constraints, limiting their ability to exploit semantic-level perturbation spaces. To address this, unrestricted adversarial transfer attacks relax strict pixel-wise constraints, yielding semantically plausible ex-amples with stronger transferability and better imperceptibility. Early methods like ReColorAdv [29] and cAdv [2] rely on hand-crafted transformations with limited expressiveness, motivating more powerful generative approaches. 
+
+## 2.2 Diffusion-based Adversarial Transfer Attack 
+
+Diffusion models have become a promising foundation for unre-stricted adversarial transfer attacks, as they can generate semanti-cally coherent and visually plausible adversarial examples by per-turbing latent denoising trajectories. ACA [6] first explored this paradigm by optimizing perturbations on the latent manifold of pre-trained diffusion models. DiffAttack [5] improved visual imper-ceptibility through cross-attention perturbation with self-attention consistency, while VENOM [28], LESEP [15], and DiffAdvMAP [46] further enhanced attack flexibility via text-guided generation, se-mantic perturbation, and latent-space mapping. Despite their effec-tiveness, these methods generally require backpropagation through IDATA: Scalable Invertible Diffusion for Unrestricted Adversarial Transfer Attack MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil. 𝐀 𝐀 𝐀 
+
+> 𝐀 𝐀 𝐀
+
+ℰ
+
+> 𝐀 0𝐀
+> 𝐀 0𝐀
+
+# ⋯⋯
+
+> Step  1 with IDM
+> 𝐀
+> 𝐀
+> Clean Images
+> Step  𝐀  with IDM Step  1 with  IDM −1
+> 𝐀 𝐀𰠀𝐀
+> 𝐀 𝐀𰠀𝐀
+
+𝐀 
+
+> 𝐀 0𝐀
+> 𝐀 0𝐀
+> Adversarial Images
+
+# ⋯⋯
+
+> Step  𝐀  with  IDM −1
+> 𝐀 𝐀 𝐀
+> 𝐀 𝐀 𝐀
+> 𝐀 𝐀 𝐀
+> 𝐀 𝐀 𝐀
+> 𝐀 1𝐀
+> 𝐀 1𝐀
+
+𝐀 𝐀𰠀𝐀 & 𝐀 𝐀𬰀𝐀𬰀𝐀    
+
+> Forward Invertible Diffusion Process Reverse Adversarial Denoising Diffusion Process Invertible Diffusion Module (IDM)
+> 𝐀 𝐀 𝐀 𝐀 𝐀 𝐀
+> 𝐀 𝐀 𝐀 𝐀 𝐀 𝐀
+> 1/𝐀 1 − 𝐀 1 − 𝐀 1/𝐀 1/𝐀 𝐀
+> 1/𝐀 𝐀
+
+𝐀 𝐀 𝐀 𝐀            
+
+> 𝐀 𝐀 𝐀 𝐀
+> Low-Frequency Constraint Module (LFCM)
+> LFCM
+> 𝐀 𝐀 𝐀 𝐀 𝐀
+> 𝐀 𝐀 𝐀
+> 𝐀 𝐀 𝐀 𝐀
+> DWT
+> 𝐀 𝐀
+> 𝐀 𝐀
+> 𝐀 𝐀
+> IDWT
+> 𝐀 𝐀
+> 𝐀 𝐀 ′𝐀 𝐀 𝐀
+> 𝐀 𝐀 𝐀
+> 𝐀
+> IDM Invertible Diffusion Module LFCM Low-Frequency Constraint Module Forward invertible diffusion process Reverse adversarial denoising diffusion process Gradient backward
+> 𝐀 Latent space variable Adversarial perturbation 𝐀
+> 𝐀 𝐀 𝐀−1 𝐀
+> 𝐀 𝐀−1 𝐀
+> 𝐀 𝐀−1 𝐀
+> 𝐀 𝐀−1 𝐀
+
+Figure 2: Overview of Invertible Diffusion Adversarial Transfer Attack (IDATA) framework. It consists of two core modules: the Invertible Diffusion Module (IDM) and the Low-Frequency Constraint Module (LFCM). Specifically, a clean image X is duplicated and processed by the forward IDM up to step 𝜏 . The LFCM then injects a learnable perturbation 𝜹 into the low-frequency components of the latent pair. Subsequently, the latents are reconstructed via the inverse process, IDM −1. Crucially, IDM’s perfect invertibility enables constant-memory gradient backpropagation for efficient optimization of 𝜹 . Finally, the primary branch is decoded to produce the adversarial image Xadv .
+
+multiple denoising steps, which incurs substantial memory over-head and limits their scalability for deep trajectory optimization. While frequency priors have shown promise in conventional attacks [14, 50, 65, 66], their use in diffusion-based attacks remains relatively underexplored. For example, LGA [67] constrains pertur-bations to low-frequency image components. Nevertheless, such methods primarily operate in the pixel space, leaving the distinct frequency characteristics of intermediate diffusion latents largely unexplored. These limitations, namely poor scalability and the lack of frequency-aware latent perturbation, motivate our work. 
+
+## 2.3 Invertible Neural Networks 
+
+Invertible Neural Networks (INNs) [22, 23] offer lossless bidirec-tional computation and constant-memory backpropagation via ex-act invertible transformations. Early affine coupling architectures, 
+
+e.g. , RealNVP [11] and Glow [25], demonstrated that invertibil-ity preserves representational power while maintaining memory efficiency, which has also benefited adversarial attacks [7, 8, 21, 45]. More recently, invertible diffusion pipelines have been inte-grated to boost reconstruction accuracy and optimization efficiency. EDICT [58] achieves exact reconstruction via coupled affine trans-formations, circumventing the error accumulation inherent to stan-dard DDIM inversion. Subsequent extensions include an invertible diffusion framework [4] for compressed sensing with reduced mem-ory and steps, and DOODL [57] for end-to-end latent optimization that improves classifier-guided generation. Together, these results indicate the potential of invertible diffusion for efficient optimiza-tion in diffusion-based models. However, existing invertible diffusion methods are not designed for unrestricted adversarial transfer attacks and have not been adapted to address attack-specific optimization challenges, par-ticularly memory-efficient multistep optimization along diffusion trajectories. To address this gap, we propose IDATA. 
+
+## 3 Preliminary 
+
+We first revisit diffusion-based adversarial transfer attacks. Such attacks aim to generate an adversarial example X𝑎𝑑𝑣 that misleads an unseen target classifier 𝒇 𝜙 (·) , which is structurally different from the surrogate classifier 𝒇 𝜃 (·) . Diffusion-based adversarial attacks have recently emerged as a promising paradigm for this task, as diffusion models provide a powerful generative prior for producing semantically coherent and visually realistic adversarial examples. 
+
+Forward Diffusion Process: A clean sample X is first encoded to the initial latent 𝒛 0 = E ( X), which then undergoes 𝑇 -step for-ward diffusion. For deterministic traversal, the DDIM framework is commonly used, with sampling: 𝒛 𝑡 = √ ¯𝛼 𝑡 𝒛 0 + √1 − ¯𝛼 𝑡 𝜖, where 𝜖 ∼N ( 0, I), and ¯ 𝛼 𝑡 = Î𝑡 𝑖 =1 𝛼 𝑖 is the cumulative product of noise sched-ule coefficients up to step 𝑡 , corresponding to the overall signal retention rate. 
+
+Reverse Denoising Diffusion Process: In denoising, the early steps establish high-level semantics while later steps recover fine details. Prior diffusion-based attacks often perturb latent variables at early steps (𝜏 ≪ 𝑇 ), e.g. , 𝜏 = 110 𝑇 , to avoid gradient explosion and preserve optimization stability. Specifically, the adversarial perturbation is introduced as ˆ 𝒛 𝑎𝑑𝑣 𝜏 = 𝒛 𝜏 + 𝜹 , where 𝜹 denotes the learnable adversarial latent perturbation. The adversarial latent is then refined via iterative denoising: ˆ 𝒛 𝑎𝑑𝑣 𝑡 −1 = 𝑎 𝑡 ˆ𝒛 𝑎𝑑𝑣 𝑡 +𝑏 𝑡 𝜖 𝜃 ( ˆ𝒛 𝑎𝑑𝑣 𝑡 , 𝑡, 𝐶 ),
+
+where 𝑎 𝑡 =√︁ ¯𝛼 𝑡 −1/ ¯𝛼 𝑡 , 𝑏 𝑡 = √1 − ¯𝛼 𝑡 −1 −√︁ ¯𝛼 𝑡 −1 (1 − ¯𝛼 𝑡 )/ ¯𝛼 𝑡 , 𝐶 de-notes conditional information ( e.g. , text annotations), and 𝜖 𝜃 (· , 𝑡, 𝐶 )
+
+estimates step-𝑡 noise under 𝐶 .MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil. Yi Pan et al. 
+
+The adversarial image is finally obtained as X𝑎𝑑𝑣 = D ( ˆ𝒛 𝑎𝑑𝑣  
+
+> 0
+
+),where D (·) denotes the decoder of the Variational Auto-Encoder (VAE), which takes the reverse-updated adversarial latent code ˆ 𝒛 𝑎𝑑𝑣 
+
+> 0
+
+as input. The adversarial latent 𝜹 is optimized through gradient backpropagation in the reverse denoising process by minimizing the adversarial loss L(·) with respect to 𝜹 .However, backpropagation through the reverse denoising tra-jectory incurs substantial memory overhead, which directly limits the number of feasible diffusion steps during optimization. As illus-trated in Fig. 1, existing diffusion-based adversarial attacks exhibit memory complexity that increases approximately linearly with the number of perturbation steps 𝜏 . This memory bottleneck severely constrains the scalability of diffusion-based attacks, especially for high-resolution multimedia inputs. 
+
+## 4 Methodology 
+
+We present Invertible Diffusion for unrestricted Adversarial Transfer 
+
+Attack (IDATA). As shown in Fig. 2, IDATA includes two compo-nents: 1) an Invertible Diffusion Module (IDM) for memory-efficient adversarial optimization over deep diffusion trajectories; and 2) a Low-Frequency Constraint Module (LFCM) that restricts per-turbations to semantically stable low-frequency latent subspaces, improving transferability while preserving visual imperceptibility. 
+
+## 4.1 Invertible Diffusion Module 
+
+To overcome the memory bottleneck in diffusion-based attacks, we introduce the Invertible Diffusion Module (IDM), which enables ad-versarial optimization with a constant memory footprint, regardless of the diffusion trajectory depth. Notably, while IDM is inspired by the invertible design of EDICT [58], it is fundamentally redesigned for adversarial optimization rather than faithful reconstruction. 
+
+Forward Invertible Diffusion: The IDM process is formulated using a primary and an auxiliary branch. A single clean image X is duplicated to form an input pair (X, Y = X) to satisfy the coupled-branch requirement of the invertible transformations. This pair is then encoded via the VAE’s encoder into initial latents 𝒛 𝒙  
+
+> 0
+
+=
+
+E ( X) and 𝒛 𝒚  
+
+> 0
+
+= E ( Y), where the 𝒛 𝒚 branch serves as the auxiliary component necessary for invertibility. Each invertible diffusion step employs two coupled transformations. In forward diffusion at step 
+
+𝑡 , the latent pair (𝒛 𝒙  
+
+> 𝑡 −1
+
+, 𝒛 𝒚  
+
+> 𝑡 −1
+
+) is mixed using a stability parameter 
+
+𝑝 ∈ ( 0, 1] to produce the intermediate latent pair  𝒖 𝒙  
+
+> 𝑡
+
+, 𝒖 𝒚 
+
+> 𝑡
+
+:
+
+𝒖 𝒚                   
+
+> 𝑡 = 𝒛 𝒚
+> 𝑡 −1− ( 1−𝑝 )𝒛 𝒙
+> 𝑡 −1
+> /𝑝,
+> 𝒖 𝒙
+> 𝑡 = 𝒛 𝒙
+> 𝑡 −1− ( 1−𝑝 )𝒖 𝒚
+> 𝑡
+> /𝑝.
+
+(1) Then, forward scheduled noise addition is applied to these mixed features using coefficients 𝑎 𝑡 , 𝑏 𝑡 ∈ R and the noise estimator 𝜖 𝜃 :
+
+𝒛 𝒚                      
+
+> 𝑡 = 𝒖 𝒚
+> 𝑡 −𝑏 𝑡 𝜖 𝜃 (𝒖 𝒙
+> 𝑡 , 𝑡, 𝐶 )/𝑎 𝑡 ,
+> 𝒛 𝒙
+> 𝑡 = 𝒖 𝒙
+> 𝑡 −𝑏 𝑡 𝜖 𝜃 (𝒛 𝒚
+> 𝑡 , 𝑡, 𝐶 )/𝑎 𝑡 .
+
+(2) This sequential parameterization is critical for invertibility, as each variable can be recovered in closed form during the reverse process. 
+
+Reverse Adversarial Denoising Diffusion: Given the forward IDM in Eqn. (1) and (2), the reverse process reconstructs the previ-ous latent pair ( ˆ𝒛 𝒙  
+
+> 𝑡 −1
+
+, ˆ𝒛 𝒚  
+
+> 𝑡 −1
+
+) from the current noisy pair ( ˆ𝒛 𝒙  
+
+> 𝑡
+
+, ˆ𝒛 𝒚  
+
+> 𝑡
+
+) by exactly inverting the two coupled transformations at each timestep. At the perturbation injection step 𝜏 ∈ [ 1,𝑇 ], we introduce a learn-able perturbation 𝜹 which is integrated into the low-frequency com-ponents of the latent pair via a Low-Frequency Constraint Module (LFCM) to balance transferability and imperceptibility. The LFCM will be detailed in Sec. 4.2. Formally, ( ˆ𝒛 𝒙  
+
+> 𝜏
+
+, ˆ𝒛 𝒚  
+
+> 𝜏
+
+) = LFCM (𝒛 𝒙  
+
+> 𝜏
+
+, 𝒛 𝒚  
+
+> 𝜏
+
+, 𝜹 ).Since gradients propagated through deep diffusion trajectories may exhibit high variance, directly optimizing 𝜹 can lead to unstable updates. To alleviate this issue, we adopt the Momentum Iterative Fast Gradient Sign Method (MI-FGSM) [12] to stabilize adversarial latent optimization. Given the latent pair ( ˆ𝒛 𝑥 𝜏 , ˆ𝒛 𝑦 𝜏 ) at denoising step 
+
+𝜏 , the momentum term at the 𝑖 -th attack iteration is computed as          
+
+> 𝒎 𝑖 +1=𝜇 ·𝒎 𝑖 +∇𝜹 𝑖 L∥ ∇ 𝜹 𝑖 L ∥ 1
+> ,(3)
+
+where L denotes the loss function and the perturbation 𝜹 is updated by         
+
+> 𝜹 𝑖 +1=𝜹 𝑖 +𝜂 ·sign (𝒎 𝑖 +1),(4)
+
+where 𝜇 and 𝜂 denote the momentum decay factor and step size, re-spectively. This update smooths timestep-wise gradient fluctuations and improves optimization stability. Following the deterministic reverse formulation, each reverse step then proceeds in two stages: 1) Inverse Scheduled Denoising: We recover the intermediate variables (𝒖 𝒙  
+
+> 𝑡
+
+, 𝒖 𝒚  
+
+> 𝑡
+
+) by inverting the affine update in Eqn. (2): 
+
+𝒖 𝒙                     
+
+> 𝑡 =𝑎 𝑡 ˆ𝒛 𝒙
+> 𝑡 +𝑏 𝑡 𝜖 𝜃 (ˆ𝒛 𝒚
+> 𝑡 , 𝑡, 𝐶 ),
+> 𝒖 𝒚
+> 𝑡 =𝑎 𝑡 ˆ𝒛 𝒚
+> 𝑡 +𝑏 𝑡 𝜖 𝜃 (𝒖 𝒙
+> 𝑡 , 𝑡, 𝐶 ).
+
+(5) 2) Inverse Feature Mixing: We then invert Eqn. (1) to obtain the previous latent pair ( ˆ𝒛 𝒙  
+
+> 𝑡 −1
+
+, ˆ𝒛 𝒚  
+
+> 𝑡 −1
+
+):
+
+ ˆ𝒛 𝒙                    
+
+> 𝑡 −1=𝑝 𝒖 𝒙
+> 𝑡 + ( 1−𝑝 )𝒖 𝒚
+> 𝑡 ,
+> ˆ𝒛 𝒚
+> 𝑡 −1=𝑝 𝒖 𝒚
+> 𝑡 + ( 1−𝑝 )ˆ𝒛 𝒙
+> 𝑡 −1.
+
+(6) After the reverse process reaches 𝑡 = 0, the outputs of the two branches are decoded as X𝑎𝑑𝑣 = D ( ˆ𝒛 𝒙  
+
+> 0
+
+) and Y𝑎𝑑𝑣 = D ( ˆ𝒛 𝒚  
+
+> 0
+
+), where 
+
+D (·) denotes the VAE decoder. We use X𝑎𝑑𝑣 as the final adversarial example. As shown in Fig. 1, unlike conventional attacks with memory usage scaling linearly with optimization steps, IDM’s invertibility allows it to dynamically reconstruct intermediate states during backpropagation. This reduces the activation memory required for trajectory backpropagation to O( 1) with respect to diffusion depth and unlocks efficient optimization over deep diffusion trajectories. 
+
+Difference from EDICT. IDM is related to EDICT [58] but differs substantially in goal and functionality. EDICT focuses on exact diffusion inversion and faithful reconstruction through coupled invertible transformations, mainly to reduce DDIM inversion errors. By contrast, IDM is designed for unrestricted adversarial transfer attacks, where invertibility is exploited to support exact constant-memory backpropagation and attack-oriented latent optimization. In addition, IDM is coupled with perturbation injection during adversarial optimization, which is beyond the scope of EDICT. 
+
+## 4.2 Low-Frequency Constraint Module 
+
+While IDM enables memory-efficient optimization over deep diffu-sion trajectories, strong attack transferability also depends critically on how perturbations are allocated in the latent space. Existing diffusion-based attack methods [5, 28, 46] largely overlook this IDATA: Scalable Invertible Diffusion for Unrestricted Adversarial Transfer Attack MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil. 𝜏 = 5  𝜏 = 10  𝜏 = 15  𝜏 = 20  𝜏 = 25  𝜏 = 30 
+
+Figure 3: Reconstructions from high- and low-frequency components of diffusion latents at timesteps 𝜏 . The leftmost column shows clean images. The top row uses only high-frequency components, and the bottom row uses only low-frequency components, with the other component set to 0.Results are shown with 𝑇 = 50 .
+
+issue and perturb the latent space indiscriminately, which often in-troduces visible high-frequency artifacts and undermines semantic transferability, as illustrated in Fig. 4 and Fig. 5. To address this limi-tation, we propose a Low-Frequency Constraint Module (LFCM) that restricts perturbations to the semantically stable low-frequency sub-space at intermediate timesteps. This design improves cross-model transferability while better preserving visual imperceptibility. To motivate this design, we analyze the frequency characteristics of intermediate latent variables across timesteps, as shown in Fig. 3. Low-frequency components preserve global structure, object shape, and core semantics throughout denoising, while high-frequency components capture local textures whose semantic validity decays rapidly as timestep 𝜏 increases. Full-latent perturbation thus in-troduces redundant high-frequency noise and wastes budget on semantically fragile components, degrading both imperceptibility and cross-model transferability. Based on this observation, at diffusion step 𝜏 , we first concatenate the intermediate latent variables from both branches along the channel dimension to form a unified representation, 𝒛 𝜏 = [𝒛 𝑥 𝜏 , 𝒛 𝑦 𝜏 ].The LFCM then decomposes this unified latent 𝒛 𝜏 into its low-frequency and high-frequency components. To this end, we employ the Discrete Wavelet Transform (DWT) [40] with Haar wavelet basis to implement this decomposition. Specifically, given a latent representation 𝒛 𝜏 ∈ R𝐵 ×𝐶 ×𝐻 ×𝑊 , where 𝐵 denotes the batch size and 𝐶 represents the number of channels, we use a low-pass filter 
+
+𝑳 and a high-pass filter 𝑯 to disentangle 𝒛 𝜏 into a low-frequency component 𝒀 𝐿 ∈ R𝐵 ×𝐶 × 𝐻    
+
+> 2×𝑊
+> 2
+
+and a high-frequency component 
+
+𝒀 𝐻 ∈ R𝐵 ×3𝐶 × 𝐻    
+
+> 2×𝑊
+> 2
+
+:      
+
+> (𝒀 𝐿 ,𝒀 𝐻 )=DWT (𝒛 𝜏 ),(7)
+
+where 𝒀 𝐿 = 𝑳𝒛 𝜏 𝑳 𝑇 denotes the low-frequency approximation, and 
+
+𝒀 𝐻 = [𝒄 ℎ𝑙 , 𝒄 𝑙ℎ , 𝒄 ℎℎ ] = [𝑯 𝒛 𝜏 𝑳 𝑇 , 𝑳𝒛 𝜏 𝑯 𝑇 , 𝑯 𝒛 𝜏 𝑯 𝑇 ] concatenates the detailed high-frequency information across different spatial ori-entations. Subsequently, the Inverse Discrete Wavelet Transform (IDWT) is applied to 𝒀 𝐿 and 𝒀 𝐻 to recover the original latent vari-able 𝒛 𝜏 : 𝒛 𝜏 = IDWT (𝒀 𝐿 , 𝒀 𝐻 ).To improve transferability without sacrificing visual quality, we inject the adversarial perturbation only into the low-frequency component, i.e. , 𝒀 ′ 
+
+> 𝐿
+
+= 𝒀 𝐿 + 𝜹 , while keeping 𝒀 𝐻 unchanged. The perturbed latent is reconstructed as 𝒛 ′ 
+
+> 𝜏
+
+= IDWT (𝒀 ′
+
+> 𝐿
+
+, 𝒀 𝐻 ). Crucially, to interface back with the dual-branch IDM, we then split 𝒛 ′ 
+
+> 𝜏
+
+along the channel dimension to obtain the perturbed latent pair ( ˆ𝒛 𝑥 𝜏 , ˆ𝒛 𝑦 𝜏 ).This pair is then fed into the subsequent reverse diffusion process. In this way, LFCM serves as a frequency-aware latent regularizer that steers optimization toward model-agnostic global semantics rather than surrogate-specific high-frequency details. Compared with full-latent perturbation, LFCM suppresses high-frequency ar-tifacts, improves perturbation budget utilization, and achieves a better transferability-imperceptibility trade-off across heteroge-neous architectures and defenses. Moreover, LFCM is lightweight, model-agnostic, and plug-and-play, readily compatible with exist-ing diffusion-based attacks without additional fine-tuning. 
+
+## 4.3 Loss Function 
+
+Integrating the IDM and LFCM modules, our final objective is de-signed to jointly enforce cross-model transferability and visual imperceptibility. The overall loss function combines an adversarial guidance loss Ladv with a perceptual quality loss LLPIPS :
+
+Ltotal = L𝑎𝑑𝑣 + 𝜆 LLPIPS , (8) where 𝜆 is a regularization parameter. The adversarial guidance loss Ladv is computed symmetrically for both the primary ( Xadv )and auxiliary ( Yadv ) branches to enforce trajectory synchronization within the IDM. This co-optimization strategy explicitly couples their adversarial paths and is defined as: L𝑎𝑑𝑣 = −L 𝐶𝐸 (X𝑎𝑑𝑣 , 𝑦 ; 𝒇 𝜃 )− L𝐶𝐸 (Y𝑎𝑑𝑣 , 𝑦 ; 𝒇 𝜃 ), where L𝐶𝐸 (·) denotes the cross-entropy loss and 
+
+𝑦 is the image’s true label. The perceptual quality loss LLPIPS is de-fined as LLPIPS = LPIPS (X, X𝑎𝑑𝑣 ) + LPIPS (Y, Y𝑎𝑑𝑣 ), which preserves perceptual similarity between clean and adversarial images. 
+
+## 5 Experiment 5.1 Experimental Setup 
+
+Datasets: Following prior methods [5, 6, 28, 47], we evaluate the performance of IDATA on the ImageNet-Compatible Dataset, a standard benchmark for transferability evaluation. This dataset comprises 1,000 images and each evaluation sample is resized to 224 × 224. We also conduct further experiments on the CUB-200-2011 Dataset [56] and the Stanford Cars Dataset [26]. 
+
+Target Models and Defenses: We evaluate both transferability and visual imperceptibility on diverse architectures spanning CNNs, Transformers, and MLPs. The CNN-based models include Con-vNeXt [36], ResNet-50 (Res-50) [19], VGG-19 [51], Inception-v3 (Inc-v3) [52], and MobileNet-v2 (Mob-v2) [49]. The Transformer models include ViT-B/16 (ViT-B) [13], Swin-B [35], DeiT-B, and DeiT-S [54]. The MLP-based models include Mixer-B/16 (Mix-B) and Mixer-L/16 (Mix-L) [53]. To evaluate robustness under defended settings, we further consider representative purification-based de-fenses, including NRP [43], DiffPure [44], OSGD [33], GuidedDif-fusionPur [59], as well as adversarially trained models, including Adv-Inc-v3 [27], Inc-v3ens3, IncRes-v2ens [55] and Inc-v3ens4. 
+
+Implementation Details: We adopt DDIM sampling on Stable Diffusion v2.0 [48] with 𝑇 = 50 diffusion steps. The diffusion process MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil. Yi Pan et al. 
+
+Table 1: Comparison of transferability and imperceptibility on normally trained models. We report top-1 accuracy (%) of each method. “S” denotes surrogate models, and “T” denotes target models. “AVG w/o self” represents the average ASR (Attack Success Rate) over all target models excluding the surrogate model itself. Different shades of blue indicate ASR values on target models with different architectures, where darker blue denotes higher ASR. The best results are highlighted in bold red font.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
+
+> S. T. Attacks CNNs Transformers MLPs AVG (w/o self) ↑FID ↓LPIPS ↓Res-50 VGG-19 Mob-v2 Inc-v3 ConvNeXt Vit-B Swin-B DeiT-B Deit-S Mix-B Mix-L Clean 7.3 11.3 13.1 19.5 36.3 4.1 5.5 617.5 23.5 10.6 57.8 -Res-50 DI-FGSM 100 75.8 75.5 65.5 26.4 18.4 17.7 19.5 24.0 38.7 43.2 40.5 85.3 0.143 PI-FGSM 100 75.9 75.0 76.0 27.5 34.7 22.5 34.3 35.0 49.7 56.2 48.7 97.9 0.136 ReColorAdv 99.2 57.6 63.8 47.9 28.6 31.7 28.1 26.8 32.3 36.5 40.8 39.4 63.4 0.154 cAdv 97.6 48.2 57.5 46.8 21.0 36.9 24.7 31.7 37.7 48.3 56.0 40.9 65.7 0.156 VENOM 100 42.6 43.3 35.9 68.8 68.5 62.3 67.8 66.0 55.1 45.8 55.6 80.2 0.169 ACA 88.0 67.7 71.5 69.4 53.0 57.0 54.9 54.8 55.1 60.4 60.8 60.5 76.6 0.378 DiffAttack 96.8 75.6 77.1 69.0 59.0 51.2 56.2 50.5 55.0 57.1 57.8 60.9 62.6 0.137 DiffAdvMAP 100 77.7 82.7 67.1 62.1 48.6 57.9 49.1 53.4 54.4 55.5 60.9 60.2 0.136 IDATA(Our) 97.7 78.8 80.6 71.3 62.2 53.7 59.3 50.9 56.0 55.9 58.4 62.7 59.8 0.133
+> Inc-v3 DI-FGSM 38.3 42.6 43.3 99.8 10.1 15.4 13.2 13.3 18.0 31.6 37.7 33.0 67.1 0.131 PI-FGSM 41.7 42.6 51.7 100 19.0 25.7 19.7 18.1 22.0 42.9 42.5 38.7 92.5 0.137 ReColorAdv 31.6 35.8 39.3 98.4 11.7 19.1 15.0 14.7 19.6 26.6 32.6 31.3 63.3 0.141 cAdv 23.1 27.7 29.7 86.6 8.9 18.6 14.3 14.6 15.9 20.3 35.2 26.8 62.2 0.135 VENOM 35.7 33.8 32.3 100 41.0 43.5 44.0 38.8 36.2 30.2 25.3 41.9 73.8 0.214 ACA 39.6 42.6 52.0 93.0 38.0 25.8 27.5 29.6 31.3 34.9 45.6 41.8 80.4 0.390 DiffAttack 40.4 44.5 44.6 86.1 23.1 24.8 27.2 26.0 29.0 41.1 45.3 39.3 62.3 0.130 DiffAdvMAP 42.5 47.2 50.8 99.9 27.2 29.7 30.8 27.9 29.7 36.9 40.9 42.1 63.2 0.137 IDATA(Our) 42.6 43.2 53.1 97.2 25.6 31.2 28.1 28.8 31.6 43.1 48.7 43.0 61.8 0.129
+> Swin-B DI-FGSM 47.3 57.0 58.5 43.6 36.1 33.4 97.3 42.8 42.0 47.6 49.2 45.8 65.7 0.138 PI-FGSM 61.1 58.3 54.2 64.3 43.2 51.2 100 47.6 53.0 56.5 61.5 55.1 89.7 0.358 ReColorAdv 36.5 38.3 42.1 37.6 37.2 35.2 100 37.3 35.4 39.2 44.8 38.4 65.7 0.147 cAdv 40.9 40.9 46.1 43.2 37.6 51.7 98.4 33.4 53.4 54.0 58.9 46.0 67.4 0.191 VENOM 52.5 55.9 55.1 61.0 41.1 42.7 95.9 45.7 45.6 55.4 59.6 51.5 65.3 0.174 ACA 62.0 64.2 65.5 66.1 58.7 59.1 80.3 62.1 61.7 70.9 71.9 64.2 77.2 0.378 DiffAttack 56.5 57.9 59.3 58.6 66.0 61.0 90.1 65.0 63.0 62.3 62.6 61.2 65.5 0.138 DiffAdvMAP 58.8 62.9 65.5 57.1 75.7 55.1 95.9 65.5 59.8 61.1 60.9 62.2 66.4 0.131 IDATA(Our) 63.5 60.6 65.3 64.5 60.0 63.4 96.3 68.4 66.7 69.6 68.0 65.0 63.8 0.128
+> Mix-B DI-FGSM 25.1 32.5 37.0 38.3 14.0 26.5 18.7 27.3 27.5 100 62.1 30.9 67.8 0.158 PI-FGSM 23.1 27.1 29.7 37.8 6.7 23.4 9.1 25.0 22.7 100 49.3 25.4 87.8 0.147 ReColorAdv 25.8 28.6 34.7 38.6 17.6 27.1 22.1 25.5 28.7 97.8 64.1 31.3 70.0 0.197 cAdv 24.5 29.3 30.0 35.9 12.4 23.5 16.3 21.1 24.7 100 55.2 27.3 66.9 0.204 VENOM 51.5 52.2 55.9 57.0 40.9 44.0 49.8 46.4 49.3 82.2 73.5 52.1 77.6 0.207 ACA 52.2 57.6 60.4 58.6 45.5 54.8 49.9 51.9 52.9 92.5 68.4 55.2 85.3 0.386 DiffAttack 48.0 47.4 51.5 55.6 42.9 50.4 49.7 54.9 53.2 83.1 77.7 53.1 65.3 0.139 DiffAdvMAP 44.1 48.2 52.1 49.3 37.6 47.5 42.3 48.7 51.7 98.9 85.4 50.7 66.4 0.139 IDATA(Our) 53.0 51.5 55.9 60.6 43.7 58.9 45.7 56.8 54.2 96.4 85.5 56.6 64.3 0.138
+
+is conditioned on the ground-truth label name of 𝑦 . The guidance scale is 0 during inversion and 1 during reverse denoising. For adversarial generation, the latent at step 𝜏 = 20 is used to initialize reverse denoising. The unified adversarial latent perturbation 𝜹 is optimized with momentum factor 𝜇 = 1, step size 𝜂 = 0.01, loss weight 𝜆 = 2, and 20 iterations. 
+
+Comparison Methods: We compare IDATA with representative transfer attacks from three categories: pixel-space transfer attacks DI-FGSM [61] and PI-FGSM [16], unrestricted transfer attacks Re-ColorAdv [29] and cAdv [2], and diffusion-based attacks DiffAt-tack [5], VENOM [28], ACA [6], and DiffAdvMAP [46]. All baselines follow their official or default optimal settings for fair comparison. 
+
+Evaluation Metrics: We evaluate transferability via the Aver-age Attack Success Rate (AVG), where higher values indicate bet-ter cross-model performance. For visual imperceptibility, we use Learned Perceptual Image Patch Similarity (LPIPS) [64] and Fréchet Inception Distance (FID) [20]. LPIPS quantifies local artifacts and FID captures global semantic consistency, with lower values indi-cating higher perceptual similarity and better imperceptibility. 
+
+## 5.2 Evaluation Results 
+
+1) Results on Normally Trained Models: Tab. 1 summarizes results on normally trained models. Overall, IDATA achieves the optimal trade-off between black-box transferability and visual imperceptibility across all surrogate settings. 
+
+Superior Transferability and Robustness. IDATA consis-tently achieves the highest AVG across the four diverse surrogate models. Notably, on the challenging Mix-B surrogate, IDATA out-performs state-of-the-art diffusion-based baselines, DiffAttack [5] and DiffAdvMAP [46], by 3.5% and 5.9%, respectively. While meth-ods like VENOM [28] and ACA [6] occasionally yield competi-tive scores on specific targets, Tab. 1 shows they severely com-promise visual quality to do so. Furthermore, instead of overfit-ting to surrogate decision boundaries, IDATA exhibits remarkable cross-architecture generalization, maintaining top-tier performance across CNNs, Transformers, and MLPs. We attribute this stable ro-bustness to IDM’s deep trajectory optimization for universal seman-tics, combined with LFCM’s ability to steer perturbations toward model-agnostic, low-frequency structures. 
+
+Exceptional Visual Imperceptibility. Beyond its transferabil-ity, IDATA establishes a new benchmark for visual imperceptibility. This is first quantified by its consistently superior FID and LPIPS scores across all surrogate settings, as shown in Tab. 1. Notably, our method strictly maintains the LPIPS distortion below 0.14, a tighter budget than most baselines. The qualitative comparisons in Fig. 4 further support these observations. Adversarial examples generated by IDATA remain visually close to the clean images, without noticeable artifacts, color shifts, or over-sharpening. In contrast, pixel-based attacks such as DI-FGSM [61] and PI-FGSM [16] introduce visible high-frequency noise, while unrestricted attacks such as ReColorAdv [29] IDATA: Scalable Invertible Diffusion for Unrestricted Adversarial Transfer Attack MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil. 
+
+Table 2: Robustness against defenses. “AVG” denotes the average ASR (%) over all defended models. “Average (w/o self)” denotes the average ASR drop across all defenses excluding the mixer-b normal ; higher values indicate better robustness. The best and second-best results are highlighted in dark and light blue, respectively.                                                                                                                      
+
+> Attacks Defended Models Defended Methods Adv-inc-v3 Inc-v3ens3 Inc-v3ens4 IncRes-v2ens AVG ↑mixer-b normal NRP OSGD DiffPure GuidedDiffusionPur Average(w/o self) ↑
+> DI-FGSM 31.7 34.7 31 20.5 29.48 100 -40.0 -48.5 -52.4 -59.5 -50.1 PI-FGSM 20.8 25.3 25.5 12.2 20.95 100 -42.4 -42.1 -41.5 -55.5 -45.4 ReColorAdv 24.6 30.7 30.5 19.5 26.33 97.8 -16.5 -39.4 -47.8 -48.7 -38.1 cAdv 31.5 34.6 36.3 24.5 31.73 100 -23.3 -33.4 -39.2 -40.2 -34.0 VENOM 59.3 59.5 62.1 50.3 57.80 82.2 -13.3 -16.5 -13.4 -29.8 -18.3 ACA 60.6 63.8 62.5 56.9 60.95 92.5 -12.4 -13.5 -15.8 -21.1 -15.7 DiffAttack 48.5 49.9 51.8 39.8 47.50 83.1 -16.6 -15.2 -13.9 -26.5 -18.1 DiffAdvMAP 41.9 47.1 45 34.3 42.08 98.9 -10.9 -10.5 -12.4 -20.1 -13.5 IDATA(Our) 64.4 65.6 64.6 56.5 62.78 96.4 -4.9 -5.2 -6.8 -8.0 -6.2 (a) Clean (f) VENOM (b) DI-FGSM (c) PI-FGSM (d) ReColorAdv (e) cAdv (h) DiffAttack (j) Ours (i) DiffAdvMAP (g)ACA
+
+Figure 4: Visual comparisons among different adversarial attacks. Please zoom in for a better view. Clean  All Frequency  High Frequency  Low Frequency   
+
+> 0.160
+> 0.185
+> 0.142 0.095
+> 0.181 0.118
+
+Figure 5: Comparison of adversarial examples generated by frequency-specific perturbations in the latent space. For each example, the left half shows the adversarial image, and the right half shows the color-coded perturbation map, where gray denotes no perturbation, brighter colors denote positive perturbations, and darker colors denote negative perturba-tions. LPIPS ( ↓) is reported in the top left. 
+
+and cAdv [2] often distort image colors. Although diffusion-based baselines, including DiffAttack [5], ACA [6], DiffAdvMAP [46], and VENOM [28], yield more natural results but still exhibit over-sharpening artifacts. For instance, the “steamed bun” in the first column of Fig. 4 appears unnaturally sharpened in their results. By comparison, IDATA better preserves natural textures and ob-ject structures while maintaining strong attack transferability. This advantage stems from deep adversarial optimization over invertible diffusion trajectories, together with low-frequency regularization and perceptual guidance, which encourage perturbations to re-side in semantically stable latent components. As a result, IDATA achieves a clearly more favorable transferability-imperceptibility trade-off than existing baselines. 
+
+2) Robustness Against Defense Approaches: Using Mixer-B [53] as the surrogate, we evaluate IDATA against standard purification methods and adversarially trained models. Tab. 2 shows that IDATA consistently outperforms baselines across all defense settings. Cru-cially, it demonstrates exceptional resistance to image purification, with only a 6.8% performance drop under DiffPure [44] compared to 12.4% or worse for other methods. IDATA also remains highly potent against adversarially trained models. This confirms that our method crafts highly transferable perturbations that are inherently robust against common defensive interventions. 
+
+3) Performance on More Datasets: As shown in Tab. 3, IDATA achieves the best overall transferability on the CUB-200-2011 and Stanford Cars datasets. It consistently outperforms DiffAttack [5] and DiffAdvMAP [46] across different surrogate models. Critically, this is achieved while delivering superior visual quality; for instance, IDATA obtains the lowest LPIPS in all CUB-200-2011 settings and the best FID scores across all surrogate models on Stanford Cars. 
+
+## 5.3 Ablation Study 
+
+1) Effect of IDM and LFCM:. Tab. 4 quantifies the individual contri-butions of our proposed modules. IDM primarily mitigates computa-tional bottlenecks, slashing peak GPU memory usage from 37.9 GB to just 13.1 GB. Remarkably, it does so while slightly boosting AVG from 67.1% to 67.3%, confirming that the invertible design enables scalable deep diffusion optimization without sacrificing transfer-ability. In contrast, LFCM ensures superior visual imperceptibility by suppressing unstable high-frequency perturbations, lowering LPIPS from 0.162 to 0.143. When combined, the full IDATA method achieves the best visual imperceptibility (LPIPS: 0.138) while main-taining low memory footprint (13.1 GB) and strong transferability MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil. Yi Pan et al. 
+
+Table 3: Comparison on CUB-200-2011 and Stanford Cars datasets. The best results are highlighted in bold red font.                                                                                                                                                                                                                                                                                                                          
+
+> S. T. Attacks CUB-200-2011 Stanford Cars Res-50 SENET154 SE-Res101 AVG (w/o self) ↑FID ↓LPIPS ↓Res-50 SENET154 SE-Res101 AVG (w/o self) ↑FID ↓LPIPS ↓
+> Clean 24.3 19.5 23.4 22.4 11.1 -26.1 23.6 25.6 25.1 11.6 -Res-50 DI-FGSM 99.7 57.3 66.2 61.8 20.9 0.155 99.9 66.7 70.7 68.7 28.7 0.097 PI-FGSM 90.9 64.8 73.8 69.3 34.8 0.355 98.5 68.5 76.8 72.7 53.2 0.310 ReColorAdv 99.9 58.0 66.6 62.3 23.2 0.215 100 57.4 64.9 61.2 22.9 0.164 cAdv 75.0 60.0 63.7 61.9 21.3 0.129 61.9 35.3 39.1 37.2 19.7 0.117 VENOM 97.3 67.5 69.6 68.6 68.1 0.135 92.9 70.1 71.2 70.7 26.7 0.135 DiffAttack 96.7 80.7 83.3 82.0 20.6 0.122 99.9 84.9 86.9 85.9 17.8 0.112 DiffAdvMAP 99.6 81.9 83.9 82.9 24.0 0.116 99.7 83.7 86.1 84.9 18.3 0.117 IDATA(Our) 94.2 83.3 84.6 84.0 18.9 0.115 96.4 84.4 88.1 86.3 15.3 0.110
+> SENET154 DI-FGSM 45.5 99.8 51.1 48.3 23.5 0.158 54.4 99.9 54.5 54.5 29.1 0.096 PI-FGSM 39.9 99.7 43.8 41.9 20.8 0.137 45.9 99.9 46.8 46.4 23.0 0.095 ReColorAdv 44.8 95.7 51.1 48.0 22.4 0.153 55.3 100 57.1 56.2 21.3 0.130 cAdv 69.0 94.3 68.7 68.9 20.4 0.118 36.7 79.8 39.9 38.3 17.8 0.102 VENOM 68.1 93.7 69.8 69.0 61.6 0.126 59.9 89.7 60.4 60.2 16.2 0.086 DiffAttack 46.2 97.5 48.7 47.5 17.9 0.104 62.7 99.1 67.5 65.1 16.2 0.095
+> DiffAdvMAP 65.5 98.3 69.8 67.7 20.0 0.108 66.7 100 69.9 68.3 16.3 0.103 IDATA(Our) 67.5 95.0 72.3 69.9 16.2 0.102 69.8 98.6 73.1 71.5 14.6 0.097 SE-Res101 DI-FGSM 60.6 62.0 99.8 61.3 23.5 0.165 71.9 70.7 99.8 71.3 28.5 0.106 PI-FGSM 78.3 70.2 100 74.3 45.5 0.403 81.5 70.7 100 76.1 59.9 0.331 ReColorAdv 58.4 57.8 99.4 58.1 27.0 0.198 63.2 58.5 100 60.9 23.2 0.155 cAdv 66.9 66.2 89.5 66.6 22.7 0.125 37.6 37.3 77.5 37.5 18.5 0.119 VENOM 67.8 68.9 95.4 68.4 74.8 0.127 69.9 71.4 92.2 70.7 20.0 0.122 DiffAttack 73.0 76.5 96.1 74.8 22.4 0.121 82.5 84.0 99.7 83.3 18.0 0.114 DiffAdvMAP 82.9 83.7 99.9 83.3 22.1 0.115 84.0 85.8 100 84.9 18.3 0.116 IDATA(Our) 83.2 84.1 98.7 83.7 20.7 0.114 85.0 86.5 99.2 85.8 17.3 0.113
+
+Table 4: Effectiveness of IDM and LFCM of IDATA. 
+
+IDM LFCM AVG ↑ LPIPS ↓ Peak GPU Memory ↓
+
+67.1 0.162 37.9 64.4 0.143 37.9 
+
+67.3 0.159 13.1 
+
+65.0 0.138 13.1 
+
+(AVG: 65.0%). This demonstrates that IDM and LFCM work syner-gistically to strike an optimal balance between attack success rate, perceptual quality, and computational efficiency. 
+
+2) Perturbation Timestep 𝜏 : Fig. 1 presents the ablation study on the perturbation timestep 𝜏 , compared with state-of-the-art diffusion-based attacks. To ensure fair comparisons, we enforce a strict perceptual budget 𝐿𝑃𝐼𝑃𝑆 ≤ 0.14. As shown, smaller 𝜏 leads to suboptimal transferability, while 𝜏 = 24 exceeds the budget. Thus, we select 𝜏 = 20 as the default, achieving the highest transferability with a compliant LPIPS = 0.13. 
+
+3) Parameter Sensitivity: Fig. 6 analyzes four key hyper-parameters: the step size 𝜂 , the perceptual regularization weight 𝜆 , the mixing weight 𝑝 , and the guidance scale 𝑔 . In Fig. 6(a), increasing 𝜂 im-proves AVG but also elevates LPIPS. When 𝜂 > 0.01, transferability gains become marginal while visual distortion accelerates, so we set 𝜂 = 0.01. In Fig. 6(b), LPIPS shows an overall decreasing trend as 𝜆 increases, while AVG reaches its peak at 𝜆 = 2, indicating that a moderate perceptual regularization strength yields the best transferability-imperceptibility trade-off. Fig. 6(c) shows that larger 
+
+𝑝 generally improves visual imperceptibility but overly large values noticeably reduce AVG; the best balance is achieved at 𝑝 = 0.93. As shown in Fig. 6(d), AVG remains relatively stable across different guidance scales, whereas LPIPS generally increases as 𝑔 becomes larger. Accordingly, we set 𝑔 = 1. Overall, IDATA remains reason-ably robust under moderate hyper-parameter variations. 
+
+4) Frequency Analysis: Fig. 5 compares adversarial examples gen-erated under different frequency constraints. Split-view visualiza-tion shows that all-frequency and high-frequency perturbations produce fine-grained, noise-like artifacts that impair visual quality. (a) Step size  𝜂  (b) Loss weight  𝜆    
+
+> (c) Mixing weight 𝑝 (d) Guidance scale 𝑔
+
+Figure 6: A quantitative study on parameter settings: step size 𝜂 , loss weight 𝜆 , mixing weight p and guidance scale g.The left y-axis shows AVG, and the right y-axis shows LPIPS. 
+
+Conversely, low-frequency perturbations yield smoother, structure-aware patterns that preserve object textures and structural integrity, leading to substantially lower LPIPS scores. This validates the core motivation of LFCM: confining perturbations to low-frequency la-tent components inherently achieves a superior balance between attack imperceptibility and transferability. 
+
+## 6 Conclusion 
+
+In this paper, we propose IDATA , a scalable and memory-efficient invertible diffusion framework for unrestricted transferable adver-sarial attack. By integrating an Invertible Diffusion Module (IDM) with a Low-Frequency Constraint Module (LFCM), IDATA enables deep adversarial optimization with substantially reduced memory overhead, while achieving strong cross-model transferability and improved visual imperceptibility. Extensive experiments across diverse model architectures, defense settings, and datasets demon-strate that IDATA attains a favorable trade-off among attack effec-tiveness, computational efficiency, and perceptual quality, making it a promising tool for black-box robustness evaluation in real-world multimedia systems. IDATA: Scalable Invertible Diffusion for Unrestricted Adversarial Transfer Attack MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil. 
+
+## Acknowledgments 
+
+This work was supported by the National Natural Science Founda-tion of China No. xxxxxxxx and No. xxxxxxxx. 
+
+## References 
+
+[1] Qianyue Bao, Fang Liu, Yang Liu, Licheng Jiao, Xu Liu, and Lingling Li. 2022. Hi-erarchical Scene Normality-Binding Modeling for Anomaly Detection in Surveil-lance Videos. In Proceedings of the 30th ACM international conference on multime-dia . 6103–6112. [2] Anand Bhattad, Min Jin Chong, Kaizhao Liang, Bo Li, and David A Forsyth. 2020. Unrestricted Adversarial Examples via Semantic Manipulation. In International Conference on Learning Representations . https://openreview.net/forum?id=Sye_ OgHFwH [3] Bin Chen, Yan Feng, Tao Dai, Jiawang Bai, Yong Jiang, Shu-Tao Xia, and Xuan Wang. 2022. Adversarial Examples Generation for Deep Product Quantization Networks on Image Retrieval. IEEE Transactions on Pattern Analysis and Machine Intelligence 45, 2 (2022), 1388–1404. [4] Bin Chen, Zhenyu Zhang, Weiqi Li, Chen Zhao, Jiwen Yu, Shijie Zhao, Jie Chen, and Jian Zhang. 2025. Invertible Diffusion Models for Compressed Sensing. IEEE Transactions on Pattern Analysis and Machine Intelligence (2025). [5] Jianqi Chen, Hao Chen, Keyan Chen, Yilan Zhang, Zhengxia Zou, and Zhenwei Shi. 2025. Diffusion Models for Imperceptible and Transferable Adversarial Attack. IEEE Transactions on Pattern Analysis and Machine Intelligence 47, 2 (2025), 961–977. doi:10.1109/TPAMI.2024.3480519 [6] Zhaoyu Chen, Bo Li, Shuang Wu, Kaixun Jiang, Shouhong Ding, and Wenqiang Zhang. 2023. Content-based Unrestricted Adversarial Attack. Advances in Neural Information Processing Systems 36 (2023), 51719–51733. [7] Zihan Chen, Tianrui Liu, Jun-Jie Huang, Wentao Zhao, Xing Bi, and Meng Wang. 2024. Invertible Mosaic Image Hiding Network for Very Large Capacity Image Steganography. In ICASSP 2024-2024 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) . IEEE, 4520–4524. [8] Zihan Chen, Ziyue Wang, Jun-Jie Huang, Wentao Zhao, Xiao Liu, and Dejian Guan. 2023. Imperceptible Adversarial Attack via Invertible Neural Networks. In 
+
+Proceedings of the AAAI Conference on Artificial Intelligence , Vol. 37. 414–424. [9] Xuelong Dai, Kaisheng Liang, and Bin Xiao. 2024. Advdiff: Generating Unre-stricted Adversarial Examples using Diffusion Models. In European Conference on Computer Vision . Springer, 93–109. [10] Zeyu Dai, Shengcai Liu, Rui He, Jiahao Wu, Ning Lu, Wenqi Fan, Qing Li, and Ke Tang. 2025. SemDiff: Generating Natural Unrestricted Adversarial Exam-ples via Semantic Attributes Optimization in Diffusion Models. arXiv preprint arXiv:2504.11923 (2025). [11] Laurent Dinh, Jascha Sohl-Dickstein, and Samy Bengio. 2017. Density estimation using Real NVP. In International Conference on Learning Representations . https: //openreview.net/forum?id=HkpbnH9lx [12] Yinpeng Dong, Fangzhou Liao, Tianyu Pang, Hang Su, Jun Zhu, Xiaolin Hu, and Jianguo Li. 2018. Boosting Adversarial Attacks with Momentum. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition . 9185–9193. [13] Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov, Dirk Weissenborn, Xi-aohua Zhai, Thomas Unterthiner, Mostafa Dehghani, Matthias Minderer, Georg Heigold, Sylvain Gelly, Jakob Uszkoreit, and Neil Houlsby. 2021. An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale. In Interna-tional Conference on Learning Representations . https://openreview.net/forum?id= YicbFdNTTy [14] Mingyuan Fan, Cen Chen, Chengyu Wang, and Jun Huang. 2025. Exploiting Pre-trained Models and Low-Frequency Preference for Cost-effective Transfer-based Attack. ACM Transactions on Knowledge Discovery from Data 19, 2 (2025), 1–18. [15] Yan Gan, Chengqian Wu, Deqiang Ouyang, Song Tang, Mao Ye, and Tao Xiang. 2024. LESEP: Boosting Adversarial Transferability via Latent Encoding and Semantic Embedding Perturbations. IEEE Transactions on Circuits and Systems for Video Technology (2024). [16] Lianli Gao, Qilong Zhang, Jingkuan Song, Xianglong Liu, and Heng Tao Shen. 2020. Patch-wise Attack for Fooling Deep Neural Network. In European Confer-ence on Computer Vision . Springer, 307–322. [17] Ian J. Goodfellow, Jonathon Shlens, and Christian Szegedy. 2015. Explaining and Harnessing Adversarial Examples. In International Conference on Learning Repre-sentations . https://mlanthology.org/iclr/2015/goodfellow2015iclr-explaining/ [18] Xingshuo Han, Guowen Xu, Yuan Zhou, Xuehuan Yang, Jiwei Li, and Tianwei Zhang. 2022. Physical Backdoor Attacks to Lane Detection Systems in Au-tonomous Driving. In Proceedings of the 30th ACM International Conference on Multimedia . 2957–2968. [19] Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. 2016. Deep Residual Learning for Image Recognition. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition . 770–778. [20] Martin Heusel, Hubert Ramsauer, Thomas Unterthiner, Bernhard Nessler, and Sepp Hochreiter. 2017. Gans Trained by a Two Time-scale Update Rule Converge to a Local Nash Equilibrium. Advances in Neural Information Processing Systems 
+
+30 (2017). [21] Jun-Jie Huang, Zihan Chen, Tianrui Liu, Wentao Zhao, Xin Deng, Xinwang Liu, Meng Wang, and Pier Luigi Dragotti. 2025. SMILENet: Unleashing Extra-large Capacity Image Steganography via a Synergistic Mosaic Invertible Hiding Network. arXiv preprint arXiv:2503.05118 (2025). [22] Jun-Jie Huang and Pier Luigi Dragotti. 2021. LINN: Lifting Inspired Invertible Neural Network for Image Denoising. In 2021 29th European Signal Processing Conference (EUSIPCO) . IEEE, 636–640. [23] Jun-Jie Huang and Pier Luigi Dragotti. 2022. WINNet: Wavelet-Inspired Invertible Network for Image Denoising. IEEE Transactions on Image Processing 31 (2022), 4377–4392. [24] Jun-Jie Huang, Ziyue Wang, Tianrui Liu, Wenhan Luo, Zihan Chen, Wentao Zhao, and Meng Wang. 2024. DeMPAA: Deployable Multi-mini-patch Adversarial Attack for Remote Sensing Image Classification. IEEE Transactions on Geoscience and Remote Sensing 62 (2024), 1–13. [25] Durk P Kingma and Prafulla Dhariwal. 2018. Glow: Generative Flow with In-vertible 1x1 Convolutions. Advances in Neural Information Processing Systems 31 (2018). [26] Jonathan Krause, Michael Stark, Jia Deng, and Li Fei-Fei. 2013. 3d Object Represen-tations for Fine-Grained Categorization. In Proceedings of the IEEE International Conference on Computer Vision Workshops . 554–561. [27] Alexey Kurakin, Ian Goodfellow, Samy Bengio, Yinpeng Dong, Fangzhou Liao, Ming Liang, Tianyu Pang, Jun Zhu, Xiaolin Hu, Cihang Xie, et al. 2018. Adver-sarial Attacks and Defences Competition. In The NIPS’17 Competition: Building Intelligent Systems . Springer, 195–231. [28] Hui Kuurila-Zhang, Haoyu Chen, and Guoying Zhao. 2025. VENOM: Text-driven Unrestricted Adversarial Example Generation with Diffusion Models. arXiv:2501.07922 [cs.CV] https://arxiv.org/abs/2501.07922 [29] Cassidy Laidlaw and Soheil Feizi. 2019. Functional Adversarial Attacks. In 
+
+Advances in Neural Information Processing Systems , H. Wallach, H. Larochelle, A. Beygelzimer, F. d'Alché-Buc, E. Fox, and R. Garnett (Eds.), Vol. 32. Cur-ran Associates, Inc. https://proceedings.neurips.cc/paper_files/paper/2019/file/ 6e923226e43cd6fac7cfe1e13ad000ac-Paper.pdf [30] Baishuang Li, Siyi Mo, Wenming Yang, Guijin Wang, and Qingmin Liao. 2023. ERR-Net: Facial Expression Removal and Recognition Network with Residual Image. IEEE Transactions on Biometrics, Behavior, and Identity Science 5, 4 (2023), 425–434. [31] Tengjiao Li, Maosen Li, Yanhua Yang, and Cheng Deng. 2023. Frequency Domain Regularization for Iterative Adversarial Attacks. Pattern Recognition 134 (2023), 109075. [32] Yuanbo Li, Cong Hu, Tianyang Xu, and Xiaojun Wu. 2023. When Diffusion Model Meets with Adversarial Attack: Generating Transferable Adversarial Examples on Face Recognition. In International Conference on Image and Graphics . Springer, 243–255. [33] Yanchun Li, Zemin Li, Long Huang, Lingzhi Hu, Li Zeng, and Dongsu Shen. 2025. Adversarial Purification with One-step Guided Diffusion Model. Neural Networks 
+
+(2025), 107877. [34] Jiabei Liu, Weiming Zhuang, Yuanyuan Liu, Yonggang Wen, Jun Huang, and Wei Lin. 2025. Personalized Federated Mutual Learning for Unsupervised Camera-Aware Person Re-Identification. ACM Transactions on Multimedia Computing, Communications and Applications 20, 12 (2025), 1–19. [35] Ze Liu, Yutong Lin, Yue Cao, Han Hu, Yixuan Wei, Zheng Zhang, Stephen Lin, and Baining Guo. 2021. Swin Transformer: Hierarchical Vision Transformer using Shifted Windows. In Proceedings of the IEEE/CVF International Conference on Computer Vision . 10012–10022. [36] Zhuang Liu, Hanzi Mao, Chao-Yuan Wu, Christoph Feichtenhofer, Trevor Darrell, and Saining Xie. 2022. A Convnet for the 2020s. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition . 11976–11986. [37] Yuyang Long, Qilong Zhang, Boheng Zeng, Lianli Gao, Xianglong Liu, Jian Zhang, and Jingkuan Song. 2022. Frequency Domain Model Augmentation for Adversarial Attack. In European Conference on Computer Vision . Springer, 549–566. [38] Cheng Luo, Qinliang Lin, Weicheng Xie, Bizhu Wu, Jinheng Xie, and Linlin Shen. 2022. Frequency-driven Imperceptible Adversarial Attack on Semantic Similarity. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition . 15315–15324. [39] Aleksander Madry, Aleksandar Makelov, Ludwig Schmidt, Dimitris Tsipras, and Adrian Vladu. 2018. Towards Deep Learning Models Resistant to Adversar-ial Attacks. In International Conference on Learning Representations . https: //mlanthology.org/iclr/2018/madry2018iclr-deep/ [40] Stephane G Mallat. 2002. A Theory for Multiresolution Signal Decomposition: the Wavelet Representation. IEEE Transactions on Pattern Analysis and Machine Intelligence 11, 7 (2002), 674–693. [41] Yuxi Mi, Yuge Huang, Jiazhen Ji, Hongquan Liu, Xingkun Xu, Shouhong Ding, and Shuigeng Zhou. 2022. Duetface: Collaborative Privacy-preserving Face Recognition via Channel Splitting in the Frequency Domain. In Proceedings of the 30th ACM International Conference on Multimedia . 6755–6764. MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil. Yi Pan et al. 
+
+[42] Seyed-Mohsen Moosavi-Dezfooli, Alhussein Fawzi, Omar Fawzi, and Pascal Frossard. 2017. Universal Adversarial Perturbations. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition . 1765–1773. [43] Muzammal Naseer, Salman Khan, Munawar Hayat, Fahad Shahbaz Khan, and Fatih Porikli. 2020. A Self-supervised Approach for Adversarial Robustness. In 
+
+Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition .262–271. [44] Weili Nie, Brandon Guo, Yujia Huang, Chaowei Xiao, Arash Vahdat, and An-imashree Anandkumar. 2022. Diffusion Models for Adversarial Purification. In Proceedings of the 39th International Conference on Machine Learning (Pro-ceedings of Machine Learning Research, Vol. 162) , Kamalika Chaudhuri, Stefanie Jegelka, Le Song, Csaba Szepesvari, Gang Niu, and Sivan Sabato (Eds.). PMLR, 16805–16827. https://proceedings.mlr.press/v162/nie22a.html [45] Yi Pan, Jun-Jie Huang, Zihan Chen, Wentao Zhao, and Ziyue Wang. 2024. SVASTIN: Sparse Video Adversarial Attack via Spatio-Temporal Invertible Neural Networks. In 2024 IEEE International Conference on Multimedia and Expo (ICME) .IEEE, 1–6. [46] Zhengzhao Pan, Hua Chen, and Xiaogang Zhang. 2025. DiffAdvMAP: Flexible Diffusion-Based Framework for Generating Natural Unrestricted Adversarial Examples. In Forty-second International Conference on Machine Learning . https: //openreview.net/forum?id=q2s4DLsegO [47] Zihao Pan, Weibin Wu, Yuhang Cao, and Zibin Zheng. 2024. SCA: Highly Ef-ficient Semantic-Consistent Unrestricted Adversarial Attack. arXiv preprint arXiv:2410.02240 (2024). [48] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Björn Ommer. 2022. High-resolution Image Synthesis with Latent Diffusion Models. In 
+
+Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition .10684–10695. [49] Mark Sandler, Andrew Howard, Menglong Zhu, Andrey Zhmoginov, and Liang-Chieh Chen. 2018. Mobilenetv2: Inverted Residuals and Linear Bottlenecks. In 
+
+Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition .4510–4520. [50] Yash Sharma, Gavin Weiguang Ding, and Marcus A. Brubaker. 2019. On the Effec-tiveness of Low Frequency Perturbations. In Proceedings of the 28th International Joint Conference on Artificial Intelligence (Macao, China) (IJCAI’19) . AAAI Press, 3389–3396. [51] Karen Simonyan and Andrew Zisserman. 2015. Very Deep Convolutional Net-works for Large-Scale Image Recognition. In International Conference on Learning Representations . https://mlanthology.org/iclr/2015/simonyan2015iclr-very/ [52] Christian Szegedy, Vincent Vanhoucke, Sergey Ioffe, Jon Shlens, and Zbigniew Wojna. 2016. Rethinking the Inception Architecture for Computer Vision. In 
+
+Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition .2818–2826. [53] Ilya O Tolstikhin, Neil Houlsby, Alexander Kolesnikov, Lucas Beyer, Xiaohua Zhai, Thomas Unterthiner, Jessica Yung, Andreas Steiner, Daniel Keysers, Jakob Uszkoreit, et al. 2021. Mlp-mixer: An all-mlp Architecture for Vision. Advances in Neural Information Processing Systems 34 (2021), 24261–24272. [54] Hugo Touvron, Matthieu Cord, Matthijs Douze, Francisco Massa, Alexandre Sablayrolles, and Hervé Jégou. 2021. Training Data-efficient Image Transformers & Distillation through Attention. In International Conference on Machine Learning .PMLR, 10347–10357. [55] Florian Tramèr, Alexey Kurakin, Nicolas Papernot, Ian Goodfellow, Dan Boneh, and Patrick McDaniel. 2018. Ensemble Adversarial Training: Attacks and Defenses. In International Conference on Learning Representations . https: //openreview.net/forum?id=rkZvSe-RZ [56] Catherine Wah, Steve Branson, Peter Welinder, Pietro Perona, and Serge Belongie. 2011. The Caltech-ucsd Birds-200-2011 Dataset. (2011). [57] Bram Wallace, Akash Gokul, Stefano Ermon, and Nikhil Naik. 2023. End-to-end Diffusion Latent Optimization Improves Classifier Guidance. In Proceedings of the IEEE/CVF International Conference on Computer Vision . 7280–7290. [58] Bram Wallace, Akash Gokul, and Nikhil Naik. 2023. EDICT: Exact Diffusion Inversion via Coupled Transformations. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition . 22532–22541. [59] Jinyi Wang, Zhaoyang Lyu, Dahua Lin, Bo Dai, and Hongfei Fu. 2022. Guided Diffusion Model for Adversarial Purification. arXiv preprint arXiv:2205.14969 
+
+(2022). [60] Ziyue Wang, Jun-Jie Huang, Tianrui Liu, Zihan Chen, Wentao Zhao, Xiao Liu, Yi Pan, and Lin Liu. 2023. Multi-patch Adversarial Attack for Remote Sensing Image Classification. In Asia-Pacific Web (APWeb) and Web-Age Information Management (WAIM) Joint International Conference on Web and Big Data . Springer, 377–391. [61] Cihang Xie, Zhishuai Zhang, Yuyin Zhou, Song Bai, Jianyu Wang, Zhou Ren, and Alan L Yuille. 2019. Improving Transferability of Adversarial Examples with Input Diversity. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition . 2730–2739. [62] Wenzhuo Xu, Kai Chen, Ziyi Gao, Zhipeng Wei, Jingjing Chen, and Yu-Gang Jiang. 2024. Highly Transferable Diffusion-based Unrestricted Adversarial Attack on Pre-trained Vision-language Models. In Proceedings of the 32nd ACM International Conference on Multimedia . 748–757. [63] Hao Ye, Mengshi Qi, Zhaohong Liu, Liang Liu, and Huadong Ma. 2025. Safedriverag: Towards Safe Autonomous Driving with Knowledge Graph-based Retrieval-augmented Generation. In Proceedings of the 33rd ACM International Conference on Multimedia . 11170–11178. [64] Richard Zhang, Phillip Isola, Alexei A Efros, Eli Shechtman, and Oliver Wang. 2018. The Unreasonable Effectiveness of Deep Features as a Perceptual Metric. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition .586–595. [65] Changfei Zhao, Xinyang Deng, and Wen Jiang. 2024. Improving Adversarial Transferability through Frequency Enhanced Momentum. Inf. Sci. 665, C (April 2024), 14 pages. doi:10.1016/j.ins.2024.120409 [66] Hegui Zhu, Yuchen Ren, Chong Liu, Xiaoyan Sui, and Libo Zhang. 2024. Frequency-based Methods for Improving the Imperceptibility and Transferability of Adversarial Examples. Applied Soft Computing 150 (2024), 111088. [67] Jiang Zhu, Lingping Tan, Yanchun Li, Shujuan Tian, Jianqi Li, and Yaonan Wang. 2025. Guided Adversarial Attack in the Low-Frequency Space. IEEE Transactions on Multimedia (2025).
