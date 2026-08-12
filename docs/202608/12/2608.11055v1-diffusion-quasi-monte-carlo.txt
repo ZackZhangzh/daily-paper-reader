@@ -1,0 +1,1093 @@
+Title: Diffusion Quasi-Monte Carlo
+
+URL Source: https://arxiv.org/pdf/2608.11055v1
+
+Published Time: Wed, 12 Aug 2026 01:30:43 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+# Diffusion Quasi-Monte Carlo 
+
+## Jianlong Chen ∗, Yifeng Yu ∗† 
+
+Department of Mathematical Sciences, Tsinghua University, Beijing 100084, China 
+
+chen-jl22@mails.tsinghua.edu.cn, yyf22@mails.tsinghua.edu.cn 
+
+Abstract 
+
+We study high-dimensional numerical integration with respect to complex target measures using diffusion-based transport maps and randomized quasi-Monte Carlo (RQMC). Score-based diffusion models induce a deterministic probability flow ODE that transports a simple prior to the target, suggest-ing a principled way to transform low-discrepancy points on the unit cube into informative samples. We construct a cube-to-target map by composing a Gaussian base transformation (the component-wise inverse Gaussian CDF, Φ−1) with an Euler-discretized probability flow ODE. To retain unbiased-ness under transport approximation, we formulate integration as importance sampling (IS) on the cube. Our main result provides verifiable conditions under which the resulting IS integrand satisfies the boundary growth con-dition, implying an O(N −1+ ε) RMSE for scrambled nets. We then establish these conditions for diffusion probability-flow transport under mild bounded-derivative assumptions on the learned vector field, explicitly controlling the boundary sin-gularities introduced by Φ−1. Experiments range from a 2D mixture to 784D images and a 40,960D conditional vorticity-assimilation task; in the latter, blocked scrambled Sobol’ sam-pling reduces the randomization standard deviation of nonlin-ear accuracy metrics at essentially unchanged online denois-ing cost. Together, these results give a theoretical and empir-ical foundation for combining diffusion generative modeling with high-precision RQMC integration. 
+
+## 1 Introduction 
+
+High-dimensional numerical integration is ubiquitous in Bayesian inference, uncertainty quantification, computa-tional physics, and scientific machine learning. A prototypi-cal task is to compute 
+
+μ = Ex∼π [f (x)] = 
+
+Z
+
+> Rd
+
+f (x) π(x) d x,
+
+where π is a target density on Rd and f is an integrand of interest. Standard Monte Carlo (MC) achieves an O(N −1/2)
+
+rate in root-mean-square error (RMSE), which is often in-sufficient for high-precision applications. Quasi-Monte Carlo (QMC) and randomized QMC (RQMC) replace i.i.d. sampling on [0 , 1] d with low-discrepancy point sets and randomizations such as Owen 
+
+> ∗
+
+These authors contributed equally. 
+
+> †
+
+Corresponding author. 
+
+scrambling, and can substantially reduce variance when the induced integrand on the cube has sufficient mixed regular-ity (Niederreiter 1992; Dick and Pillichshammer 2010; Dick, Kuo, and Sloan 2013; Owen 2006). Under suitable condi-tions, scrambled-net RQMC can approach an O(N −1+ ε)
+
+RMSE for any ε > 0 (Owen 2006). However, applying QMC in non-uniform target spaces requires careful mea-sure transformation: one typically constructs a transport map 
+
+τ : (0 , 1) d → Rd and rewrites the integral as an expectation over the cube (Marzouk et al. 2016). Classical constructions (e.g. inverse-CDF and Rosenblatt-type transforms) can be effective in low dimensions, but be-come difficult to design and differentiate in high dimensions. Even when a high-quality transport is available, its interac-tion with QMC error analysis is subtle: the map may intro-duce boundary singularities (through inverse-CDF factors) and may change the effective variation of the cube integrand. Modern RQMC theory therefore often couples transforma-tion design with explicit growth/variation control; see, for example, transformed RQMC analyses over general product spaces and variation-preserving transformations (Basu and Owen 2015, 2016). Related strands include sequential QMC for sampling-based inference (Gerber and Chopin 2015) and probabilistic perspectives on numerical integration (Briol et al. 2017). Deep generative models provide data-driven transport con-structions in high dimensions. In particular, diffusion prob-abilistic models and score-based generative models (Song et al. 2020) (as well as closely related continuous-time flow formulations such as rectified/straight flows (Liu, Gong, and Liu 2022)) admit deterministic dynamics that map a tractable prior to a complex target. The diffusion framework includes a deterministic probability flow ODE whose solution defines a continuous-time transport from a simple prior to the data distribution. This makes diffusion models natural candidates for defining τ for QMC/RQMC. The remaining question is theoretical: does the diffusion-induced transport preserve the boundary regularity required by scrambled-net RQMC theory ? The key obstacle is that the standard Gaussian base transformation from [0 , 1] d uses Φ−1,whose derivatives blow up near 0 and 1. If left untreated, these boundary singularities can invalidate the derivative-based boundary growth conditions that underlie high-order RMSE bounds (Owen 2006). This paper resolves the issue arXiv:2608.11055v1 [math.NA] 11 Aug 2026 by adopting an importance sampling view and by verifying transport growth conditions that imply Owen-type boundary growth for the IS integrand on the cube. 
+
+Contributions. We structure our analysis by first develop-ing a general theory, followed by a rigorous verification for diffusion-based transports. Our main contributions are: 1. We develop a convergence analysis for IS-RQMC with a general diffeomorphic transport τ , giving sufficient growth conditions on f , π, and τ such that the induced cube integrand satisfies Owen’s boundary growth condi-tion and yields an O(N −1+ ε) RMSE for scrambled nets (Owen 2006). 2. We construct a diffusion transport map by composing a Gaussian base transformation with an Euler-discretized probability flow ODE induced by a score-based diffusion model (Song et al. 2020). 3. We prove that this diffusion transport satisfies the required growth conditions under bounded-derivative assumptions on the learned vector field (equivalently, on the score model and diffusion coefficients), carefully controlling the extra logarithmic factors from Φ−1.4. We evaluate diffusion RQMC from 2 to 40,960 di-mensions, including conditional super-resolution data assimilation, and separate asymptotic rate gains from practically important constant-factor and randomization-stability gains. 
+
+Organization. The paper is organized as follows. Section 2 establishes the preliminaries on QMC, RQMC, boundary growth conditions, importance sampling, and diffusion prob-ability flow ODEs. Section 3 details the construction of the diffusion transport and formulates the resulting IS-RQMC es-timators. Section 4 presents the general convergence theory for arbitrary transport maps, while Section 5 verifies the spe-cific growth conditions for our diffusion framework. Finally, Section 6 provides the experimental results, and Section 7 concludes the work. 
+
+## 2 Background 
+
+2.1 Quasi-Monte Carlo and randomized quasi-Monte Carlo 
+
+We recall the basic RQMC setting. For an integrand h :[0 , 1] d → R,
+
+I(h) = 
+
+Z
+
+> [0 ,1] d
+
+h(u) d u, bIN (h) = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+h(ui),
+
+where {ui}Ni=1 is a low-discrepancy design. Randomization (e.g. Owen scrambling) produces randomized points {u′
+
+> i
+
+}
+
+which are each marginally uniform, allowing unbiasedness and variance estimation, while retaining low discrepancy almost surely (Owen 2006). We refer to (Niederreiter 1992; Dick and Pillichshammer 2010; Dick, Kuo, and Sloan 2013) for background. 
+
+2.2 Boundary growth condition 
+
+We use the standard set-index derivative notation (as in Owen’s theory). Let 1 : d = {1, . . . , d }. For v ⊆ 1 : d,define 
+
+∂v := Y
+
+> j∈v
+
+∂∂u j
+
+.
+
+Assumption 2.1 (Boundary growth condition (Owen 2006)) .
+
+|∂v h(u)| ≤ C
+
+> d
+
+Y
+
+> j=1
+
+min( uj , 1 − uj )−B−1{j∈v} . (1) 
+
+Theorem 2.2 (Scrambled-net RMSE; adapted from (Owen 2006)) . If h satisfies Assumption 2.1, then the scrambled net estimator for I(h) achieves RMSE O(N −1+ ε) for any ε > 0.
+
+2.3 Transport map and importance sampling 
+
+We want to compute μ = Ex∼π [f (x)] for a target density π
+
+on Rd. Let τ : (0 , 1) d → Rd be a C1 diffeomorphism (Mar-zouk et al. 2016) and denote the induced proposal density qτ
+
+by change of variables: 
+
+qτ (x) = det Jτ (τ −1(x)) −1 ,Jτ (u) = 
+
+ ∂τ i
+
+∂u j
+
+
+
+> i,j
+
+. (2) Even if qτ̸ = π, we may use importance sampling: 
+
+μ = Ey∼qτ
+
+
+
+f (y) π(y)
+
+qτ (y)
+
+
+
+= Eu∼Unif((0 ,1) d)[( f ◦ τ )( u) ( π ◦ τ )( u) |det Jτ (u)|] .h(u) := ( f ◦ τ )( u) · (π ◦ τ )( u) · | det Jτ (u)| . (3) Then μ = I(h). The IS-RQMC estimator is 
+
+bμN = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+h(u′
+
+> i
+
+),
+
+with scrambled points {u′
+
+> i
+
+}, and is unbiased because each 
+
+u′ 
+
+> i
+
+is uniform. 
+
+2.4 Diffusion models and the probability flow ODE 
+
+A diffusion model defines a forward stochastic differential equation (SDE) 
+
+dx = f (x, t )d t + g(t)d w, t ∈ [0 , T ],
+
+which transforms data into a tractable prior (often standard Gaussian) as t → T . In this paper we take the terminal distribution pT to be standard Gaussian on Rd. This choice is consistent with our sampling interface: if u ∼ Unif((0 , 1) d)
+
+and z = G(u) with Gj (u) = Φ −1(u), then z ∼ N (0 , I ).Importantly, using a Gaussian prior does not affect the IS-RQMC convergence theory in Sections 3–4: the theory only requires a well-defined composite map τ : (0 , 1) d → Rd
+
+and bounds on its boundary growth. The prior choice en-ters only through the base map G (and hence through the derivative/value growth conditions that we verify). The cor-responding score ∇x log pt(x) is approximated by a neural score model sθ (x, t ).The probability flow ODE associated with the diffusion reads 
+
+dx
+
+dt = f (x, t ) − 12 g(t)2 ∇x log pt(x)
+
+≈ f (x, t ) − 12 g(t)2 sθ (x, t ).
+
+(4) Let us denote the (learned) ODE vector field by 
+
+vθ (x, t ) := f (x, t ) − 12 g(t)2 sθ (x, t ). (5) Solving the ODE from t = T to t = 0 maps a prior sample to a sample in data space. 
+
+## 3 Transport maps for QMC and RQMC with diffusion probability flow 
+
+We now specialize the transport-map construction to diffu-sion probability-flow dynamics. 
+
+3.1 Composite transport map 
+
+We construct a map from the cube to Rd as a composition: 
+
+τ (u) := eτ  G(u), u ∈ (0 , 1) d.
+
+1. G : (0 , 1) d → Rd maps uniform inputs to a Gaussian prior. 2. ˜τ : Rd → Rd is the terminal-time flow map generated by the probability flow ODE. 
+
+Base map (Gaussian prior). We take the component-wise inverse Gaussian CDF map 
+
+G(u) =  Φ−1(u1), . . . , Φ−1(ud)⊤, (6) so that G(u) ∼ N (0 , I ) when u ∼ Unif((0 , 1) d).
+
+ODE flow map. Let Ψθ (x, t ) be the solution map of 
+
+∂tΨθ (x, t ) = vθ (Ψ θ (x, t ), t ), Ψθ (x, T ) = x.
+
+Define the terminal map ˜τ (x) := Ψ θ (x, 0) (integrating back-ward from T to 0). Then the full cube-to-target transport is 
+
+τ = ˜ τ ◦ G.
+
+3.2 Discretized implementation 
+
+In practice, we discretize the ODE with N steps of size 
+
+h = T /N . Let tk = T − kh for k = 0 , . . . , N . The explicit Euler step map is 
+
+τ k(x) = x − h vθ (x, t k), k = 0 , . . . , N − 1. (7) The discretized flow is the composition 
+
+eτ 0: N (x) = τ N −1 ◦ · · · ◦ τ 0(x),
+
+τ 0: N (u) = eτ 0: N (G(u)) .
+
+3.3 Diffusion-ISRQMC estimator 
+
+Given scrambled points {ui}Ni=1 , we evaluate the IS inte-grand 
+
+bμN = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+f (τ 0: N (ui)) π(τ 0: N (ui)) 
+
+× | det Jτ 0: N (ui)| .
+
+This is the unbiased importance-sampling estimator on the cube. 
+
+Algorithm 1 Diffusion-ISRQMC integration 
+
+Require: integrand f , target density π (up to normaliz-ing constant if needed), score/diffusion vector field vθ ,scrambled point set {ui}Ni=1 ⊂ (0 , 1) d, number of steps 
+
+Nstep  
+
+> 1:
+
+for i = 1 to N do  
+
+> 2:
+
+z ← G(ui) {Inverse Gaussian CDF base map}  
+
+> 3:
+
+x ← z 
+
+> 4:
+
+for k = 0 to Nstep − 1 do  
+
+> 5:
+
+x ← x − h vθ (x, t k) 
+
+> 6:
+
+end for  
+
+> 7:
+
+ˆxi ← x 
+
+> 8:
+
+Evaluate f (ˆ xi), π(ˆ xi), and |det Jτ 0: N (ui)| 
+
+> 9:
+
+end for  
+
+> 10:
+
+return bμN = 
+
+> 11: 1
+> N
+
+PNi=1 f (ˆ xi)π(ˆ xi) |det Jτ 0: N (ui)|
+
+## 4 Convergence analysis for general transport maps with QMC 
+
+This section develops a general sufficient-condition frame-work ensuring h in (3) satisfies the boundary growth condi-tion. 
+
+4.1 Assumptions 
+
+We follow a standard pattern: control (i) f growth, (ii) π
+
+decay, (iii) transport derivative/value growth. 
+
+Assumption 4.1 (Integrand f growth) . Assume there exists a univariate CDF F : R → (0 , 1) such that for all multi-indices 
+
+λ ∈ Nd 
+
+> 0
+
+with |λ| ≤ d, and for arbitrarily small B > 0, there exists C1 > 0 such that for all x ∈ Rd,
+
+∂λf (x) ≤ C1
+
+> d
+
+Y
+
+> k=1
+
+h
+
+min( F (xk), 1 − F (xk)) 
+
+i−B
+
+. (8) 
+
+Assumption 4.2 (Target π decay) . Assume π and its deriva-tives have Gaussian-type tail decay in the F -tails. Concretely, there exist C2 > 0 and α > 0 such that for all multi-indices 
+
+λ with |λ| ≤ d,
+
+∂λπ(x) ≤ C2
+
+> d
+
+Y
+
+> k=1
+
+e−αx 2 
+
+> k
+
+. (9) 
+
+Assumption 4.3 (Transport growth) . Let the same F as in Assumption 4.1 be fixed, and write ρ(x) := min( F (x), 1 −F (x)) . Assume that for any v ⊆ 1 : d, any m ∈ 1 : d and any component j ∈ 1 : d, and for arbitrarily small B > 0, there exists C3 > 0 such that for all u ∈ (0 , 1) d,
+
+∂v (∂{m}τj )( u) ≤ C3 min( um, 1 − um)−1
+
+·
+
+> d
+
+Y
+
+> k=1
+
+min( uk, 1 − uk)−B−1{k∈v} .
+
+(10) Moreover, there exist B0 > 0 and C4 > 0 such that for any 
+
+k ∈ 1 : d,
+
+ρ(τ (u)k)−1 ≤ C4
+
+> d
+
+Y
+
+> ℓ=1
+
+min( uℓ, 1 − uℓ)−B0 . (11) Finally, assume there exist C5 > 1/α and C′ ∈ R such that 
+
+|τ (u)j |2 ≥ C5 |ln(min( uj , 1 − uj )) | − C′. (12) 
+
+Remark 4.4 . Assumption 4.3 has three roles: (10) controls Jacobian / derivative blow-up near the cube boundary; (11) allows us to translate tail growth of f (measured in F -coordinates) back into boundary coordinates; (12) ensures 
+
+π ◦ τ contributes enough decay to offset Jacobian singulari-ties. 
+
+4.2 Growth analysis of the three factors 
+
+Recall 
+
+h(u) = ( f ◦ τ )( u) · (π ◦ τ )( u) · | det Jτ (u)| .
+
+We now bound the mixed derivatives of each factor. The bounds for f ◦ τ and |det Jτ | coincide with Propositions 8 and 10 in closely related prior work (Zeng and Chen 2026), so we cite them directly. The bound for π ◦ τ is similar but not identical to the corresponding result in that work, so we include a short proof. 
+
+Proposition 4.5 (Growth of f ◦ τ ). Under Assumptions 4.1 and 4.3, for arbitrarily small B > 0, there exists C > 0 such that for all v ⊆ 1 : d and u ∈ (0 , 1) d,
+
+|∂v (f ◦ τ )( u)| ≤ C
+
+> d
+
+Y
+
+> k=1
+
+min( uk, 1 − uk)−B−1{k∈v} .
+
+Reference. This is Proposition 8 in (Zeng and Chen 2026). 
+
+Proposition 4.6 (Growth of π ◦ τ ). Under Assumptions 4.2 and 4.3, for arbitrarily small B > 0, there exists C > 0 such that for all v ⊆ 1 : d,
+
+|∂v (π ◦ τ )( u)| ≤ C
+
+> d
+
+Y
+
+> k=1
+
+min( uk, 1 − uk)1−B−1{k∈v} .
+
+Proof. Fix v ⊆ 1 : d. By the multivariate Faà di Bruno formula (in set-derivative notation), ∂v (π ◦ τ ) is a finite sum (with the number of terms depending only on d) of products of the form 
+
+T = ( ∂λπ)( τ (u)) ·
+
+> |λ|
+
+Y
+
+> r=1
+
+∂vr τjr (u),
+
+where 1 ≤ | λ| ≤ | v|, the sets v1, . . . , v |λ| form a partition of 
+
+v, and jr ∈ 1 : d.For the π-factor, Assumption 4.2 gives 
+
+(∂λπ)( τ (u)) ≤ C
+
+> d
+
+Y
+
+> k=1
+
+exp  −α τ (u)2
+
+> k
+
+.
+
+Using the lower bound (12), we have exp( −ατ (u)2
+
+> k
+
+) ≤
+
+C min( uk, 1 − uk)αC 5 for each k, hence 
+
+(∂λπ)( τ (u)) ≤ C
+
+> d
+
+Y
+
+> k=1
+
+min( uk, 1 − uk)αC 5 .
+
+For the transport-derivative product, apply Assump-tion 4.3 termwise: for each nonempty block vr , pick any ℓr ∈ vr and write ∂vr τjr = ∂vr \{ ℓr }(∂{ℓr }τjr ).Then (10) bounds each factor by C m −1
+
+> ℓr
+
+Qdk=1 min( uk, 1 −
+
+uk)−B−1{k∈vr \{ ℓr }} . Multiplying over r and using m−1 
+
+> ℓr
+
+≤
+
+Q 
+
+> k∈vr
+
+min( uk, 1 − uk)−1 gives 
+
+> |λ|
+
+Y
+
+> r=1
+
+|∂vr τjr (u)| ≤ C
+
+> d
+
+Y
+
+> k=1
+
+min( uk, 1 − uk)−B−1{k∈v}
+
+after reabsorbing constants and shrinking B > 0 if needed (since |λ| ≤ | v| ≤ d is fixed). Combining the two displays yields 
+
+|T | ≤ C
+
+> d
+
+Y
+
+> k=1
+
+min( uk, 1 − uk)αC 5−B−1{k∈v} .
+
+Because C5 > 1/α in Assumption 4.3, we have 
+
+αC 5 > 1, and since min( uk, 1 − uk) ≤ 1 this im-plies min( uk, 1 − uk)αC 5 ≤ min( uk, 1 − uk). There-fore |T | ≤ C Qdk=1 min( uk, 1 − uk)1−B−1{k∈v} . Summing finitely many terms preserves the same bound (up to con-stants), proving the claim. 
+
+Proposition 4.7 (Growth of |det Jτ |). Under Assump-tion 4.3, for arbitrarily small B > 0, there exists C > 0
+
+such that for all v ⊆ 1 : d,
+
+|∂v |det Jτ (u)|| ≤ C
+
+> d
+
+Y
+
+> k=1
+
+min( uk, 1 − uk)−1−B−1{k∈v} .
+
+Reference. This is Proposition 10 in (Zeng and Chen 2026). 
+
+4.3 Main convergence theorem 
+
+Theorem 4.8 (IS integrand satisfies boundary growth) . Un-der Assumptions 4.1, 4.2, 4.3, the integrand h defined in (3) 
+
+satisfies Assumption 2.1. Consequently, the scrambled-net IS-RQMC estimator has RMSE O(N −1+ ε) for any ε > 0.Proof. Fix v ⊆ 1 : d. By the product rule (Leibniz rule), ∂v h
+
+is a finite sum of terms of the form 
+
+T = ∂v1 (f ◦ τ ) · ∂v2 (π ◦ τ ) · ∂v3 |det Jτ | ,
+
+where (v1, v 2, v 3) is a partition of v.Using Propositions 4.5, 4.6, 4.7, 
+
+|T | ≤ C
+
+> d
+
+Y
+
+> k=1
+
+min( uk, 1 − uk)−B−1{k∈v1}
+
+·
+
+> d
+
+Y
+
+> k=1
+
+min( uk, 1 − uk)1−B−1{k∈v2}
+
+·
+
+> d
+
+Y
+
+> k=1
+
+min( uk, 1 − uk)−1−B−1{k∈v3} .
+
+The +1 and −1 cancel between the π ◦ τ and determinant factors, leaving 
+
+|T | ≤ C
+
+> d
+
+Y
+
+> k=1
+
+min( uk, 1 − uk)−B−P3   
+
+> r=1 1{k∈vr }
+
+.
+
+Since (v1, v 2, v 3) partitions v, we have 1{k∈v1} + 1{k∈v2} +
+
+1{k∈v3} = 1{k∈v}. Thus 
+
+|T | ≤ C
+
+> d
+
+Y
+
+> k=1
+
+min( uk, 1 − uk)−B−1{k∈v} .
+
+Summing finitely many terms preserves the same bound (up to constants). This is exactly Assumption 2.1. The RMSE claim follows from Theorem 2.2. 
+
+## 5 Growth condition verification for diffusion transport map 
+
+We now verify Assumption 4.3 for the diffusion transport map 
+
+τ 0: N (u) = τ N −1 ◦ · · · ◦ τ 0 ◦ G(u),
+
+where G = Φ −1 is applied component-wise and τ k(x) = 
+
+x − hvθ (x, t k).
+
+5.1 Setup and assumptions on the vector field 
+
+Assumption 5.1 (Bounded diffusion vector field and deriva-tives) . Assume that vθ (x, t ) and its spatial derivatives are uniformly bounded up to order d+1 . Formally, for any multi-index α ∈ Nd 
+
+> 0
+
+with 0 ≤ | α| ≤ d + 1 , there exists Mα < ∞
+
+such that for all components j ∈ 1 : d,
+
+sup  
+
+> x∈Rd, t ∈[0 ,T ]
+
+|∂α 
+
+> x
+
+vθ,j (x, t )| ≤ Mα.
+
+In particular, taking |α| = 0 yields global boundedness of 
+
+vθ , and taking |α| = 1 yields global Lipschitz continuity in 
+
+x (both uniformly in t). This is a sufficient regularity condition (and stronger than what is needed in some diffusion analyses). It mirrors the “bounded velocity field” condition used in flow-matching-style proofs and can be enforced, for example, by using bounded activations or explicit constraints/regularization. 
+
+5.2 Auxiliary bounds for the Gaussian base map 
+
+We collect key inequalities for Φ−1 that we will reuse. 
+
+Lemma 5.2 (Quantile growth) . There exist constants 
+
+c1, c 2 > 0 such that for all u ∈ (0 , 1/2] ,
+
+c1
+
+p|ln u| ≤ Φ−1(u) ≤ c2
+
+p|ln u|.
+
+An analogous bound holds for u ∈ [1 /2, 1) by symmetry. 
+
+Lemma 5.3 (Derivative growth of the inverse Gaussian CDF) . For each integer k ≥ 1, there exist constants Ck > 0
+
+such that for all u ∈ (0 , 1) ,
+
+(Φ −1)(k)(u) ≤ Ck
+
+min( u, 1 − u)−k
+
+· | ln(min( u, 1 − u)) |(k−1) /2 .
+
+(13) 
+
+In particular, for any ε > 0 there exists Ck,ε such that 
+
+(Φ −1)(k)(u) ≤ Ck,ε 
+
+min( u, 1 − u)−k−ε.
+
+Proof. These bounds are standard consequences of Mills ratio asymptotics and repeated differentiation of the inverse CDF; the logarithmic factor arises because ϕ(Φ −1(u)) ∼
+
+up| ln u| in the tail. The last inequality follows since for any 
+
+ε > 0, |ln u|a ≤ u−ε for sufficiently small u, and similarly near 1.
+
+Lemma 5.4 (Sub-polynomial exponential bound) . For any 
+
+c > 0 and any ε > 0, there exists C > 0 such that for all 
+
+u ∈ (0 , 1/2] ,
+
+exp  cp|ln u| ≤ C u −ε.
+
+Proof. Let s = p|ln u|, so u = e−s2
+
+. Then exp( cs ) = exp( εs 2) exp( cs − εs 2) ≤ exp( εs 2) · sup s≥0 exp( cs − εs 2).The supremum is finite, and exp( εs 2) = u−ε.
+
+5.3 Value growth verification 
+
+We first show that the diffusion map satisfies a version of (11) and (12). The proof follows the same organization as the flow-matching value growth theorem, and uses Lemma 5.4 to handle Gaussian tails. 
+
+Theorem 5.5 (Value growth of diffusion transport) . Let 
+
+τ 0: N (u) = ˜ τ 0: N (G(u)) be the discretized diffusion trans-port with G = Φ −1 applied component-wise and Euler flow maps (7) . Under Assumption 5.1, there exist constants 
+
+B0 > 0 and C4 > 0 such that for all u ∈ (0 , 1) d and all 
+
+k ∈ 1 : d,
+
+min  Φ( τ 0: N (u)k), 1 − Φ( τ 0: N (u)k)−1
+
+≤C4
+
+> d
+
+Y
+
+> ℓ=1
+
+min( uℓ, 1 − uℓ)−B0 .
+
+Moreover, there exist C5 > 0 and C′ such that 
+
+τ 0: N (u)k 
+
+> 2
+
+≥ C5 |ln(min( uk, 1 − uk)) | − C′.Proof. Since vθ is uniformly bounded by M , the cumulative displacement of the Euler discretization is bounded by T M .Thus, for x = G(u), we have 
+
+τ 0: N (u)k − Φ−1(uk) ≤ T M, ∀k. (14) 
+
+Tail growth. Using (14) and Lemma 5.2, we have 
+
+τ 0: N (u)k ≥ c1
+
+p| ln min( uk, 1 − uk)| − T M , where 
+
+min( uk, 1 − uk) = min( uk, 1 − uk). Squaring this lower bound and absorbing constants yields the second claim: 
+
+τ 0: N (u)k 
+
+> 2
+
+≥ C5| ln min( uk, 1 − uk)| − C′.
+
+Inverse-tail control. For the first claim, consider the lower tail uk ≤ 1/2. Eq. (14) implies Φ( τk) ≥ Φ(Φ −1(uk)−T M ).Since Gaussian tails decay super-exponentially, the ratio 
+
+Φ( z − C)/Φ( z) behaves sub-polynomially. By Lemma 5.4, for any B0 > 0, we have uk   
+
+> Φ(Φ −1(uk)−T M )
+
+≤ Cu −B0 
+
+> k
+
+. Hence 
+
+Φ( τk)−1 ≤ Cu −1−B0 
+
+> k
+
+. Symmetry handles the upper tail. Bounding the component-wise minimum by the product over all dimensions completes the proof. 
+
+5.4 Derivative growth verification 
+
+We now prove the analogue of the induction-based derivative growth theorem. 
+
+Theorem 5.6 (Derivative growth of diffusion transport) . Un-der Assumption 5.1, the discretized diffusion transport map 
+
+τ 0: N satisfies the derivative growth condition (10) in As-sumption 4.3 (for arbitrarily small B > 0). Proof. Deferred to Appendix B. 
+
+5.5 Putting everything together 
+
+Theorem 5.7 (Diffusion-ISRQMC RMSE rate) . Assume: (i) 
+
+f satisfies Assumption 4.1; (ii) π satisfies Assumption 4.2; (iii) the diffusion vector field satisfies Assumption 5.1. Then the diffusion transport τ 0: N satisfies Assumption 4.3, and the IS integrand h satisfies the boundary growth condition (As-sumption 2.1). Consequently, the scrambled-net IS-RQMC estimator achieves RMSE O(N −1+ ε) for any ε > 0.Proof. The value growth part follows from Theorem 5.5. The derivative growth part follows from Theorem 5.6. Thus Assumption 4.3 holds for τ 0: N . Then Theorem 4.8 implies h
+
+satisfies boundary growth and Theorem 2.2 gives the RMSE rate. 
+
+Remark 5.8 . Omitting importance sampling gives the trans-port estimator bμtr  
+
+> N
+
+:= 1
+
+> N
+
+PNi=1 (f ◦τ 0: N )( ui), whose RMSE still decays as O(N −1+ ε) for any ε > 0 by Proposition 4.5 and Theorem 2.2. However, bμtr  
+
+> N
+
+is generally biased for 
+
+Ex∼π [f (x)] unless the pushforward of the uniform measure under τ 0: N equals π.
+
+## 6 Experiments 
+
+6.1 GMM and MNIST 
+
+We evaluate four estimators on a two-dimensional, two-component Gaussian mixture model (GMM): diffusion trans-port with either IID Monte Carlo (MC) or scrambled Sobol’ RQMC points, with and without importance sampling (IS). The target is 0.5N (3 e, I ) + 0 .5N (−3e, I ), where e =(1 , 1) ⊤, and the exact value of E[∥X∥2] is 20. The score network is an MLP with four residual blocks and hidden width 256, trained for 1,000 epochs; the probability-flow ODE uses 2,000 Euler steps. We report RMSE over 20 inde-pendent randomizations. Figure 1a shows that IS removes the error floor caused by approximate transport. Diffusion-ISRQMC attains a log– log slope of approximately −0.95 and RMSE 0.002 at 
+
+N = 8192 , whereas Diffusion-ISMC has slope approxi-mately −0.48 and RMSE approximately 0.08 . Thus, the un-biased RQMC estimator exhibits the rate predicted by our analysis and improves the RMSE by about 40 × at the largest sample size. We also test the transport-only estimators on MNIST (Le-Cun et al. 1998) in 784 dimensions using a residual U-Net score model, trained for 10,000 epochs, again with 2,000 Euler steps. Figure 1b reports the standard deviation of the pixel-mean statistic over 20 randomizations. Diffusion-RQMC follows a near-N −1 trend and consistently improves over Diffusion-MC, which follows the standard N −1/2 trend. We omit IS here because its weights collapse in this high-dimensional setting; this experiment isolates variance reduc-tion by RQMC rather than bias correction. Additional imple-mentation details, generated samples, and the full derivative-growth proof appear in the appendices. 
+
+6.2 Conditional Vorticity Data Assimilation 
+
+We next consider a scientific conditional-generation task adapted from DiffSRDA (Ayapilla et al. 2026). A conditional diffusion model reconstructs five high-resolution vorticity frames of a synthetic barotropic jet from three low-resolution frames and two sparse-observation frames. Removing the duplicated periodic endpoint gives an output state of size 
+
+5 × 128 × 64 = 40 ,960 . We train a 128.8M-parameter con-ditional U-Net and evaluate its best validation checkpoint using deterministic DDIM sampling with five reverse steps and η = 0 .Because 40,960 exceeds the supported Sobol’ dimension of 21,201, we split the initial Gaussian latent into two con-tiguous blocks of dimensions 21,201 and 19,759 and scram-ble the blocks independently. We therefore refer to this construction as blocked-Sobol’ RQMC , rather than a sin-gle 40,960-dimensional net. Our formal stability evaluation uses 20 held-out contexts, 20 independent randomizations, and N = 256 samples per ensemble. At N = 256 , Figure 3 shows that blocked-Sobol’ RQMC reduces randomization standard deviation by 47–66% for mean absolute error ratio (MAER) and 28–51% for MSSIM loss across the five forecast leads; Appendix A.4 reports tab-ulated reductions and the negative discrete-Laplacian result (VRF 0.89–0.99). With one cached noise bank per replicate reused across contexts and inverse-CDF evaluation on the GPU, online wall time is 2.306 s for both IID and RQMC; in-cluding amortized noise generation gives 2.309 s and 2.382 s, respectively, on one NVIDIA H20 (3.18% overhead). Fig-ure 2 visualizes context 19. Both methods recover the evolv-ing jet structure; the single displayed scramble is qualitative and is not expected to reduce every pointwise truth error. (a) Two-dimensional GMM: RMSE (b) MNIST: standard deviation Figure 1: Convergence of diffusion-based MC and RQMC estimators. (a) RMSE on the two-dimensional GMM, where impor-tance sampling removes transport bias and Diffusion-ISRQMC approaches the predicted N −1 rate. (b) Randomization standard deviation of the MNIST pixel-mean functional, where transport-only RQMC consistently improves over IID MC. 
+
+## 7 Conclusions 
+
+This paper establishes a rigorous link between diffusion probability-flow transport and high-order randomized quasi-Monte Carlo integration. Within an importance sampling formulation, we provided general sufficient conditions on a transport map that guarantee the induced cube integrand satisfies Owen’s boundary growth condition, yielding an 
+
+O(N −1+ ε) RMSE for scrambled nets. We then verified these conditions for diffusion transports built from a Gaussian base map (the inverse Gaussian CDF, Φ−1) and an Euler-discretized probability flow ODE, under bounded-derivative assumptions on the learned vector field. Across GMM, MNIST, and conditional vorticity experiments, RQMC re-duces integration error or randomization sensitivity. In the 40,960D conditional task, blocked-Sobol’ substantially stabi-lizes MAER and MSSIM at near-identical online cost, while providing no benefit for the derivative-sensitive discrete-Laplacian metric. Several directions remain open: extending the proof to adaptive ODE solvers and higher-order integrators; relaxing the boundedness assumptions to allow mild time singulari-ties; and tracking constants explicitly in dimension and step count. These questions are important for bridging theory and practical diffusion samplers used in modern scientific com-puting. 
+
+## A Additional Experimental Results 
+
+To evaluate Diffusion-ISRQMC and its transport-only coun-terpart across qualitatively different regimes, we consider three settings: a 2D two-component Gaussian mixture model (GMM), MNIST in 784 dimensions (LeCun et al. 1998), and conditional super-resolution data assimilation for a synthetic vorticity field in 40,960 dimensions. The GMM experiment isolates importance-sampling correction, MNIST tests an un-conditional image model, and the vorticity experiment tests randomization stability and cost in a large conditional sci-entific model. For GMM and MNIST, we use the following estimators: 
+
+• Diffusion-MC: Uses independent and identically dis-tributed (IID) uniform sampling on [0 , 1] d with diffusion transport, suffering from transport approximation bias. 
+
+• Diffusion-RQMC: Adopts scrambled Sobol net sampling with diffusion transport, reducing sampling variance but retaining transport bias. 
+
+• Diffusion-ISMC: Combines IID sampling, diffusion transport, and IS, achieving unbiased estimation with standard MC convergence rate O(N −1/2).
+
+• Diffusion-ISRQMC: Our proposed method, integrating scrambled Sobol net sampling, diffusion transport, and IS, which is unbiased and theoretically achieves O(N −1+ ε)
+
+convergence. For vorticity assimilation we compare transport-only IID MC with independently scrambled blocked-Sobol’ RQMC. Importance weights are unavailable for this conditional im-plicit sampler, so this experiment evaluates randomization sensitivity and cost rather than bias correction. 
+
+A.1 Experimental Protocol 
+
+We consider three target distributions: (1) the 2D GMM 
+
+0.5N (3 e, I ) + 0 .5N (−3e, I ), where e = (1 , 1) ⊤ and 
+
+E[∥X∥2] = 20 ; (2) MNIST, flattened to 784 dimensions, with pixel-mean functional f (x) = 784 −1 P784  
+
+> i=1
+
+xi; and (3) a conditional distribution over five high-resolution vorticity frames given low-resolution dynamics and sparse noisy ob-servations. We use RMSE over 20 randomizations for the GMM, randomization standard deviation for MNIST, and truth-based field metrics for vorticity assimilation. All re-ported RQMC results use independent Owen-style scram-bling between randomizations. Figure 2: Ground truth, N = 256 ensemble means, and absolute errors at three forecast leads for a representative held-out vorticity-assimilation context. Dots mark the 128 sparse sensors. Both methods recover the evolving jet structure; the single displayed scramble is qualitative and is not expected to reduce every pointwise truth error. 
+
+A.2 2D 2-Component GMM Experiment 
+
+We use a ScoreNetMLP with 4 residual blocks, a hidden dimension of 256, and sinusoidal time embedding, trained for 1000 epochs with batch size 2048. The probability flow ODE is solved with 2000 Euler steps. Quantitative re-sults from Fig. 1a reveal two critical insights: First, impor-tance sampling (IS) effectively mitigates transport bias: IS-augmented methods (Diffusion-ISRQMC, Diffusion-ISMC) exhibit sustained convergence, whereas non-IS counterparts (Diffusion-RQMC, Diffusion-MC) suffer from early satura-tion due to uncorrected bias. Second, RQMC sampling out-performs MC sampling universally: Across both IS and non-IS settings, RQMC delivers faster convergence–Diffusion-ISRQMC achieves a near-O(N −1+ ε) rate (log-log slope ≈−0.95 ) with RMSE = 0 .002 at N = 8192 , while Diffusion-ISMC follows the standard O(N −1/2) MC rate (slope ≈−0.48 ) with RMSE ≈ 0.08 at the same sample size. These results confirm that the combination of IS and RQMC yields the most efficient convergence, with Diffusion-ISRQMC demonstrating the lowest RMSE and most stable perfor-mance. 
+
+A.3 MNIST Dataset Experiment 
+
+For MNIST (1-channel 28 × 28 images), we employ a ScoreNetUNet, a residual-based U-Net with sinusoidal time embedding and no attention modules, trained for 10,000 epochs with batch size 1024. The ODE is discretized with 2000 Euler steps. We restrict our comparison to Diffusion-MC and Diffusion-RQMC. We exclude IS-based estimators because the curse of dimensionality leads to exponential weight variance growth and eventual weight collapse (zero ESS), rendering bias correction numerically unstable. Con-sequently, we focus on standard deviation to demonstrate RQMC’s inherent variance reduction in the transport pro-cess. From Fig. 1b, Diffusion-RQMC achieves a convergence rate near O(N −1+ ε) and the lowest variance across all sam-ple sizes. Diffusion-MC follows O(N −1/2) and maintains higher variance. RQMC thus delivers consistent variance re-duction even when bias correction is unsuccessful. To verify the validity of our sampling pipeline, we visual-ize generated MNIST samples in Fig. 4. Both Diffusion-MC and Diffusion-RQMC produce reasonable handwritten digit samples that align with the MNIST data distribution. We do not emphasize visual quality differences between the two methods, as the advantage of RQMC over MC lies primarily in convergence rate and variance reduction of target function rather than sample visual fidelity. 
+
+A.4 Conditional Vorticity Data Assimilation 
+
+Synthetic data and conditioning. Following the Diff-SRDA setting (Ayapilla et al. 2026), we generate two-dimensional barotropic-jet trajectories with paired low- and high-resolution solvers. The full generation contains 5,000 trajectories and 445,000 aligned nine-frame windows. The low-resolution solver outputs 32 × 17 fields and the high-resolution solver outputs 128 × 65 fields; we discard the du-plicated periodic endpoint, yielding learned high-resolution fields of size 128 × 64 . Each example targets five high-resolution frames. Its condition contains three low-resolution frames separated by four solver-output intervals, bicubically upsampled to the target grid, and two sparse-observation frames from the first half of the window. Observations are 0.00 0.25 0.50 0.75 1.00        
+
+> Forecast lead
+> 0.001 0.002 0.003 0.004 0.005 0.006
+> Randomization std. of MAER  RQMC std. reduction: 47 66%
+> (a) MAER
+> 0.00 0.25 0.50 0.75 1.00
+> Forecast lead
+> 0.002 0.004 0.006 0.008 0.010 0.012
+> Randomization std. of MSSIM loss
+> RQMC std. reduction: 28 51%
+> (b) MSSIM loss
+> IID MC Scrambled Sobol RQMC
+
+Figure 3: Root-mean randomization standard deviation (RSD) for MAER and MSSIM loss at N = 256 across the five-frame forecast window. Curves aggregate 20 held-out contexts and 20 independent randomizations; bands are 95% context-cluster bootstrap intervals. Lower is better. 
+
+(a) Diffusion-MC 
+
+(b) Diffusion-RQMC 
+
+Figure 4: Generated MNIST samples from Diffusion-MC and Diffusion-RQMC. Each panel displays two rows of handwrit-ten digits. placed every eighth grid point (128 sensors per frame) with additive Gaussian noise of standard deviation 0.1. We use 120,000 windows for training and 30,000 for validation. 
+
+Diffusion model and sampler. The conditional U-Net has 128,808,901 parameters, five state channels, base width 64, channel multipliers (1 , 2, 4, 8, 8) , three residual blocks per level, and attention at resolution 8. It is trained with an L1
+
+diffusion objective and 1,000 training diffusion steps. We se-lect epoch 266 by validation loss (training loss 0.01644; val-idation loss 0.03446). Evaluation uses deterministic DDIM with five reverse steps and η = 0 , so all sampling randomness is in the initial latent z ∈ R40 ,960 .PyTorch’s Sobol implementation supports at most 21,201 dimensions. We therefore partition z into contiguous blocks of dimensions 21,201 and 19,759, generate a separately scrambled Sobol net for each block, apply the Gaussian in-verse CDF on the GPU, and concatenate the results. This independently scrambled blocked-Sobol’ construction is not a single 40,960D digital net; block interactions are not strati-fied. A fixed latent bank is generated once per randomization and reused over all contexts. IID MC uses the same pre-generation and caching protocol. 
+
+Evaluation and metrics. We evaluate 20 held-out condi-tioning contexts and 20 independent randomizations at en-semble size N = 256 .Let ¯ωc,r,N,t be an ensemble-mean frame and ω⋆c,t its sim-ulated truth. We report 
+
+MAER c,r,N,t = mean x,y |¯ωc,r,N,t − ω⋆c,t |
+
+mean x,y |ω⋆c,t | ,
+
+the RMSE of an unscaled discrete Laplacian (periodic in the first spatial axis and replicated at the walls of the second), and MSSIM loss 1 − SSIM . SSIM uses an 11 × 11 Gaussian window with standard deviation 1.5 and a per-truth-frame dynamic range. For a truth-based metric M , the stability curves report 
+
+RSD t =
+
+"
+
+120 
+
+> 20
+
+X
+
+> c=1
+
+Var r (Mc,r, 256 ,t )
+
+#1/2
+
+,
+
+with 95% intervals obtained by bootstrapping contexts as clusters. Lower RSD means less sensitivity to the random seed or scramble. 
+
+Quantitative results. For truth-based nonlinear metrics, Table 1 summarizes the reductions plotted in the main paper. MAER RSD falls by 47–66% and MSSIM-loss RSD by 28– 51% at every lead. In contrast, the discrete-Laplacian RMSE has VRF 0.89–0.99 and therefore shows no benefit. This neg-ative result helps localize the gain: the blocked construction stabilizes large-scale field and structural metrics, but not the most derivative-sensitive diagnostic. 
+
+Qualitative fields. Figure 2 shows three forecast leads for context 19, chosen by a deterministic representativeness ranking over the 20 contexts, rather than by visual inspection. Figure 5 compares ensemble means, spread, and the across-member standard deviation of absolute error at the first lead. Forecast lead τ 0 0.25 0.50 0.75 1.00 MAER RSD reduction (%) 61.1 47.5 59.2 66.0 62.1 MSSIM RSD reduction (%) 45.8 27.7 35.8 51.3 43.4 
+
+Table 1: Reduction in randomization standard deviation from IID MC to blocked-Sobol’ RQMC at N = 256 ; larger is better. 
+
+Timing scope IID (s) RQMC (s) Overhead Denoiser only 2.2688 2.2687 0.00% 
+
+Online, cached noise 2.3058 2.3062 0.018% 
+
+Full, amortized 2.3088 2.3823 3.18% 
+
+Table 2: Per-context wall time at N = 256 on one NVIDIA H20. RQMC Gaussian noise is generated once per replicate and reused across contexts; IID uses the same timing bound-ary. The displayed uncertainty panels use one scramble; conse-quently, they illustrate that both methods reconstruct coherent jet structures and uncertainty concentration, not that every individual RQMC scramble must be closer to truth. 
+
+A.5 Experimental Summary 
+
+The experiments expose three complementary regimes. In the 2D GMM, IS removes transport bias and Diffusion-ISRQMC approaches the predicted O(N −1+ ε) behavior, reaching roughly 40 × lower RMSE than ISMC at N = 2 13 .On MNIST, transport-only RQMC reduces the randomiza-tion variance of a pixel-mean functional despite unusable high-dimensional IS weights. In the 40,960D conditional vor-ticity task, independently scrambled Sobol blocks substan-tially stabilize MAER and MSSIM at near-identical online denoising cost, but do not improve the derivative-sensitive discrete-Laplacian metric. Thus the practical benefit depends on effective dimension and functional smoothness; it should not be inferred solely from ambient dimension or from the asymptotic theorem. 
+
+## B Proof of the Derivative-Growth Result 
+
+Proof. We prove the claim for the partial derivatives of the intermediate maps 
+
+τ 0: k := τ k−1 ◦ · · · ◦ τ 0 ◦ G, k = 0 , 1, . . . , N, 
+
+with τ 0:0 = G and τ 0: N = τ 0: N . We use induction on k.
+
+Base case k = 0 (only the inverse Gaussian CDF base map). Because G is diagonal, Gj (u) = Φ −1(uj ). Fix m, j 
+
+and v ⊆ 1 : d. Then ∂{m}Gj (u) = 0 if j̸ = m, and equals 
+
+(Φ −1)′(um) if j = m. Also ∂v (∂{m}Gj ) is nonzero only if v ⊆ { m}. By the inverse-Gaussian-CDF derivative bound from the main paper, with derivative orders 1 and 2, we have 
+
+(Φ −1)′(um) ≤ C min( um, 1 − um)−1
+
+· | ln(min( um, 1 − um)) |−1/2 ,
+
+(Φ −1)′′ (um) ≤ C min( um, 1 − um)−2
+
+· | ln(min( um, 1 − um)) |1/2 .
+
+In either case, for any arbitrarily small B > 0 we can upper bound the logarithmic factor by min( um, 1−um)−B (enlarge constants if needed). Hence 
+
+∂v (∂{m}Gj )( u) ≤ C min( um, 1 − um)−1
+
+·
+
+> d
+
+Y
+
+> k=1
+
+min( uk, 1 − uk)−B−1{k∈v} ,
+
+which is exactly the required derivative-growth bound for 
+
+k = 0 .
+
+Inductive step. Assume τ 0: k satisfies the required derivative-growth bound. Consider 
+
+τ 0: k+1 (u) = τ k τ 0: k(u) = τ 0: k(u) − h vθ (τ 0: k(u), t k).
+
+Fix j ∈ 1 : d. Then 
+
+(τ 0: k+1 )j = ( τ 0: k)j − h v θ,j (τ 0: k(u), t k).
+
+Taking ∂{m} and then ∂v gives 
+
+∂v ∂{m}(τ 0: k+1 )j
+
+=∂v ∂{m}(τ 0: k)j − h ∂ v ∂{m}
+
+vθ,j ◦ τ 0: k
+
+(u). (15) The first term is controlled by the inductive hypothesis. It remains to bound the second term. 
+
+Step 1: first derivative chain rule. Differentiate 
+
+vθ,j (τ 0: k(u), t k) w.r.t. um:
+
+∂{m}(vθ,j ◦ τ 0: k)=
+
+> d
+
+X
+
+> p=1
+
+
+
+∂xp vθ,j 
+
+
+
+(τ 0: k(u), t k) · ∂{m}(τ 0: k)p(u).
+
+Step 2: apply ∂v and product rule. Applying ∂v yields a sum over p and partitions v = v1 ⊔ v2:
+
+∂v ∂{m}(vθ,j ◦ τ 0: k) = 
+
+> d
+
+X
+
+> p=1
+
+X
+
+> v1⊔v2=v
+
+∂v1
+
+h
+
+(∂xp vθ,j ) ◦ τ 0: ki
+
+· ∂v2
+
+h
+
+∂{m}(τ 0: k)p
+
+i
+
+.
+
+Step 3: bound each factor. By the bounded-vector-field assumption in the main paper, all spatial derivatives of vθ,j 
+
+are bounded. The composition derivative ∂v1 [( ∂xp vθ,j ) ◦
+
+τ 0: k] can be expanded via Faà di Bruno; every term is a product of bounded derivatives of ∂xp vθ,j with derivatives of τ 0: k. Since bounded factors do not change boundary sin-gularity order, the growth is dominated by products of deriva-tives of τ 0: k. Using the inductive hypothesis for τ 0: k repeat-edly, we obtain for arbitrarily small B > 0 a bound of the form 
+
+∂v1
+
+h
+
+(∂xp vθ,j ) ◦ τ 0: ki
+
+≤ C
+
+> d
+
+Y
+
+> r=1
+
+min( ur , 1 − ur )−B−1{r∈v1} .Figure 5: Ensemble mean and uncertainty at the first forecast lead. Top: simulated truth with sensors and the IID/RQMC ensemble means. Bottom: pixelwise ensemble spread and the across-member standard deviation of absolute error. These single-scramble fields are diagnostic visualizations; the aggregate randomization comparison is reported in the main paper and Table 1. More explicitly, every Faà di Bruno term is a finite prod-uct of two types of factors: (i) spatial derivatives of ∂xp vθ,j 
+
+evaluated at τ 0: k(u), which are uniformly bounded by that assumption, and (ii) derivatives of the inner map τ 0: k(u),which satisfy the boundary growth bound by the inductive hypothesis. Therefore each term inherits its boundary singu-larity entirely from the inner-map derivatives, and summing finitely many such terms yields the stated bound. For the second factor, the inductive hypothesis yields 
+
+∂v2 [∂{m}(τ 0: k)p] ≤ C min( um, 1 − um)−1
+
+·
+
+> d
+
+Y
+
+> r=1
+
+min( ur , 1 − ur )−B−1{r∈v2} .
+
+Step 4: multiply and recombine exponents. Multiplying the two factors and using v1 ⊔ v2 = v, we obtain 
+
+∂v ∂{m}(vθ,j ◦ τ 0: k) ≤ C min( um, 1 − um)−1
+
+·
+
+> d
+
+Y
+
+> r=1
+
+min( ur , 1 − ur )−B−1{r∈v} .
+
+Substituting back into (15) (absorbing the factor h into con-stants), we conclude that τ 0: k+1 satisfies the same growth bound, completing the induction. 
+
+## References 
+
+Ayapilla, A. S. P.; Miyashita, K.; Yasuda, Y.; and Onishi, R. 2026. Uncertainty-Aware Spatiotemporal Super-Resolution Data Assimilation with Diffusion Models. arXiv preprint arXiv:2604.21180 .Basu, K.; and Owen, A. B. 2015. Scrambled geometric net integration over general product spaces. Foundations of Computational Mathematics , 1–30. Basu, K.; and Owen, A. B. 2016. Transformations and Hardy–Krause Variation. SIAM Journal on Numerical Anal-ysis , 54(3): 1946–1966. Briol, F.-X.; Oates, C. J.; Girolami, M.; Osborne, M. A.; and Sejdinovic, D. 2017. Probabilistic Integration: A Role in Statistical Computation? arXiv:1512.00933. Dick, J.; Kuo, F. Y.; and Sloan, I. H. 2013. High-dimensional integration: the quasi-Monte Carlo way. Acta Numerica , 22: 133–288. Dick, J.; and Pillichshammer, F. 2010. Digital Sequences, Discrepancy and Quasi-Monte Carlo Integration . Cam-bridge: Cambridge University Press. Gerber, M.; and Chopin, N. 2015. Sequential quasi-Monte Carlo. Journal of the Royal Statistical Society, Series B ,77(3): 509–579. LeCun, Y.; Bottou, L.; Bengio, Y.; and Haffner, P. 1998. Gradient-Based Learning Applied to Document Recognition. 
+
+Proceedings of the IEEE , 86(11): 2278–2324. Liu, X.; Gong, C.; and Liu, Q. 2022. Flow straight and fast: Learning to generate and transfer data with rectified flow. 
+
+arXiv preprint arXiv:2209.03003 .Marzouk, Y. M.; Moselhy, T.; Parno, M. D.; and Spantini, A. 2016. Sampling via Measure Transport: An Introduction. 
+
+arXiv preprint arXiv:1602.05023 .Niederreiter, H. 1992. Random Number Generation and Quasi-Monte Carlo Methods . Philadelphia, PA: SIAM. Owen, A. B. 2006. Halton sequences avoid the origin. SIAM Review , 48(3): 487–503. Song, Y.; Sohl-Dickstein, J.; Kingma, D. P.; Kumar, A.; Er-mon, S.; and Poole, B. 2020. Score-based generative model-ing through stochastic differential equations. arXiv preprint arXiv:2011.13456 .Zeng, Z.; and Chen, J. 2026. Flow Matching Transport for Quasi-Monte Carlo Integration. arXiv:2601.01072.

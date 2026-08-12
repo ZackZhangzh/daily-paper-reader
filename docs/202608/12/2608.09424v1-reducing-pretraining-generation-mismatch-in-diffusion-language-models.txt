@@ -1,0 +1,328 @@
+Title: Reducing Pretraining-Generation Mismatch in Diffusion Language Models
+
+URL Source: https://arxiv.org/pdf/2608.09424v1
+
+Published Time: Tue, 11 Aug 2026 02:10:43 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+# Reducing Pretraining-Generation Mismatch in Diffusion Language Models 
+
+Xiaocheng Lu 2,1, ∗ Huabin Liu 1, ∗ Song Guo 2,† Jianguo Li 1,† 1Inclusion AI 2The Hong Kong University of Science and Technology 
+
+## Abstract 
+
+Autoregressive language models align training and use: generation conditions on a clean prompt, and training predicts future tokens from clean left context. Diffusion language models offer parallel denoising, but native dLLM pretraining can randomly corrupt prompt and continuation tokens together, weakening the clean-prefix interface needed for prompt-conditioned generation. We identify this mismatch for prompt continuation and propose PCD ( Prefix-Conditioned Diffusion ), a pretraining objective that combines AR prefix supervi-sion with no-shift suffix denoising. At the training-objective level, PCD changes the attention mask, corruption mask, and label construction in continued pretraining; it does not require an autoregressive decoder, verifier, or new inference mode. By supervising the clean-prefix side autoregressively and applying diffusion only to the unknown continuation, PCD makes the local training interface resemble how block-diffusion models are queried at evaluation time. We further separate intra-sample prefix conditioning from inter-sample objective mixing, allowing us to identify the local alignment signal separately from the optional batch-level mixing knob. Across LLaDA2-Mini and Qwen-1.7B backbones, PCD consistently improves over same-family native dLLM stable baselines, reaching a 4.2% relative gain on the main LLaDA2-Mini six-benchmark average (+2.56 points) and a 14.2% relative gain in the primary Qwen mechanism comparison (+4.86 points). These results suggest that align-ing the pretraining context distribution with prompt-conditioned generation can recover a measurable part of the dLLM continuation gap without changing inference. 
+
+## 1 Introduction 
+
+Autoregressive (AR) language modeling has a simple and powerful contract: given a clean prefix, predict what comes next (Vaswani et al., 2017; Brown et al., 2020). This contract matches the dominant use case of language models, where a user or system supplies a prompt and the model continues it. It also gives the model a stable causal interface: every target token is trained under a context that resembles the context available at inference time. This alignment between the training objective and the generation interface is one reason AR models remain strong on prompt-continuation tasks. Diffusion language models (dLLMs) pursue a different tradeoff. Instead of generating strictly left-to-right, they iteratively denoise masked or corrupted tokens and can update multiple positions in parallel. This makes diffusion-style decoding attractive for faster generation and flexible editing. Like AR language models, modern dLLMs are usually built in stages. The base model is first pretrained with a denoising objective over large unlabeled corpora, where tokens may be masked or corrupted throughout the sequence. Supervised fine-tuning (SFT) can then adapt the model on instruction-response data, improving task following, instruction adherence, and conversational behavior in dLLM checkpoints (Nie et al., 2025). These two stages serve different roles: SFT shapes the model’s response style and instruction adherence, while pretraining establishes the basic context distribution under which the model learns to recover text. Our focus is the pretraining stage, because a mismatch introduced there can be inherited by later adaptation. Recent Warmup–Stable–Decay (WSD)-style conversion systems make this transition practical by starting from an AR checkpoint, gradually adapting the attention and block structure, training at scale in a stable 
+
+> *
+
+Equal contribution. †Corresponding authors. This work was done during an internship at Inclusion AI. 
+
+1arXiv:2608.09424v1 [cs.CL] 10 Aug 2026 Pretraining-Generation  Mismatch 
+
+Training objective  Generation/Evaluation 
+
+AR LM 
+
+Native dLLM                              
+
+> PC dLLM
+> The answer is 7
+> [M] answer [M] 7[M]
+> The answer is 7.
+> The answer is ??
+> The answer is [M] 7The answer is [M] 7
+> clean prefix predicts the next token
+> aligned
+> clean prompt continues left-to-right
+> tokens are corrupted across the whole sequence evaluation gives a clean prompt
+> mismatch
+> clean prefix denoise suffix
+> aligned
+> same-position suffix reconstruction clean prompt conditions diffusion over the future
+> clean prefix/context corrupted or unknown token prediction target
+
+Figure 1: Motivation for Prefix-Conditioned Diffusion (PCD). Native diffusion pretraining can corrupt the prefix even though prompt-continuation evaluation provides a clean prefix. PCD trains an AR prefix loss and an MDM suffix loss, matching the local generation interface. diffusion phase, and then decaying back to a compact block-diffusion form for efficient inference (Wen et al., 2025; Bie et al., 2025). However, this successful recipe can create a subtle but important pretraining-generation mismatch. During pretraining, a diffusion language model may see masked tokens distributed across an entire sequence rather than a clean prompt followed by an unknown continuation. During generation, especially for prompt continuation and benchmark evaluation, the model often receives a clean prefix and must denoise the unknown continuation without corrupting the prompt. Figure 1 illustrates this mismatch and the PCD correction. At inference time, the model is asked to rely on a clean left context, even though the stable pretraining objective may not consistently present that clean prefix as the central conditioning signal. This paper studies whether the mismatch is a controllable reason why diffusion language models underperform on prompt-continuation benchmarks. Our hypothesis is that diffusion language models do not need to abandon denoising or become purely autoregressive. Instead, they need to learn diffusion-style prediction under the clean-prefix condition used at generation time. This is a pretraining-level issue rather than only an SFT-level one: instruction tuning can teach formats and preferences, but it may not fully repair a base model whose denoising objective has rarely treated the prompt as an always-clean conditioning signal. We call this clean-prefix training interface Prefix-Conditioned Diffusion 
+
+(PCD), and apply it during continued pretraining. The key design is to make the training example look like the generation process. The left part of the sequence is trained with an AR loss, while the future suffix is corrupted and reconstructed with a diffusion objective. This gives the model the same kind of reliable left context that AR models exploit, while retaining denoising for the unknown continuation. In this work, we instantiate PCD primarily with block diffusion, where the suffix is partitioned into denoising blocks, but the same principle also applies to full-sequence diffusion by leaving a prefix uncorrupted and denoising the remaining suffix. Viewed through WSD, PCD is a stable-phase intervention: it keeps the efficient large-scale diffusion training branch, but changes the masking distribution so that the model continues to learn under the clean-prefix condition used at generation time. We isolate this hybrid prefix-conditioned objective as a continued-pretraining intervention, rather than introducing a new multi-mode decoding stack. This places PCD at the level of the training interface: it uses the same data stream and model family, but changes which tokens are trusted as context and which tokens become denoising targets. PCD has two degrees of freedom: whether the hybrid objective is applied inside each sample, and how often such samples are mixed with native diffusion examples. We therefore separate two ways prefix-conditioned training can interact with native diffusion: intra-sample mixing combines an AR prefix loss and an MDM suffix loss within one sequence, while inter-sample mixing mixes PCD and native diffusion examples in a minibatch. This distinction lets us test whether the gain comes from the local clean-prefix interface itself or 2from retaining native diffusion examples as a batch-level regularizer. Our contributions are threefold: • Objective. We identify pretraining-generation mismatch and introduce the PCD objective. • View. We show, through a variational view, how clean-prefix suffix MDM removes corrupted-prefix context shift. • Evidence. PCD improves LLaDA2-Mini and Qwen-1.7B while disentangling intra-/inter-sample effects. 
+
+## 2 Related Work 
+
+Diffusion language models. Diffusion models were first developed as iterative denoising generative models (Sohl-Dickstein et al., 2015; Ho et al., 2020; Song et al., 2021), and were later adapted to language through discrete, categorical, or continuous formulations (Hoogeboom et al., 2021; Austin et al., 2021; Li et al., 2022; Gong et al., 2023). Recent discrete dLLMs improve objectives and sampling procedures, narrowing the gap to AR language models (Lou et al., 2024; Sahoo et al., 2024), while LLaDA-scale training shows that masked diffusion can support LLM-style pretraining and supervised fine-tuning (Nie et al., 2025; Ye et al., 2025). Warmup-Stable-Decay further makes AR-to-dLLM conversion practical by preserving AR knowledge, training a long stable diffusion branch, and decaying to efficient diffusion checkpoints (Wen et al., 2025; Bie et al., 2025). Other systems combine AR and diffusion behavior more explicitly, unifying autoregressive decoding, discrete diffusion, and self-speculative decoding in a single checkpoint (Fu et al., 2026). PCD is complementary to these lines of work: rather than introducing a new corruption family, decoding mode, or multi-mode architecture, it changes the stable-stage context distribution so that continued pretraining preserves the clean-prefix structure used by prompt-continuation benchmarks. 
+
+Block diffusion. Block diffusion interpolates between left-to-right autoregression and fully parallel dif-fusion by generating text in blocks, supporting efficient arbitrary-length generation (Arriola et al., 2025). This setting makes the prefix-continuation interface especially important: at generation time, the model repeatedly conditions on an already clean prefix while denoising future blocks. Block diffusion also connects to a broader literature on non-autoregressive and iterative sequence generation, including latent-variable non-autoregressive models, iterative refinement, insertion-based generation, edit-based generation, and masked-token refinement (Gu et al., 2018; Lee et al., 2018; Stern et al., 2019; Gu et al., 2019; Ghazvininejad et al., 2019). Standard masked, span-corruption, and conditional masked objectives train reconstruction from partial context (Devlin et al., 2019; Raffel et al., 2020), and masked generative transformers demon-strate the effectiveness of iterative masked prediction in other discrete-token domains (Chang et al., 2022). However, these objectives do not specifically enforce a clean-left-prefix, noisy-future-suffix structure. Recent prompt-infilling work identifies a complementary SFT-time gap, showing that response-only masking can prevent dLLMs from learning to infill prompt tokens (Fujinuma & Sakaguchi, 2026). PCD studies a different pretraining-time interface: it keeps the prompt prefix clean and trains same-token diffusion denoising on the unknown future, preserving the prefix-continuation contract without reducing the objective to AR next-token prediction. 
+
+## 3 Method 
+
+Figure 2 summarizes the training design. PCD has three coupled pieces: minibatches can mix native diffusion and PCD examples; each PCD example splits one sequence into a clean AR prefix and a corrupted MDM suffix; and the attention/loss mask keeps prefix prediction causal while letting suffix positions denoise under the clean prefix. The rest of this section defines these pieces and explains why the stable phase of WSD is the natural insertion point. 
+
+3.1 Preliminaries 
+
+Let x = ( x1, . . . , xT ) be a token sequence. Standard masked diffusion training samples a corruption pattern and trains a model to recover masked tokens from partially observed context. Let m ∈ { 0, 1 }T denote a mask, where mi = 1 means token xi is corrupted. A diffusion language model with parameters θ is trained to predict the original tokens from a corrupted sequence ˜ x:
+
+Ldiff = −Ex,m ∑ 
+
+> i:mi=1
+
+log pθ (xi | ˜x, m). (1) In native diffusion training, the mask can span positions throughout the sequence. This objective is general, but it does not necessarily emphasize the clean-prefix continuation setting used in downstream evaluations. 3Figure 2: Prefix-conditioned diffusion training framework. PCD combines inter-sample objective mixing, intra-sample AR-prefix/MDM-suffix mixing, and a hybrid attention/loss mask that keeps prefix prediction causal while denoising masked suffix positions under a clean prefix. 
+
+3.2 Prefix-Conditioned Diffusion 
+
+In PCD, each sequence is partitioned into an autoregressive prefix and a denoising suffix. The prefix is trained with a standard next-token AR loss, while the suffix is trained with a masked diffusion modeling (MDM) loss conditioned on the prefix. During continued pretraining, examples do not come with a ground-truth prompt/completion boundary, so PCD treats the boundary as a sampled latent split rather than an observed annotation. For a sampled prefix boundary k, the first k tokens remain clean: ˜x1: k = x1: k. (2) The remaining suffix is corrupted according to a diffusion schedule. For block diffusion, the suffix is further partitioned into one or more denoising blocks. The model then optimizes a weighted sum of prefix AR and suffix MDM losses: 
+
+Lpcd = −Ex,k,m
+
+"
+
+λar 
+
+Nar 
+
+> k
+
+# ∑
+
+> i=2
+
+log pθ (xi | x<i ) + λmdm 
+
+Nm ∑ 
+
+> i>k:mi=1
+
+log pθ (xi | x1: k, ˜ xk+1: T , m)
+
+#
+
+. (3) Here Nar = max (k − 1, 1 ) and Nm = max (∑i>k mi, 1 ) are the target counts used to normalize the two components, and (λar , λmdm ) control the AR-to-MDM loss ratio. We use λar = λmdm = 1 unless otherwise specified, so each PCD example gives equal component weight to the clean-prefix AR objective and the suffix denoising objective after per-region normalization, rather than equal weight to every raw token. This objective is AR-like in the prefix and diffusion-like in the suffix: the model preserves left-to-right modeling over the clean prefix while jointly denoising multiple future tokens. Equation 8 later gives the operational version of this objective with the effective corruption mask and attention regions used in training. 
+
+3.3 PCD as a Stable-Phase WSD Intervention 
+
+PCD is designed to fit inside a WSD-style AR-to-diffusion conversion pipeline rather than replace it. In warmup, the model is still adapting from an AR initialization to larger diffusion blocks; in decay, the model is refined back toward a compact block-diffusion structure for efficient inference. The stable phase is the most natural place to intervene because it consumes the largest continued-pretraining budget and establishes the dominant diffusion objective. The standard stable phase maximizes throughput by training a native full-sequence denoising objective. PCD changes the per-sample objective: the prefix keeps AR next-token supervision, while the suffix keeps the same no-shift MDM target family under a clean prefix. This turns stable training into a hybrid prefix-continuation objective without requiring AR decoding, AR verification, or self-speculation at inference. The resulting model can still be passed into the usual decay-stage recipe, making PCD a local objective change rather than a replacement training pipeline. 4Variational View. We use a compact variational view to formalize the context-distribution gap that PCD is designed to reduce. Let a sequence be split into a clean prefix c = x1: k and suffix y = xk+1: T. Prompt-conditioned generation asks the model to denoise or sample y given the clean prefix c. For a diffusion step or mask pattern, let ˜ y be a corrupted suffix and let ˜ c be a corrupted version of the prefix under the native diffusion corruption process. The suffix-MDM part of PCD uses the context (c, ˜ y), whereas native diffusion can train the same suffix prediction under ( ˜c, ˜ y). In random-variable notation, let C, Y, ˜ C, ˜ Y denote these quantities and let V ∗ denote the optimal one-step suffix-denoising negative log-likelihood term under the corresponding context distribution. Under the standard independent prefix/suffix corruption used by discrete diffusion, replacing the corrupted prefix with the clean prefix exposes the following non-negative information gap: 
+
+V ∗ 
+
+> nat
+
+− V ∗ 
+
+> pcd
+
+= H(Y | ˜C, ˜ Y, M) − H(Y | C, ˜ Y, M)= I(Y; C | ˜C, ˜ Y, M) ≥ 0. (4) Thus, PCD removes a corrupted-prefix context-shift term from the suffix-denoising objective. The second equality follows from the conditional mutual-information identity. It uses the corruption Markov structure 
+
+Y ⊥ ˜C | (C, ˜ Y, M).
+
+3.4 Intra-Sample Mixing 
+
+Intra-sample mixing means that AR prefix prediction and MDM suffix denoising coexist inside the same sequence. Consider a token sequence x = ( x1, . . . , xT ) of length T. For each training example, we sample a prefix ratio ρ ∼ q(ρ), where q is the chosen prefix-ratio distribution used by the training recipe. For example, q may be uniform over a range such as [0, 1 ] or [0, 0.5 ]. We set the prefix boundary to k =
+
+min (T − 1, max (1, ⌊ρT⌋)) , ensuring that each PCD example has a nonempty prefix and suffix, and use two indicators for the resulting regions: 
+
+ai = I[i ≤ k], si = 1 − ai. (5) Here ai = 1 marks prefix positions trained with AR supervision, and si = 1 marks suffix positions that may be corrupted and supervised by the MDM loss. Let m = ( m1, . . . , mT ) be the native diffusion mask, where 
+
+mi = 1 means that position i is selected as a denoising target. PCD converts this native mask into the effective prefix-conditioned mask used for suffix supervision: 
+
+mpcd  
+
+> i
+
+= simi, (6) so all prefix tokens stay visible for AR prediction and only suffix tokens can be selected as MDM targets. Let corr (xi, mi) denote the native token corruption operator: it returns a corrupted token, such as [MASK] or a sampled noisy token, when mi = 1, and returns the original token when mi = 0. The corrupted input for intra-sample PCD is ˜xpcd  
+
+> i
+
+=
+
+xi, ai = 1, corr (xi, mi), si = 1, (7) where the observed token is copied from xi in the prefix and produced by the diffusion corruption process in the suffix. Operationally, the attention pattern is hybrid: prefix positions use causal attention for AR prediction, while suffix positions condition on the clean prefix and use the MDM/block-diffusion mask within the suffix. The intra-sample objective combines the AR prefix loss and the no-shift MDM suffix loss: 
+
+Lintra = −Ex,ρ,m
+
+"
+
+λar 
+
+Nar 
+
+> k
+
+# ∑
+
+> i=2
+
+log pθ (xi | x<i) + λmdm 
+
+Npcd 
+
+> T
+
+# ∑
+
+> i=1
+
+mpcd  
+
+> i
+
+log pθ
+
+
+
+xi | ˜xpcd , mpcd , k
+
+#
+
+(8) In Equation 8, Npcd = max (∑i mpcd  
+
+> i
+
+, 1 ) normalizes the MDM term, prefix positions predict the next prefix token from causal left context, and suffix positions predict the original token at the same position from the clean prefix, the corrupted suffix ˜ xpcd , the effective mask mpcd , and the prefix boundary k. The term “no-shift” refers to the suffix MDM term: its target is xi, not xi+1. Thus, the same example contains two supervised regions: prefix tokens preserve AR next-token modeling, and corrupted suffix tokens provide diffusion targets. For block diffusion, mi is sampled inside one or more suffix blocks, but Equation 8 is unchanged because the MDM mask is restricted by mpcd  
+
+> i
+
+= simi. This is the most direct way to match prompt continuation while retaining both training signals: the same sample teaches an AR clean-prefix interface and MDM prediction over the unknown future. 53.5 Inter-Sample Mixing 
+
+Inter-sample mixing refers to mixing objective types across examples in the same minibatch. For each sample, we draw an objective indicator z, where ppcd is the probability of selecting the PCD objective: 
+
+z ∼ Bernoulli (ppcd ). (9) If z = 1, the example uses intra-sample PCD; otherwise, it uses the native dLLM stable objective. The resulting batch objective mixes the two losses: 
+
+L = Ez [zLintra + ( 1 − z)Ldiff ] . (10) While intra-sample mixing aligns each example with the hybrid AR-prefix/MDM-suffix structure, inter-sample mixing controls the global training distribution. It can prevent the model from over-specializing to hybrid continuation examples and preserve robustness under native diffusion-style denoising. In our framing, inter-sample mixing is an optional regularizer and objective-distribution control mechanism, while the defining PCD intervention is the same-sample AR-prefix plus MDM-suffix structure. 
+
+Training Variants. We compare variants that differ in where the WSD pipeline is modified: native dLLM stable training, PCD stable training, and optional decay-stage continuation. Within the PCD stable stage, we further vary token shift, the inter-sample PCD sampling probability ppcd , and prefix ratio. Token shift controls whether the suffix MDM target is next-token shifted or same-position reconstruction. Our primary setting uses no token shift for the suffix, so the future region remains a denoising objective rather than next-token AR supervision. PCD does not require AR decoding, AR verification, or self-speculation at inference; it changes training attention masks, corruption masks, and labels. We also vary the prefix ratio and the probability of sampling prefix-conditioned examples to measure how much clean-prefix conditioning is needed without changing inference. 
+
+## 4 Experiments 
+
+4.1 Setup 
+
+We evaluate checkpoints trained from LLaDA2-Mini and Qwen-1.7B backbones across reasoning, coding, math, and knowledge benchmarks. Unless otherwise specified, evaluations use the same no-shift SGLang configuration, an 8k context model configuration, and the same benchmark prompts. The most important comparison is against a same-family native dLLM stable baseline trained and evaluated with the same infrastructure. Here “native dLLM stable” denotes the stable-phase diffusion objective used by the underlying conversion recipe, where corruption is applied across the sequence without preserving a clean prefix. For each backbone, we compare this native baseline with a matched PCD variant under the same initialization, data, budget, and evaluation harness. Public dLLM checkpoints such as LLaDA (Nie et al., 2025), LLaDA-MoE (Zhu et al., 2025), and Dream (Ye et al., 2025) are useful external references, but they are not substitutes for the matched native baseline because their data, scale, and training recipes differ. AR checkpoints can be included as scale-calibration references, but they should not be interpreted as controlled baselines for the PCD objective. We treat the LLaDA2-Mini 400B stable pair as the primary objective ablation, the matched +50B decay pair as a WSD continuation check, and the Qwen-1.7B ablations as smaller-backbone mechanism tests. 
+
+4.2 Benchmarks 
+
+The LLaDA2-Mini evaluation uses the following 12-benchmark suite. The smaller Qwen mechanism suite uses the six benchmarks listed in its corresponding tables and reports standard HumanEval rather than HumanEval-FIM. We group these benchmarks into four categories: • Knowledge and QA : NQ, TriviaQA, and MMLU-Pro. • Mathematical reasoning : OmniMath, MATH, and GSM8K. • Code generation : MBPP, HumanEval-FIM, and LCBench. • General reasoning : BBH, KorBench, and AutoLogi. 
+
+4.3 Main Results 
+
+Table 1 separates scale references from the principal controlled comparison. The external dLLM and AR rows contextualize representative checkpoints, but they are not controlled baselines. The controlled evidence 6comes from the matched LLaDA2-Mini rows, where the stable pair isolates the objective change and the +50B rows compare the same downstream decay continuation. At the matched 400B stable budget, PCD improves the native dLLM stable baseline by +2.56 Avg.6 points. Figure 4 shows that this is not a single-checkpoint effect: PCD improves over the same-family native baseline by +0.99 Avg.6 at 100B, +1.33 at 200B, +2.60 at 300B, and +2.56 at 400B. The 400B row remains the cleanest headline comparison because both rows use the same backbone family, data pipeline, no-shift evaluation, and SGLang configuration.                                                                                   
+
+> Model Params Avg.6 GSM8K MATH BBH KorBench MBPP HumanEval-FIM
+> External dLLM references
+> LLaDA base 8B 50.12 73.62 31.48 47.18 32.72 40.60 75.12 LLaDA-MoE base 7B-A1B 51.94 66.41 36.10 52.71 31.20 52.40 72.80 Dream base 7B 57.48 81.58 41.50 53.38 37.68 53.20 77.54
+> External AR scale references
+> LLaMA3-8B base 8B 48.50 58.07 17.74 58.83 33.04 48.20 75.12 Qwen2.5-7B base 7B 61.86 86.28 51.10 56.79 35.92 62.40 78.70
+> Representative matched LLaDA2-Mini comparison
+> LLaDA2-Mini native stable 16B-A1B 60.30 75.82 56.38 66.38 33.12 59.40 70.67 LLaDA2-Mini native decay 16B-A1B 62.87 80.82 56.92 68.96 37.36 59.40 73.77 LLaDA2-Mini PCD stable 16B-A1B 62.86 80.44 57.64 68.40 35.84 60.20 74.64
+> LLaDA2-Mini PCD decay 16B-A1B 64.54 83.47 59.52 69.63 37.28 63.20 74.15
+
+Table 1: Main controlled comparison with external scale references. Avg.6 averages GSM8K, MATH, BBH, KorBench, MBPP, and HumanEval-FIM. External rows contextualize scale but are not controlled baselines. Shaded rows mark PCD variants; bold marks the best matched LLaDA2-Mini score in each metric.       
+
+> 56 58 60 62 64 100B 200B 300B 400B Native PCD +1.79 +1.64 +2.50 +1.83
+> AR-decoding Avg.6 Stable budget
+
+AR-interface diagnostic 
+
+Figure 3: AR-interface diagnostic under AR decod-ing. Orange labels report Avg.6 gains over matched native stable checkpoints.        
+
+> 100B 200B 300B 400B +50B 59 60 61 62 63 64 65
+> +0.99 +1.33 +2.60 +2.56 +1.67
+> decay
+> Continued-pretraining budget 6-bench average
+
+Matched budget gaps 
+
+> Native dLLM PCD
+
+Figure 4: Matched budget gaps. PCD stays above native dLLM across stable budgets and matched +50B decay. The decay rows show that both objectives can benefit from the downstream decay recipe; PCD decay remains +1.67 Avg.6 above the matched Native dLLM decay row. We still treat the 400B stable-stage pair as the cleanest objective ablation, because it isolates the stable-phase masking objective before the additional decay-stage recipe. Figure 3 adds a separate diagnostic: under AR decoding, the PCD stable checkpoints preserve the clean-prefix interface inherited from the WSD initialization. Figures 4 and 8 visualize the matched budget gaps and the final stable-stage domain averages. The Qwen-1.7B experiments in Figure 9 then test whether the same objective mechanism improves a smaller backbone and disentangle the core intra-sample signal from optional inter-sample mixing. Two observations are important for interpreting the table. First, the improvement is not concentrated in a single late checkpoint: PCD stays above the native baseline throughout the stable continued-pretraining sweep. Second, the 12-benchmark domain averages suggest that the effect is broad rather than tied to one benchmark family, covering QA, general reasoning, math, and code. 
+
+Post-training transfer. We also check whether the pretraining-stage gain survives the standard chat-SFT recipe. Because chat tuning changes the infilling interface, we exclude HumanEval-FIM from this comparison and report the remaining five instruction-style benchmarks in Figure 5. The PCD-derived SFT checkpoint reaches 67.39 Avg. at epoch 5, compared with 66.53 for the best native-SFT checkpoint. The gain is already visible at epoch 3, where PCD-derived SFT scores 67.13 Avg. versus 65.12 for the native-SFT baseline. The improvement is largest on BBH after applying the same answer-extraction rule to both runs, while GSM8K 7and MATH remain consistently high and MBPP stays comparable. We treat this transfer check as post-training evidence rather than as part of the main pretraining Avg.6 comparison.      
+
+> 1234564 65 66 67 68
+> +2.01 best 67.39
+> Chat-SFT epoch 5-bench Avg.  Native-SFT PCD-derived SFT
+
+Figure 5: Chat-SFT transfer on LLaDA2-Mini. HumanEval-FIM is excluded because chat tuning changes the infilling interface. With the main, decay, and chat-SFT checks in place, the remaining ablations focus less on absolute scale and more on whether the gain comes from the intended AR-prefix/MDM-suffix objective design. 
+
+4.4 Ablations 
+
+We organize the ablations around three questions: where PCD should be inserted in WSD, which mixing mechanism drives the gain, and which objective-design choices make the recipe work. 
+
+Stage placement. The stable-stage rows are the cleanest objective ablation because they change the masking objective before any additional decay recipe is applied. As shown in Figure 4, PCD improves over the matched native stable baseline at every completed budget, with the largest stable-stage gaps at 300B and 400B (+2.60 and +2.56 Avg.6). The matched +50B decay rows then test compatibility with the downstream WSD recipe: both objectives improve after decay, and PCD remains +1.67 Avg.6 above Native dLLM decay. We therefore treat PCD as a stable-phase intervention whose benefit survives the standard decay continuation. Throughout our experiments, PCD is inserted after AR-to-BD warmup, once the model has acquired a stable block-diffusion interface; it is not used as a shortcut that skips BD warmup. 
+
+Intra- vs. inter-sample mixing. Figure 6 uses Qwen-1.7B to separate the local AR-prefix/MDM-suffix structure from batch-level objective mixing. All runs start from the same AR-to-block-diffusion checkpoint and use the same Qwen data mixture, no-shift suffix MDM, 8k evaluation configuration, and 64-H20 training setup. The intra-sample-only row gives the strongest controlled Avg.6 gain (+4.86), while inter-sample-only mixing at ppcd = 0.50 is also competitive (+4.70) and mixed PCD remains close (+4.66) while retaining native diffusion examples. This pattern supports the central mechanism: same-sample clean-prefix suffix denoising is the primary alignment signal, while inter-sample mixing should be viewed as a conservative regularizer or distribution-control knob rather than a replacement for the intra-sample structure. The large-scale LLaDA2 runs use this conservative mixed recipe because it is WSD-compatible and preserves exposure to native diffusion examples; the Qwen sweep clarifies that the intra-sample component is the dominant driver. The finer ratio/probability sweep is deferred to the analysis in Section 5, where it clarifies how much prefix exposure is useful.      
+
+> Mixed Intra-only Inter-only 0123454.66 4.86 4.7 Avg.6 gain over native
+
+Figure 6: Qwen-1.7B mechanism ablation at 50B continued pretraining. Bars show Avg.6 gains over the same native baseline (34.28). 
+
+Objective design. PCD is not meant to turn the suffix into another next-token AR region; its suffix target is same-position MDM reconstruction under a clean prefix. This matches the no-shift inference interface used in our block-diffusion evaluation. Prefix exposure also matters. The Qwen prefix-range sweep analyzed below shows that sufficient boundary diversity is important, while the best range need not be the widest one. 8Together, these results suggest that clean prefixes help when paired with direct suffix denoising and enough sampled prefix diversity. 
+
+## 5 Analysis 
+
+How dominant is the clean prefix in evaluation prompts? The central mismatch claim assumes that prompt-continuation benchmarks expose the model to a long clean prefix before asking it to generate or denoise the answer. We make this assumption measurable by rendering the public benchmarks in the main suite with the same AntOC/OpenCompass templates used in our evaluations and tokenizing the rendered prompt and gold completion with a fixed Qwen tokenizer. This diagnostic uses the tokenizer only to measure prompt/target length; the model scores in Table 1 still come from the normal evaluation harness. For the five public main-suite benchmarks whose raw examples are available in our evaluation bundle, the aggregate per-example prefix ratio is 96.8%; the median rendered prompt contains 754 tokens, while the median gold completion contains only 12 tokens. KorBench is omitted from this diagnostic because its raw prompt set is not distributed with that bundle. Under a native random-corruption objective with an illustrative corruption rate r = 0.3, the median prompt would contain 226 expected corrupted prefix tokens, and the probability that the entire prefix survives clean is effectively zero at these lengths. Figure 7 visualizes this distribution and the corresponding number of prefix tokens that native random corruption would perturb. This does not by itself prove that PCD must improve accuracy, but it validates the premise that the benchmark interface is strongly clean-prefix-conditioned while native stable denoising can train on corrupted versions of the same prefix. HumanEval-FIM MBPP GSM8K MATH BBH 200 400 600 800 1000 1200 1400 Prompt prefix tokens 
+
+> Evaluation prompts are long clean prefixes
+> HumanEval-FIM MBPP GSM8K MATH BBH 0100 200 300 400 500 Expected corrupted prefix tokens at  r = 0.3
+> 76 201 437 216 257
+> Native corruption hits many prompt tokens
+
+Figure 7: Benchmark prompt-prefix statistics. At the illustrative rate r = 0.3, native random corruption would perturb many prompt tokens that are clean at evaluation time.    
+
+> QA General Math Code 40 45 50 55
+> +2.62 +2.28 +2.36 +2.65
+> score
+
+12-benchmark domain averages 
+
+Figure 8: 12-benchmark domain averages at the final stable stage. Orange labels report PCD gains.      
+
+> 00.25 0.5 0.75 102468+7.0 +4.7
+> Ratio / probability Avg.6 gain
+
+Qwen mechanism sweep    
+
+> Intra [0, r]
+> Inter p
+
+Figure 9: Qwen-1.7B ratio/probability sweep at 50B continued pretraining. 
+
+What is the controlled comparison? We analyze PCD from several angles. The main question is not whether one diffusion checkpoint surpasses larger AR systems in absolute score, but whether a diffusion model trained with a clean-prefix stable objective improves over the same model family trained with the native dLLM stable objective. For this reason, the matched LLaDA2-Mini rows carry the central claim and the external AR/dLLM rows serve only as scale references. Under this controlled comparison, PCD improves at every matched budget and the gain grows from roughly one point at 100B to more than two and a half points at 300B–400B. The AR-decoding diagnostic in Figure 3 shows that PCD remains ahead of the native stable checkpoints across matched stable budgets. This check is not the main comparison because PCD is designed 9for block-diffusion inference, but it is a useful guardrail: relative to native stable training, the hybrid prefix objective retains a stronger AR-decoding interface across the matched budgets. 
+
+Which benchmarks benefit most? Figure 8 groups the full 12-benchmark stable-stage results into four domains. At the matched 400B budget, PCD improves the native baseline on all 12 benchmarks, yielding a +2.48-point gain in their overall average. MBPP also improves at 400B, although it is less consistent across earlier budgets. This pattern suggests that clean-prefix conditioning is most useful for prompt-continuation, reasoning, and knowledge use, while code-generation metrics remain sensitive to execution timeout, formatting, and benchmark-specific evaluator behavior. 
+
+How much prefix conditioning is needed? Figure 9 varies prefix ratio and inter-sample mixing probability. Very small prefix ratios may fail to provide enough clean-prefix context. Very large prefix ratios may reduce the amount of diffusion denoising signal. The Qwen sweep therefore peaks at the intermediate [0, 0.75 ]
+
+range rather than at the full range. We do not claim a universal optimal prefix range; the consistent lesson is that sufficient prefix diversity matters, while the best range depends on backbone, budget, and how much suffix-denoising signal remains. 
+
+What do the Qwen ablations add? The Qwen-1.7B ablations are smaller and shorter than the LLaDA2-Mini scaling runs, but they are more diagnostic. They show that PCD remains beneficial when the backbone and data mixture change, and they separate two mechanisms that are coupled in the main recipe. Figure 6 shows that the intra-sample-only row is strongest on Avg.6, supporting the claim that local AR-prefix/MDM-suffix alignment is the main driver. Mixed PCD is not the peak Avg.6 configuration in this small sweep, but it remains close while retaining native diffusion examples; we therefore interpret it as a conservative WSD-compatible recipe rather than as the sole source of the mechanism. The broader sweep in Figure 9 further suggests that moderate inter-sample mixing can be competitive, while the ppcd = 1.00 all-PCD endpoint weakens the gain once native diffusion exposure is removed. 
+
+How does PCD interact with WSD decay? The stable-stage results show that PCD improves the check-point before decay. The matched +50B decay rows show that the advantage persists after the same decay continuation: PCD decay remains +1.67 Avg.6 above Native dLLM decay. We therefore present decay as a compatible recipe extension while keeping the stable-stage comparison as the cleanest explanation of the objective gain. 
+
+## 6 Conclusion 
+
+This work frames prompt continuation for diffusion language models as a training-interface problem. Native stable-phase denoising can corrupt the same prefix that is kept clean at evaluation time, so the model is not always pretrained under the context structure it later relies on. Prefix-Conditioned Diffusion addresses this mismatch with a local pretraining objective: it keeps the prefix clean and autoregressively supervised, applies no-shift MDM to the unknown suffix, and optionally mixes such examples with native diffusion examples. The result is not a new decoder or a separate inference mode, but a change in which tokens are trusted as context during continued pretraining. The controlled experiments support this interpretation. On matched LLaDA2-Mini continued-pretraining runs, PCD improves over the same-family native dLLM baseline at every completed stable budget and remains ahead after the matched decay continuation. The 12-benchmark view shows that the effect is not confined to a single metric family, while Qwen-1.7B ablations show that intra-sample clean-prefix suffix denoising is the strongest driver and that inter-sample objective mixing is useful when applied at moderate probability. These results suggest that diffusion language models can retain their denoising formulation while recovering part of the clean-prefix behavior that makes AR models effective for continuation. More broadly, the pretraining context distribution should be treated as a first-class design choice for block-diffusion language models, especially when the target use case is prompt-conditioned generation. 
+
+## Limitations 
+
+Our controlled results focus on continued-pretraining checkpoints and no-shift base-model evaluation. The +50B decay-stage results provide a matched continuation check, but longer decay continuations are currently available only for PCD. Most large-scale rows are single training runs because 100B–400B continued-pretraining budgets are expensive; future work should test seed sensitivity at smaller scale and confirm the strongest Qwen ablation settings at larger scale. Execution-based coding benchmarks and logic benchmarks can also be sensitive to timeout settings, prompt format, and answer extraction, so aggregate comparisons 10 should be interpreted together with the benchmark-wise trends reported in the analysis. The chat-SFT transfer check is limited to matched LLaDA2-Mini SFT runs and should not be read as a broad comparison against independently tuned instruction models. 
+
+## References 
+
+Marianne Arriola, Aaron Gokaslan, Justin T. Chiu, Zhihan Yang, Zhixuan Qi, Jiaqi Han, Subham Sekhar Sahoo, and Volodymyr Kuleshov. Block diffusion: Interpolating between autoregressive and diffusion language models. In International Conference on Learning Representations , 2025. URL https://arxiv.org/ abs/2503.09573 .Jacob Austin, Daniel D. Johnson, Jonathan Ho, Daniel Tarlow, and Rianne van den Berg. Structured denoising diffusion models in discrete state-spaces. In Advances in Neural Information Processing Systems , 2021. URL 
+
+https://proceedings.neurips.cc/paper/2021/hash/958c530554f78bcd8e97125b70e6973d-Abstract. html .Tiwei Bie, Maosong Cao, Kun Chen, Lun Du, Mingliang Gong, Zhuochen Gong, Yanmei Gu, Jiaqi Hu, Zenan Huang, Zhenzhong Lan, et al. LLaDA2.0: Scaling up diffusion language models to 100b. arXiv preprint arXiv:2512.15745 , 2025. URL https://arxiv.org/abs/2512.15745 .Tom B. Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, et al. Language models are few-shot learners. In Advances in Neural Information Processing Systems , 2020. URL https://proceedings.neurips.cc/paper/ 2020/hash/1457c0d6bfcb4967418bfb8ac142f64a-Abstract.html .Huiwen Chang, Han Zhang, Lu Jiang, Ce Liu, and William T. Freeman. MaskGIT: Masked generative image transformer. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,pp. 11315–11325, 2022. URL https://openaccess.thecvf.com/content/CVPR2022/html/Chang_MaskGIT_ Masked_Generative_Image_Transformer_CVPR_2022_paper.html .Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. BERT: Pre-training of deep bidirectional transformers for language understanding. In Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long and Short Papers) , pp. 4171–4186. Association for Computational Linguistics, 2019. doi: 10.18653/v1/N19-1423. URL 
+
+https://aclanthology.org/N19-1423/ .Yao Fu, Daniel Fathi, Gantavya Bhatt, Peiyuan Zhang, Yang Su, Senbin Zhu, Xianren Zeng, Hang Wang, Chao Xu, Shigeki Saito, Juan Carlos Niebles, et al. Nemotron-Labs-Diffusion: A tri-mode language model unifying autoregressive, diffusion, and self-speculation decod-ing. Technical report, NVIDIA, 2026. URL https://research.nvidia.com/publication/2026-05_ nemotron-labs-diffusion-tri-mode-language-model-unifying-autoregressive .Yoshinari Fujinuma and Keisuke Sakaguchi. Unlocking prompt infilling capability for diffusion language models, 2026. URL https://arxiv.org/abs/2604.03677 .Marjan Ghazvininejad, Omer Levy, Yinhan Liu, and Luke Zettlemoyer. Mask-predict: Parallel decoding of conditional masked language models. In Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing , pp. 6112–6121. Association for Computational Linguistics, 2019. doi: 10.18653/v1/D19-1633. URL https: //aclanthology.org/D19-1633/ .Shansan Gong, Mukai Li, Jiangtao Feng, Zhiyong Wu, and Lingpeng Kong. DiffuSeq: Sequence to sequence text generation with diffusion models. In International Conference on Learning Representations , 2023. URL 
+
+https://openreview.net/forum?id=jQj-_rLVXsj .Jiatao Gu, James Bradbury, Caiming Xiong, Victor O. K. Li, and Richard Socher. Non-autoregressive neural machine translation. In International Conference on Learning Representations , 2018. URL https: //openreview.net/forum?id=B1l8BtlCb .Jiatao Gu, Changhan Wang, and Junbo Zhao. Levenshtein transformer. In Advances in Neural Information Processing Systems , 2019. URL https://papers.nips.cc/paper/9297-levenshtein-transformer .Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilistic models. In Advances in 
+
+11 Neural Information Processing Systems , 2020. URL https://proceedings.neurips.cc/paper/2020/hash/ 4c5bcfec8584af0d967f1ab10179ca4b-Abstract.html .Emiel Hoogeboom, Didrik Nielsen, Priyank Jaini, Patrick Forré, and Max Welling. Argmax flows and multinomial diffusion: Learning categorical distributions. In Advances in Neu-ral Information Processing Systems , 2021. URL https://papers.neurips.cc/paper/2021/hash/ 67d96d458abdef21792e6d8e590244e7-Abstract.html .Jason Lee, Elman Mansimov, and Kyunghyun Cho. Deterministic non-autoregressive neural sequence modeling by iterative refinement. In Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing , pp. 1173–1182. Association for Computational Linguistics, 2018. doi: 10.18653/v1/ D18-1149. URL https://aclanthology.org/D18-1149/ .Xiang Lisa Li, John Thickstun, Ishaan Gulrajani, Percy Liang, and Tatsunori B. Hashimoto. Diffusion-LM improves controllable text generation. In Advances in Neural Information Pro-cessing Systems , 2022. URL https://proceedings.neurips.cc/paper_files/paper/2022/hash/ 1be5bc25d50895ee656b8c2d9eb89d6a-Abstract-Conference.html .Aaron Lou, Chenlin Meng, and Stefano Ermon. Discrete diffusion modeling by estimating the ratios of the data distribution. In Proceedings of the 41st International Conference on Machine Learning , 2024. URL 
+
+https://arxiv.org/abs/2310.16834 .Shen Nie, Fengqi Zhu, Zebin You, Xiaolu Zhang, Jingyang Ou, Jun Hu, Jun Zhou, Yankai Lin, Ji-Rong Wen, and Chongxuan Li. Large language diffusion models. arXiv preprint arXiv:2502.09992 , 2025. URL 
+
+https://arxiv.org/abs/2502.09992 .Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang, Michael Matena, Yanqi Zhou, Wei Li, and Peter J. Liu. Exploring the limits of transfer learning with a unified text-to-text transformer. 
+
+Journal of Machine Learning Research , 21(140):1–67, 2020. URL https://jmlr.org/papers/v21/20-074.html .Subham Sekhar Sahoo, Marianne Arriola, Yair Schiff, Aaron Gokaslan, Edgar Marroquin, Justin T. Chiu, Alexander Rush, and Volodymyr Kuleshov. Simple and effective masked diffusion language models. In 
+
+Advances in Neural Information Processing Systems , 2024. URL https://arxiv.org/abs/2406.07524 .Jascha Sohl-Dickstein, Eric Weiss, Niru Maheswaranathan, and Surya Ganguli. Deep unsupervised learning using nonequilibrium thermodynamics. In Proceedings of the 32nd International Conference on Machine Learning , pp. 2256–2265. PMLR, 2015. URL https://proceedings.mlr.press/v37/sohl-dickstein15.html .Yang Song, Jascha Sohl-Dickstein, Diederik P. Kingma, Abhishek Kumar, Stefano Ermon, and Ben Poole. Score-based generative modeling through stochastic differential equations. In International Conference on Learning Representations , 2021. URL https://openreview.net/forum?id=PxTIG12RRHS .Mitchell Stern, William Chan, Jamie Kiros, and Jakob Uszkoreit. Insertion transformer: Flexible sequence generation via insertion operations. In Proceedings of the 36th International Conference on Machine Learning ,pp. 5976–5985. PMLR, 2019. URL https://proceedings.mlr.press/v97/stern19a.html .Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Lukasz Kaiser, and Illia Polosukhin. Attention is all you need. In Advances in Neu-ral Information Processing Systems , 2017. URL https://proceedings.neurips.cc/paper/2017/hash/ 3f5ee243547dee91fbd053c1c4a845aa-Abstract.html .Kaiyue Wen, Zhiyuan Li, Jason Wang, David Hall, Percy Liang, and Tengyu Ma. Understanding warmup-stable-decay learning rates: A river valley loss landscape view. In International Conference on Learning Representations , 2025. URL https://openreview.net/forum?id=m51BgoqvbP .Jiacheng Ye, Zhihui Xie, Lin Zheng, Jiahui Gao, Zirui Wu, Xin Jiang, Zhenguo Li, and Lingpeng Kong. Dream 7b: Diffusion large language models. arXiv preprint arXiv:2508.15487 , 2025. URL https://arxiv.org/abs/ 2508.15487 .Fengqi Zhu, Xinyue Wen, and Yankai Lin. LLaDA-MoE: Efficient mixture-of-experts diffusion language models. arXiv preprint arXiv:2509.24389 , 2025. URL https://arxiv.org/abs/2509.24389 .12

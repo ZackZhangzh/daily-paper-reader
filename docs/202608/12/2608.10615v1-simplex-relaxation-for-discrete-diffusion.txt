@@ -1,0 +1,1555 @@
+Title: Simplex Relaxation for Discrete Diffusion
+
+URL Source: https://arxiv.org/pdf/2608.10615v1
+
+Published Time: Wed, 12 Aug 2026 00:45:43 GMT
+
+Number of Pages: 29
+
+Markdown Content:
+# Simplex Relaxation for Discrete Diffusion 
+
+Jinya Sakurai 1 2 4 ∗ Patrick Pynadath 3 Satoshi Hayakawa 2
+
+Jaehong Yoon 1 Xulei Yang 4 Nancy F. Chen 4,5 Xun Xu 4,5 
+
+> 1
+
+NTU Singapore 2The University of Tokyo 
+
+> 3
+
+Purdue University 4Institute for Advanced Intelligence and Computing (IAIC), A*STAR 
+
+> 5
+
+Centre for Frontier AI Research (CFAR), A*STAR 
+
+Abstract 
+
+Discrete diffusion models for categorical generation are defined by a corruption kernel, which determines the intermediate state space and the associated reverse prediction problem. We study uniform discrete diffusion and ask whether its training objective and reverse transitions can be enriched without changing the un-derlying categorical corruption process. We introduce Simplax, an exact Dirichlet– categorical augmentation that couples each corrupted categorical state with an auxiliary simplex-valued variable while preserving the original uniform diffu-sion process as its categorical marginal. This augmentation yields a tractable Rao–Blackwellized reverse-bridge objective and a corresponding stochastic re-verse sampler, while retaining the corrupted categorical state as the denoiser input. Empirically, Simplax improves the generative perplexity–entropy tradeoff on un-conditional OpenWebText generation. On Sudoku, a model trained exclusively on 
+
+30 -clue puzzles achieves the highest accuracy among the compared methods across all evaluated clue densities, including the minimum uniquely solvable 17 -clue regime, and also achieves the highest validity in unconditional generation. 
+
+1 Introduction 
+
+Discrete diffusion models have emerged as a promising framework for generative modeling over categorical data, including text, biological sequences, and other symbolic domains [Hoogeboom et al., 2021, Austin et al., 2021, Campbell et al., 2022, Lou et al., 2024, Zhang et al., 2025]. Compared with autoregressive generation, they offer a conceptually different route to parallel prediction by learning to invert a noising process on full categorical states. A central design choice in this framework is the corruption kernel. This choice determines the intermediate state space and the semantics of reverse updates, and shapes the form of the training objective used to approximate the reverse process [Austin et al., 2021, Campbell et al., 2022, Lou et al., 2024]. Existing discrete diffusion models instantiate this design choice in different ways. Masked diffusion corrupts tokens toward a distinguished mask state, yielding intermediate sequences that can be interpreted as partially observed data [Austin et al., 2021, Sahoo et al., 2024, Shi et al., 2024, Ou et al., 2025, Zheng et al., 2025]. Uniform diffusion instead replaces tokens toward the uniform distribution over the original categorical alphabet, treating all categories symmetrically without introducing a distinguished absorbing state [Austin et al., 2021, Schiff et al., 2025, Sahoo et al., 2025, Deschenaux et al., 2026]. Recent work has studied uniform diffusion in connection with guidance, repeated token revision, few-step generation, self-correction, and scaling [Schiff et al., 2025, Sahoo et al., 2025, von Rütte et al., 2025, 2026, Sahoo et al., 2026]. 
+
+> ∗This work was done while the author was a visiting student at A*STAR. Preprint. arXiv:2608.10615v1 [cs.CL] 11 Aug 2026
+
+Figure 1: Reverse-bridge matching, illustrated for K = 3 : one-hot states are vertices of ∆K−1 and 
+
+wt is an interior point. (a) The corrupted state zt is both the denoiser input and the sole bridge anchor, so a single bridge is matched per sample. (b) Simplax samples (wt, zt) jointly; zt remains the denoiser input, while extra draws ezt ∼ Cat( wt) anchor all K bridges, which are matched at once and marginalized exactly to give (15). These developments leave open a methodological question for uniform discrete diffusion: can one enrich its training objectives and samplers while keeping the categorical corruption process unchanged? In standard uniform diffusion, the reverse update between two noise levels is expressed directly through sampled categorical states. This preserves the discrete generative process, but it also means that both training and sampling are formulated through categorical intermediate states. We ask whether an auxiliary probabilistic structure can be introduced around these transitions so that tractable objectives and samplers can be derived without changing the forward process itself. In this work, we consider a probabilistic augmentation of uniform discrete diffusion that leaves its categorical corruption process unchanged while introducing an auxiliary simplex-valued state. We introduce Simplax, an exact Dirichlet–categorical augmentation in which each corrupted categorical state zt is coupled to an auxiliary simplex variable wt through a shifted Dirichlet conditional. The resulting augmented hierarchy preserves the original uniform diffusion process as its categorical marginal and admits the exact decoder 
+
+q(zt | wt) = Cat( zt; wt).
+
+Thus, the simplex variable is not introduced as a replacement for the categorical state, but as an auxiliary random variable that is probabilistically coupled to it and can be used to construct the training objective and reverse transition. A direct construction of the reverse objective in the augmented space is complicated by the fact that the induced simplex reverse bridges are mixtures of shifted Dirichlet components, whose KL divergence is generally intractable. We therefore derive a categorical reverse-bridge surrogate by averaging the standard discrete reverse KL divergence over an auxiliary categorical decode from wt.This expectation admits an analytic Rao–Blackwellized form. We further derive a stochastic ancestral sampler from the same augmented hierarchy, using the denoiser prediction together with the auxiliary simplex state to parameterize the reverse update. We evaluate Simplax on unconditional text generation with OpenWebText and constrained categorical generation with Sudoku. On OpenWebText, Simplax achieves favorable generative perplexity–entropy tradeoffs across a wide range of inference budgets, outperforming the compared methods at most reported operating points. On Sudoku, all models are trained exclusively on puzzles with 30 clues and evaluated in-distribution, under transfer to both easier and harder clue densities, and in unconditional 2generation. Simplax achieves the highest performance among the compared methods across all evaluated Sudoku settings. Our main contributions are as follows. First, we introduce an exact Dirichlet–categorical augmentation of uniform discrete diffusion that preserves the original categorical process as a marginal. Second, we derive a tractable categorical reverse-bridge surrogate whose auxiliary categorical expectation admits a Rao–Blackwellized closed form, together with a stochastic ancestral sampler derived from the same augmented hierarchy. Third, we empirically demonstrate that the resulting framework improves generation across both open-ended text modeling and constrained categorical generation, including broad inference-budget regimes and distribution shifts in Sudoku. 
+
+2 Preliminaries 
+
+Notation. Let V = {x ∈ { 0, 1}K : PKi=1 xi = 1 } denote the set of one-hot vectors over K
+
+categories, and let ∆K−1 denote the probability simplex over K categories. We represent scalar discrete random variables taking K values as one-hot column vectors in V. We write Cat( ·; π) for the categorical distribution with class probabilities π ∈ ∆K−1. Results involving Dirichlet densities assume πk > 0 for every category k; the uniform base distribution used in our experiments satisfies this condition. We write Dir( ·; α) for the Dirichlet distribution with concentration vector α ∈ RK>0.We use 1 ∈ RK for the all-ones vector, ⟨a, b⟩ for the inner product, a ⊙ b for the Hadamard product, and a ⊘ b for elementwise division. For sequences of length L, we write x1: L ∈ V L.
+
+2.1 Dirichlet distribution 
+
+The Dirichlet distribution is a distribution over the probability simplex. Its mean is given by the normalized concentration vector, while the sum of the concentration parameters controls how concen-trated the distribution is around its mean. In particular, for p ∈ ∆K−1 and η > 0, Dir( ·; ηp) denotes the Dirichlet distribution centered at p, with η controlling its concentration. 
+
+2.2 Discrete diffusion 
+
+We consider a discrete diffusion process with prior π ∈ ∆K−1 and noise schedule αt ∈ [0 , 1] .Following the standard parameterization, the noisy categorical state at time t is distributed as 
+
+q(zt | x) = Cat( zt; pt(x)) , pt(x) := αtx + (1 − αt)π. (1) We use a schedule with α0 = 1 , α1 = 0 , and αt < 1 for every t > 0. Hence pt(x) is strictly positive for t > 0.For two times s < t , the forward transition can be written as 
+
+q(zt | zs) = Cat  zt; αt|szs + (1 − αt|s)π , αt|s := αt
+
+αs
+
+. (2) The corresponding reverse posterior has the usual closed form 
+
+q(zs | zt, x) = Cat  zs; rs|t(x, zt) , (3) where 
+
+rs|t(x, zt) := 
+
+αt|szt + (1 − αt|s) ⟨zt, π⟩ 1 ⊙ ps(x)
+
+⟨zt, pt(x)⟩ . (4) Standard discrete diffusion training minimizes the categorical reverse KL divergence 
+
+Lzs|zt (zt, ˆxθ , x) = DKL [q(zs | zt, x) ∥ q(zs | zt, ˆxθ )] . (5) where ˆxθ = fθ (zt, t ) ∈ ∆K−1 is the model prediction of the clean-token distribution. We use the shorthand pt := pt(x), ˆpt := pt(ˆ xθ ).33 Method 
+
+We construct Simplax by augmenting the uniform discrete diffusion process with an auxiliary simplex-valued variable. The construction leaves the categorical corruption process unchanged, but introduces an exact Dirichlet–categorical hierarchy around each corrupted state. We first define this hierarchy and derive its reverse bridge identities. We then use these identities to obtain a tractable Rao–Blackwellized training objective and a sampler induced by the same bridge structure. 
+
+3.1 Simplex relaxation 
+
+Building upon (2), we consider the following joint factorization for two times s < t :
+
+q(x, zs, zt, ws, wt) = q(x) q(zs | x) q(ws | zs, x) q(zt | zs) q(wt | zt, x). (6) Figure 2 illustrates the graphical model implied by this factorization. 
+
+Figure 2: Graphical model corresponding to the factorization in (6). For t ∈ (0 , 1] , we introduce a simplex-valued variable 
+
+wt ∈ ∆K−1 through 
+
+q(wt | zt, x) = Dir( wt; ηtpt + zt) , (7) where ηt > 0 is a concentration parameter. The mean of this Dirichlet distribution is centered at the diffusion-time categorical marginal, while the additive one-hot count zt anchors the relaxed state to the sampled discrete token. This construction yields an exact Dirichlet–categorical hierarchy. 
+
+Proposition 1. Assume t > 0. The Dirichlet–categorical hierarchy satisfies the following properties; statements involving ws additionally require s > 0.1. The marginal distribution of the relaxed state is 
+
+q(wt | x) = Dir( wt; ηtpt) . (8) 
+
+2. Given wt, the variables x and zt are conditionally independent, and the discrete state can be recovered from the relaxed state via 
+
+q(zt | wt, x) = q(zt | wt) = Cat( zt; wt) . (9) 
+
+3. For s < t , the reverse conditional posterior of zs given wt and x is categorical: 
+
+q(zs | wt, x) = Cat  zs; ρs|t(x, wt) , (10) 
+
+where 
+
+ρs|t(x, wt) := ps ⊙ αt|s
+
+ wt ⊘ pt
+
+ + (1 − αt|s) ⟨wt, π ⊘ pt⟩ 1 . (11) 
+
+4. For 0 < s < t , the reverse conditional posterior of ws given wt and x is a Dirichlet mixture: 
+
+q(ws | wt, x) = 
+
+> K
+
+X
+
+> k=1
+
+ρs|t,k (x, wt) Dir( ws; ηsps + ek) . (12) See Section A for the proof. These identities show that wt is not an ad hoc surrogate. It is an exact auxiliary variable whose marginal remains native to the simplex and whose decoder back to zt is simply categorical sampling from wt.
+
+3.2 Training objective 
+
+A natural starting point is to match the simplex bridge directly: 
+
+Lws|wt (wt, ˆxθ , x; s, t ) = DKL [q(ws | wt, x) ∥ q(ws | wt, ˆxθ )] . (13) This is the most direct objective associated with the relaxed bridge, but it is generally intractable because q(ws | wt, x) is a Dirichlet mixture, as shown in (12). 4At training time, we sample the augmented noisy state as 
+
+wt ∼ q(wt | x), zt ∼ q(zt | wt) = Cat( zt; wt),
+
+and predict the clean-token distribution from the categorical state: 
+
+bxθ = fθ (zt, t ).
+
+To define the relaxed discrete bridge objective, let ezt denote a second categorical variable satisfying 
+
+ezt ∼ q(ezt | wt) = Cat( ezt; wt),
+
+conditionally independently of the network input zt given wt. We optimize 
+
+¯Lzs|zt,w t (wt, zt, x; s, t ) := Eq(ezt|wt)
+
+h
+
+KL  q(zs | ezt, x) ∥ q(zs | ezt, bxθ )i
+
+, (14) where bxθ = fθ (zt, t ). This objective averages the standard discrete reverse KL divergence over an auxiliary decoder sample from wt, while retaining zt as the denoiser input (Figure 1). 
+
+Rao–Blackwellized form. The expectation over the auxiliary decoder sample ezt in (14) can be marginalized exactly. Equivalently, the resulting expression is the Rao–Blackwellized form of the Monte Carlo estimator obtained by first sampling ezt ∼ q(ezt | wt) and then evaluating the discrete reverse KL. The independently sampled zt remains the denoiser input and is not marginalized by this step. 
+
+Proposition 2. The relaxed discrete bridge objective in (14) admits the exact closed form 
+
+¯Lzs|zt,w t (wt, ˆxθ , x; s, t ) = ⟨wt, log ˆ pt − log pt⟩ + ρs|t(x, wt), log ps − log ˆ ps . (15) The proof is given in Section B. Equation (15) is fully tractable and eliminates sampling noise associated with the auxiliary decoder sample ezt. Operationally, it shows that the reverse-bridge loss depends on wt only through two quantities: the decoded current-time marginal term ⟨wt, log ˆ pt⟩
+
+and the induced reverse posterior ρs|t(x, wt). The network prediction itself remains conditioned on the separately sampled categorical input zt.
+
+Continuous-time limit. The closed form in (15) yields a non-degenerate infinitesimal limit. Let 
+
+s = t − ∆ with ∆ ↓ 0.
+
+Proposition 3. Up to θ-independent additive terms, the relaxed discrete bridge objective satisfies 
+
+¯Lzs|zt,w t (wt, ˆxθ , x; t − ∆, t ) = ∆ ℓct (wt, ˆxθ , x, t ) + o(∆) , (16) 
+
+where 
+
+ℓct (wt, ˆxθ , x, t ) = λ(t)
+
+"
+
+⟨wt, π ⊘ ˆpt⟩ − ⟨ wt, π ⊘ pt⟩ ⟨ pt, log ˆ pt⟩ + ⟨π ⊙ (wt ⊘ pt), log ˆ pt⟩
+
+#
+
+.
+
+(17) 
+
+and λ(t) := − ddt log α(t). Consequently, the corresponding continuous-time objective is 
+
+Lct =
+
+Z 10
+
+Eq(x)
+
+Eq(wt|x)[ℓct (wt, ˆxθ , x, t )]  dt. (18) The proof is deferred to Section C.1. This proposition identifies (18) as the continuous-time counter-part of (14). The structure of (14) and (18) is closely related to UDLM [Schiff et al., 2025]. UDLM derives a continuous-time reverse-KL objective directly from the discrete corrupted state (5). Our construction introduces the exact auxiliary variable wt, averages the same reverse-KL bridge over an auxiliary draw ezt ∼ q(ezt | wt) = Cat( wt), and then takes the infinitesimal limit. In this sense, (18) can be understood as a simplex-relaxed continuous-time analogue of the UDLM objective. 53.3 Sampling 
+
+At inference time, we run the reverse process on a grid 1 = tN > t N −1 > · · · > t 0 = 0 . For a denoiser conditioned on zt, the Dirichlet–categorical hierarchy yields a stochastic sampler that maintains the augmented state (zt, wt) at positive times. Since the endpoint marginal is q(w1) = Dir( w1; η1π) and the exact decoder is q(z1 | w1) = Cat( z1; w1), generation starts from 
+
+wtN ∼ Dir( ηtN π), ztN ∼ Cat( wtN ). (19) Given adjacent times s = tn−1 < t = tn and the current pair (zt, wt), the denoiser predicts 
+
+ˆxθ = fθ (zt, t ), (20) which induces the bridge marginals ˆps and ˆpt and the reverse categorical posterior ρs|t(ˆ xθ , wt). Our default sampler is the stochastic ancestral sampler implied by the Dirichlet–categorical hierarchy. Each reverse step draws 
+
+zs ∼ Cat  ρs|t(ˆ xθ , wt) , ws ∼ Dir( ηs ˆps + zs) . (21) The sampled zs is used as the network input at the next reverse step, while ws carries the auxiliary bridge information required by the next reverse posterior. Repeating (21) from tN = 1 to t0 = 0 
+
+yields the final categorical sample z0. The categorical input also has a computational advantage. In a standard token model, zt is stored as an integer token index and its embedding is obtained by lookup. Feeding the dense simplex vector wt instead requires computing wT 
+
+> t
+
+E for the vocabulary embedding matrix E at every sequence position, adding a vocabulary-sized dense matrix multiplication and the associated memory traffic. The main experiments therefore use the zt-input formulation above. 
+
+4 Experiments 
+
+We evaluate Simplax on unconditional text generation with OpenWebText [Gokaslan and Cohen, 2019] and constrained categorical generation with Sudoku [Lee et al., 2026, Deschenaux and Gulcehre, 2026]. We first report compact design diagnostics on OpenWebText and then present the main comparisons. 
+
+4.1 Experimental setup OpenWebText. We tokenize OpenWebText with the GPT-2 BPE tokenizer [Radford et al., 2019], giving |V| = 50 ,257 , and use sequence length L = 1 , 024 . All methods use the 179M -parameter diffusion transformer of Sahoo et al. [2024]: 12 transformer blocks, rotary position embeddings [Su et al., 2024], AdaLN time conditioning [Peebles and Xie, 2023], and a softmax output head. Models are trained with Adam [Kingma and Ba, 2014], learning rate 3 × 10 −4, batch size 512 , and a total budget of 1M iterations. Unless stated otherwise, Simplax uses zt as the denoiser input and a constant concentration ηt ≡ 0.01 .
+
+Sudoku. We build on the Sudoku benchmark of Deschenaux and Gulcehre [2026], while using a cross-clue generalization protocol in which all models are trained only on puzzles with 30 clues. The dataset contains 48 ,000 training and 2,000 validation puzzles, each constructed to have a unique solution. A Sudoku instance is represented as a 180 -token sequence consisting of a 91 -token puzzle prefix and an 89 -token solution. The puzzle prefix contains a BOS token, all 81 cells with unobserved cells represented by a blank token, eight row separators, and a second BOS token. The solution contains the 81 completed cells and eight row separators. The training loss is applied only to the solution tokens. All methods use Transformer backbones with eight blocks, hidden dimension 512 , eight attention heads, and dropout 0.1. Their parameter counts range from 25 .21 M to 28 .59 M; the principal differences are the training objective, time conditioning, and inference procedure. Models are trained for 20 ,000 steps using Adam with learning rate 3 × 10 −4 and global batch size 256 . Further architectural and optimization details are provided in Section E.1. At inference time, the same 30 -clue-trained checkpoint is evaluated with 40 , 35 , 30 , 25 , 20 , and 17 
+
+clues. The 30 -clue setting matches the training distribution, while the remaining settings evaluate transfer across clue densities. The 40 - and 35 -clue settings provide more conditioning information 65.30 5.35 5.40 5.45 5.50 5.55 5.60 80 100 120 140 160 180                     
+
+> Gen. PPL
+> (a)
+> 5.30 5.35 5.40 5.45 5.50 5.55 5.60 80 100 120 140 160 180 (b)
+> 5.30 5.35 5.40 5.45 5.50 5.55 5.60 80 100 120 140 160 180 200 (c)
+> 5.30 5.35 5.40 5.45 5.50 5.55 5.60
+
+Gen. ENT       
+
+> 60 70 80 90 100 110 120
+> Gen. PPL
+> (d)
+> 5.30 5.35 5.40 5.45 5.50 5.55 5.60
+
+Gen. ENT        
+
+> 50 60 70 80 90 100 110 120 (e)
+> 5.30 5.35 5.40 5.45 5.50 5.55 5.60
+
+Gen. ENT       
+
+> 40 50 60 70 80 90 100 (f)
+> NFE = 16 NFE = 128
+> wt, no SC
+> wt, with SC
+> ztinput, wtloss Simplax scratch (1M) UDLM (800k) →Simplax (200k) UDLM (1M)
+
+Figure 3: Design diagnostics on OpenWebText. The rows show temperature-swept generation frontiers at NFE = 16 and 128 . The columns compare self-conditioning ( a, d), denoiser input wt
+
+versus zt (b, e), and initialization from a pretrained UDLM checkpoint under a matched 1M -iteration budget ( c, f). The dotted line marks the OpenWebText entropy, 5.44 . Gen. PPL is evaluated with GPT-2 Large; lower is better at comparable Gen. ENT. than observed during training, whereas the 25 -, 20 -, and 17 -clue settings provide progressively less conditioning information. In particular, 17 is the minimum number of clues for which a standard 
+
+9 × 9 Sudoku puzzle can admit a unique solution [McGuire et al., 2014, Lin et al., 2013], making the 17 -clue setting the most sparsely conditioned regime in our evaluation. We additionally evaluate generation from an all-blank puzzle prefix, which contains no clue information and is treated as unconditional Sudoku generation. 
+
+Metrics. For OpenWebText, we draw 1, 024 sequences and report generative unigram entropy and generative perplexity under GPT-2 Large, GPT-2 XL [Radford et al., 2019], and Llama-2 7B [Touvron et al., 2023]. The OpenWebText unigram entropy is 5.44 nats. For conditional Sudoku, we report solving accuracy. For unconditional Sudoku, we report validity, the fraction of generated boards satisfying all Sudoku constraints. 
+
+4.2 Design diagnostics on OpenWebText 
+
+The input and self-conditioning diagnostics use 50k -step runs with the same tokenizer, sequence length, and backbone as the main experiment. The initialization comparison matches the total training budget at 1M iterations. These experiments characterize individual design choices rather than provide the main method comparison. 
+
+Self-conditioning. For the wt-input diagnostic, the preferred setting depends on the inference budget: omitting self-conditioning is better near the data-entropy operating point at NFE = 16 ,whereas using it is better at NFE = 128 Figure 3( a, d). The experiment therefore does not support a budget-independent conclusion. 
+
+Denoiser input. The bridge and objective do not require the auxiliary simplex state itself to be the denoiser input. With the same wt-based objective, the zt-input model attains lower Gen. PPL at comparable Gen. ENT at both NFE values Figure 3( b, e). It also avoids an additional dense projection at the input layer: token indices use embedding lookup, whereas a simplex input requires wT 
+
+> t
+
+E with 7Table 1: OpenWebText unconditional generation at selected NFE values. Gen. ENT is generative unigram entropy and should be compared with the data entropy 5.44 . Gen. PPL is evaluated by the indicated external language model. The best and second-best values in each column are shown in bold and underlined, respectively. 
+
+NFE = 16 NFE = 128 NFE = 1,024 
+
+Method Ent. GPT-2 L GPT-2 XL Llama-2 Ent. GPT-2 L GPT-2 XL Llama-2 Ent. GPT-2 L GPT-2 XL Llama-2 CANDI [Pynadath et al., 2025] 5.43 97.2 99.6 56.0 5.45 67.2 69.2 36.8 5.46 74.3 76.6 39.2 UDLM [Schiff et al., 2025] 5.53 186.0 190.1 79.0 5.49 62.9 64.9 34.6 5.46 59.2 61.2 32.2 MDLM [Sahoo et al., 2024] 5.47 117.9 120.6 63.8 5.46 65.4 67.2 37.3 5.40 55.1 56.6 33.9 Duo [Sahoo et al., 2025] 5.45 166.1 168.3 87.1 5.45 93.9 95.9 53.3 5.43 88.9 90.6 50.4 FLM [Lee et al., 2026] 5.58 259.5 262.6 139.3 5.42 112.0 113.7 66.5 5.45 125.6 127.2 74.4 LangFlow [Chen et al., 2026] 5.42 115.1 116.6 59.9 5.42 60.2 61.7 30.0 5.41 68.3 70.0 28.2 S-FLM [Deschenaux and Gulcehre, 2026] 5.45 124.6 126.4 62.9 5.43 103.4 105.1 52.4 5.46 108.5 110.2 53.7 
+
+Simplax 5.46 90.5 93.1 49.3 5.45 56.9 58.9 31.4 5.44 45.1 46.8 25.5 5.2 5.3 5.4 5.5 5.6 5.7 
+
+Gen. ENT 
+
+> 60 80 100 120 140 160
+> Gen. PPL
+
+NFE = 8      
+
+> 5.2 5.3 5.4 5.5 5.6 5.7
+
+Gen. ENT 
+
+> 40 60 80 100 120
+> Gen. PPL
+
+NFE = 16      
+
+> 5.2 5.3 5.4 5.5 5.6 5.7
+
+Gen. ENT 
+
+> 40 60 80 100
+> Gen. PPL
+
+NFE = 32      
+
+> 5.2 5.3 5.4 5.5 5.6 5.7
+
+Gen. ENT 
+
+> 40 60 80
+> Gen. PPL
+
+NFE = 64      
+
+> 5.2 5.3 5.4 5.5 5.6 5.7
+
+Gen. ENT 
+
+> 20 40 60 80
+> Gen. PPL
+
+NFE = 128      
+
+> 5.2 5.3 5.4 5.5 5.6 5.7
+
+Gen. ENT 
+
+> 20 40 60 80
+> Gen. PPL
+
+NFE = 256      
+
+> 5.2 5.3 5.4 5.5 5.6 5.7
+
+Gen. ENT 
+
+> 20 40 60 80
+> Gen. PPL
+
+NFE = 512      
+
+> 5.2 5.3 5.4 5.5 5.6 5.7
+
+Gen. ENT 
+
+> 20 40 60 80
+> Gen. PPL
+
+NFE = 1024 
+
+simplax udlm mdlm duo candi fl m s-fl m lang fl ow 
+
+Figure 4: Llama-2 7B generative frontiers on OpenWebText for NFE ∈{8, 16 , 32 , 64 , 128 , 256 , 512 , 1, 024 }. Each panel shows the temperature-swept Gen. PPL– Gen. ENT tradeoff. Lower Gen. PPL is better, and the reference data entropy is 5.44 .the vocabulary embedding matrix E at every sequence position. We therefore use zt as the denoiser input in the main experiments while retaining wt in the objective and reverse update. 
+
+UDLM initialization. We compare Simplax trained from scratch for 1M iterations with a model trained as UDLM for 800k iterations and then with the Simplax objective for 200k iterations. UDLM initialization improves the Gen. PPL–Gen. ENT frontier at both NFE values Figure 3( c, f). 
+
+4.3 Unconditional generation on OpenWebText 
+
+We compare Simplax with MDLM [Sahoo et al., 2024], UDLM [Schiff et al., 2025], Duo [Sahoo et al., 2025], CANDI [Pynadath et al., 2025], FLM [Lee et al., 2026], LangFlow [Chen et al., 2026], and S-FLM [Deschenaux and Gulcehre, 2026]. For each method and NFE budget, we sweep 15 
+
+temperatures from 0.84 to 1.12 in increments of 0.02 and select the operating point whose generated entropy is closest to 5.44 nats. Simplax has the lowest Gen. PPL under all three evaluators at NFE = 16 and 1, 024 . At NFE 
+
+= 128 , it is best under GPT-2 Large and GPT-2 XL, while LangFlow is best under Llama-2 7B. The temperature-swept Llama-2 7B frontiers across all evaluated NFE budgets are shown in Figure 4. 8Table 2: Conditional Sudoku solving accuracy and unconditional Sudoku validity in percent. All models are trained with 30 clues. The 40 - and 35 -clue settings evaluate transfer to more heavily conditioned inputs, the 30 -clue setting matches the training clue density, and the 25 -, 20 -, and 17 -clue settings evaluate transfer to progressively less heavily conditioned inputs. The best and second-best results in each column are shown in bold and underlined, respectively.                                                          
+
+> Conditional accuracy (%) Unconditional validity (%) Method 40 clues 35 clues 30 clues 25 clues 20 clues 17 clues 0 clues AR 16.00 4.05 0.70 0.05 0.00 0.00 8.15 Duo [Sahoo et al., 2025] 97.00 84.15 48.85 16.00 4.80 0.40 80.95 FLM [Lee et al., 2026] 96.45 83.80 48.30 14.05 3.30 0.45 34.05 MDLM [Sahoo et al., 2024] 98.45 85.15 48.00 11.80 2.70 0.20 22.35 S-FLM 77.70 42.40 10.75 1.15 0.05 0.00 1.25 S-FLM (truncated-adaptive) 94.70 78.70 41.60 11.90 2.95 0.25 3.45
+> Simplax 98.55 91.05 61.75 25.90 8.80 1.20 95.85
+
+4.4 Constrained categorical generation on Sudoku 
+
+Simplax achieves the highest performance across all conditional and unconditional settings in Table 2. Its advantage extends beyond the 30 -clue training distribution to both more and less conditioned inputs, including the challenging low-clue regimes. For unconditional generation, Simplax achieves 
+
+95 .85% validity, compared with 80 .95% for the strongest baseline. 
+
+5 Related Work 
+
+Discrete diffusion for categorical data. Discrete diffusion for categorical data was developed through early multinomial formulations and later unified and substantially generalized by D3PM, which introduced structured transition kernels such as uniform and absorbing corruptions and estab-lished the standard variational training recipe [Hoogeboom et al., 2021, Austin et al., 2021]. This framework was subsequently extended to continuous-time formulations and alternative reverse objec-tives [Campbell et al., 2022, Lou et al., 2024, Zhang et al., 2025], and has since supported a broad line of language-modeling work covering masked, absorbing, and uniform-state diffusion [Sahoo et al., 2024, Shi et al., 2024, Ou et al., 2025, Zheng et al., 2025, Sahoo et al., 2025, Deschenaux et al., 2026]. Our method stays within this discrete-diffusion lineage: we keep the original categorical forward process and reverse posterior, and do not replace the primary generative state. 
+
+Auxiliary-variable and hybrid formulations. A parallel line of work enriches discrete diffusion through auxiliary variables or structured reverse distributions. Di4C [Hayakawa et al., 2025] uses mixtures of product models to capture dimensional correlations, VADD [Xie et al., 2026] introduces a Gaussian latent into masked denoising, and CoDD couples factorized outputs with probabilistic circuits [Li et al., 2026]. Continuous and hybrid constructions include Gaussian-relaxed views in Duo and Duo++ [Sahoo et al., 2025, Deschenaux et al., 2026], Euclidean denoising over one-hot states in FLM [Lee et al., 2026], and discrete–continuous diffusion in CADD and CANDI [Zheng et al., 2026, Pynadath et al., 2025]. Simplax instead introduces a simplex-valued auxiliary variable while preserving categorical diffusion. Unlike methods that use the auxiliary variable as the denoiser input or primary generative state, the zt-input Simplax formulation retains the categorical state as the network input and uses the simplex variable to define the reverse-bridge objective and sampler. 
+
+Diffusion and flow on the simplex. Our method is also related to work that defines the generative process itself on the simplex. This includes simplex diffusion based on softmax-transformed continu-ous processes [Floto et al., 2023], simplex diffusion via categorical SDEs and Cox–Ingersoll–Ross dynamics [Richemond et al., 2023], Dirichlet-based score models such as DDSM [Avdeyev et al., 2023], Dirichlet Flow Matching [Stark et al., 2024], and recent unifying views of discrete, Gaussian, and simplicial diffusion [Chandra et al., 2026]. These methods are close to ours in geometry, since they treat simplex-valued states as first-class objects, but differ in role: in our formulation, the simplex variable is not the primary generative state, but an exact auxiliary bridge attached to a standard discrete diffusion process. 96 Conclusion and Limitations 
+
+We introduced Simplax, an exact Dirichlet–categorical augmentation of uniform discrete diffusion. Simplax preserves the categorical forward process while introducing an auxiliary simplex state to derive a Rao–Blackwellized reverse-bridge objective and stochastic ancestral sampler. It improves the Gen. PPL–Gen. ENT tradeoff on OpenWebText and achieves the highest Sudoku performance among the compared methods across all evaluated clue densities, from 40 to 17 clues, as well as in unconditional generation. 
+
+Limitation. The present formulation is specialized to uniform categorical corruption and introduces an auxiliary simplex-valued state whose computational overhead relative to standard discrete diffusion has not been fully characterized. Moreover, the concentration schedule remains an additional design choice rather than being determined by the theory. Extending the construction to broader categorical corruption kernels and developing more efficient reverse solvers are important directions for future work. 
+
+Acknowledgments 
+
+We thank Chanhyuk Lee, Jaehoon Yoo, and Jinwoo Kim for insightful discussions. 
+
+References 
+
+Ali Alp. Sudoku puzzle generator. https://github.com/alicommit-malp/sudoku , 2024. Jacob Austin, Daniel D. Johnson, Jonathan Ho, Daniel Tarlow, and Rianne van den Berg. Structured denoising diffusion models in discrete state-spaces. In Advances in Neural Information Processing Systems , 2021. Pavel Avdeyev, Chenlai Shi, Yuhao Tan, Kseniia Dudnyk, and Jian Zhou. Dirichlet diffusion score model for biological sequence generation. In International Conference on Machine Learning ,2023. Andrew Campbell, Joe Benton, Valentin De Bortoli, Tom Rainforth, George Deligiannidis, and Arnaud Doucet. A continuous time framework for discrete denoising models. In Advances in Neural Information Processing Systems , 2022. Nuria Alina Chandra, Yucen Lily Li, Alan Nawzad Amin, Alex Ali, Joshua Rollins, Sebastian W. Ober, Aniruddh Raghu, and Andrew Gordon Wilson. A unification of discrete, gaussian, and simplicial diffusion. In The Fourteenth International Conference on Learning Representations ,2026. Yuxin Chen, Chumeng Liang, Hangke Sui, Ruihan Guo, Chaoran Cheng, Jiaxuan You, and Ge Liu. Langflow: Continuous diffusion rivals discrete in language modeling, 2026. Thomas M. Cover and Joy A. Thomas. Elements of Information Theory . 2006. Justin Deschenaux and Caglar Gulcehre. Language modeling with hyperspherical flows, 2026. Justin Deschenaux, Caglar Gulcehre, and Subham Sekhar Sahoo. The diffusion duality, chapter II: $\psi$-samplers and efficient curriculum. In The Fourteenth International Conference on Learning Representations , 2026. Griffin Floto, Thorsteinn Jonsson, Mihai Nica, Scott Sanner, and Eric Zhengyu Zhu. Diffusion on the probability simplex. In ICML 2023 Workshop: Sampling and Optimization in Discrete Space ,2023. Aaron Gokaslan and Vanya Cohen. OpenWebText corpus, 2019. Satoshi Hayakawa, Yuhta Takida, Masaaki Imaizumi, Hiromi Wakaki, and Yuki Mitsufuji. Distillation of discrete diffusion through dimensional correlations. In Proceedings of the 42nd International Conference on Machine Learning , 2025. 10 Emiel Hoogeboom, Didrik Nielsen, Priyank Jaini, Patrick Forré, and Max Welling. Argmax flows and multinomial diffusion: Learning categorical distributions. In Advances in Neural Information Processing Systems , 2021. Diederik P Kingma and Jimmy Ba. Adam: A method for stochastic optimization, 2014. Solomon Kullback and Richard A. Leibler. On information and sufficiency. The Annals of Mathemat-ical Statistics , 1951. Chanhyuk Lee, Jaehoon Yoo, Manan Agarwal, Sheel Shah, Jerry Huang, Aditi Raghunathan, Se-unghoon Hong, Nicholas M. Boffi, and Jinwoo Kim. One-step language modeling via continuous denoising, 2026. Ian Li, Zilei Shao, Benjie Wang, Rose Yu, Guy Van den Broeck, and Anji Liu. Breaking the factorization barrier in diffusion language models. In Forty-third International Conference on Machine Learning , 2026. Hung-Hsuan Lin, I-Chen Wu, and Tinghan Wei. On specific 17-clue sudoku puzzles. ICGA Journal ,2013. Aaron Lou, Chenlin Meng, and Stefano Ermon. Discrete diffusion modeling by estimating the ratios of the data distribution. In International Conference on Machine Learning , 2024. Gary McGuire, Bastian Tugemann, and Gilles Civario. There is no 16-clue sudoku: Solving the sudoku minimum number of clues problem via hitting set enumeration. Experimental Mathematics ,2014. Jingyang Ou, Shen Nie, Kaiwen Xue, Fengqi Zhu, Jiacheng Sun, Zhenguo Li, and Chongxuan Li. Your absorbing discrete diffusion secretly models the conditional distributions of clean data. In 
+
+The Thirteenth International Conference on Learning Representations , 2025. William Peebles and Saining Xie. Scalable diffusion models with transformers. In Proceedings of the IEEE/CVF international conference on computer vision , 2023. Patrick Pynadath, Jiaxin Shi, and Ruqi Zhang. Candi: Hybrid discrete-continuous diffusion models, 2025. Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, and Ilya Sutskever. Language models are unsupervised multitask learners. OpenAI Technical Report , 2019. Pierre Harvey Richemond, Sander Dieleman, and Arnaud Doucet. Categorical SDEs with simplex diffusion. In ICML 2023 Workshop: Sampling and Optimization in Discrete Space , 2023. Subham Sekhar Sahoo, Marianne Arriola, Aaron Gokaslan, Edgar Mariano Marroquin, Alexander M Rush, Yair Schiff, Justin T Chiu, and Volodymyr Kuleshov. Simple and effective masked diffusion language models. In The Thirty-eighth Annual Conference on Neural Information Processing Systems , 2024. Subham Sekhar Sahoo, Justin Deschenaux, Aaron Gokaslan, Guanghan Wang, Justin T Chiu, and Volodymyr Kuleshov. The diffusion duality. In Forty-second International Conference on Machine Learning , 2025. Subham Sekhar Sahoo, Jean-Marie Lemercier, Zhihan Yang, Justin Deschenaux, Jingyu Liu, John Thickstun, and Ante Jukic. Scaling beyond masked diffusion language models. In The Forty-Third International Conference on Machine Learning , 2026. Yair Schiff, Subham Sekhar Sahoo, Hao Phung, Guanghan Wang, Sam Boshar, Hugo Dalla-torre, Bernardo P de Almeida, Alexander M Rush, Thomas PIERROT, and Volodymyr Kuleshov. Simple guidance mechanisms for discrete diffusion models. In The Thirteenth International Conference on Learning Representations , 2025. Jiaxin Shi, Kehang Han, Zhe Wang, Arnaud Doucet, and Michalis Titsias. Simplified and generalized masked diffusion for discrete data. In The Thirty-eighth Annual Conference on Neural Information Processing Systems , 2024. 11 Hannes Stark, Bowen Jing, Chenyu Wang, Gabriele Corso, Bonnie Berger, Regina Barzilay, and Tommi Jaakkola. Dirichlet flow matching with applications to DNA sequence design. In Forty-first International Conference on Machine Learning , 2024. Jianlin Su, Murtadha Ahmed, Yu Lu, Shengfeng Pan, Wen Bo, and Yunfeng Liu. Roformer: Enhanced transformer with rotary position embedding. Neurocomputing , 568, 2024. Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert, Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale, Dan Bikel, Lukas Blecher, Cristian Canton Ferrer, Moya Chen, Guillem Cucurull, David Esiobu, Jude Fernandes, Jeremy Fu, Wenyin Fu, Brian Fuller, Cynthia Gao, Vedanuj Goswami, Naman Goyal, Anthony Hartshorn, Saghar Hosseini, Rui Hou, Hakan Inan, Marcin Kardas, Viktor Kerkez, Madian Khabsa, Isabel Kloumann, Artem Korenev, Punit Singh Koura, Marie-Anne Lachaux, Thibaut Lavril, Jenya Lee, Diana Liskovich, Yinghai Lu, Yuning Mao, Xavier Martinet, Todor Mihaylov, Pushkar Mishra, Igor Molybog, Yixin Nie, Andrew Poulton, Jeremy Reizenstein, Rashi Rungta, Kalyan Saladi, Alan Schelten, Ruan Silva, Eric Michael Smith, Ranjan Subramanian, Xiaoqing Ellen Tan, Binh Tang, Ross Taylor, Adina Williams, Jian Xiang Kuan, Puxin Xu, Zheng Yan, Iliyan Zarov, Yuchen Zhang, Angela Fan, Melanie Kambadur, Sharan Narang, Aurelien Rodriguez, Robert Stojnic, Sergey Edunov, and Thomas Scialom. Llama 2: Open foundation and fine-tuned chat models. arXiv preprint arXiv:2307.09288 , 2023. Dimitri von Rütte, Janis Fluri, Yuhui Ding, Antonio Orvieto, Bernhard Schölkopf, and Thomas Hofmann. Generalized interpolating discrete diffusion. In Forty-second International Conference on Machine Learning , 2025. Dimitri von Rütte, Janis Fluri, Omead Pooladzandi, Bernhard Schölkopf, Thomas Hofmann, and Antonio Orvieto. Scaling behavior of discrete diffusion language models. In The Fourteenth International Conference on Learning Representations , 2026. Tianyu Xie, Shuchen Xue, Zijin Feng, Tianyang Hu, Jiacheng Sun, Zhenguo Li, and Cheng Zhang. Variational autoencoding discrete diffusion with enhanced dimensional correlations modeling. In 
+
+The Fourteenth International Conference on Learning Representations , 2026. Ruixiang Zhang, Shuangfei Zhai, Yizhe Zhang, James Thornton, Zijing Ou, Joshua M. Susskind, and Navdeep Jaitly. Target concrete score matching: A holistic framework for discrete diffusion. In 
+
+Forty-second International Conference on Machine Learning , 2025. Huangjie Zheng, Shansan Gong, Ruixiang Zhang, Tianrong Chen, Jiatao Gu, Mingyuan Zhou, Navdeep Jaitly, and Yizhe Zhang. Continuously augmented discrete diffusion model for categorical generative modeling. In The Fourteenth International Conference on Learning Representations ,2026. Kaiwen Zheng, Yongxin Chen, Hanzi Mao, Ming-Yu Liu, Jun Zhu, and Qinsheng Zhang. Masked diffusion models are secretly time-agnostic masked models and exploit inaccurate categorical sampling. In The Thirteenth International Conference on Learning Representations , 2025. 12 Simplex Relaxation for Discrete Diffusion 
+
+# Supplementary Material 
+
+A Auxiliary Identities and Full Dirichlet–Categorical Hierarchy 
+
+This appendix develops the exact probabilistic structure behind the simplex relaxation. The formulas below apply at positive diffusion times, where pt is strictly positive under the assumptions in Section 2. We define the clean endpoint separately as the categorical state z0 = x; the hierarchy does not introduce a Dirichlet variable w0.The key point is that the auxiliary state wt is not introduced as a heuristic soft surrogate. Rather, once we specify the Dirichlet bridge 
+
+q(wt | zt, x) = Dir( wt; ηtpt + zt) ,
+
+the resulting joint model admits a closed hierarchy in both directions: the relaxed state has an exact Dirichlet marginal, the discrete state can be decoded exactly from wt, and the reverse bridge remains tractable after marginalizing either zt or zs. We begin with two elementary identities that make these cancellations possible. 
+
+A.1 Useful identities 
+
+The first identity is the basic shift formula for Dirichlet densities. It shows that adding a one-hot count to the concentration vector simply multiplies the base Dirichlet density by the corresponding simplex coordinate. 
+
+Lemma 1. Let α ∈ RK>0 and let α0 = PKi=1 αi. Then, for any k ∈ { 1, . . . , K },
+
+Dir( w; α + ek) = α0
+
+αk
+
+wk Dir( w; α). (22) 
+
+Proof. By definition, 
+
+Dir( w; α) = 1
+
+B(α)
+
+> K
+
+Y
+
+> i=1
+
+wαi−1 
+
+> i
+
+, B(α) = 
+
+QKi=1 Γ( αi)Γ( α0) .
+
+Hence 
+
+Dir( w; α + ek) = 1
+
+B(α + ek) wkKY
+
+> i=1
+
+wαi−1 
+
+> i
+
+.
+
+It remains to compare the normalizing constants: 
+
+B(α + ek)
+
+B(α) = Γ( αk + 1) Γ( αk)Γ( α0)Γ( α0 + 1) = αk
+
+α0
+
+.
+
+Therefore 1
+
+B(α + ek) = α0
+
+αk
+
+1
+
+B(α) ,
+
+which proves (22). Specializing this identity to concentrations of the form ηp yields the cancellation that will be used throughout the appendix. 
+
+Corollary 1. Let p ∈ ∆K−1 satisfy pk > 0 for all k, let η > 0, and define α = ηp. Then 
+
+pk Dir( w; ηp + ek) = wk Dir( w; ηp). (23) 
+
+Proof. Apply Lemma 1 with α = ηp. Since α0 = η and αk = ηp k,
+
+Dir( w; ηp + ek) = ηηp k
+
+wk Dir( w; ηp) = wk
+
+pk
+
+Dir( w; ηp).
+
+Multiplying both sides by pk gives (23). 13 The content of Corollary 1 is simple but important: a categorical mixture over one-hot shifts of a Dirichlet distribution collapses back to the unshifted Dirichlet density. This is precisely the mechanism that makes the simplex relaxation exact rather than approximate. 
+
+A.2 Full Dirichlet–categorical hierarchy 
+
+We now return to the joint factorization 
+
+q(x, zs, zt, ws, wt) = q(x) q(zs | x) q(ws | zs, x) q(zt | zs) q(wt | zt, x), (24) together with 
+
+q(wt | zt, x) = Dir( wt; ηtpt + zt) . (25) The next proposition summarizes the full hierarchy induced by this construction. The first two statements identify the exact marginal and exact decoder at time t. The third lifts the standard discrete reverse posterior from zt to wt. The last two show that, once this lift is performed, the reverse bridge over relaxed states becomes a mixture of shifted Dirichlet components. 
+
+Proposition 4. Assume t > 0. The Dirichlet–categorical hierarchy satisfies the following properties; statements involving ws additionally require s > 0.1. The marginal distribution of the relaxed state is 
+
+q(wt | x) = Dir( wt; ηtpt) . (26) 
+
+2. Given wt, the variables x and zt are conditionally independent, and the discrete state can be recovered from the relaxed state via 
+
+q(zt | wt, x) = q(zt | wt) = Cat( zt; wt) . (27) 
+
+3. For s < t , the reverse conditional posterior of zs given wt and x is categorical: 
+
+q(zs | wt, x) = Cat  zs; ρs|t(x, wt) , (28) 
+
+where 
+
+ρs|t(x, wt) := ps ⊙ αt|s
+
+ wt ⊘ pt
+
+ + (1 − αt|s) ⟨wt, π ⊘ pt⟩ 1 . (29) 
+
+4. For 0 < s < t , the reverse conditional posterior of ws given zt and x is a Dirichlet mixture: 
+
+q(ws | zt, x) = 
+
+> K
+
+X
+
+> k=1
+
+rs|t,k (x, zt) Dir( ws; ηsps + ek) , (30) 
+
+where rs|t,k (x, zt) denotes the k-th component of rs|t(x, zt) defined in Equation (4) .5. For 0 < s < t , the reverse conditional posterior of ws given wt and x is a Dirichlet mixture: 
+
+q(ws | wt, x) = 
+
+> K
+
+X
+
+> k=1
+
+ρs|t,k (x, wt) Dir( ws; ηsps + ek) . (31) 
+
+Proof. 1. We begin with the marginal law of wt. Marginalizing the discrete latent zt ∼ Cat( pt)
+
+from the conditional bridge 
+
+q(wt | zt, x) = Dir( wt; ηtpt + zt)
+
+gives 
+
+q(wt | x) = 
+
+> K
+
+X
+
+> k=1
+
+q(wt | zt = ek, x) q(zt = ek | x)=
+
+> K
+
+X
+
+> k=1
+
+Dir( wt; ηtpt + ek) pt,k (x). (32) 14 Now Corollary 1 applies termwise: 
+
+pt,k (x) Dir( wt; ηtpt + ek) = wt,k Dir( wt; ηtpt) .
+
+Substituting this into (32) collapses the mixture: 
+
+q(wt | x) = 
+
+> K
+
+X
+
+> k=1
+
+wt,k Dir( wt; ηtpt)=
+
+> K
+
+X
+
+> k=1
+
+wt,k 
+
+!
+
+Dir( wt; ηtpt)= Dir( wt; ηtpt) , (33) which proves (26). 2. We next derive the exact decoder from wt back to zt. Fix k ∈ { 1, . . . , K }. By Bayes’ rule, 
+
+q(zt = ek | wt, x) = q(wt | zt = ek, x) q(zt = ek | x)
+
+q(wt | x) . (34) Using the previous computation together with Corollary 1, the numerator becomes 
+
+q(wt | zt = ek, x) q(zt = ek | x) = wt,k Dir( wt; ηtpt) ,
+
+while the denominator is exactly Dir( wt; ηtpt). Hence 
+
+q(zt = ek | wt, x) = wt,k .
+
+Since this holds for every k, we obtain 
+
+q(zt | wt, x) = Cat( zt; wt),
+
+and the right-hand side no longer depends on x. This proves (27). 3. We now lift the discrete reverse posterior from zt to wt. Marginalizing over zt gives 
+
+q(zs | wt, x) = 
+
+> K
+
+X
+
+> j=1
+
+q(zs | zt = ej , wt, x) q(zt = ej | wt, x). (35) Conditioned on (zt, x), the variable zs is independent of wt, so the first factor is just the usual reverse posterior 
+
+q(zs | zt = ej , wt, x) = q(zs | zt = ej , x) = Cat  zs; rs|t(x, ej ) .
+
+The second factor is the exact decoder derived above: 
+
+q(zt = ej | wt, x) = wt,j .
+
+Therefore 
+
+q(zs | wt, x) = 
+
+> K
+
+X
+
+> j=1
+
+wt,j Cat  zs; rs|t(x, ej ) . (36) A mixture of categorical distributions is again categorical, with parameter vector equal to the same convex combination of the component parameters. Thus 
+
+q(zs | wt, x) = Cat  zs; ρs|t(x, wt) , ρs|t(x, wt) = 
+
+> K
+
+X
+
+> j=1
+
+wt,j rs|t(x, ej ).
+
+To obtain the closed form, substitute Equation (4) with zt = ej :
+
+rs|t(x, ej ) = 
+
+αt|sej + (1 − αt|s) ⟨ej , π⟩ 1 ⊙ ps
+
+⟨ej , pt⟩
+
+= ps ⊙
+
+
+
+αt|s
+
+ej
+
+pt,j (x) + (1 − αt|s) πj
+
+pt,j (x) 1
+
+
+
+. (37) 15 Averaging this expression under the weights wt,j yields 
+
+ρs|t(x, wt) = ps ⊙
+
+αt|sKX
+
+> j=1
+
+wt,j 
+
+ej
+
+pt,j (x) + (1 − αt|s)
+
+> K
+
+X
+
+> j=1
+
+wt,j 
+
+πj
+
+pt,j (x) 1
+
+
+
+= ps ⊙ αt|s
+
+ wt ⊘ pt
+
+ + (1 − αt|s) ⟨wt, π ⊘ pt⟩ 1 , (38) which proves (28) and (29). 4. We next derive the reverse bridge over relaxed states conditioned on zt. Since ws is conditionally independent of zt given (zs, x), marginalizing over zs gives 
+
+q(ws | zt, x) = 
+
+> K
+
+X
+
+> k=1
+
+q(ws | zs = ek, zt, x) q(zs = ek | zt, x)=
+
+> K
+
+X
+
+> k=1
+
+q(ws | zs = ek, x) q(zs = ek | zt, x). (39) The first factor is exactly the shifted Dirichlet bridge at time s:
+
+q(ws | zs = ek, x) = Dir( ws; ηsps + ek) .
+
+The second factor is the discrete reverse posterior 
+
+q(zs = ek | zt, x) = rs|t,k (x, zt).
+
+Substituting these identities into (39) yields 
+
+q(ws | zt, x) = 
+
+> K
+
+X
+
+> k=1
+
+rs|t,k (x, zt) Dir( ws; ηsps + ek) ,
+
+which proves (30). 5. Finally, we lift this mixture from zt to wt. Since ws is also conditionally independent of wt
+
+given (zs, x), we obtain 
+
+q(ws | wt, x) = 
+
+> K
+
+X
+
+> k=1
+
+q(ws | zs = ek, wt, x) q(zs = ek | wt, x)=
+
+> K
+
+X
+
+> k=1
+
+q(ws | zs = ek, x) q(zs = ek | wt, x). (40) The first factor is again Dir( ws; ηsps + ek), while the second factor is now the lifted reverse posterior: 
+
+q(zs = ek | wt, x) = ρs|t,k (x, wt).
+
+Therefore 
+
+q(ws | wt, x) = 
+
+> K
+
+X
+
+> k=1
+
+ρs|t,k (x, wt) Dir( ws; ηsps + ek) ,
+
+which proves (31). Taken together, these identities show that the simplex variable sits inside the discrete diffusion process in a fully coherent way. The relaxed state has the correct Dirichlet marginal, the discrete state can be decoded from it exactly, and the reverse bridge remains available in closed form after replacing either 
+
+zt or zs by their simplex-conditioned posteriors. This is the structural reason that the later training objectives and samplers can be written directly in terms of wt without abandoning the original categorical process. 16 B Rao–Blackwellized Reverse-Bridge Objective 
+
+This appendix proves the closed form of the relaxed discrete bridge objective used in the main text. The auxiliary decoder sample ezt is marginalized analytically; the independently sampled denoiser input zt is not marginalized. 
+
+Proposition 5. For 0 ≤ s < t ≤ 1 with t > 0, the relaxed discrete bridge objective satisfies 
+
+¯Lzs|zt,w t (wt, ˆxθ , x; s, t ) = ⟨wt, log ˆ pt − log pt⟩ + ρs|t(x, wt), log ps − log ˆ ps . (41) 
+
+Proof. We first compute the Rao–Blackwellized categorical term ¯Lzs|zt,w t . By definition, 
+
+¯Lzs|zt,w t = Eq(ezt|wt)[DKL [q(zs | ezt, x) ∥ q(zs | ezt, ˆxθ )]] . (42) Using (27), we have 
+
+q(ezt = ej | wt) = wt,j .
+
+For fixed ezt = ej , both reverse conditionals are categorical: 
+
+q(zs | ezt = ej , x) = Cat  zs; rs|t(x, ej ) , q(zs | ezt = ej , ˆxθ ) = Cat  zs; rs|t(ˆ xθ , ej ) .
+
+Expanding the expectation over ezt and the KL divergence between categorical distributions gives 
+
+¯Lzs|zt,w t =
+
+> K
+
+X
+
+> j=1
+
+wt,j KX
+
+> k=1
+
+rs|t,k (x, ej ) log rs|t,k (x, ej )
+
+rs|t,k (ˆ xθ , ej ) . (43) Substituting the explicit form of the reverse posterior components, we obtain 
+
+rs|t,k (x, ej )
+
+rs|t,k (ˆ xθ , ej ) =
+
+αt|sδj,k + (1 − αt|s)πj
+
+ps,k (x)/p t,j (x)
+
+αt|sδj,k + (1 − αt|s)πj
+
+ps,k (ˆ xθ )/p t,j (ˆ xθ )= ps,k (x)
+
+ps,k (ˆ xθ )
+
+pt,j (ˆ xθ )
+
+pt,j (x) . (44) Hence 
+
+log rs|t,k (x, ej )
+
+rs|t,k (ˆ xθ , ej ) = log pt,j (ˆ xθ )
+
+pt,j (x) + log ps,k (x)
+
+ps,k (ˆ xθ ) . (45) Substituting (45) into (43), the first contribution is 
+
+> K
+
+X
+
+> j=1
+
+wt,j KX
+
+> k=1
+
+rs|t,k (x, ej ) log pt,j (ˆ xθ )
+
+pt,j (x) =
+
+> K
+
+X
+
+> j=1
+
+wt,j log pt,j (ˆ xθ )
+
+pt,j (x) , (46) because rs|t(x, ej ) is a probability vector. For the second contribution, exchanging the order of summation gives 
+
+> K
+
+X
+
+> j=1
+
+wt,j KX
+
+> k=1
+
+rs|t,k (x, ej ) log ps,k (x)
+
+ps,k (ˆ xθ ) =
+
+> K
+
+X
+
+> k=1
+
+
+
+> K
+
+X
+
+> j=1
+
+wt,j rs|t,k (x, ej )
+
+ log ps,k (x)
+
+ps,k (ˆ xθ ) . (47) The coefficient in parentheses is exactly the k-th component of q(zs | wt, x), namely 
+
+> K
+
+X
+
+> j=1
+
+wt,j rs|t,k (x, ej ) = ρs|t,k (x, wt).
+
+Therefore 
+
+¯Lzs|zt,w t =
+
+> K
+
+X
+
+> j=1
+
+wt,j log pt,j (ˆ xθ )
+
+pt,j (x) +
+
+> K
+
+X
+
+> k=1
+
+ρs|t,k (x, wt) log ps,k (x)
+
+ps,k (ˆ xθ )= ⟨wt, log ˆ pt − log pt⟩ + ρs|t(x, wt), log ps − log ˆ ps , (48) which proves (41). Equation (41) depends on the auxiliary state only through the current-time average ⟨wt, log ˆ pt⟩ and the lifted reverse posterior ρs|t(x, wt). This is the expression used in the main objective and in the continuous-time analysis. 17 C Continuous-Time Limit of the Main Objective 
+
+The main text shows that the relaxed discrete bridge objective ¯Lzs|zt,w t (wt, ˆxθ , x; s, t ) admits a non-degenerate first-order continuous-time limit. This appendix gives the full proof of the first-order local limit stated in the main text. 
+
+C.1 Proof of the main continuous-time limit Proposition 1. Up to θ-independent additive terms, the relaxed discrete bridge objective satisfies 
+
+¯Lzs|zt,w t (wt, ˆxθ , x; t − ∆, t ) = ∆ ℓct (wt, ˆxθ , x, t ) + o(∆) , (49) 
+
+where 
+
+ℓct (wt, ˆxθ , x, t ) = λ(t)
+
+"
+
+⟨wt, π ⊘ ˆpt⟩ − ⟨ wt, π ⊘ pt⟩ ⟨ pt, log ˆ pt⟩ + ⟨π ⊙ (wt ⊘ pt), log ˆ pt⟩
+
+#
+
+.
+
+(50) 
+
+and λ(t) := − ddt log α(t). Consequently, the corresponding continuous-time objective is 
+
+Lct =
+
+Z 10
+
+Eq(x)
+
+Eq(wt|x)[ℓct (wt, ˆxθ , x, t )]  dt, (51) 
+
+with q(wt | x) = Dir( wt; ηtpt).Proof of Proposition 3. Up to θ-independent additive terms, Equation (41) can be written as 
+
+¯Lzs|zt,w t (wt, ˆxθ , x; s, t ) ≡ ⟨ wt, log ˆ pt⟩ − ρs|t(x, wt), log ˆ ps . (52) We now set s = t − ∆ and let ∆ ↓ 0.First, by definition, 
+
+λ(t) = − ddt log α(t), (53) so that 
+
+αt|t−∆ = α(t)
+
+α(t − ∆) = 1 − ∆ λ(t) + o(∆) . (54) Moreover, 
+
+∂tpt = ∂t(α(t)x + (1 − α(t)) π) = −λ(t) pt − π, (55) hence 
+
+pt−∆ = pt + ∆ λ(t)( pt − π) + o(∆) . (56) Next, we expand ρt−∆|t(x, wt) using Equation (29). Substituting Equation (54) and Equation (56) gives 
+
+ρt−∆|t(x, wt)= pt−∆ ⊙ αt|t−∆
+
+ wt ⊘ pt
+
+ +  1 − αt|t−∆
+
+ ⟨wt, π ⊘ pt⟩ 1
+
+=
+
+
+
+pt + ∆ λ(t)( pt − π)
+
+
+
+⊙
+
+h
+
+wt ⊘ pt + ∆ λ(t)
+
+
+
+⟨wt, π ⊘ pt⟩ 1 − wt ⊘ pt
+
+i 
+
++ o(∆) = wt + ∆ λ(t) [ ⟨wt, π ⊘ pt⟩ pt − π ⊙ (wt ⊘ pt)] + o(∆) . (57) We now expand log ˆ pt−∆. Since ˆxθ is held fixed in the local limit, 
+
+ˆpt = α(t)ˆ xθ + (1 − α(t)) π, (58) and therefore 
+
+∂t ˆpt = −λ(t) ˆpt − π. (59) Dividing componentwise by ˆpt yields 
+
+∂t log ˆ pt = −λ(t) ( 1 − π ⊘ ˆpt) . (60) 18 Hence 
+
+log ˆ pt−∆ = log ˆ pt − ∆ ∂t log ˆ pt + o(∆) = log ˆ pt + ∆ λ(t) ( 1 − π ⊘ ˆpt) + o(∆) . (61) For compactness, define 
+
+At := ⟨wt, π ⊘ ˆpt⟩ , (62) 
+
+Bt := ⟨wt, π ⊘ pt⟩ ⟨ pt, log ˆ pt⟩ , (63) 
+
+Ct := ⟨π ⊙ (wt ⊘ pt), log ˆ pt⟩ . (64) Substituting Equations (57) and (61) into Equation (52) and collecting first-order terms gives 
+
+¯Lzt−∆|zt,w t (wt, ˆxθ , x; t − ∆, t ) ≡ ∆λ(t)( At − Bt + Ct − 1) + o(∆) . (65) The term −∆ λ(t) is independent of θ, so it can be discarded. Therefore, 
+
+¯Lzt−∆|zt,w t (wt, ˆxθ , x; t − ∆, t ) = ∆ ℓct (wt, ˆxθ , x, t ) + o(∆) , (66) where, up to θ-independent additive terms, 
+
+ℓct (wt, ˆxθ , x, t ) ≡ λ(t)
+
+"
+
+⟨wt, π ⊘ ˆpt⟩ − ⟨ wt, π ⊘ pt⟩ ⟨ pt, log ˆ pt⟩ + ⟨π ⊙ (wt ⊘ pt), log ˆ pt⟩
+
+#
+
+.
+
+(67) This proves Equation (16) and Equation (17). Finally, integrating the density over time and taking expectation under q(x) and q(wt | x) yields Equation (18). 
+
+D Alternative Surrogate Objectives 
+
+In the main text, we optimize the relaxed discrete bridge objective ¯Lzs|zt,w t (wt, ˆxθ , x; s, t ). The denoiser prediction ˆxθ = fθ (zt, t ) uses an independently sampled categorical network input. In this appendix, ezt denotes only the auxiliary categorical decode that is averaged inside the objective. This choice is best understood relative to a broader family of surrogate objectives induced by the same simplex relaxation. The natural starting point is the exact relaxed bridge 
+
+Lws|wt (wt, ˆxθ , x; s, t ) := DKL [q(ws | wt, x) ∥ q(ws | wt, ˆxθ )] . (68) This objective is the most direct one, but is generally intractable because q(ws | wt, x) is a Dirichlet mixture. The tractable surrogates introduced below differ in two orthogonal ways: first, whether they match only the discrete reverse state zs or the joint state (zs, ws), and second, whether they condition directly on wt or first decode ezt ∼ q(ezt | wt) and average. 
+
+D.1 A broader surrogate family 
+
+The simplest tractable surrogate matches only the lifted reverse posterior over zs:
+
+Lzs|wt (wt, ˆxθ , x; s, t ) := DKL [q(zs | wt, x) ∥ q(zs | wt, ˆxθ )] . (69) This objective preserves the full relaxed conditioning information in wt, but discards the relaxed target ws.The objective used in the main text instead decodes ezt from wt and averages the standard discrete reverse KL: 
+
+¯Lzs|zt,w t (wt, ˆxθ , x; s, t ) := Eq(ezt|wt)[DKL [q(zs | ezt, x) ∥ q(zs | ezt, ˆxθ )]] . (70) Compared with (69), this objective is looser because wt influences the reverse matching step only through the decoded categorical latent ezt. Its advantage is that it remains close to the standard discrete-diffusion objective and admits the non-degenerate continuous-time limit derived in the main text. A richer alternative is to match the joint bridge over (zs, ws) directly under the relaxed conditioning state: 
+
+Lzs,w s|wt (wt, ˆxθ , x; s, t ) := DKL [q(zs, ws | wt, x) ∥ q(zs, ws | wt, ˆxθ )] . (71) 19 This objective is richer than the discrete surrogates because it also matches the relaxed bridge at time 
+
+s.Finally, one may combine the decoded conditioning of (70) with the joint target of (71): 
+
+¯Lzs,w s|zt,w t (wt, ˆxθ , x; s, t ) := Eq(ezt|wt)[DKL [q(zs, ws | ezt, wt, x) ∥ q(zs, ws | ezt, wt, ˆxθ )]] .
+
+(72) This is the richest tractable surrogate in the family: it keeps the relaxed target ws while also conditioning through the decoded latent ezt.The loose joint objective admits a useful chain-rule decomposition. It shows that the main-text objective ¯Lzs|zt,w t is precisely the categorical part of the loose joint bridge. 
+
+Proposition 6. The tight and loose joint objectives admit the decompositions 
+
+Lzs,w s|wt (wt, ˆxθ , x; s, t ) = Lzs|wt (wt, ˆxθ , x; s, t ) + ¯Lws|zs,w t (wt, ˆxθ , x; s, t ), (73) 
+
+¯Lzs,w s|zt,w t (wt, ˆxθ , x; s, t ) = ¯Lzs|zt,w t (wt, ˆxθ , x; s, t ) + ¯Lws|zs,w t (wt, ˆxθ , x; s, t ), (74) 
+
+where 
+
+¯Lws|zs,w t (wt, ˆxθ , x; s, t ) := Eq(zs|wt,x)[DKL [q(ws | zs, x) ∥ q(ws | zs, ˆxθ )]] . (75) 
+
+Proof. We first derive the tight decomposition (73). By the joint graphical model, we have the conditional independences 
+
+ws ⊥⊥ wt | (zs, x), q(zs, ws | wt, x) = q(zs | wt, x) q(ws | zs, x),
+
+and similarly on the model side, 
+
+q(zs, ws | wt, ˆxθ ) = q(zs | wt, ˆxθ ) q(ws | zs, ˆxθ ).
+
+Substituting these factorizations into Lzs,w s|wt gives 
+
+Lzs,w s|wt = DKL [q(zs | wt, x) q(ws | zs, x) ∥ q(zs | wt, ˆxθ ) q(ws | zs, ˆxθ )] . (76) Applying the chain rule of KL yields 
+
+Lzs,w s|wt = DKL [q(zs | wt, x) ∥ q(zs | wt, ˆxθ )] + Eq(zs|wt,x)[DKL [q(ws | zs, x) ∥ q(ws | zs, ˆxθ )]] . (77) The first term is exactly Lzs|wt , while the second term is ¯Lws|zs,w t by definition. This proves (73). We next derive the loose decomposition (74). The same graphical model implies the conditional independences 
+
+zs ⊥⊥ wt | (ezt, x), ws ⊥⊥ (ezt, wt) | (zs, x),
+
+and therefore 
+
+q(zs, ws | ezt, wt, x) = q(zs | ezt, x) q(ws | zs, x), (78) 
+
+q(zs, ws | ezt, wt, ˆxθ ) = q(zs | ezt, ˆxθ ) q(ws | zs, ˆxθ ). (79) Substituting (78) and (79) into ¯Lzs,w s|zt,w t gives 
+
+¯Lzs,w s|zt,w t = Eq(ezt|wt)[DKL [q(zs | ezt, x) q(ws | zs, x) ∥ q(zs | ezt, ˆxθ ) q(ws | zs, ˆxθ )]] . (80) Applying the chain rule of KL inside the expectation yields 
+
+¯Lzs,w s|zt,w t = Eq(ezt|wt)[DKL [q(zs | ezt, x) ∥ q(zs | ezt, ˆxθ )]] + Eq(ezt|wt)
+
+Eq(zs|ezt,x)[DKL [q(ws | zs, x) ∥ q(ws | zs, ˆxθ )]]  . (81) The first term is exactly ¯Lzs|zt,w t . For the second term, apply the law of total expectation: 
+
+Eq(ezt|wt)
+
+Eq(zs|ezt,x)[[ ·]]  = Eq(zs|wt,x)[[ ·]] .
+
+Hence 
+
+¯Lzs,w s|zt,w t = ¯Lzs|zt,w t
+
++ Eq(zs|wt,x)[DKL [q(ws | zs, x) ∥ q(ws | zs, ˆxθ )]] , (82) which is exactly (74). The decomposition in (74) clarifies the role of the selected main-text objective. The relaxed discrete bridge keeps the categorical part of the joint bridge while discarding the additional simplex-matching term. This is exactly the simplification that later makes the continuous-time limit non-degenerate. 20 D.2 Auxiliary KL inequalities 
+
+We next record three standard KL inequalities that will be used to compare the surrogate objectives. 
+
+Lemma 2 (Data processing inequality for KL divergence) . Let P and Q be two probability distribu-tions on a space X , and let K(y | x) be a stochastic kernel from X to Y. Define the pushforward distributions 
+
+(P K)( y) := EP (x)[K(y | x)] , (QK)( y) := EQ(x)[K(y | x)] . (83) 
+
+Then 
+
+DKL [P K ∥ QK] ≤ DKL [P ∥ Q] . (84) 
+
+Proof. This follows directly from Theorem 4.1 of Kullback and Leibler [1951] by taking T to be the stochastic kernel K.A particularly important special case is marginalization. 
+
+Corollary 2 (Marginalization cannot increase KL) . Let PU,V and QU,V be two joint distributions, with marginals PU and QU . Then 
+
+DKL [PU ∥ QU ] ≤ DKL [PU,V ∥ QU,V ] . (85) 
+
+Proof. Take K to be the projection kernel (u, v ) 7 → u in Lemma 2. 
+
+Lemma 3 (Joint convexity of KL divergence) . Let λi ≥ 0 with Pmi=1 λi = 1 , and let Pi, Q i be probability distributions on a common space. Then 
+
+DKL 
+
+" mX
+
+> i=1
+
+λiPi
+
+> m
+
+X
+
+> i=1
+
+λiQi
+
+#
+
+≤
+
+> m
+
+X
+
+> i=1
+
+λiDKL [Pi ∥ Qi] . (86) 
+
+Proof. This follows from the joint convexity of relative entropy; see Theorem 2.7.2 in Cover and Thomas [2006]. 
+
+D.3 Relations among the surrogate objectives 
+
+The valid relations among the surrogate objectives follow from marginalization and joint convexity of KL divergence. Marginalizing either zs or ws from a joint bridge gives the corresponding categorical or simplex bound. In addition, averaging over the auxiliary decoded state ezt ∼ q(ezt | wt) gives the bounds from the direct categorical and direct joint objectives to their decoded counterparts. To state the decoded simplex bound, define 
+
+¯Lws|zt,w t (wt, ˆxθ , x; s, t ) := Eq(ezt|wt)[DKL [q(ws | ezt, wt, x) ∥ q(ws | ezt, wt, ˆxθ )]] . (87) 
+
+Proposition 7. For all wt ∈ ∆K−1, ˆxθ ∈ ∆K−1, and x ∈ V ,
+
+Lzs|wt ≤ L zs,w s|wt ,
+
+Lws|wt ≤ L zs,w s|wt ,
+
+Lzs,w s|wt ≤ ¯Lzs,w s|zt,w t .
+
+(88) 
+
+Moreover, 
+
+Lzs|wt ≤ ¯Lzs|zt,w t ≤ ¯Lzs,w s|zt,w t ,
+
+¯Lws|zt,w t ≤ ¯Lzs,w s|zt,w t . (89) 
+
+Proof. We first prove (88). 1. The distributions q(zs | wt, x) and q(ws | wt, x) are the corresponding marginals of q(zs, ws |
+
+wt, x). The same statement holds on the model side. Hence, by Corollary 2, 
+
+Lzs|wt (wt, ˆxθ , x) ≤ DKL [q(zs, ws | wt, x) ∥ q(zs, ws | wt, ˆxθ )] = Lzs,w s|wt (wt, ˆxθ , x), (90) 
+
+Lws|wt (wt, ˆxθ , x) ≤ DKL [q(zs, ws | wt, x) ∥ q(zs, ws | wt, ˆxθ )] = Lzs,w s|wt (wt, ˆxθ , x). (91) 21 2. By marginalizing over ezt, we have 
+
+q(zs, ws | wt, x) = Eq(ezt|wt)[q(zs, ws | ezt, wt, x)] , (92) 
+
+q(zs, ws | wt, ˆxθ ) = Eq(ezt|wt)[q(zs, ws | ezt, wt, ˆxθ )] . (93) The mixing law is shared by both sides because it is always q(ezt | wt). Applying Lemma 3 yields 
+
+Lzs,w s|wt (wt, ˆxθ , x) = DKL [q(zs, ws | wt, x) ∥ q(zs, ws | wt, ˆxθ )] 
+
+≤ Eq(ezt|wt)[DKL [q(zs, ws | ezt, wt, x) ∥ q(zs, ws | ezt, wt, ˆxθ )]] = ¯Lzs,w s|zt,w t (wt, ˆxθ , x). (94) Combining (90), (91), and (94) proves (88). We now prove (89). 1. Using the conditional independence 
+
+zs ⊥⊥ wt | (ezt, x),
+
+and marginalizing over ezt, we have 
+
+q(zs | wt, x) = Eq(ezt|wt)[q(zs | ezt, x)] , (95) 
+
+q(zs | wt, ˆxθ ) = Eq(ezt|wt)[q(zs | ezt, ˆxθ )] . (96) Applying Lemma 3 to these mixtures yields 
+
+Lzs|wt (wt, ˆxθ , x) ≤ ¯Lzs|zt,w t (wt, ˆxθ , x). (97) 2. For each fixed ezt, q(zs | ezt, x) and q(ws | ezt, wt, x) are the corresponding marginals of 
+
+q(zs, ws | ezt, wt, x),
+
+where 
+
+q(zs | ezt, wt, x) = q(zs | ezt, x).
+
+The same statements hold on the model side. Therefore, by Corollary 2, 
+
+DKL [q(zs | ezt, x) ∥ q(zs | ezt, ˆxθ )] 
+
+≤ DKL [q(zs, ws | ezt, wt, x) ∥ q(zs, ws | ezt, wt, ˆxθ )] , (98) 
+
+DKL [q(ws | ezt, wt, x) ∥ q(ws | ezt, wt, ˆxθ )] 
+
+≤ DKL [q(zs, ws | ezt, wt, x) ∥ q(zs, ws | ezt, wt, ˆxθ )] . (99) Averaging both inequalities over q(ezt | wt) gives 
+
+¯Lzs|zt,w t (wt, ˆxθ , x) ≤ ¯Lzs,w s|zt,w t (wt, ˆxθ , x), (100) 
+
+¯Lws|zt,w t (wt, ˆxθ , x) ≤ ¯Lzs,w s|zt,w t (wt, ˆxθ , x). (101) Combining (97), (100), and (101) proves (89). The joint surrogate contains an additional simplex-matching term. The following identity and proposition give its closed form. 
+
+Lemma 4. For any j, k ∈ { 1, . . . , K },
+
+EDir( ·;ηsps+ek )[log wj ] = ψ(ηsps,j (x) + δj,k ) − ψ(ηs + 1) . (102) 
+
+Proof. For a Dirichlet random vector with parameter α = ( α1, . . . , α K ), the standard identity is 
+
+EDir( ·;α)[log wj ] = ψ(αj ) − ψ
+
+> K
+
+X
+
+> m=1
+
+αm
+
+!
+
+.
+
+Applying this with 
+
+α = ηsps + ek
+
+gives 
+
+αj = ηsps,j (x) + δj,k ,
+
+> K
+
+X
+
+> m=1
+
+αm = ηsKX
+
+> m=1
+
+ps,m (x) + 1 = ηs + 1 ,
+
+which proves (102). 22 Proposition 8. For 0 < s < t ≤ 1, the simplex-matching term satisfies 
+
+¯Lws|zs,w t (wt, ˆxθ , x; s, t ) = DKL [Dir( ·; ηsps) ∥ Dir( ·; ηs ˆps)] + ρs|t(x, wt), log ˆ ps − log ps + 1 − ˆps ⊘ ps . (103) 
+
+Proof. We compute the simplex term ¯Lws|zs,w t . By definition, 
+
+¯Lws|zs,w t =
+
+> K
+
+X
+
+> k=1
+
+ρs|t,k (x, wt) DKL [Dir( ·; ηsps + ek) ∥ Dir( ·; ηs ˆps + ek)] . (104) Fix k ∈ { 1, . . . , K }. By Lemma 1, 
+
+Dir( w; ηsps + ek) = wk
+
+ps,k (x) Dir( w; ηsps) , (105) 
+
+Dir( w; ηs ˆps + ek) = wk
+
+ps,k (ˆ xθ ) Dir( w; ηs ˆps) . (106) Taking the logarithm of the ratio gives 
+
+log Dir( w; ηsps + ek)Dir( w; ηs ˆps + ek) = log Dir( w; ηsps)Dir( w; ηs ˆps) + log ps,k (ˆ xθ ) − log ps,k (x). (107) We now compare the expectation of the unshifted log-ratio under the shifted Dirichlet law with the KL between the unshifted Dirichlet distributions. Expanding the Dirichlet density gives 
+
+log Dir( w; ηsps)Dir( w; ηs ˆps) = log B(ηs ˆps)
+
+B(ηsps) + ηsKX
+
+> j=1
+
+ ps,j (x) − ps,j (ˆ xθ ) log wj . (108) Taking expectation under Dir( ·; ηsps + ek) and applying Lemma 4 gives 
+
+EDir( ·;ηsps+ek )
+
+
+
+log Dir( w; ηsps)Dir( w; ηs ˆps)
+
+
+
+= log B(ηs ˆps)
+
+B(ηsps) + ηsKX
+
+> j=1
+
+ ps,j (x) − ps,j (ˆ xθ )  ψ(ηsps,j (x) + δj,k ) − ψ(ηs + 1) . (109) On the other hand, the KL divergence between the unshifted Dirichlet distributions is 
+
+DKL [Dir( ·; ηsps) ∥ Dir( ·; ηs ˆps)] = log B(ηs ˆps)
+
+B(ηsps) + ηsKX
+
+> j=1
+
+ ps,j (x) − ps,j (ˆ xθ )  ψ(ηsps,j (x)) − ψ(ηs). (110) Subtracting (110) from (109), and using 
+
+ψ(a + 1) = ψ(a) + 1
+
+a , ψ(ηs + 1) = ψ(ηs) + 1
+
+ηs
+
+,
+
+yields 
+
+EDir( ·;ηsps+ek )
+
+
+
+log Dir( w; ηsps)Dir( w; ηs ˆps)
+
+
+
+= DKL [Dir( ·; ηsps) ∥ Dir( ·; ηs ˆps)] + 1 − ps,k (ˆ xθ )
+
+ps,k (x) . (111) Combining (107) with (111), we obtain 
+
+DKL [Dir( ·; ηsps + ek) ∥ Dir( ·; ηs ˆps + ek)] = DKL [Dir( ·; ηsps) ∥ Dir( ·; ηs ˆps)] + log ps,k (ˆ xθ ) − log ps,k (x)+ 1 − ps,k (ˆ xθ )
+
+ps,k (x) . (112) 23 Substituting (112) into (104), and using PKk=1 ρs|t,k (x, wt) = 1 , yields 
+
+¯Lws|zs,w t = DKL [Dir( ·; ηsps) ∥ Dir( ·; ηs ˆps)] +
+
+> K
+
+X
+
+> k=1
+
+ρs|t,k (x, wt)
+
+
+
+log ps,k (ˆ xθ ) − log ps,k (x) + 1 − ps,k (ˆ xθ )
+
+ps,k (x)
+
+
+
+= DKL [Dir( ·; ηsps) ∥ Dir( ·; ηs ˆps)] + ρs|t(x, wt), log ˆ ps − log ps + 1 − ˆps ⊘ ps ,
+
+(113) which proves (103). 
+
+D.4 Why the other surrogate objectives do not yield suitable continuous-time objectives 
+
+The relaxed discrete bridge is distinguished by its first-order scaling. We now show that the remaining surrogates behave differently in the local limit: the tight discrete objective vanishes at second order, whereas the joint objectives retain an O(1) simplex-matching term. 
+
+Proposition 9. Let s = t − ∆ with ∆ ↓ 0, and assume that ηt is continuous in t.1. The tight discrete objective satisfies 
+
+Lzt−∆|wt (wt, ˆxθ , x; t − ∆, t ) = O(∆ 2). (114) 
+
+2. Define 
+
+St(wt, ˆxθ , x) := DKL [Dir( ·; ηtpt) ∥ Dir( ·; ηt ˆpt)] + ⟨wt, log ˆ pt − log pt + 1 − ˆpt ⊘ pt⟩ .
+
+(115) 
+
+Then the simplex term satisfies 
+
+¯Lwt−∆|zt−∆,w t (wt, ˆxθ , x; t − ∆, t ) = St(wt, ˆxθ , x) + o(1) . (116) 
+
+3. Consequently, 
+
+Lzt−∆,w t−∆|wt (wt, ˆxθ , x; t − ∆, t ) = St(wt, ˆxθ , x) + o(1) , (117) 
+
+¯Lzt−∆,w t−∆|zt,w t (wt, ˆxθ , x; t − ∆, t ) = St(wt, ˆxθ , x) + o(1) . (118) 
+
+Proof. 1. We first analyze the tight discrete objective. Using Equation (29) together with the same expansions (54) and (56) as above, we obtain 
+
+ρt−∆|t(x, wt) = wt + ∆ at(x, wt) + o(∆) , (119) 
+
+ρt−∆|t(ˆ xθ , wt) = wt + ∆ ˆ at(ˆ xθ , wt) + o(∆) , (120) where 
+
+at(x, wt) = λ(t) [ ⟨wt, π ⊘ pt⟩ pt − π ⊙ (wt ⊘ pt)] , (121) 
+
+ˆat(ˆ xθ , wt) = λ(t) [ ⟨wt, π ⊘ ˆpt⟩ ˆpt − π ⊙ (wt ⊘ ˆpt)] . (122) Since both vectors in (119) and (120) are probability vectors, their first-order perturbations satisfy 
+
+⟨1, at(x, wt)⟩ = 0 , ⟨1, ˆat(ˆ xθ , wt)⟩ = 0 .
+
+Therefore, expanding the categorical KL around the common base point wt shows that the first-order term cancels: 
+
+Lzt−∆|wt = DKL [Cat( ·; wt + ∆ at + o(∆)) ∥ Cat( ·; wt + ∆ ˆ at + o(∆))] = O(∆ 2). (123) This proves (114). 24 2. We next analyze the simplex term using its closed form (103). Since ηt is continuous, 
+
+ηt−∆ = ηt + o(1) .
+
+Moreover, by (56) and its analogue for ˆpt−∆,
+
+pt−∆ = pt + O(∆) , ˆpt−∆ = ˆ pt + O(∆) .
+
+Finally, Equation (57) gives 
+
+ρt−∆|t(x, wt) = wt + O(∆) .
+
+Substituting these expansions into (103) yields 
+
+¯Lwt−∆|zt−∆,w t = DKL [Dir( ·; ηtpt) ∥ Dir( ·; ηt ˆpt)] + ⟨wt, log ˆ pt − log pt + 1 − ˆpt ⊘ pt⟩ + o(1) , (124) which is exactly (116). 3. The asymptotics of the two joint objectives now follow from the decompositions in Equations (73) and (74). For the tight joint objective, 
+
+Lzt−∆,w t−∆|wt = Lzt−∆|wt + ¯Lwt−∆|zt−∆,w t ,
+
+and combining (114) with (116) gives (117). For the loose joint objective, 
+
+¯Lzt−∆,w t−∆|zt,w t = ¯Lzt−∆|zt,w t + ¯Lwt−∆|zt−∆,w t .
+
+The first term is o(1) by Proposition 3, while the second is given by (116). This yields (118). The proposition makes the selection of the main-text objective precise. The tight discrete objective is too small in the local limit: after dividing by ∆, it vanishes. The joint objectives behave in the opposite way: they contain a generally nonzero O(1) simplex-matching term, so they do not reduce to a finite first-order training density. The relaxed discrete bridge sits exactly between these two extremes, which is why it is the natural objective for the continuous-time formulation. 
+
+E OpenWebText Experimental Details 
+
+This appendix provides preprocessing, optimization, checkpoint, sampling, and evaluation details that are omitted from the main text. The dataset, tokenizer, sequence length, backbone, primary optimization settings, and entropy-matched evaluation protocol are summarized in Sections 4.1 and 4.3. 
+
+Data preprocessing. We use the openwebtext-train and openwebtext-valid splits. Docu-ments are concatenated with an end-of-sequence token inserted between adjacent documents and packed into fixed-length blocks of 1,024 GPT-2 tokens. 
+
+Optimization details. Models trained in our common codebase use Adam with β1 = 0 .9, β2 =0.999 , numerical constant 10 −8, and gradient-norm clipping at 1.0. Training uses bfloat16 precision and a linear warmup over the first 2,500 optimizer steps, followed by a constant learning rate. We maintain an EMA of the parameters with decay 0.9999 and use the averaged parameters for generation. 
+
+Simplax checkpoint. The Simplax model used in the main OpenWebText comparison is initialized from a UDLM checkpoint trained for 800 ,000 optimizer steps and is subsequently trained with the Simplax objective for an additional 200 ,000 steps. The resulting checkpoint therefore has a total optimization history of 1,000 ,000 steps. The network predicts the clean-token distribution and receives the categorical state zt as input, while the relaxed state wt remains in the training objective. We use a uniform time schedule, constant Dirichlet concentration η = 0 .01 , and constant loss weighting. The reported checkpoint does not use an auxiliary self-conditioning input. Dirichlet sampling and concentration-dependent computations are performed in float64. Concentra-tion values are restricted to [10 −10 , 10 8] for numerical stability. Before normalization, the output logits ℓ are softly bounded as ℓ ← 30 tanh ( ℓ/ 30) .25 Table 3: Representative unconditional OpenWebText generations at NFE = 16 . Entropy is the generative unigram entropy in nats per token. 
+
+Method Ent. Generated text CANDI 5.44 July on our records and the song in July, and we’re signing people just for the next album, but it didn’t couple with laser or anything. I had just a video. I thought they were crazy, because there were a lot of people out there who did it right. They felt like it was completely under my radar. [. . . ] 
+
+UDLM 5.53 What with talk of a new bus un the altitude in the first place. In South Bend in November came the focus upon new cyclists – with an being builder. The other duck, Alabama. In total at least 82 bikes were donated to the department. [. . . ] 
+
+MDLM 5.43 Select Rally and Comm Rally was a great game with strong designed scenarios, but I did think about no-one should play it as middle of the road. You’ve already started to love my opinion on Two vs Two. You should check it, and stick and play this once again! We again stack you. This is the final year for the year. [. . . ] 
+
+Duo 5.45 I ever thought that it would be torrent be progression to try something new like my team base’s football department. While I would have been optimistic about both the br of young players that hockey at the University at which went down in international football over the last of years and the way paths kept me focused so well I was pretty. [. . . ] 
+
+FLM 5.58 Dec 16, 2015 Edit: I cant let my reader now clear that this painting looks like a collegecommunication.” On Z. Thanks the box. that by the way I am out over to the river to buy your best chance to date for such a horrible year. But at which point after year they release the windows of 3,100 by 11 inches. St. [. . . ] 
+
+LangFlow 5.42 God, will thrive. No others, and not at all, will determine our faith. We live in transient despair. But we don’t know how to do it tomorrow. We want to live. We are sinners, we do not have God. God. we have identified the freedom of the one Being, is made to the only kind that governs our nation. [. . . ] 
+
+S-FLM 5.45 I feel like, how much does that have to work out there? Are you going into a different development company? I think speaking about the timing and the reputation of what I mean as something that have really enjoyed my career doing. I kind of think the company can change things. [. . . ] 
+
+Simplax 5.46 It was basically a percentage league, is there going to have to be one a year? They always were because they had them. If they knew that rule, they got to play one for their bodies. Then, when they voted for a “bolt 1” rule and what they got was, they want the fifth best defender to attack you, so they added [. . . ] 
+
+Qualitative generations. Tables 3 to 5 show representative generations at NFE = 16 , 128 , and 
+
+1, 024 . For each method, the example is selected from the operating point determined by the entropy-matching procedure used in the main experiment. The generated text is not manually rewritten. The excerpts are truncated at the positions marked by [. . . ], and line wrapping is applied only for presentation. 26 Table 4: Representative unconditional OpenWebText generations at NFE = 128 . Entropy is the generative unigram entropy in nats per token. 
+
+Method Ent. Generated text CANDI 5.43 I think they should hear about their jobs more than they think. They know that they to hear about a huge percentage of young adult Americans that are helping create jobs. I realize that what our advisors and architects believe is true. They’re in fact engaging in those American jobs, whether or not they’ve been doing it for several years. [. . . ] 
+
+UDLM 5.50 The show has been going on for years, and people who tell the community about the end, and what way it works are already very exciting. But it is difficult to know whether you will disagree, even whether you feel the show expects a lot. So tell other friends and friends who are just around you, the producers and the media what [. . . ] 
+
+MDLM 5.45 It’s been difficult times with, for me and Brett. It’s important to tackle this issue on the long haul. I plan on putting it on hold again once I have my business, but committed to showing up again by the deadline. There’s a lot of effort involved in an issue about a loan for $20k, and it was in the middle, I [. . . ] 
+
+Duo 5.44 America’s social justice system. The ability of America’s people to deal with those that are alike and those different is unclear. But when tough and bad, the outcomes are not very different.” Congressman Kathy Lee interviewed for this article told me what she called her priority business when serving as lieutenant senator of New York. [. . . ] 
+
+FLM 5.43 I think that we would have to bring back aggression by the usual course, with war with the past, on a situation. If it was done, the fascists were inside them or there was nobody stirred up. People were part of the invasion by the Nazis, then they shot, they went on. [. . . ] 
+
+LangFlow 5.42 The body bloates with a layer of wood, black air that brings in your skin and exites aging. When reading about your life in the late 90s, what was the puzzle you were plotting in your life? I wanted to tell the secret of being an ideal person, and that everything that relies on that secret still exists. [. . . ] 
+
+S-FLM 5.43 “You,” asked Reeves, who had a light conversation with her. “You shouldn’t sell a media conference. You have been around for weeks and you haven’t come out to 83 game,” Khanco said, “WHAT?” “Foreby, you have been making a fortune with free agency!” she replied. “I have to wonder what it was your secret. I plan to write everything with this team. [. . . ] 
+
+Simplax 5.45 “I thought it was odd,” Anna told me. “I wanted to know,” Elsa said nervously. It’s a lovely thing when you use words the way they mean something. You seem to like it. A lot.” That was nice. “It needed to be answered,” Anna said. “I just didn’t say it since I grew up.” I said. [. . . ] 
+
+27 Table 5: Representative unconditional OpenWebText generations at NFE = 1 , 024 . Entropy is the generative unigram entropy in nats per token. 
+
+Method Ent. Generated text CANDI 5.46 Tip: Every single mistake you face, you don’t pay for it all the time. This is lost confidence. Of course, in this article, you want to be booking your own grooming option, just to pay at your local time schedule. You have to have a monthly with the brand Indigo Tattoo Shop for the monthly fee. [. . . ] 
+
+UDLM 5.45 Yeah: That’s what I understand... and I’d presumably have come on board. I think it would be foolish to give something to him, but I guess he wouldn’t want to write them, because he’d actually want it to remain in front of him for a few years. [. . . ] 
+
+MDLM 5.44 No last of the songs have been put together – we really want the whole development going. I really hope it turns out, or the clock falls on its own itself, and if we start putting them together, things will just blow up almost completely. That’s pretty scary. This will be our first time back in the studio. [. . . ] 
+
+Duo 5.43 If for rats and pies. I’ve been digging for a hard break. With Ann – she’d have a long, bitter it by trying on. It never got there, I- She was just shy of puberty or a man. I wouldn’t even want to tell my grandmother what was going on in her life. Those things went somewhere, baby. [. . . ] 
+
+FLM 5.45 There can be something if you don’t know you’re someones not squad, that’s got an entirely different breed but neither do instinctively believe what or everyone born with will do the thing. There are some of that kind of good will. You only do that stuff for nothing but fun. [. . . ] 
+
+LangFlow 5.41 50. “My messy experience is everything” he said.” Something that has been on for all my life, and I think I’m living with it, but that’s tough when I start losing people’s attention.” He said he had accepted divorce for most of his family’s care because he now relies on current degree’s rent, healthcare, and social assistance children. [. . . ] 
+
+S-FLM 5.45 I can’t say no they. She’s definitely a stockwoman. She’s got a huge attitude. We don’t make her look her the way she’s someone that’s popular. There’s just a hint of that.” If you would give us more time to the public on our #1 gender department, you can tell us your thoughts in the comments below. [. . . ] 
+
+Simplax 5.44 How could I take it to him? Would I have a chat in my life? I didn’t freak out. Even still, he did not have enough strength, and I was only millimeters away, and not even touching his chador. Only a rag with lain liquid it around his hair, and he could feel the innocence of a Playboy. [. . . ] 
+
+E.1 Sudoku experimental details Dataset. All Sudoku puzzles used in our experiments have unique solutions. Following Deschenaux and Gulcehre [2026], we use the greedy Sudoku puzzle generator of Alp [2024] to construct the training data and the evaluation sets with 25 or more clues. The training set contains 48 ,000 puzzles with 30 observed cells, and all models are trained exclusively on this 30 -clue training set. For evaluation, we use 2,000 puzzles for each clue count. The training set and the 40 -, 35 -, 30 -, and 
+
+25 -clue evaluation sets are generated with seed 42 .For the 20 - and 17 -clue settings, we instead use uniquely solvable 17 -clue Sudoku puzzles studied by Lin et al. [2013]. The 17 -clue evaluation set uses these puzzles directly, while the 20 -clue evaluation set is constructed by augmenting each 17 -clue puzzle with three additional clues from its unique solution. At evaluation time, we therefore consider conditional completion with 40 , 35 , 30 , 25 , 20 , and 17 
+
+clues. The 30 -clue setting matches the training clue density. The 40 - and 35 -clue settings provide more conditioning information than observed during training, whereas the 25 -, 20 -, and 17 -clue settings progressively reduce the available conditioning information. For the no-clue evaluation, all 
+
+81 cells in the puzzle prefix are replaced with the blank token. 
+
+Sequence representation. The vocabulary contains 12 symbols: a blank-cell token, the digits 1–9,a row-separator token, and a BOS token. Each example is represented by 180 tokens: 
+
+[BOS ] + 89-token puzzle + [ BOS ] + 89-token solution .
+
+Each 89 -token board representation contains 81 cell tokens and eight row separators. The resulting puzzle prefix has length 91 , and the generated solution has length 89 . Unobserved cells are represented explicitly by the blank token, so the prefix length remains 91 for every clue count. The training objective is evaluated only on the solution portion of the sequence. 
+
+Shared architecture. All methods use Transformer models with hidden dimension 512 , eight Transformer blocks, eight attention heads of dimension 64 , and dropout probability 0.1. The models use learned token embeddings without embedding–output weight tying. The autoregressive model uses causal attention and no time conditioning. The remaining models use bidirectional attention and AdaLN-based time conditioning with conditioning dimension 128 .28 6 93 13 2 4 5 81 8 93 7 678 2 452 6 3 1 5                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
+
+> Input puzzle 25 clues
+> 418365927975842631326917458183276549
+> 294158376
+> 657439812
+> 861524793
+> 539781264742693185
+> Ground truth reference
+> 751468923498572631326911458185346749
+> 249185376
+> 637297514813724569564839217972653185
+> AR invalid · 42 errors
+> 418365927975842631326719458183276549
+> 254958376
+> 697435812
+> 861524793
+> 539187264742693185
+> MDLM invalid · 8 errors
+> 415368927978452631326791458183276549
+> 254819376
+> 697945812
+> 891524763
+> 569137284742683195
+> Duo invalid · 25 errors
+> 451368927978452631326719458187236549
+> 295841376
+> 637945812
+> 819524763
+> 563187294742693185
+> FLM invalid · 26 errors
+> 451368927978452631326197458183276549
+> 245819376
+> 697435812
+> 819524763
+> 563971284742683195
+> S-FLM invalid · 25 errors
+> 451368927978452631326719458184276549
+> 295841376
+> 647935812
+> 819524763
+> 564197284742683195
+> S-FLM (trunc.) invalid · 27 errors
+> 418365927975842631326917458183276549
+> 294158376
+> 657439812
+> 861524793
+> 539781264742693185
+> Simplax valid
+
+Figure 5: Generation results for a representative 25 -clue Sudoku puzzle at NFE = 89 . Blue entries are given clues, black entries agree with the unique solution, and red entries differ from it. All methods receive the same puzzle prefix. Simplax produces the valid solution in this example, whereas the other methods violate at least one Sudoku constraint. 
+
+Optimization. All models are trained for 20 ,000 optimization steps with global batch size 256 
+
+using bfloat16 precision. We use Adam with learning rate 3 × 10 −4, β1 = 0 .9, β2 = 0 .999 , and gradient-norm clipping at 1.0. The learning rate is linearly warmed up for 2,500 steps and then held constant. We maintain an EMA of the parameters with decay 0.9999 and use the averaged parameters for evaluation. Antithetic time sampling is enabled. All training runs use random seed 1, and the reported checkpoints are taken at step 20 ,000 , corresponding to epoch 106 .
+
+Qualitative Sudoku generation. As shown in Figure 5, the baseline models often recover many individual entries while failing to form a globally consistent grid. MDLM comes closest in this case, differing from the unique solution in only eight cells, but even these sparse errors are sufficient to invalidate the board. In contrast, Simplax satisfies the coupled row, column, and subgrid constraints simultaneously. This example was selected from the held-out 25 -clue evaluation set to illustrate the distinction between local agreement and global validity; aggregate accuracy over the full evaluation sets is reported separately. 29
