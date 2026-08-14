@@ -18,53 +18,52 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-12
-- 运行时间：2026-08-12 21:19:54 UTC
+- 最新运行日期：2026-08-14
+- 运行时间：2026-08-14 20:51:08 UTC
 - 运行状态：成功
 - 本次总论文数：10
-- 精读区：7
-- 速读区：3
+- 精读区：4
+- 速读区：6
 
 ### 今日简报（AI）
-- 今日共生成 10 篇推荐（精读 7 篇，速读 3 篇）
-- 精读：《Flow Straight to Reality: Perceptually Consistent Flow Matching for Efficient Image Restoration》（9.0/10）, 《AdvFD: Boosting Visual Generation via Adversarial Fr'echet Distance Loss》（9.0/10）
-- 速读：《Second Order Drifting Models》（7.0/10）, 《Simplex Relaxation for Discrete Diffusion》（7.0/10）, 《Diffusion Quasi-Monte Carlo》（6.0/10）
-- 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202608/12/README](/202608/12/README)
+1) 今日精读2篇生成模型顶会论文，速读6篇覆盖自编码器、机器人世界模型与3D场景生成。  
+2) 最值得关注方向：用路径积分统一生成模型框架，以及多维快捷流（XYZFlow）在高效生成上的缩放突破。  
+3) 建议普通读者优先看《Unifying Generative Models with Path Integrals》，理解生成模型底层统一逻辑，再结合XYZFlow感受效率提升。
+- 详情：[/202608/14/README](/202608/14/README)
 
 ### 精读区论文标签
-1. [Flow Straight to Reality: Perceptually Consistent Flow Matching for Efficient Image Restoration](/202608/12/2608.10544v1-flow-straight-to-reality-perceptually-consistent-flow-matching-for-efficient-image-restoration)  
+1. [Unifying Generative Models with Path Integrals](/202608/14/2608.12438v1-unifying-generative-models-with-path-integrals)  
+   标签：评分：10.0/10、query:fm
+   evidence：通过路径积分统一流、扩散、变分、对抗生成模型
+2. [XYZFlow:Scaling Multi dimensional Shortcut Flows for Efficient Generative Modeling](/202608/14/2608.12276v1-xyzflowscaling-multi-dimensional-shortcut-flows-for-efficient-generative-modeling)  
    标签：评分：9.0/10、query:fm
-   evidence：图像恢复中的流匹配与潜变量一致性
-2. [AdvFD: Boosting Visual Generation via Adversarial Fr'echet Distance Loss](/202608/12/2608.11205v1-advfd-boosting-visual-generation-via-adversarial-frechet-distance-loss)  
-   标签：评分：9.0/10、query:fm
-   evidence：流匹配损失与扩散损失
-3. [In-Loop Model Adaptation with Coupled Latent-Noise Guidance for High-Fidelity Subject-Driven Text-to-Image Generation](/202608/12/2608.09244v1-in-loop-model-adaptation-with-coupled-latent-noise-guidance-for-high-fidelity-subject-driven-text-to-image-generation)  
+   evidence：用于高效生成建模的流匹配
+3. [ELVAE: Evidential Learning-Based Variational Autoencoder for Uncertainty-Aware Generation](/202608/14/2608.10398v1-elvae-evidential-learning-based-variational-autoencoder-for-uncertainty-aware-generation)  
    标签：评分：8.0/10、query:fm
-   evidence：扩散模型与潜变量引导用于主题驱动生成
-4. [Imaginative Generative AI: Crossing the Entropy Wall into Worlds Beyond Imitation](/202608/12/2608.09385v2-imaginative-generative-ai-crossing-the-entropy-wall-into-worlds-beyond-imitation)  
+   evidence：带有潜在变量的变分自编码器
+4. [TGRHuman: Text-Guided Realistic 3D Human Generation via Diffusion Renderer](/202608/14/2608.12175v1-tgrhuman-text-guided-realistic-3d-human-generation-via-diffusion-renderer)  
    标签：评分：8.0/10、query:fm
-   evidence：生成式AI框架
-5. [Reducing Pretraining-Generation Mismatch in Diffusion Language Models](/202608/12/2608.09424v1-reducing-pretraining-generation-mismatch-in-diffusion-language-models)  
-   标签：评分：8.0/10、query:fm
-   evidence：扩散语言模型的预训练-生成不匹配
-6. [Real-World Cooperative Bimanual Dexterous Grasp of Large Objects from Single-View Observations](/202608/12/2608.10383v1-real-world-cooperative-bimanual-dexterous-grasp-of-large-objects-from-single-view-observations)  
-   标签：评分：8.0/10、query:fm
-   evidence：使用去噪扩散概率模型（DDPM）生成抓取配置
-7. [Beyond Pixels: From Video Priors to 4D Worlds](/202608/12/2608.10744v1-beyond-pixels-from-video-priors-to-4d-worlds)  
-   标签：评分：8.0/10、query:fm
-   evidence：4D动态场景生成模型
+   evidence：利用扩散渲染器生成3D人体
 
 ### 速读区论文标签
-1. [Second Order Drifting Models](/202608/12/2608.07924v1-second-order-drifting-models)  
+1. [NAE: Normalizing AutoEncoder](/202608/14/2608.12084v1-nae-normalizing-autoencoder)  
    标签：评分：7.0/10、query:fm
-   evidence：基于漂移动力学的生成模型
-2. [Simplex Relaxation for Discrete Diffusion](/202608/12/2608.10615v1-simplex-relaxation-for-discrete-diffusion)  
+   evidence：基于归一化流的潜变量模型
+2. [DreamX-Phi 1.0: Action-Conditioned Video World Model for Robotic Manipulation](/202608/14/2608.13489v1-dreamx-phi-10-action-conditioned-video-world-model-for-robotic-manipulation)  
    标签：评分：7.0/10、query:fm
-   evidence：离散扩散模型的单纯形增广
-3. [Diffusion Quasi-Monte Carlo](/202608/12/2608.11055v1-diffusion-quasi-monte-carlo)  
+   evidence：动作条件视频世界模型，生成未来观测
+3. [iARCS: Iterative Agentic RL for Controllable 3D Scene Generation](/202608/14/2608.06161v2-iarcs-iterative-agentic-rl-for-controllable-3d-scene-generation)  
    标签：评分：6.0/10、query:fm
-   evidence：基于扩散模型的传输映射用于数值积分
+   evidence：迭代式智能体强化学习用于可控3D场景生成
+4. [Population-Level Generative Modeling for Ranking Data](/202608/14/2608.08422v2-population-level-generative-modeling-for-ranking-data)  
+   标签：评分：6.0/10、query:fm
+   evidence：排名数据的生成建模
+5. [Statistical analysis of block structured latent variable models](/202608/14/2608.10328v1-statistical-analysis-of-block-structured-latent-variable-models)  
+   标签：评分：6.0/10、query:fm
+   evidence：潜在变量模型的统计分析
+6. [SCULPT: Subtractive Composition for 3D Part Generation](/202608/14/2608.13541v1-sculpt-subtractive-composition-for-3d-part-generation)  
+   标签：评分：6.0/10、query:fm
+   evidence：使用减法合成的3D部件生成
 
 
 <div class="dpr-home-promo-card dpr-home-panel">
