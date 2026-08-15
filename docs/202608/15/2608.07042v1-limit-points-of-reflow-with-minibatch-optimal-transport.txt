@@ -1,0 +1,2383 @@
+Limit Points of Reflow with Minibatch
+Optimal Transport
+Antonin Chambolle∗
+Johannes Hertrich†
+August 10, 2026
+Rectified flows, also called flow matching or stochastic interpolants, are
+generative models that learn a time-dependent vector field steering a proba-
+bility curve between two probability distributions, usually referred to as latent
+and target distributions. Reflow accelerates inference by iteratively straight-
+ening the trajectories induced by this vector field. We study the asymptotic
+behavior of this iteration and characterize its limit points. First, we define
+weak rectified couplings which always exist. Next, when rectified flow up-
+dates are alternated with minibatch optimal transport steps of fixed batch
+size, we show that any limit is N-cyclically monotone, where N is the batch
+size. Such N-cyclically monotone couplings enjoy favorable structural and
+stability properties such as rectifiability and straightness. Finally, restricting
+velocities to gradient fields and assuming additional support conditions, we
+prove that reflow limits coincide with the optimal transport map between the
+endpoint distributions.
+1. Introduction
+Generative modeling is the task of learning a process to sample from a target probability
+measure µ1 on Rd, which is only given by data. A typical approach for doing so is to
+consider an easy-to-sample latent distribution µ0 and to learn a transport from µ0 to µ1.
+In practice, µ0 is often chosen as a standard Gaussian, but depending on the application
+other distributions can be used.
+Examples for generative models include variational
+autoencoders [16], normalizing flows [27] and score-based diffusion methods [14, 31].
+In this paper, we consider rectified flows [19, 20], which were introduced at the same
+time under the names flow matching [17] and stochastic interpolants [2]. We refer also
+to [1, 18, 25, 36] for some introduction and overview papers. Rectified flows start with
+∗Université Paris Dauphine - PSL & Inria, chambolle@ceremade.dauphine.fr
+†ENS Paris, johannes.hertrich@ens.fr
+1
+arXiv:2608.07042v1  [math.PR]  7 Aug 2026
+
+
+some coupling γ ∈Γ(µ0, µ1) := {γ ∈P2(Rd × Rd) : πx#γ = µ0, πy#γ = µ1}, where
+πx(x, y) = x and πy(x, y) = y, and learn a velocity field by minimizing the loss function
+vt ∈arg min
+wt∈L2(µt)
+L(wt|γ) :=
+ˆ 1
+0
+ˆ
+Rd×Rd ∥wt((1 −t)x + ty) −y + x∥2dγ(x, y)dt,
+(1)
+where µt is the probability measure defined by
+ˆ
+Rd ψ(x)dµt(x) =
+ˆ
+Rd×Rd ψ((1 −t)x + ty)dγ(x, y)
+for all
+ψ ∈C∞
+c (Rd).
+(2)
+Then, it can be shown that µt and the velocity field vt from (1) fulfill the continuity
+equation
+∂tµt + div(vtµt) = δ0 ⊗µ0 −δ1 ⊗µ1
+in a weak sense, i.e., it holds for all ψ ∈C∞
+c (R × Rd) that
+ˆ 1
+0
+ˆ
+Rd(∂tψ(t, x))dµt(x)dt +
+ˆ 1
+0
+ˆ
+Rd⟨∇ψ(t, x), vt(x)⟩dµt(x)dt
+(3)
+=
+ˆ
+Rd ψ(1, x)dµ1(x) −
+ˆ
+Rd ψ(0, x)dµ0(x).
+If vt is regular enough, this allows sampling from µ1 by sampling x0 from µ0 and com-
+puting the solution Φ1(x0) of the flow ODE
+∂tΦt(x) = vt(Φt(x)),
+Φ0(x) = x.
+(4)
+The authors of [20] call a coupling rectifiable if the solution of (4) always exists and is
+unique. However, rectifiability is not directly clear from the coupling and can be violated
+even in simple examples, see [13].
+In order to obtain straight velocity fields vt, Liu et al. [19, 20] proposed to iterate the
+rectified flow coupling, which is also known under the name “reflow”. The authors of [28]
+derive a sufficient condition under which reflow leads to straight couplings in the second
+step, but point out that this condition does not hold true in general. A similar result in
+a more general setting is derived in [34].
+Reflow can be related to optimal transport by choosing velocity fields which admit a
+potential. Under certain conditions, [19, 37] showed that reflow leads to the optimal
+transport plan. However, this result requires strong regularity assumptions, which are
+impossible to check during training time and are not fulfilled in many common cases,
+see also [13] for more details.
+Another approach to relate rectified flows to optimal
+transport is minibatch OT as proposed by Pooladian et al. [26] and Tong et al. [33]. This
+describes the techniques to reorder batches from the coupling γ according to discrete
+optimal transport. While it is clear that minibatch OT does not directly lead to optimal
+transport, several papers studied the convergence if the batch size tends to infinity, see
+[5, 12, 26]. While [26] and [12] focus on discrete settings, [5] proves a general convergence
+result to optimal transport as the batch size tends to infinity.
+2
+
+
+Outline and Contributions.
+In this paper we study the existence and convergence of
+rectified flows and the reflow procedure beyond the common regularity assumptions. We
+pay particular attention to the case where minibatch OT is applied in every iteration
+and show that this provides more tractable structures. The outline will be as follows:
+In Section 2 we present a weak rectified coupling which always exists even when the
+coupling is not rectifiable in the sense that the flow ODE (4) does not have a unique
+solution.
+In the case that γ is rectifiable, the weak rectified coupling is unique and
+coincides with the strong rectified coupling defined by the flow ODE. In the other cases,
+the weak rectified coupling might not be unique, but we show that any weak solution
+admits properties which make it as useful as a strong rectified coupling. In the context of
+the reflow procedure, we give an example that the loss function γ 7→infwt∈L2(µt) L(wt|γ)
+is not lower semicontinuous in γ (wrt weak convergence) such that it is not clear whether
+limit points are straight.
+In Section 3 we draw our attention to minibatch OT and its application in the reflow
+procedure. To this end, we first formally define minibatch OT as an operator on the
+space of couplings and study its fixed points. In the context of reflow, we characterize
+limit points, where minibatch OT with fixed batch size is applied in every step. We find
+that these limit points are N-cyclically monotone, where N is the chosen batch size and
+that this implies that the limit coupling is straight and rectifiable.
+In Section 4, we consider reflow, where we apply both minibatch OT and the constraint
+from [19] that velocities admit a potential. We consider the limit and fixed points of
+reflow and prove that they coincide with optimal transport under significantly weaker
+regularity assumptions than in [19]. Under strong assumptions, we also prove convergence
+of the iterates to optimal transport.
+Finally, we illustrate the influence of the batch size on the limit points numerically in
+Section 5. Further, conclusions, limitations and future work are discussed in Section 6.
+Additional examples and some proofs are given in the appendix.
+2. Weak Rectified Couplings and Straight Limits
+In [19, 20], the authors define rectified couplings as follows.
+Definition 1. We call a coupling γ with velocity field vt ∈arg minwt∈L2(µt) L(wt|γ) rec-
+tifiable if the flow ODE (4) has a unique solution for µ0-almost every x. For a rectifiable
+coupling γ, we call the coupling ˜γ defined by
+ˆ
+ψ(x, y)d˜γ(x, y) =
+ˆ
+ψ(x, Φ1(x))dµ0(x)
+for all
+ψ ∈C∞
+c (Rd × Rd),
+the strong rectified coupling of γ.
+In the case that µ0 is Gaussian, [28] formulate sufficient conditions for the independent
+coupling to be rectifiable.
+A consideration for more general marginals µ0 is done in
+3
+
+
+[22]. However, without further regularity assumptions, not even the independent cou-
+pling is rectifiable in general. In this section, we consider a weak formulation of rectified
+couplings, which always exists even when the flow ODE does not admit a unique solu-
+tion. The weak rectified coupling relies on a representation of solutions of the continuity
+equation as a probability measure on the space of rectifiable paths. This representation
+is described in [4, Section 8.2] and can also be derived from Smirnov’s decomposition
+theorem [30]. We show how this decomposition can be used for defining weak rectified
+couplings in Subsection 2.1. Afterwards, we show in Subsection 2.2 that any limit point
+of reflow (with weak rectified coupling) is straight.
+2.1. Weak Rectified Couplings
+We want to define a weaker version of Definition 1, which always exists. To this end, we
+start with a solution (µt, vt) of the continuity equation ∂tµt + div(vtµt) = 0 (in the weak
+sense (3)) with
+´ 1
+0 ∥vt∥2
+L2(µt)dt < ∞. In our application, µt will be the interpolation (2)
+and vt the minimizer of the flow matching loss (1).
+Even when the flow ODE (4) does not admit a unique solution, it is proven in [4,
+Thm. 8.2.1] (see also eq. (8.2.8)) that there is a probability measure Λ, defined on integral
+curves λ : [0, 1] →Rd such that it holds
+˙λ(t) = vt(λ(t))
+for a.e. t and Λ-a.e. λ, and,
+(5)
+ˆ
+Rd ψ(x)dµt =
+ˆ
+ψ(λ(t))dΛ(λ)
+for any ψ ∈Cc(Rd).
+(6)
+If the flow ODE (4) has a unique solution Φt, these paths λ coincide with the trajectories
+of the flow ODE in the sense that Λ = f#µ0, where f maps a point x ∈Rd to the curve
+t 7→Φt(x). As observed for instance in [32], this decomposition can also be deduced as
+a consequence of Smirnov’s theorem [30, Thm. C].
+With this measure Λ at hand, we can, in analogy to Definition 1, introduce a weak
+rectified coupling that is determined by the initial and terminal points of the lines λ in
+the support of Λ. We emphasize that the measure Λ from [4, Thm. 8.2.1] is not unique,
+so that weak rectified couplings are not unique either.
+Definition 2 (Weak Rectified Couplings). Let γ ∈Γ(µ0, µ1) and µt be defined by (2)
+and denote by vt = arg minwt∈L2(µt) L(wt|γ) the solutions of the flow matching loss (1).
+Then, we define the set of weak rectified couplings R(γ) as the set of all transport plans
+˜γ given by
+ˆ
+Rd×Rd ψ(x, y)d˜γ =
+ˆ
+ψ(λ(0), λ(1))dΛ(λ),
+for all ψ ∈C∞
+c (Rd × Rd),
+(7)
+where Λ fulfills (5) and (6) with respect to vt.
+We provide an explicit example for the non-uniqueness of the weak rectified coupling
+in Appendix B.1. Next, we collect some properties of weak rectified couplings in the
+following corollary.
+The proof follows directly from the definition and from [4, Thm
+8.2.1].
+4
+
+
+Corollary 3 (Properties of Weak Rectified Couplings). Let γ ∈Γ(µ0, µ1) and let ˜γ ∈
+R(γ). Then the following holds true.
+(i) R(γ) is a non-empty subset of Γ(µ0, µ1).
+(ii) If the flow ODE (4) has a unique solution, then R(γ) is single-valued and its element
+coincides with the strong rectified coupling from Definition 1.
+(iii)
+´
+∥x −y∥2d˜γ(x, y) ≤
+´ 1
+0
+´
+∥vt(x)∥2dµt(x)dt ≤
+´
+∥x −y∥2dγ(x, y).
+(iv) It holds
+´
+∥x −y∥2d˜γ(x, y) =
+´ 1
+0
+´
+∥vt(x)∥2dµt(x)dt if and only if Λ-a.e. λ is a
+straight line (where Λ generates ˜γ by (7)).
+Proof. Part (i) follows directly from [4, Thm 8.2.1] and (6). Further, by (5), Λ-a.e. curve
+λ solves (a.e.) the flow ODE (4). Hence, if the flow ODE has a unique solution, then
+any weak rectified coupling coincides with the strong rectified coupling. For part (iii)
+and (iv) one derives from (5) and (6) that
+ˆ 1
+0
+ˆ
+Rd ∥vt(x)∥2dµtdt =
+ˆ 1
+0
+ˆ
+∥vt(λ(t))∥2dΛ(λ)dt
+=
+ˆ ˆ 1
+0
+∥˙λ(t)∥2dtdΛ(λ) ≥
+ˆ
+∥λ(1) −λ(0)∥2dΛ(λ).
+In addition, equality holds in the last inequality if and only if for Λ-a.e. curve λ, ˙λ(t) =
+λ(1) −λ(0) for a.e. t ∈[0, 1] (so that λ(t) = (1 −t)λ(0) + tλ(1)).
+We note that similar to the strong rectified coupling considered in [19, 20], we get by
+the same proof that part (iii) from the corollary holds for any convex cost function
+c: Rd →R ∪{∞} instead of ∥· ∥2. The equality condition (iv) holds true for any strictly
+convex cost function c: Rd →R ∪{∞} instead of ∥· ∥2.
+2.2. Reflow and Straight Couplings
+In order to reduce the computational cost of evaluating rectified flows, we are interested
+in couplings for which the trajectories of the flow ODE correspond to straight lines. If a
+coupling is straight and rectifiable, the flow ODE (4) of such straight couplings can be
+represented as Φt(x) = x + tv0(x), which requires only a single evaluation of the velocity
+field and is therefore computationally efficient. Conceptually, the computation of straight
+couplings is closely related to distillation methods [21, 23, 29] of diffusion or flow models.
+Following [19, 20], we use the following formal definition for straight couplings.
+Definition 4. We call a coupling γ ∈Γ(µ0, µ1) a straight coupling if the velocity vt ∈
+arg minwt∈L2(µt) L(wt|γ) fulfills L(vt|γ) = 0, or equivalently vt((1 −t)x + ty) = y −x for
+dt ⊗γ-almost every (t, x, y).
+5
+
+
+If γ is additionally rectifiable, then this definition is equivalent to assuming that the flow
+ODE can be represented as Φt(x) = x + tv0(x).
+In order to find straight couplings, [19, 20] propose the reflow algorithm, which starts
+at an arbitrary initial coupling γ0 ∈Γ(µ0, µ1) and then iteratively computes a sequence
+of couplings γn+1 ∈R(γn).
+They show that the loss function minvt∈L2(µt,n) L(vt|γn)
+converges to zero. However, we point out two problems, which show that this does not
+necessarily lead to a one-step generation model in the limit.
+First, limit points of reflow are not necessarily rectifiable. An example is given by the
+coupling defined by
+´
+ψ(x, y)dγ(x, y) =
+´
+ψ(x, −x)dN(0, I)(x) which was considered in
+[13, Section 4.2] as an example for non-rectifiable couplings, see also Appendix B.1. This
+coupling fulfills γ ∈R(γ) and is consequently also a limit point of reflow.
+Second, the loss function minvt∈L2(µt) L(vt|γ) is not lower semicontinuous. In particular,
+we cannot conclude that limit points of the sequence (γn)n in the reflow algorithm are
+really straight couplings. Indeed, we include in Appendix B.2 an explicit example showing
+that not even limits of straight couplings are necessarily straight. However, the sequence
+in this example is not generated by the reflow algorithm, and it remains open whether a
+similar example can be constructed along reflow sequences.
+Remark 5. Straight line flows were also studied in the papers [28, 34]. In particular,
+these papers hint that in some cases the iterates γn might arrive at the limit already after
+two (or finitely many) steps. Specifically, the authors of [28] study more closely the case of
+the independent initialization γ0 = µ0 ⊗µ1 with µ0 = N(0, I). Then, they conjecture that
+already γ1 ∈R(γ0) is a straight coupling in the sense that minvt L(vt|γ1) = 0. However,
+they only prove this result for the case where γ1 is supported on the graph of a function f
+with ∇f(x) + ∇f(x)T ≥0 for all x (that is, a 2-monotone graph in the sense introduced
+below) and experimentally report that this assumption is sometimes violated in practice.
+Indeed, [24] verifies that this assumption is in general not true. A similar monotonicity
+assumption on straightness is considered in [34], where also more general interpolation
+paths than just Xt = (1 −t)X0 + tX1 are considered.
+3. Reflow with Minibatch OT
+In order to achieve couplings closer to optimal transport, several papers proposed to
+combine rectified flows with minibatch OT [26, 33], which consists in a minibatch based
+stochastic gradient descent for (1) where the batches (x(i), y(i))N
+i=1 are, in a preliminary
+step, reordered in order to minimize their Wasserstein cost. In this section, we view
+minibatch OT as an operator in the space of couplings. We study its fixed points and
+establish convergence results of reflow if minibatch OT is applied in each step.
+3.1. Minibatch OT as Fixed Point Iteration
+Let γ ∈Γ(µ0, µ1) be a coupling and let N ∈Z>1.
+Moreover, we denote by S =
+(S1, ..., SN): (Rd×Rd)N →(Rd×Rd)N a mapping computing a discrete optimal coupling
+6
+
+
+with respect to the quadratic cost. That is, S maps an input (x, y) := (x(i), y(i))N
+i=1 to
+(x(i), y(σ(i)))N
+i=1 such that
+σ ∈arg min
+τ∈ΣN
+N
+X
+i=1
+∥x(i) −y(τ(i))∥2
+(8)
+where ΣN is the group of all permutations of length N.
+Since the optimal σ is not
+always unique, there exist several mappings S fulfilling (8). We choose an arbitrary (but
+fixed) one among them; the most natural is maybe to consider the one which “moves
+the points less”, that is, which minimizes P
+i ∥y(i) −y(τ(i))∥2 among all permutations τ
+minimizing (8). Now, we define the minibatch OT as the coupling given by
+FN(γ) := 1
+N
+N
+X
+i=1
+Si#γ⊗N,
+where γ⊗N = γ ⊗· · · ⊗γ.
+We will now investigate the fixed point set of FN. To this end, we consider the following
+definition, which is a weaker version of c-cyclical monotonicity in optimal transport,
+cf. [35, Def 5.1].
+Definition 6. We call a set A ⊂Rd × Rd N-cyclically monotone for N ≥2 if it holds
+for all (x(i), y(i)) ∈A and τ ∈ΣN that
+N
+X
+i=1
+∥x(i) −y(i)∥2 ≤
+N
+X
+i=1
+∥x(i) −y(τ(i))∥2.
+Similarly, we call a transport plan γ ∈P2(Rd × Rd) N-cyclically monotone if supp(γ) is
+N-cyclically monotone.
+An equivalent condition is that A is N-cyclically monotone if and only if it holds for all
+(x(i), y(i)) ∈A that PN
+i=1⟨x(i), y(i) −y(i+1)⟩≥0. By definition, N-cyclical monotonicity
+implies M-cyclical monotonicity for all 2 ≤M < N. Further, by [35, Thm 5.9, Rem
+5.10] a coupling is optimal if and only if it is N-cyclically monotone for all N ∈Z>1.
+However, there are simple counterexamples that N-cyclical monotonicity for one specific
+N does not imply that the corresponding transport map is optimal. In two dimensions,
+such examples can be constructed by certain rotations as shown in the following example
+from [9, 10].
+Example 7. Let µ0 = µ1 = N(0, Id) in d = 2 dimensions. Then, we define
+γN = (Id, u)#µ0,
+for
+u(x) = Ax
+with
+A =
+ 
+cos
+  π
+N
+
+−sin
+  π
+N
+
+sin
+  π
+N
+
+cos
+  π
+N
+
+!
+.
+Then, it was shown in [10] that γN is N-cyclically monotone but not N + 1-cyclically
+monotone.
+7
+
+
+The next proposition derives some basic properties of the mapping FN representing the
+minibatch OT.
+Proposition 8. Let γ ∈Γ(µ0, µ1) and let γ(N) = FN(γ). Then, the minibatch OT has
+the following properties.
+(i) Marginal Preservation: It holds that γ(N) ∈Γ(µ0, µ1).
+(ii) Reduced Transport Cost: It holds
+´
+∥x −y∥2dγ(N)(x, y) ≤
+´
+∥x −y∥2dγ(x, y).
+(iii) Equality: We have
+´
+∥x −y∥2dγ(N)(x, y) =
+´
+∥x −y∥2dγ(x, y) if and only if γ is
+N-cyclically monotone.
+(iv) Continuous Cost: The mapping (P2(Rd × Rd), W2) →(R, | · |) defined by γ 7→
+´
+∥x −y∥2dFN(γ)(x, y) is continuous.
+Proof.
+(i) Let πx(x, y) = x and πy(x, y) = y. Then, we have by definition that πx ◦
+Si((x(i), y(i))N
+i=1) = x(i), so that (πx ◦Si)#γ⊗N = πx#γ = µ0. In particular, we
+have that
+πx#FN(γ) = 1
+N
+N
+X
+i=1
+(πx ◦Si)#γ⊗N = 1
+N
+N
+X
+i=1
+µ0 = µ0.
+For the other marginal µ(N)
+1
+of γ(N), note that for any ψ ∈C∞
+c (Rd) it holds
+ˆ
+ψ(y)dµ(N)
+1
+(y) =
+ˆ
+ψ(y)dγ(N)(x, y) = 1
+N
+N
+X
+i=1
+ˆ
+ψ(y)dSi#γ⊗N(x, y)
+= 1
+N
+N
+X
+i=1
+ˆ
+ψ
+ πy ◦Si(x, y)
+
+dγ⊗N(x, y).
+Since by definition πy ◦Si(x, y) is a permutation of y(i) this is equal to
+1
+N
+N
+X
+i=1
+ˆ
+ψ(y(i))dγ⊗N(x, y) =
+ˆ
+ψ(y)dγ(x, y) =
+ˆ
+ψ(y)dµ1(y).
+Together, the two previous formulas imply that µ(N)
+1
+= µ1.
+(ii) Denote γ(N) = FN(γ). Then, it holds that
+ˆ
+∥x −y∥2dγ(x, y) = 1
+N
+ˆ
+N
+X
+i=1
+∥x(i) −y(i)∥2dγ⊗N(x, y)
+≥1
+N
+ˆ
+min
+τ∈ΣN
+N
+X
+i=1
+∥x(i) −y(τ(i))∥2dγ⊗N(x, y)
+= 1
+N
+N
+X
+i=1
+ˆ
+∥x −y∥2dSi#γ⊗N(x, y)
+=
+ˆ
+∥x −y∥2dγ(N)(x, y).
+8
+
+
+(iii) In (ii) equality holds if and only if it holds
+N
+X
+i=1
+∥x(i) −y(i)∥2 ≤
+N
+X
+i=1
+∥x(i) −y(τ(i))∥2
+for every τ ∈ΣN for γ⊗N-almost every (x, y).
+(iv) Note that the mapping (x, y) 7→minτ∈ΣN
+1
+N
+PN
+i=1 ∥x(i) −y(τ(i))∥2 is continuous (as
+the minimum over finitely many continuous functions). Thus the functional
+η 7→1
+N
+ˆ
+min
+τ∈ΣN
+N
+X
+i=1
+∥x(i) −y(τ(i))∥2dη(x, y)
+(9)
+for η ∈P2((Rd × Rd)N) is the objective value of an optimal transport problem
+with 2N marginals and continuous cost function. Following [35, Lem 4.3] (9) is
+lsc and similarly to [35, Cor 6.9] we derive that (9) is continuous.
+Now, γ 7→
+´
+∥x −y∥2dFN(γ)(x, y) is the composition of the continuous mappings (9) and
+γ 7→γ⊗N and therefore continuous.
+The coupling FN(γ) might depend on the choice of the discrete OT solution map S on
+the set, where the discrete OT has more than one solution. Indeed, the following example
+shows that FN(γ) can lead to different couplings for different choices of S.
+Example 9. We consider the coupling
+γ = (Id, u)#µ0,
+for
+u(x) = Ax
+with
+A =
+ 
+0
+−1
+1
+0
+!
+for µ0 = N(0, Id) in d = 2 dimensions. Then, it holds for γ⊗2-almost every (x1, y1),
+(x2, y2) that y1 = Ax1 and y2 = Ax2.
+In particular, we have ⟨x1 −x2, y1 −y2⟩=
+⟨x1 −x2, A(x1 −x2)⟩= 0, so that:
+∥x1 −y1∥2 + ∥x2 −y2∥2 = ∥x1 −y2∥2 + ∥x2 −y1∥2.
+In particular, the mappings S(1) = Id and S(2) defined by
+S(2)((x1, y1), (x2, y2)) = ((x1, y2), (x2, y1))
+are both solutions of the discrete OT on supp(γ) = Gr u. However, if we define the
+minibatch OT with S = S(1), we obtain that FN(γ) = γ, while for S = S(2), we obtain
+that FN(γ) = µ0 ⊗µ1.
+9
+
+
+3.2. Properties of N-cyclically Monotone Plans
+Proposition 8 tells us that the minibatch OT operator FN always reduces the transport
+cost unless the input plan is N-cyclically monotone. Therefore, in order to study limit
+points of minibatch OT, we first collect some properties of N-cyclically monotone cou-
+plings. In particular, we show that N-cyclically monotone couplings already have very
+useful properties in the context of generative modeling, like straightness and rectifiability.
+Proposition 10. Let γ ∈Γ(µ0, µ1) be N-cyclically monotone and denote the correspond-
+ing velocities by vt = arg minwt∈L2(µt) L(wt|γ). Then, the following holds:
+(i) L(vt|γ) = 0.
+(ii) γ is its unique rectified coupling, i.e., R(γ) = {γ}.
+(iii) If µ0 is absolutely continuous, then γ is rectifiable and there exists a monotone map
+u such that γ = (Id, u)#µ0.
+Proof.
+(i) By definition, we have that supp(γ) = Gr(u) for some set-valued monotone
+map u. We now define wt(x) =
+1
+1−t
+ (tId + (1 −t)u−1)−1(x) −x
+
+and show that
+L(wt|γ) = 0. Note that since u−1 is a monotone set-valued map, (tId+(1−t)u−1)−1
+is single-valued. Now let (x, y) ∈Gr(u) = supp(γ) and t ∈(0, 1). Then, we have
+that
+wt((1 −t)x + ty) =
+1
+1 −t(tId + (1 −t)u−1)−1((1 −t)x + ty) −x −
+t
+1 −ty.
+Since ty + (1 −t)x ∈(tId + (1 −t)u−1)(y) and since (tId + (1 −t)u−1)−1 is single-
+valued, we have that y = (tId + (1 −t)u−1)−1((1 −t)x + ty). In particular, we have
+that
+wt((1 −t)x + ty) =
+1
+1 −ty −x −
+t
+1 −ty = y −x.
+Because this implies that wt((1 −t)x + ty) = y −x γ-almost everywhere, we obtain
+L(wt|γ) =
+ˆ 1
+0
+ˆ
+∥wt((1 −t)x + ty) −y + x∥2dγ(x, y)dt = 0.
+Since the loss is always non-negative, this implies that wt minimizes L(·|γ) and that
+wt = vt.
+(ii) Note that (tId + (1 −t)u−1)−1 is up to a constant the resolvent of a monotone
+mapping and therefore Lipschitz continuous. Hence, we get by the proof of the
+previous part, that vt is Lipschitz continuous in space for t ∈(0, 1) and continuous
+in time.
+Thus the trajectories λ in the measure Λ from Definition 2 (see also
+Corollary 3) are uniquely defined for t ∈(0, 1). Since (almost every) trajectory has
+finite length, also the limits t = 0 and t = 1 are uniquely defined. Checking that
+Λ(A) = γ({(x, y) : λ(t) = (1 −t)x + ty fulfills λ ∈A}) fulfills the conditions (5)
+and (6) for Definition 2 implies that γ ∈R(γ).
+10
+
+
+Algorithm 1 Reflow with Minibatch OT
+Given: batch size N, initial coupling γ0
+for n = 0, 1, 2, ... do
+γ(N)
+n
+= FN(γn)
+▷Minibatch OT
+γn+1 ∈R(γ(N)
+n
+)
+▷Reflow
+end for
+(iii) By [9, Thm 4.3], we know that γ = (Id, u)#µ0 for a (not-necessarily maximal)
+monotone Borel map u, which implies that v0(x) = u(x) −x. Moreover, we know
+by part (i) that vt((1 −t)x + tu(x)) = u(x) −x (part (i) only says that this identity
+holds a.e., however, monotonicity of u implies that there does not exist any other
+x′ with (1 −t)x + tu(x) = (1 −t)x′ + tu(x′), so that vt can be chosen such that the
+identity holds pointwise). Together we obtain that t 7→(1 −t)x + tu(x) solves the
+flow ODE. Due to part (ii) solutions are unique.
+Additionally, Caffarelli studies in [8] the regularity of 2 + ϵ monotone maps, which in-
+cludes 3-monotone maps as a special case.
+In our context [8, Thm 0.7] implies that
+γ = (Id, u)#µ0 for a Hölder-continuous monotone invertible mapping u: Rd →Rd when-
+ever N ≥3 and µ0 and µ1 are both absolutely continuous with densities bounded from
+above and locally from below.
+3.3. Reflow with Minibatch OT
+Next, we consider the Reflow algorithm, where we apply minibatch OT in each iteration.
+Formally, this corresponds to generating a sequence of transport plans by Algorithm 1.
+It is directly clear from Corollary 3 and Proposition 8 that it holds
+ˆ
+∥x −y∥2dγn(x, y) ≥
+ˆ
+∥x −y∥2dγ(N)
+n
+(x, y) ≥
+ˆ
+∥x −y∥2dγn+1(x, y).
+(10)
+In the following, we analyze limit points of the sequences (γn)n and (γ(N)
+n
+)n. Note again
+that such limit points exist since Γ(µ0, µ1) is relatively compact. Moreover, Γ(µ0, µ1) has
+uniformly integrable 2-moments, so that weak convergence and convergence in (P2(Rd ×
+Rd), W2) coincide.
+Theorem 11. Let (γn)n and (γ(N)
+n
+)n be generated by Algorithm 1 with batch size N and
+let γ and γ(N) be limit points. Then, γ is N-cyclically monotone and it holds
+ˆ
+∥x −y∥2dγ(x, y) =
+ˆ
+∥x −y∥2dγ(N)(x, y).
+Proof. Without loss of generality, we assume that the whole sequence (γn)n converges.
+Otherwise, the same proof can be conducted by going over to a convergent subsequence.
+11
+
+
+By (10), we obtain that there exists some T ∈R such that:
+lim
+n→∞
+ˆ
+∥x −y∥2dγn(x, y) = lim
+n→∞
+ˆ
+∥x −y∥2dγ(N)
+n
+(x, y) = T.
+Since the transport cost η 7→
+´
+∥x −y∥2dη(x, y) is continuous wrt weak convergence, we
+obtain that
+ˆ
+∥x −y∥2dγ(x, y) = lim
+n→∞
+ˆ
+∥x −y∥2dγn(x, y).
+Further, we know by Proposition 8 (iv) that
+ˆ
+∥x −y∥2dFN(γ)(x, y) = lim
+n→∞
+ˆ
+∥x −y∥2dFN(γn)(x, y)
+= lim
+n→∞
+ˆ
+∥x −y∥2dγ(N)
+n
+(x, y) = T.
+In particular, we have that
+´
+∥x −y∥2dγ(x, y) =
+´
+∥x −y∥2dFN(γ)(x, y) which implies
+by Proposition 8 (iii) that γ is N-cyclically monotone.
+Together with the previous results, we obtain the following corollary which directly fol-
+lows from Theorem 11 and Proposition 10.
+Corollary 12. Let (γn)n be generated by Algorithm 1 and let γ be a limit point. Then,
+if µ0 is absolutely continuous, we have that γ is N-cyclically monotone, rectifiable and
+straight in the sense that it fulfills minwt∈L2(µt) L(wt|γ) = 0.
+So far, we do not know whether the limits of γn and γ(N)
+n
+coincide. To this end, we con-
+sider the following proposition. The proof requires some technical effort and is therefore
+deferred to Appendix C.
+Proposition 13. Assume that µ0 and µ1 are absolutely continuous and let (γn)n and
+(γ(N)
+n
+)n be generated by Algorithm 1. Further assume that we have a subsequence (nk)k
+such that γnk ⇀γ for some γ. Then, it also holds for any l ∈Z≥0 that γnk+l ⇀γ and
+γ(N)
+nk+l ⇀γ. In particular the limit points of the sequences (γn)n and (γ(N)
+n
+)n coincide.
+We remark that in general we cannot conclude convergence of the whole sequences (γn)n
+and (γ(N)
+n
+)n from the proposition.
+4. Reflow with Minibatch OT and Gradient Constraint
+In order to approach optimal transport with reflow, Liu [19] proposed to restrict the
+velocity field in the flow matching loss (1) to be a gradient, i.e., to define
+vp
+t ∈arg min
+wt∈L2(µt)
+L(wt|γ)
+subject to
+wt = ∇φ
+for some φ: Rd →R.
+12
+
+
+Algorithm 2 Reflow with Minibatch OT and Gradient Constraint
+Given: batch size N, initial coupling γ0
+for n = 0, 1, 2, ... do
+γ(N)
+n
+= FN(γn)
+▷Minibatch OT
+γn+1 ∈Rp(γ(N)
+n
+)
+▷Reflow with gradient constraint
+end for
+In order to ensure existence of the above optimization problem, we have to relax the
+constraint wt = ∇φ to wt ∈Tµt, where Tµt := {∇φ : φ ∈C∞
+c (Rd)}
+L2(µt) is the L2-
+closure of all gradients, see [13, Prop 8]. This space is also referred to as the (reduced)
+Wasserstein tangent space at µt. It is easy to check that a minimizer vp
+t of the loss in
+Tµt will satisfy div vp
+t µt = div vtµt, so that the continuity equation is also satisfied with
+this new vector field [19]. Following the same idea, we can now define a weak rectified
+coupling with gradient constraint analogously to Definition 2.
+Definition 14 (Weak Rectified Couplings with Gradient Constraint). Let γ ∈Γ(µ0, µ1)
+and µt be defined by (2) and denote by vp
+t = arg minwt∈Tµt L(wt|γ) the solution of the
+flow matching loss (1) with gradient constraint. Then, we define the set of weak rectified
+couplings with gradient constraint Rp(γ) as the set of all transport plans ˜γ given by
+ˆ
+Rd×Rd ψ(x, y)d˜γ =
+ˆ
+ψ(λ(0), λ(1))dΛ(λ),
+for all ψ ∈C∞
+c (Rd × Rd),
+where Λ fulfills (5) and (6) with respect to vp
+t .
+It is straightforward to show that all properties of R(γ) from Corollary 3 also hold for
+Rp(γ). Fixed points of this variant of reflow only coincide with the optimal transport
+under strong assumptions on the regularity of the velocity field and the support of the
+intermediate measures µt, see [19, 13]. In this section, we consider the algorithm, which
+alternates between this reflow variant and minibatch OT, see Algorithm 2. We first study
+fixed points of this algorithm and afterwards derive some results on the convergence of
+the iterates.
+4.1. Fixed Points
+We start with investigating fixed points of Rp ◦FN. The first lemma shows that a plan
+is a fixed point of this operator if and only if it is a fixed point of FN and of Rp.
+Lemma 15. Let γ ∈Γ(µ0, µ1).
+Then we have that γ ∈Rp(FN(γ)) if and only if
+γ = FN(γ) and γ ∈Rp(γ).
+Proof. Let γ(N) = FN(γ). Since the Wasserstein transport cost is non-increasing for
+both FN and Rp we get that
+ˆ
+∥x −y∥2dγ(x, y) =
+ˆ
+∥x −y∥2dγ(N)(x, y).
+13
+
+
+By Proposition 8 this implies that γ is N-cyclically monotone. Next, define µ(N)
+t
+and µt
+as in (2) and let vt = arg minwt∈L2(µ(N)
+t
+) L(wt|γ(N)). Then, we obtain by [19, Thm 5.3]
+that
+´
+∥x −y∥2dγ(x, y) ≤
+´
+∥x −y∥2dγ(N)(x, y) −L(vt|γ(N)), so that L(vt|γ(N)) = 0.
+In particular, we know for Λ from Definition 2 that λ(t) = (1 −t)λ(0) + tλ(1) and
+˙λ(t) = λ(1) −λ(0) for Λ-a.e. λ. Hence, we get for all ψ ∈C∞
+c (Rd) that
+ˆ
+ψ(x)dµt(x) =
+ˆ
+ψ((1 −t)x + ty)dγ(x, y) =
+ˆ
+ψ((1 −t)λ(0) + tλ(1))dΛ(λ)
+=
+ˆ
+ψ(λ(t))dΛ(λ) =
+ˆ
+ψ(x)dµ(N)
+t
+(x),
+so that µt = µ(N)
+t
+. In addition, we have by Corollary 3 that
+L(vt|γ) =
+ˆ 1
+0
+ˆ
+∥vt((1 −t)x + ty) −y + x∥2dγ(x, y)dt
+=
+ˆ 1
+0
+ˆ
+∥vt((1 −t)λ(0) + tλ(1)) −λ(1) + λ(0)∥2dΛ(λ)dt
+=
+ˆ 1
+0
+ˆ
+∥vt(λ(t)) −˙λ(t)∥2dΛ(λ)dt = 0.
+Defining the plans γt by
+ˆ
+ψ(x, y)dγt(x, y) =
+ˆ
+ψ((1 −t)x + ty, y)dγ(x, y)
+and γ(N)
+t
+analogously, we obtain from L(vt|γ) = L(vt|γ(N)) = 0 that for almost every t
+it holds
+0 =
+ˆ
+∥x + (1 −t)vt(x) −y∥2dγt(x, y) =
+ˆ
+∥x + (1 −t)vt(x) −y∥2dγ(N)
+t
+(x, y),
+so that both γt and γ(N)
+t
+are supported on Gr ut with ut = I + (1 −t)vt. Hence, we have
+for any measurable rectangle A × B that
+γt(A × B) = γt({(x, ut(x)) : x ∈A, ut(x) ∈B})
+= γt({x ∈A : ut(x) ∈B} × Rd) = µt({x ∈A : ut(x) ∈B}).
+By the same argument we have that γ(N)
+t
+(A×B) = µt({x ∈A : ut(x) ∈B}). Since A and
+B were chosen arbitrarily, this implies γt = γ(N)
+t
+. Given that γt ⇀γ and γ(N)
+t
+⇀γ(N)
+this implies γ = γ(N).
+Together with Proposition 8, the lemma implies that any fixed point γ of Rp ◦FN is N-
+cyclically monotone and it holds minwt∈Tµt L(wt|γ) = 0, where µt are the interpolations
+from (2) with respect to γ. Then, we obtain that fixed points of Rp ◦FN are optimal
+transport under some support condition by the following theorem.
+14
+
+
+Theorem 16. Let γ ∈Γ(µ0, µ1) for µ0, µ1 ∈L∞(Rd) be N-cyclically monotone and
+assume that it fulfills minwt∈Tµt L(wt|γ) = 0 for the interpolations µt from (2). Further,
+assume that there exists some t ∈(0, 1) such that µt is absolutely continuous and that
+µ−1
+t
+∈L1
+loc(Rd). Then, γ is an optimal transport plan between µ0 and µ1.
+Remark 17. From the proof, one sees that the assumption on µ−1
+t
+could be slightly
+weakened: it is sufficient that µt is absolutely continuous and that there exists a connected
+open set A ⊂Rd with {µt > 0} = A and µ−1
+t
+∈L1
+loc(A). (If µt is continuous, having
+A = {µt > 0} connected is thus sufficient.) Further, the proof already shows that µt is
+absolutely continuous and bounded from above.
+Proof. We know that there is a monotone map u such that γ
+Gr u = γ. We can assume,
+in fact, that u is maximal-monotone. From the assumption that µ0, µ1 ∈L∞(Rd), we
+also obtain that µt ∈L∞(Rd) by the following argument: We have that µ0 = ((1−t)Id+
+tu)−1
+# µt. Now ((1 −t)Id + tu)−1 is up to a constant the resolvent of a monotone map
+and therefore Lipschitz continuous. Hence, [11, Thm 2.8] implies that µt is absolutely
+continuous and that the density of µt is upper bounded by Ld times the density of µ0,
+where L is the Lipschitz constant of ((1 −t)Id + tu)−1.
+Next, for any t, s ∈[0, 1], γt,s defined as:
+ˆ
+ψ(x, y)dγt,s(x, y) =
+ˆ
+ψ((1 −t)x + ty, (1 −s)x + sy)dγ(x, y)
+is a coupling between µt and µs. Now, γt,s is supported on
+Gr ut,s := {((1 −t)x + ty, (1 −s)x + sy) : y ∈u(x)},
+and if (ξ, η), (ξ′, η′) ∈Gr ut,s with ξ = (1 −t)x + ty, ξ′ = (1 −t)x′ + ty′, etc, assuming
+first s > t one uses that ξ = t
+sη + s−t
+s x to get
+(ξ −ξ′) · (η −η′) ≥t
+s|η −η′|2 + s −t
+s
+(x −x′) · (η −η′) ≥t
+s|η −η′|2
+using that u is monotone. One deduces that ut,s is s
+t-Lipschitz. Similarly, if s < t, writing
+ξ = 1−t
+1−sη+ t−s
+1−sy we find that ut,s is 1−s
+1−t-Lipschitz. Since by construction ut,s = u−1
+s,t we can
+equivalently write that for 0 < t, s < 1, ut,s is max{ 1−s
+1−t, s
+t}-Lipschitz and min{ s
+t, 1−s
+1−t}-
+strongly monotone.
+Hence, for any t, s ∈(0, 1), ut,s is a bi-Lipschitz homeomorphism and one has:
+µs = ut,s#µt.
+In addition, if for some s ∈(0, 1), µs is absolutely continuous, then all other µt are (for
+t ∈(0, 1)), with a.e.:
+µs(x) = µt(us,t(x)) det ∇us,t(x).
+For s > t, one has det ∇ut,s ≥( 1−s
+1−t)d and det ∇us,t ≥( t
+s)d (so that, up to a set of
+vanishing measure, {µs > 0} = ut,s({µt > 0}) and these sets should have the same
+15
+
+
+number of connected components). Observe, more precisely that, given t ∈(0, 1), if
+At ⊆Rd is a connected open set where µt is absolutely continuous and µ−1
+t
+is integrable,
+then the same holds for µs in As := ut,s(At), for any s ∈(0, 1), since
+ˆ
+As
+1
+µs(x)dx =
+ˆ
+At
+det ∇ut,s(x)
+µs(ut,s(x)) dx =
+ˆ
+At
+(det ∇ut,s(x))2
+µt(x)
+dx < +∞.
+Then, for a fixed point one has:
+ˆ 1
+0
+ˆ
+As
+∥vs(x) −(us,1(x) −us,0(x))∥2dµsds = 0
+for vs = ∇φs with φs ∈W 1,1
+loc (As) for a.e. s, thanks to Lemma 19 in Appendix A.
+Hence, one has ∇φs(xs) = us,1(xs) −us,0(xs) for a.e. s ∈(0, 1) and a.e. xs ∈As, with
+xs = (1 −s)us,0(xs) + sus,1(xs). Since us,0 is
+1
+1−s-Lipschitz and us,1 is 1
+s-Lipschitz, we
+find that
+| · |2
+2(1 −s) + φs
+and
+| · |2
+2s −φs
+are convex in As, with Lipschitz gradient. In particular, given t ∈(0, 1) and s with
+t < s < 1, for any xs ∈As as long as xs −z ∈At,
+z 7→
+|z|2
+2(s −t) + φt(xs −z)
+is strongly convex. Now, if xs = (1 −s)x + sy with y ∈u(x), and z = (s −t)(y −x),
+then xs −z = (1 −t)x + ty =: xt and the gradient of the above expression vanishes. This
+means that
+φt,s(xs) :=
+min
+z:xs−z∈At
+|z|2
+2(s −t) + φt(xs −z)
+is given by (s −t) |x−y|2
+2
++ φt(xt), in addition, a standard first variation argument shows
+that ∇φt,s(xs) = ∇φt(xt) = y −x = z/(s −t) = (xs −xt)/(s −t). It follows that
+∇φt,s(xs) = ∇φs(xs) in As, and as a consequence, since these functions are defined up
+to a constant, one can assume that for all s > t,
+φs(xs) =
+min
+z:xs−z∈At
+|z|2
+2(s −t) + φt(xs −z) = min
+xt∈At
+|xs −xt|2
+2(s −t) + φt(xt).
+In addition, we have xs = ut,s(xt) = xt + (s −t)∇φt(xt), and since this is the gradient
+of a convex function, Brenier’s theorem shows that ut,s is an optimal transport from
+µt
+At to µs
+As. In the limit, we also deduce that γA = lims→0 γs,1−s
+(As × A1−s)
+is an optimal coupling between µA0
+0
+= lims→0 µs
+As and µA1
+1
+= lims→1 µs
+As, and in
+particular if we can choose As = Rd (that is, if for some s, µ−1
+s
+∈L1
+loc(Rd)), we have that
+γ is an optimal coupling between µ0 and µ1.
+16
+
+
+4.2. Integrability of µt
+The most restrictive assumption of the theorem is the integrability condition of µt since
+it depends on γ (which is the fixed point and therefore analytically inaccessible). In the
+following, we consider the case that µ0 and µ1 = u#µ0 are absolutely continuous and
+bounded from above and locally from below (i.e., for any R > 0 there exists some δ such
+that µ0 ≥δ and µ1 ≥δ on BR(0)). Further, we consider without loss of generality the
+case that t = 1/2.
+If u is the optimal transport u = ∇φ with convex φ, it satisfies the Monge-Ampère
+equation
+det(D2φ) = f :=
+µ0
+µ1 ◦∇φ.
+(11)
+Without further assumptions, Wang [38, Example 1] shows that (in dimension d = 2)
+there exist φ and µ1 such that locally φ̸ ∈W 2,2 (note that Wang states this result for
+W 2,p for p > 2, but it can be extended to p = 2 by a closer consideration). Noting that
+det(I+∇u
+2
+)µ1/2(Id+u
+2 ) = µ0, this implies for any ball B and A = ( I+∇u
+2
+)−1(B) that
+ˆ
+B
+1
+µ1/2(x)dx =
+ˆ
+A
+det(I+∇u(x)
+2
+)
+µ1/2(x+u(x)
+2
+)
+dx
+=
+ˆ
+A
+det(I+∇u(x)
+2
+)2
+µ0(x)
+dx ≥
+1
+22d∥µ0∥∞
+ˆ
+A
+det(I + ∇u(x))2dx
+Since we have det(I + ∇u(x))2 ≥λmax(∇u(x)T∇u(x)) = ∥∇u(x)∥2
+op, we obtain that
+´
+B
+1
+µ1/2(x)dx ≥c
+´
+A ∥∇u(x)∥2
+opdx for some c > 0. Because φ̸ ∈W 2,2(Rd), the right side is
+not locally integrable so that also µ−1
+1/2 is not locally integrable. So in summary, without
+further assumption on µ0 and µ1, N-monotonicity is not sufficient to ensure that the
+support condition is fulfilled.
+On the other hand, if u is the optimal transport and if the densities of µ0 and µ1 are
+additionally continuous, then also the ratio f from (11) is continuous [7]. In this case,
+Caffarelli [6] showed that φ ∈W 2,p (locally) for any p > 1. In particular, we get by a
+similar computation as above that
+ˆ
+B
+1
+µ1/2(x)dx ≤
+1
+22d minA µ0(x)
+ˆ
+A
+(1 + ∥∇u(x)∥op)2ddx < ∞.
+Consequently, at least the optimal transport fulfills the support condition provided that
+µ0 and µ1 are absolutely continuous with continuous density bounded from above and
+locally from below.
+A relatively standard blow-up analysis shows that if ξ is such that
+´
+Br(ξ)
+1
+µ1/2(x)dx = ∞
+for all r > 0, then near ¯x = u1/2,0(ξ) there are blow-ups of u (of the form z 7→u(x+rz)−u(x)
+r
+for x →¯x, r →0) which in some 2-dimensional subspace (Re1, Re2) converge to the limit
+monotone map Re1 × {0} 7→{0} × Re2. In 2D, such a limit map would transport a null
+set to a null set with intermediate states xt spanning the whole of R2.
+17
+
+
+4.3. Convergence of the Iterates
+Next, we consider the question under which conditions a limit point γ of the iterates
+(γn)n from Algorithm 2 is a fixed point of Rp ◦FN. Replacing R by Rp in the proofs of
+Corollary 12 and Proposition 13 shows that γ is N-cyclically monotone, straight and rec-
+tifiable. In particular, we have that γ is a fixed point of R◦FN. However, to ensure that
+γ is also a fixed point of Rp◦FN, we would need that vt ∈arg minwt∈L2(µt) L(wt|γ) fulfills
+that vt ∈Tµt. By construction, we additionally know that vn
+t ∈arg minwt∈Tµt,n L(wt|γn)
+fulfills (up to subsequences) that vn
+t ∈L2(µt,n) converges to vt ∈L2(µt) in the sense of
+[4, Def 5.4.3], see also Section 2.2. However, the tangent spaces Tµ are not closed under
+this notion of weak convergence and the assertion that this implies vt ∈Tµt is false in
+general. Nevertheless, as detailed in Lemma 19, the gradient property passes to the limit
+if not only the measures µt,n converge weakly to µt but also 1/µt,n converges weakly to
+1/µt. Under this additional assumption, we obtain the following corollary.
+Corollary 18. Let (γn)n be generated by Algorithm 2 and (nk)k a subsequence such that
+(γnk)k converges (weakly) to a limit point γ ∈Γ(µ0, µ1).
+Denote by µt and µt,n the
+corresponding interpolations (2). Assume that there exists t ∈(0, 1) such that µt,nk is
+absolutely continuous for all k and fulfills that 1/µt,nk ⇀1/µt weakly in L1
+loc(Rd). Then
+γ is an optimal transport plan between µ0 and µ1.
+Proof. As derived above, we know that the limit γ is N-cyclically monotone and that
+vt ∈arg minwt∈L2(µt) L(wt|γ) is the weak limit of vn
+t ∈arg minwt∈Tµt,n L(wt|γn). Using
+Lemma 19 we find that vt coincides for a.e. t with the gradient of a function in W 1,1
+loc (Rd).
+Thus, the proof of Theorem 16 can be reproduced with these assumptions, yielding that
+γ is an optimal transport plan.
+5. Example and Numerical Illustrations
+In this section, we provide an example which shows that if the support condition of
+Theorem 16 is violated, there may exist again fixed points of Rp ◦FN which do not
+coincide with the optimal transport.
+To this end let η be an absolutely continuous probability measure with smooth density
+with support in Bϵ(0) and let ηx be the translation of η by the vector x. Then, for some
+M ∈Z≥5, we consider
+µ0 = µ1 = 1
+M
+M
+X
+k=1
+ηxk,
+xk =
+
+cos
+2kπ
+M
+
+, sin
+2kπ
+M
+
+.
+(12)
+By definition, the optimal transport plan between µ0 and µ1 is carried by the identity
+map. Here we consider the plan (Id, u)#µ0 with u(x) = x + xk+1 −xk for all x ∈Bϵ(xk),
+see Figure 1 for an illustration of µ0 = µ1 and the coupling γ. Since u is (locally) just a
+translation, we get that γ fulfills minwt∈Tµt L(wt|γ) = 0 which implies that γ ∈Rp(γ).
+In addition, we show in Lemma 27 of Appendix D that for M = 2N + 1 the coupling γ
+18
+
+
+M = 5
+M = 7
+Figure 1: Illustration of the example in Section 5 for M = 5 and M = 7 circles. The
+blue circles represent the measure µ0 = µ1 defined in (12), and the arrows show
+the mapping u which carries the coupling γ. We find that for M = 2N + 1
+the coupling γ is N-, but not N + 1-cyclically monotone. In particular, the
+coupling on the left is 2- but not 3-cyclically monotone and the coupling on the
+right is 3- but not 4-cyclically monotone.
+is N-cyclically monotone. By considering the points x2k+1 for k = 0, 1, ..., N we can also
+see that this coupling is not N + 1-cyclically monotone.
+Numerical Simulation
+We illustrate the behavior of reflow with minibatch OT numer-
+ically. To this end, we set γ0 to the coupling γ as described above for M = 5 and M = 7
+and simulate Algorithm 1 for different batch sizes N in the minibatch OT. In Figures 2
+and 3, we plot samples from µ0 and µ1 as well as the trajectories of the flow ODE for
+the learned velocity fields vn
+t = arg minwt∈L2(µt,n) L(wt|γn) for n = 0, ..., 5. As expected
+we observe for N = 2 and M = 5 as well as for N = 3 and M = 7 that the coupling γ0 is
+already a fixed point of R ◦FN. For larger N, we can see that the iterates move towards
+the identity plan which is also the optimal transport. This convergence can be very slow
+for the minimal batch sizes N = 3 (for M = 5) and N = 4 (for M = 7) but becomes
+faster for higher choices of N. For very large batch sizes like N = 256, we arrive close to
+the optimal coupling after two steps.
+6. Conclusions
+We investigated reflow and its limit points. First, we built weak rectified couplings to
+guarantee that the corresponding iteration is well-defined at every step. In combination
+with minibatch OT with batch size N at each iteration, the limit points of reflow become
+N-cyclically monotone, which ensures both straightness and rectifiability (assuming µ0
+is absolutely continuous). Further, we examined reflow with minibatch OT, where the
+velocities are additionally constrained to be gradients. With an additional support as-
+sumption, this procedure yields the optimal transport plan as the unique limit point.
+However, verifying this support condition is likely to be infeasible in practice and if it
+fails, the equivalence with optimal transport may no longer hold.
+19
+
+
+N = 2
+N = 3
+N = 8
+N = 256
+Figure 2: We plot samples from µ0 and µ1 as well as trajectories of the flow ODE for
+n = 0, ..., 5 generated by Algorithm 1 for the coupling γ0 = γ as described in
+Section 5 with M = 5 modes. As expected, γ0 is a fixed point of R ◦FN for
+N = 2, but not for larger N.
+N = 3
+N = 4
+N = 8
+N = 256
+Figure 3: We plot samples from µ0 and µ1 as well as trajectories of the flow ODE for
+n = 0, ..., 5 generated by Algorithm 1 for the coupling γ0 = γ as described in
+Section 5 with M = 7 modes. As expected, γ0 is a fixed point of R ◦FN for
+N = 3, but not for larger N. For N = 4, the coupling changes very slowly, but
+γ0 is not exactly a fixed point.
+20
+
+
+Open Questions, Future Work and Limitations
+In this work, we always assume that
+we find the exact minimizer of the flow matching loss (1).
+A thorough investigation
+of how the results are influenced by approximation errors, introduced via the neural
+network parametrization and optimization, is left to future work. Further, we considered
+the reflow iterations starting from an arbitrary initial coupling γ0. In most practical
+applications, this initial coupling is chosen as γ0 = µ0 ⊗µ1 in which case the reflow
+might admit more regularity.
+Considering our specific analysis, there remain some questions. For reflow with mini-
+batch OT, we characterized limit points and showed that they admit certain desirable
+properties. However, while it is clear from compactness that such limit points always
+exist, it is less clear whether they are unique or not. In particular for the case with
+minibatch OT Proposition 13 suggests that limit points might be unique in many cases,
+even though it does not imply this result yet.
+Finally, for reflow with minibatch OT and gradient constraint, it remains an open problem
+to find practically verifiable sufficient conditions that guarantee the support condition
+always holds. As a first step, one could attempt to generalize the results of [8] to show
+that N-monotone plans become sufficiently regular when N is large. However, this leads
+to involved analytical difficulties that lie beyond the scope of the present work.
+A. A Remark on the Tangent Space
+We give a simple condition under which elements of the Wasserstein tangent space to a
+measure are gradients.
+Lemma 19. Let B be an open ball, µ ∈L1(B) non-negative and assume 1/µ ∈L1(B).
+Then any v ∈Tµ is a gradient in B. In addition, consider a sequence (µn)n≥1 of non-
+negative functions, with both µn ⇀µ and 1/µn ⇀1/µ weakly in L1(B), as n →∞.
+Then given for each n ≥1, vn ∈Tµn with supn
+´
+|vn|2µn dx < +∞, up to subsequences,
+there exists φ ∈W 1,1(B) such that vn
+n→∞
+⇀Dφ in L1(B; Rd) and vnµn
+∗⇀Dφµ (weak-∗
+as measures).
+Remark 20. It is not clear that the assumption of the second part are enough to ensure
+that Dφ ∈Tµ (in B), that is, that it is also the strong L2(µ) limit of gradients of smooth
+functions.
+Proof. First, observe that by Cauchy-Schwartz, L2(B, µ) ⊂L1(B), with continuous in-
+clusion: if v ∈L2(B, µ; Rd),
+∥v∥L1(B) =
+ˆ
+B
+|v| dx ≤
+ˆ
+B
+|v|2µ dx
+ˆ dx
+µ
+ 1
+2
+=
+sˆ dx
+µ ∥v∥L2(µ).
+Then, if v ∈Tµ there exists φn ∈C∞
+c (B) such that Dφn →v in L2(B, µ; Rd), which
+implies that Dφn →v in L1(B; Rd). In particular (possibly replacing φn with φn −
+(1/|B|)
+´
+B φn dx) there exists φ ∈W 1,1(B) with φn →φ and v = Dφ.
+21
+
+
+Now, assume vn ∈Tµn with µn ⇀µ in L1(B) and supn
+´
+B |vn|2µn dx < +∞. Observe
+that as soon as supn
+´
+1/µn dx < +∞, then µn = Dφn for some φn ∈W 1,1(B) (uniformly
+bounded) and in addition,
+´
+B 1/µ dx ≤lim infn
+´
+B 1/µn dx < +∞. Yet, this allows only,
+it seems, to assert that (φn)n is precompact in BV (B), and it is unclear that weak-∗
+limits of Dφnµn (as measures) are of the form vµ with either v ∈Tµ (which by the
+previous result would imply that it is a gradient) or v is related to the limit points of
+Dφn.
+If we assume additionally that 1/µn is weakly precompact in L1, we can show that also
+Dφn is. Indeed, there exists Ψ : R+ →R+ a (smooth), convex, increasing and superlinear
+function such that
+sup
+n≥1
+ˆ
+B
+Ψ
+ 1
+µn
+
+dx < +∞,
+(13)
+(see for instance [3, Prop. 1.27]). Possibly substituting Ψ with Ψ −Ψ(0) we may assume
+min Ψ = 0. Letting ˜Ψ(t) := tΨ(t), one finds a convex increasing function such that
+limt→+∞˜Ψ(t)/t2 = +∞. In addition, min ˜Ψ = 0, ˜Ψ′(0) = 0, ˜Ψ′(t) = tΨ′(t) + Ψ(t) > 0
+for t > 0. It follows that ˜Ψ∗≥0, ˜Ψ∗(0) = 0 and ˜Ψ∗(s) > 0 for s > 0.
+If Φ is a nonnegative function, one writes:
+ˆ
+B
+Φ(|Dφn|)dx =
+ˆ
+B
+Φ(|Dφn|)µn
+µn
+dx ≤
+ˆ
+B
+˜Ψ∗ Φ(|Dφn|)
+
+µn dx +
+ˆ
+B
+˜Ψ
+ 1
+µn
+
+µn dx,
+where the latter integral is precisely
+´
+B Ψ(1/µn) dx, bounded by (13). We define Φ so
+that for any t ≥0,
+˜Ψ∗(Φ(t)) = t2 ⇔Φ(t) = (˜Ψ∗)−1(t2),
+then Φ is positive for positive t, increasing and goes to +∞at infinity. In this way,
+ˆ
+B
+Φ(|Dφn|)dx ≤
+ˆ
+B
+|Dφn|2µn dx +
+ˆ
+B
+Ψ
+ 1
+µn
+
+dx
+is uniformly bounded. Since limt→∞˜Ψ(t)/t2 = +∞, lims→∞˜Ψ∗(s)/s2 = 0. Indeed for
+any M > 0 there is t0 such that for all t, ˜Ψ(t) ≥Mt2χ[t0,+∞)(t), and
+˜Ψ∗(s) ≤max
+(
+st0, sup
+t≥t0
+ts −Mt2
+)
+≤st0 + s2
+4M ,
+so that lim sups→∞˜Ψ∗(s)/s2 ≤1/(4M). It follows that
+lim
+t→+∞
+˜Ψ∗(Φ(t))
+Φ(t)2
+= 0 =
+lim
+t→+∞
+t2
+Φ(t)2 ,
+showing that Φ is superlinear. Therefore thanks to Dunford-Pettis’ theorem, Dφn is
+precompact in L1(B; Rd) (and, up to constants, φn is precompact in W 1,1(B), not just
+in BV (B)). Consider φ ∈W 1,1(B) and a subsequence φnk such that Dφnk ⇀Dφ as
+k →+∞, weakly in L1(B; Rd). Unfortunately, it remains unclear that, without further
+assumption, one can show that Dφnµn
+∗⇀Dφµ as measures.
+22
+
+
+With the additional assumption that 1/µn ⇀1/µ in L1(B), the situation is much simpler.
+Indeed, this assumption is quite restrictive: assuming both µn ⇀µ and 1/µn ⇀1/µ in
+L1 yields strong convergence (this holds in fact as soon as f(µn) ⇀f(µ) for a strictly
+convex f and is classically shown using Young measure arguments). In our case, an
+elementary way to see it1 is to write, for any M > 0:
+ˆ
+B∩{µ≤M}
+(µn −µ)2
+µn
+dx =
+ˆ
+B∩{µ≤M}
+µn −2µ + µ2
+µn
+dx n→∞
+−→0
+thanks to our assumptions. In particular,
+ˆ
+B∩{µ≤M}
+|µn −µ|dx ≤
+ ˆ
+B
+µn dx
+ˆ
+B∩{µ≤M}
+|µn −µ|2
+µn
+dx
+!1/2
+→0.
+Since by equiintegrability,
+lim sup
+M→∞
+sup
+n≥1
+ˆ
+B∩{µ>M}
+|µn −µ| dx ≤lim sup
+M→∞
+sup
+n≥1
+ˆ
+B∩{µ>M}
+µn + µ dx = 0,
+it follows that µn →µ in L1(B). Then, using that for a, b ≥0, |√a −
+√
+b|2 ≤|a −b|,
+ˆ
+B
+(√µn −√µ)2 dx ≤
+ˆ
+B
+|µn −µ| dx →0
+Exchanging the roles of µn and 1/µn we get that also 1/µn →1/µ in L1(B), and
+1/√µn →1/√µ in L2(B).
+Using that vn√µn is bounded in L2(B), we extract a further subsequence (not relabelled)
+such that vnk
+√µnk converges weakly to some limit w in L2(B; Rd). Given ψ ∈C1
+c (B; Rd),
+lim
+k→∞
+ˆ
+B
+vnk
+√µnk ·
+ψ
+√µnk
+dx =
+ˆ
+B
+w · ψ
+√µ dx =
+ˆ
+B
+Dφ · ψ dx.
+The first limit is by strong convergence of ψ/√µnk →ψ/√µ and the second because
+vnk ⇀Dφ in L1(B; Rd). This shows that w = √µDφ. On the other hand, using now
+the strong convergence ψ√µnk →ψ√µ in L2(B; Rd), we obtain:
+lim
+k→∞
+ˆ
+B
+vnk
+√µnk · ψ√µnk dx =
+ˆ
+B
+w · ψ√µ dx =
+ˆ
+B
+ψ · Dφµ dx.
+showing that vnkµnk
+∗⇀Dφµ as measures. This shows the lemma.
+B. Examples for Section 2
+In the following, we include two examples corresponding to Section 2. The first one in
+Appendix B.1 shows that weak rectified couplings are in general not unique. The second
+one in Appendix B.2 shows that the flow matching loss γ 7→infwt∈L2(µt) L(wt|γ) is not
+lower semicontinuous with respect to weak convergence.
+1suggested by claude.ai, “Sonnet 5”.
+23
+
+
+B.1. Non-uniqueness of Weak Rectified Couplings
+We have seen in Section 2.1 that if the flow ODE has a unique solution, then the weak
+rectified coupling is unique and coincides with the strong rectified coupling. However, if
+the strong rectified coupling does not exist, the weak rectified coupling might be non-
+unique. We demonstrate this property using the example from [13, Section 4.2]. To this
+end, let µ0 = µ1 = N(0, I) (in Rd) and define γ by
+ˆ
+ψ(x, y)dγ(x, y) =
+ˆ
+ψ(x, −x)dµ0(x).
+Then, by [13, Prop 13] the velocity field vt = arg minwt∈L2(µt) L(wt|γ) is given by vt(x) =
+−
+2
+1−2tx. We define the curve
+λx,y(t) =
+(
+(1 −2t)x,
+for t ≤1
+2,
+(2t −1)y,
+else,
+which connects the points x at time 0, 0 at time 1
+2 and y at time 1 with straight lines.
+Then, we can show that for any coupling ˜γ ∈Γ(µ0, µ1) the measure Λ˜γ defined by
+Λ˜γ(A) = ˜γ
+n
+(x, y) ∈Rd × Rd : λx,y ∈A
+o
+fulfills (5) and (6). Since
+ˆ
+ψ(x, y)d˜γ(x, y) =
+ˆ
+ψ(λ(0), λ(1))dΛ˜γ(λ)
+we get that ˜γ ∈R(γ). In particular, in this example, we have that R(γ) = Γ(µ0, µ1).
+We note that this example also provides a limit point of reflow, which is straight, but
+not rectifiable as it fulfills γ ∈R(γ). As pointed out in [13, Prop 13], the velocity field
+is also a gradient, so that all these conclusions also hold for Rp instead of R.
+B.2. Non-lower-semicontinuity of the Flow Matching Loss
+We construct a sequence (γn)n of couplings γn ∈P2(Rd × Rd) converging (weakly) to
+some γ such that
+min
+wt∈L2(µt,n) L(wt|γn) = 0,
+and
+min
+wt∈L2(µt) L(wt|γ) > 0.
+This implies in particular that γ 7→minwt∈L2(µt) L(wt|γ) is not lsc with respect to weak
+convergence. We define γn and γ on Rd × Rd for d = 2 by
+γn =
+1
+√
+2H1
+[
+x∈[ 1
+2 ,1]
+(0, x, 1
+n, x −1) +
+1
+√
+2H1
+[
+x∈[ 1
+2 ,1]
+(0, x −1, −1
+n, x)
+24
+
+
+and
+γ =
+1
+√
+2H1
+[
+x∈[ 1
+2 ,1]
+(0, x, 0, x −1) +
+1
+√
+2H1
+[
+x∈[ 1
+2 ,1]
+(0, x −1, 0, x).
+It is straightforward to see that γn ⇀γ (due to uniformly bounded moments, this is even
+true in Wasserstein). From this definition, we derive that the intermediate measures µt,n
+are given by
+µt,n = H1
+[
+x∈[ 1
+2 ,1]
+( t
+n, x −t) + H1
+[
+x∈[ 1
+2 ,1]
+(−t
+n, x −1 + t)
+and velocity fields minimizing L(·|γn) given by
+vt,n(x) =
+(
+( 1
+n, −1),
+for x = ( t
+n, z) if z + t ∈[1
+2, 1],
+(−1
+n, 1),
+for x = (−t
+n, z) for some z + 1 −t ∈[1
+2, 1].
+(This form of vt can be derived by the representation of the velocity as conditional
+expectation, see, e.g., [20].) One easily finds that for this velocity we get L(vt,n|γn) = 0.
+For the limit plan γ we obtain (also by the representation of the velocity as conditional
+expectation) that
+vt(x) =
+
+
+
+
+
+
+
+(0, −1),
+for x = (0, z) if z + t ∈[1
+2, 1] and z + 1 −t̸ ∈[1
+2, 1],
+(0, 1),
+for x = (0, z) if z + 1 −t ∈[1
+2, 1] and z + t̸ ∈[1
+2, 1],
+0,
+else.
+Inserting this form into the loss function yields L(vt|γ) > 0. We observe that all velocity
+fields have a potential (which can be extended to Rd), so that the same result holds for
+the rectified coupling with gradient constraint.
+C. Proof of Proposition 13
+Let (γn)n and (γ(N)
+n
+)n be generated by Algorithm 1 and let (nk)k be a subsequence such
+that γnk ⇀γ. We show that any limit point of (γ(N)
+nk )k and (γnk+1)k coincides with γ.
+Then, this implies γ(N)
+nk
+⇀γ and γnk+1 ⇀γ and by induction this yields also γnk+l ⇀γ
+and γ(N)
+nk+l ⇀γ for any l ∈Z≥0.
+Due to weak compactness of Γ(µ0, µ1) we can go over to another subsequence of (nk)k
+(which we again denote by (nk)k) such that γ(N)
+nk
+⇀γ(N) and γnk+1 ⇀γ′ for some γ(N)
+(not necessarily FN(γ)) and γ′. We have to show that this implies γ(N) = γ′ = γ.
+C.1. Proof of γ(N) = γ′
+We prove the more general statement formulated in the following lemma, which we prove
+in the rest of this subsection. Applying it to the sequences ˜ηk = γ(N)
+nk
+and ηk = γnk+1
+yields γ(N) = γ′.
+25
+
+
+Lemma 21. Assume that ˜ηn ∈Γ(µ0, µ1) and ηn ∈R(˜ηn) fulfill that
+´
+∥x−y∥2d˜ηn(x, y) ≥
+´
+∥x −y∥2dηn(x, y) ≥
+´
+∥x −y∥2d˜ηn+1(x, y) for all n. Assume also that ˜ηn converges
+weakly to some ˜η ∈Γ(µ0, µ1). Then, ηn converges to ˜η. Moreover, the minimizers ˜vn
+t
+and ˜vt of the loss functions L(·|˜ηn) and L(·|˜η) fulfill ˜vn
+t ˜µn
+t ⊗dt ⇀˜vt˜µt ⊗dt.
+Proof. We denote by ˜µn
+t the interpolations (2) of ˜ηn. Then, the rectification ηn of ˜ηn
+in Section 2 is built upon the sequence of measures Λn on C0([0, 1]; Rd) given by [4,
+Thm 8.2.1] which satisfy, for all t and any test function ψ:
+ˆ
+ψ(λ(t))dΛn(λ) =
+ˆ
+ψd˜µn
+t
+(14)
+and
+˙λ(t) = ˜vn
+t (λ(t))
+for a.e. t and Λn-a.e. λ, where ˜vn
+t satisfies the continuity equation:
+∂t˜µn
+t + div ˜vn
+t ˜µn
+t = 0.
+We have that the Wasserstein cost is non-increasing, and in particular the assumptions
+of the Lemma yield that:
+lim
+n
+ˆ
+∥x −y∥2d˜ηn(x, y) −
+ˆ
+∥x −y∥2dηn(x, y) = 0.
+(15)
+The coupling ηn is defined from Λn by
+ˆ
+ψ(x, y)dηn(x, y) =
+ˆ
+ψ(λ(0), λ(1))dΛn(λ)
+for any test function ψ.
+Recall that by the first-order optimality condition of vt in the loss (1), one has:
+ˆ
+⟨y −x, ˜vn
+t ((1 −t)x + ty)⟩d˜ηn(x, y) =
+ˆ
+∥˜vn
+t ((1 −t)x + ty)∥2d˜ηn(x, y).
+Also,
+´ 1
+0 ˙λ(t)dt = λ(1) −λ(0) so that
+´ 1
+0 ⟨˙λ(t), λ(1) −λ(0)⟩dt = ∥λ(1) −λ(0)∥2. Together
+with (14) this implies
+ˆ
+∥x −y∥2d˜ηn(x, y) −
+ˆ
+∥x −y∥2dηn(x, y)
+=
+ˆ 1
+0
+ˆ
+∥x −y∥2 −∥˜vn
+t ((1 −t)x + ty)∥2d˜ηndt
++
+ˆ 1
+0
+ˆ
+∥˜vn
+t (xt)∥2d˜µn
+t dt −
+ˆ
+∥λ(1) −λ(0)∥2dΛn(λ)
+=
+ˆ 1
+0
+ˆ
+∥y −x −˜vn
+t ((1 −t)x + ty)∥2d˜ηndt +
+ˆ 1
+0
+ˆ
+∥˙λ(t)∥2 −∥λ(1) −λ(0)∥2dΛn(λ)dt
+=
+ˆ 1
+0
+ˆ
+∥y −x −˜vn
+t ((1 −t)x + ty)∥2d˜ηndt +
+ˆ 1
+0
+ˆ
+∥˙λ(t) −(λ(1) −λ(0))∥2dΛn(λ)dt.
+(16)
+26
+
+
+Remark 22. In Section 4, the velocity field minimizing (1) is replaced by a projected
+version vp,n
+t
+. Then, we have
+´
+∥˜vn
+t ∥2d˜µn
+t =
+´
+∥˜vn
+t −˜vp,n
+t
+∥2d˜µn
+t +
+´
+∥˜vp,n
+t
+∥2d˜µn
+t so that the
+same holds with an additional positive term on the right-hand side. The first term in the
+right-hand side of (16) controls how far the coupling ˜ηn is from a deterministic coupling,
+while the second controls how straight the new coupling is.
+Note that for any rectifiable path λ,
+∥λ(t) −((1 −t)λ(0) + tλ(1))∥2 = ∥λ(t) −λ(0) −t(λ(1) −λ(0))∥2
+=
+
+ˆ t
+0
+  ˙λ(s) −(λ(1) −λ(0))
+
+ds
+
+2
+≤t
+ˆ t
+0
+∥˙λ(s) −(λ(1) −λ(0))∥2ds
+so that
+ˆ 1
+0
+∥λ(t) −((1 −t)λ(0) + tλ(1))∥2dt ≤
+ˆ 1
+0
+1−s2
+2 ∥˙λ(s) −(λ(1) −λ(0))∥2ds
+≤1
+2
+ˆ 1
+0
+∥˙λ(s) −(λ(1) −λ(0))∥2ds.
+We obtain that in addition to (16), one also has
+ˆ
+∥x−y∥2d˜ηn −
+ˆ
+∥x−y∥2dηn ≥2
+ˆ 1
+0
+ˆ
+∥λ(t)−((1−t)λ(0)+tλ(1))∥2dΛn(λ)dt, (17)
+where the left side goes to zero by (15).
+Remark 23. Since ψ 7→
+´
+ψ(λ(t), (1 −t)λ(0) + tλ(1))dΛn is a coupling between the
+interpolations ˜µn
+t and µn
+t from (2) wrt ˜ηn and ηn, we already find that
+2
+ˆ 1
+0
+W 2
+2 (˜µn
+t , µn
+t )dt ≤
+ˆ
+∥x −y∥2d˜ηn −
+ˆ
+∥x −y∥2dηn →0.
+However we will prove the stronger result that the limit points of ˜ηn and ηn must coincide.
+Since ˜ηn ⇀˜η, we know that also ˜µn
+t converges to the ˜µt corresponding to ˜η for all t, and
+˜vn
+t ˜µn
+t ⇀˜vt˜µt which satisfies the continuity equation, cf. [4, Thm 5.4.4].
+Now, assume ηn also converges to a weak limit η (which is always true up to subse-
+quences). Let ψ(x, y) be a smooth test function with compact support. Then,
+ˆ
+ψ(x, y)d˜ηn(x, y) =
+ˆ 1
+0
+ˆ
+ψ(x, y)d˜ηn(x, y)dt
+=
+ˆ 1
+0
+ˆ
+ψ(xt −t˜vn
+t (xt), xt + (1 −t)˜vn
+t (xt))d˜µn
+t (xt)dt
++
+ˆ 1
+0
+ˆ  ψ(x, y) −ψ(xt −t˜vn
+t (xt), xt + (1 −t)˜vn
+t (xt))
+
+d˜ηn(x, y)dt
+(18)
+27
+
+
+(where in the last line, “xt” is not a variable but a shorthand for (1 −t)x + ty). Since
+ψ(x, y) −ψ(xt −t˜vn
+t (xt), xt+(1 −t)˜vn
+t (xt)) ≤∥Dψ∥∞
+
+ 
+xt −t˜vn
+t (xt) −x
+xt + (1 −t)˜vn
+t (xt) −y
+!
+≤∥Dψ∥∞
+p
+t2 + (1 −t)2∥˜vn
+t (xt) −(y −x)∥,
+the last error term goes to zero thanks to (16). Then,
+ˆ 1
+0
+ˆ
+ψ(xt −t˜vn
+t (xt), xt + (1 −t)˜vn
+t (xt))d˜µn
+t (xt)dt
+=
+ˆ 1
+0
+ˆ
+ψ(λ(t) −t ˙λ(t), λ(t) + (1 −t) ˙λ(t))dΛn(λ)dt
+and we use now that
+|ψ(λ(t) −t ˙λ(t), λ(t) + (1 −t) ˙λ(t)) −ψ(λ(0), λ(1))|
+≤∥Dψ∥∞
+
+2∥λ(t) −((1 −t)λ(0) + tλ(1))∥+
+p
+t2 + (1 −t)2∥˙λ(t) −(λ(1) −λ(0))∥
+
+to show, using again (16) and (17) that
+ˆ 1
+0
+ˆ
+ψ(xt −t˜vn
+t (xt), xt + (1 −t)˜vn
+t (xt))d˜µn
+t (xt)dt
+=
+ˆ 1
+0
+ˆ
+ψ(λ(0), λ(1))dΛn(λ)dt + o(1)
+=
+ˆ
+ψ(x, y)dηn(x, y) + o(1).
+We find in the limit (still, a priori, along a subsequence) in (18) that:
+ˆ
+ψ(x, y)d˜η(x, y) =
+ˆ
+ψ(x, y)dη(x, y)
+which proves that ηn ⇀˜η. One also deduces from (16) (precisely, from the fact that
+´ 1
+0
+´
+∥y −x −˜vn
+t ((1 −t)x + ty)∥2d˜ηndt goes to zero) that:
+ˆ 1
+0
+ˆ
+ψ(xt, t)˜vt(xt)d˜µt(xt)dt =
+ˆ 1
+0
+ˆ
+ψ((1 −t)x + ty, t)(y −x)d˜η(x, y)dt,
+for any test function ψ, which shows that ˜vt = arg min L(·|˜η).
+C.2. Proof of γ(N) = γ
+Let Σ ⊂RN×N be the convex set of doubly stochastic matrices:
+Σ :=
+n
+X ∈RN×N : X ≥0, X1 = 1, XT 1 = 1
+o
+28
+
+
+where “X ≥0” is intended componentwise (Xi,j ≥0 ∀i, j) and 1 = (1, . . . , 1)T ∈RN is
+the N-vector with all components equal to 1. It is well known that equivalently, Σ can
+be defined as the convex envelope of the permutation matrices (δσ(i),j)N
+i,j=1, σ ∈ΣN.
+The next lemma shows that γ(N) is “some version of minibatch OT” applied to γ. How-
+ever, since the discrete OT mapping within minibatch OT is not unique, we cannot
+conclude in general that γ(N) = FN(γ).
+Lemma 24. Let (ηn)n be a sequence in Γ(µ0, µ1), denote by η(N)
+n
+:= FN(ηn) and assume
+that ηn ⇀η and η(N)
+n
+⇀η(N) for some η and η(N). Then, there exists a Borel map
+X : (Rd × Rd)N →Σ such that
+ˆ
+ψ(x, y)dη(N)(x, y) = 1
+N
+ˆ
+N
+X
+i,j=1
+ψ(x(i), y(j))Xi,j(x, y)dη⊗N(x, y).
+Proof. We define for ηn the Borel map Xn : (Rd × Rd)N →Σ by (Xn)i,j(x, y) = 1 if
+j = σ(i) for the permutation σ used in the discrete OT operator S within the minibatch
+OT. Then, we have by definition that
+ˆ
+ψ(x, y)dη(N)
+n
+(x, y) = 1
+N
+ˆ
+N
+X
+i,j=1
+ψ(x(i), y(j))(Xn)i,j(x, y)dη⊗N
+n
+(x, y).
+(19)
+Now let λ be a limit point of λn := Xnη⊗N
+n
+(which exists due to compactness arguments).
+Then, one has for any non-negative continuous test function ψ that
+
+ˆ
+ψ(x, y)dλn(x, y)
+ ≤
+ˆ
+ψ(x, y)dη⊗N
+n
+(x, y) →
+ˆ
+ψ(x, y)dη⊗N(x, y)
+from which we deduce that |λ| ≤η⊗N and in particular λ≺≺η⊗N as Radon measures.
+Hence, one has λ = Xη⊗N for some X ∈L1
+loc(η⊗N; RN×N). In addition (by convexity,
+or integrating against functions of the form φ(x, y)1) one checks easily that X(x, y) ∈Σ
+almost everywhere.
+Finally, we obtain from (19) that for the subsequence nk such that Xnkη⊗N
+nk
+⇀Xη⊗N it
+holds
+ˆ
+ψ(x, y)dη(N)(x, y) = lim
+k→∞
+ˆ
+ψ(x, y)dη(N)
+nk (x, y)
+= lim
+k→∞
+1
+N
+ˆ
+N
+X
+i,j=1
+ψ(x(i), y(j))(Xnk)i,j(x, y)dη⊗N
+nk (x, y)
+= 1
+N
+ˆ
+N
+X
+i,j=1
+ψ(x(i), y(j))Xi,j(x, y)dη⊗N(x, y).
+29
+
+
+Remark 25. One easily shows that X is minimizing the Wasserstein cost, that is,
+1
+N
+ˆ
+N
+X
+i,j=1
+∥x(i) −y(j)∥2Xi,j(x, y)dη⊗N(x, y) =
+ˆ
+∥x −y∥2dη(N),
+so that in particular X(x, y) = Id at η⊗N-almost all points of (Rd × Rd)N where the
+minimizer of the cost is unique.
+Since we have by Lemma 21 that γ(N) = γ′ and by Corollary 12 that γ′ is monotone, we
+obtain that γ(N) is supported on a graph of a Borel map. Under this additional condition,
+we finally obtain that γ(N) = γ. We formalize this observation in the following lemma.
+Choosing the sequence (ηn)n as (γnk)k yields the claim.
+Lemma 26. Let (ηn)n be a sequence in Γ(µ0, µ1), denote by η(N)
+n
+:= FN(ηn) and assume
+that ηn ⇀η and η(N)
+n
+⇀η(N) for some η and η(N). Further assume that there exists a
+(Borel) transport map u(x) such that η(N) = (I, u)♯µ0 and that µ1 has no atoms. Then
+we have η = η(N) (and u is N-monotone).
+Proof. By Lemma 24 there exists a Σ-valued map X(x, y) such that for any continuous
+ψ with compact support,
+ˆ
+Rd ψ(x, u(x))dµ0(x) =
+ˆ
+Rd×Rd ψ(x, y)dη(N)(x, y)
+= 1
+N
+ˆ
+(Rd×Rd)N
+D
+(ψ(x(i), y(j)))i,j, X(x, y)
+E
+dη⊗N(x, y).
+Letting G = {(x, u(x)) : x ∈Rd}, which is Borel as the graph of a Borel map (see [15,
+Prop 12.4]), we see that η(N)
+(Rd × Rd) \ G = 0. Hence, if E = (Rd × Rd) \ G, (using
+the regularity of the measures)
+0 =
+ˆ
+(Rd×Rd)N
+X
+i,j
+χE(x(i), y(j))Xi,j(x, y)dη⊗N(x, y)
+which shows in particular that for η⊗N-a.e. (x, y), if Xi,j(x, y) > 0 then (x(i), y(j)) ∈G,
+that is, y(j) = u(x(i)). If Ei,j = {(x, y) ∈(Rd × Rd)N : Xi,j(x, y) > 0} and i̸ = j, one
+sees then that
+η⊗N(Ei,j) ≤
+ˆ
+(Rd×Rd)2 χ{y(j)=u(x(i))}dη(x(i), y(i))dη(x(j), y(j))
+=
+ˆ
+Rd
+ ˆ
+{u(x(i))}
+dµ1(y(j))
+!
+dµ0(x(i)) = 0,
+since we assumed µ1 has no atoms. We deduce that for η⊗N-a.e. (x, y), X(x, y) = Id so
+that η(N) = η. As a consequence, u is N-monotone.
+30
+
+
+D. Non-Optimality of Minibatch-OT Reflow for
+Disconnected Supports
+The following lemma shows that the example from Section 5 is N-cyclically monotone.
+Lemma 27. Let M = 2N + 1 for some N ∈Z>1 and let γ be defined as above for ϵ
+small enough. Then γ is N-cyclically monotone.
+Proof. We consider the points xk from (12). Further, we extend the set of indices to Z
+by xk+lM = xk for all l ∈Z. We also use the periodic distance of indices defined as
+d(k, l) = minj∈Z |k −l + jM|. Since M = 2N + 1 is odd, every difference k −l of indices
+admits a unique representative s ≡k −l (mod M) with s ∈{−N, ..., N}, and it holds
+d(k, l) = |s|.
+Denote by δ = ∥x0 −x1∥(with xk from (12)). We first estimate ∥x0 −xk∥2 for k ∈
+{0, 1, ..., N}. For k = 0 and k = 1 we directly obtain that ∥x0 −xk∥= kδ. For the
+general case, we have
+∥x0 −xk∥2 =
+
+1 −cos
+2πk
+M
+2
++ sin
+2πk
+M
+2
+= 4 sin
+πk
+M
+2
+.
+Using the inequality sin(α π
+2 ) ≥α for α ∈[0, 1] we obtain for k ≥3
+∥x0 −xk∥2 ≥16k2
+M2 ≥k4π2
+M2 > k∥x0 −x1∥2 = kδ2,
+where the last inequality estimates the distance of x0 and x1 by the length of the circle
+arc between them. For k = 2, we observe that
+∥x0 −x2∥2 −2δ2 = 4 sin(2π
+M )2 −8 sin( π
+M )2 = 8 sin( π
+M )2(2 cos( π
+M )2 −1).
+Since M ≥5, we have that all terms are strictly positive and ∥x0 −x2∥2 > 2δ2. Denoting
+ρ = min
+
+1
+2∥x0 −x2∥2, 4π2
+M2
+
+−∥x0 −x1∥2 > 0, we obtain that for k ≥2, we have that
+∥x0 −xk∥2 > kδ2 + ρ. We now assume that ϵ is small enough such that 8Nϵ < ρ.
+Now, we assume that there exist (x(i), y(i)) ∈supp(γ) for i = 1, ..., N such that
+N
+X
+i=1
+∥x(i) −y(i+1)∥2 <
+N
+X
+i=1
+∥x(i) −y(i)∥2.
+(20)
+Then, it holds y(i) = u(x(i)) and using the notation k(i) such that ∥xk(i) −x(i)∥≤ϵ, we
+obtain that ∥xk(i)+1 −y(i)∥≤ϵ. We further use the notation k(N +1) = k(1) and denote
+by σi ∈{−N, ..., N} the unique representative of k(i + 1) + 1 −k(i) modulo M, so that
+d(k(i), k(i+1)+1) = |σi|. Since PN
+i=1
+ k(i+1)+1−k(i)
+
+= N, this implies in particular
+that PN
+i=1 σi ≡N (mod 2N +1); note that every integer congruent to N modulo 2N +1
+has absolute value at least N. Moreover, since ∥xk(i) −xk(i+1)+1∥≤∥x(i) −y(i+1)∥+ 2ϵ
+and ∥xk(i) −xk(i+1)+1∥≤2, we have
+∥xk(i)−xk(i+1)+1∥2 ≤∥x(i)−y(i+1)∥2+4ϵ ∥xk(i)−xk(i+1)+1∥≤∥x(i)−y(i+1)∥2+8ϵ, (21)
+31
+
+
+where the first inequality is trivial for ∥xk(i) −xk(i+1)+1∥≤2ϵ and follows otherwise from
+∥x(i) −y(i+1)∥2 ≥
+ ∥xk(i) −xk(i+1)+1∥−2ϵ
+2.
+Step 1: We first show that d(k(i), k(i+1)+1) ≤1 for all i = 1, ..., N (with the convention
+that k(N + 1) = k(1)). To this end, we assume by contradiction that there exists some
+i such that d(k(i), k(i + 1) + 1) ≥2. Then, we have
+δ2
+N
+X
+i=1
+d(k(i), k(i + 1) + 1) ≤
+N
+X
+i=1
+∥x0 −xd(k(i),k(i+1)+1)∥2 −ρ =
+N
+X
+i=1
+∥xk(i) −xk(i+1)+1∥2 −ρ
+≤
+N
+X
+i=1
+∥x(i) −y(i+1)∥2 + 8Nϵ −ρ
+<
+N
+X
+i=1
+∥x(i) −y(i)∥2 = Nδ2,
+where the first inequality uses ∥x0 −xm∥2 ≥mδ2 for m ∈{0, 1} together with ∥x0 −
+xm∥2 > mδ2 + ρ for m ≥2, the second inequality uses (21), and the last step uses
+8Nϵ < ρ and (20). Thus, we get that PN
+i=1 d(k(i), k(i + 1) + 1) < N and hence
+
+N
+X
+i=1
+σi
+ ≤
+N
+X
+i=1
+|σi| =
+N
+X
+i=1
+d(k(i), k(i + 1) + 1) < N,
+which contradicts PN
+i=1 σi ≡N (mod 2N + 1).
+Step 2: Since we have d(k(i), k(i + 1) + 1) = |σi| ≤1, we know that PN
+i=1 σi ∈
+{−N, ..., N}. On the other side, we again know that PN
+i=1 σi ≡N (mod 2N + 1) such
+that we obtain that PN
+i=1 σi = N and hence σi = 1 for all i. By the definition of σi, this
+implies k(i + 1) ≡k(i) (mod M) for all i. In particular, we know that there exists some
+k = k(1) = · · · = k(N) such that x(i) ∈Bϵ(xk). Since on Bϵ(xk), the map u is only a
+translation (which is cyclically monotone), we obtain that
+N
+X
+i=1
+∥x(i) −y(i+1)∥2 =
+N
+X
+i=1
+∥x(i) −u(x(i+1))∥2 ≥
+N
+X
+i=1
+∥x(i) −u(x(i))∥2 =
+N
+X
+i=1
+∥x(i) −y(i)∥2,
+which contradicts (20) and we are done.
+Acknowledgments
+This research is supported by the ANR (Agence Nationale de la Recherche), grant ANR-
+23-PEIA-0004 (PEPR IA, PDE-AI), and ANR-23-IACL-0008 (PR[AI]RIE-PSAI), funded
+by “France 2030” and by the German Research Foundation (DFG, Deutsche Forschungs-
+gemeinschaft) with project no 530824055.
+32
+
+
+References
+[1] M. Albergo, N. M. Boffi, and E. Vanden-Eijnden. Stochastic interpolants: A uni-
+fying framework for flows and diffusions. Journal of Machine Learning Research,
+26(209):1–80, 2025.
+[2] M. S. Albergo and E. Vanden-Eijnden. Building normalizing flows with stochastic
+interpolants. In The Eleventh International Conference on Learning Representations,
+2021.
+[3] L. Ambrosio, N. Fusco, and D. Pallara. Functions of bounded variation and free
+discontinuity problems. Oxford Mathematical Monographs. The Clarendon Press,
+Oxford University Press, New York, 2000.
+[4] L. Ambrosio, N. Gigli, and G. Savaré. Gradient flows in metric spaces and in the
+space of probability measures.
+Lectures in Mathematics ETH Zürich. Birkhäuser
+Verlag, Basel, second edition, 2008.
+[5] S. Boïté, J. Delon, and K. Nadjahi. Expected batch optimal transport plans and
+consequences for flow matching. arXiv preprint arXiv:2605.12174, 2026.
+[6] L. A. Caffarelli. Interior W 2,p estimates for solutions of the Monge-Ampère equation.
+Ann. of Math. (2), 131(1):135–150, 1990.
+[7] L. A. Caffarelli. The regularity of mappings with a convex potential. Journal of the
+American Mathematical Society, 5(1):99–104, 1992.
+[8] L. A. Caffarelli. The regularity of monotone maps of finite compression. Communi-
+cations on Pure and Applied Mathematics, 50(6):563–591, 1997.
+[9] T. Champion and L. De Pascale. On the twist condition and c-monotone transport
+plans. Discrete and Continuous Dynamical Systems, 34:1339–1353, 2014.
+[10] J.-P. Crouzeix and C. Gutan. A measure of asymmetry for positive semidefinite
+matrices. Optimization, 52(3):251–262, 2003.
+[11] L. C. Evans and R. F. Gariepy. Measure theory and fine properties of functions.
+2015.
+[12] K. Fukumizu, W. Huang, H. Bao, S. Xu, and N. Chandramoorthy. Flow matching
+from viewpoint of proximal operators. arXiv preprint arXiv:2602.12683, 2026.
+[13] J. Hertrich, A. Chambolle, and J. Delon. On the relation between rectified flows
+and optimal transport.
+In Advances in Neural Information Processing Systems,
+volume 38, pages 172578–172610, 2025.
+[14] J. Ho, A. Jain, and P. Abbeel. Denoising diffusion probabilistic models. In NeurIPS,
+2020.
+33
+
+
+[15] A. S. Kechris. Classical descriptive set theory, volume 156 of Grad. Texts Math.
+Berlin: Springer-Verlag, 1995.
+[16] D. P. Kingma and M. Welling. Auto-encoding variational bayes. ArXiv 1312.6114,
+2013.
+[17] Y. Lipman, R. T. Chen, H. Ben-Hamu, M. Nickel, and M. Le.
+Flow matching
+for generative modeling. In International Conference on Learning Representations,
+2023.
+[18] Y. Lipman, M. Havasi, P. Holderrieth, N. Shaul, M. Le, B. Karrer, R. T. Chen,
+D. Lopez-Paz, H. Ben-Hamu, and I. Gat. Flow matching guide and code. arXiv
+preprint arXiv:2412.06264, 2024.
+[19] Q. Liu. Rectified flow: A marginal preserving approach to optimal transport. arXiv
+preprint arXiv:2209.14577, 2022.
+[20] X. Liu, C. Gong, and Q. Liu. Flow straight and fast: Learning to generate and
+transfer data with rectified flow. In International Conference on Learning Represen-
+tations, 2023.
+[21] E. Luhman and T. Luhman. Knowledge distillation in iterative generative models
+for improved sampling speed. arXiv preprint arXiv:2101.02388, 2021.
+[22] G. Mena, A. K. Kuchibhotla, and L. Wasserman. Statistical properties of rectified
+flow. arXiv preprint arXiv:2511.03193, 2025.
+[23] C. Meng, R. Rombach, R. Gao, D. Kingma, S. Ermon, J. Ho, and T. Salimans. On
+distillation of guided diffusion models. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pages 14297–14306, 2023.
+[24] E. Pierret, J. Hertrich, S. Hurault, and J. Delon. Tessellations of semi-discrete flow
+matching. arXiv preprint arXiv:2605.07513, 2026.
+[25] E. Pierret, V. Tosel, J. Delon, and A. Newson. Flow matching for applied mathe-
+maticians. https://hal.science/hal-05538982/, 2026.
+[26] A.-A. Pooladian, H. Ben-Hamu, C. Domingo-Enrich, B. Amos, Y. Lipman, and R. T.
+Chen. Multisample flow matching: Straightening flows with minibatch couplings. In
+International Conference on Machine Learning, pages 28100–28127. PMLR, 2023.
+[27] D. Rezende and S. Mohamed.
+Variational inference with normalizing flows.
+In
+International Conference on Machine Learning, volume 37 of Proceedings of Machine
+Learning Research, pages 1530–1538, Lille, France, 2015. PMLR.
+[28] S. Roy, V. Bansal, P. Sarkar, and A. Rinaldo. On the Wasserstein convergence and
+straightness of rectified flow. arXiv preprint arXiv:2410.14949, 2024.
+34
+
+
+[29] T. Salimans and J. Ho. Progressive distillation for fast sampling of diffusion models.
+In International Conference on Learning Representations, 2022.
+[30] S. K. Smirnov. Decomposition of solenoidal vector charges into elementary solenoids,
+and the structure of normal one-dimensional flows. Algebra i Analiz, 5(4):206–238,
+1993.
+[31] Y. Song, J. Sohl-Dickstein, D. P. Kingma, A. Kumar, S. Ermon, and B. Poole.
+Score-based generative modeling through stochastic differential equations. In ICLR,
+2021.
+[32] E. Stepanov and D. Trevisan. Three superposition principles: currents, continuity
+equations and curves of measures. J. Funct. Anal., 272(3):1044–1103, 2017.
+[33] A. Tong, K. Fatras, N. Malkin, G. Huguet, Y. Zhang, J. Rector-Brooks, G. Wolf, and
+Y. Bengio. Improving and generalizing flow-based generative models with minibatch
+optimal transport. Transactions on Machine Learning Research, 2024.
+[34] P. Tsimpos, D. Sharp, and Y. Marzouk. One-shot generative flows: Existence and
+obstructions. arXiv preprint arXiv:2604.15439, 2026.
+[35] C. Villani. Optimal transport: old and new, volume 338. Springer, 2008.
+[36] C. Wald and G. Steidl. Flow matching: Markov kernels, stochastic processes and
+transport plans. Variational and Information Flows in Machine Learning and Op-
+timal Transport, pages 185–254, 2025.
+[37] L. Wang, Z. Xu, Q. Liu, and H. H. Zhou. Computational and statistical guarantees
+of the c-rectified flow. arXiv preprint arXiv:2608.02487, 2026.
+[38] X. J. Wang. Some counterexamples to the regularity of Monge-Ampère equations.
+Proc. Amer. Math. Soc., 123(3):841–845, 1995.
+35

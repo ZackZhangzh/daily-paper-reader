@@ -18,52 +18,52 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-14
-- 运行时间：2026-08-14 20:51:08 UTC
+- 最新运行日期：2026-08-15
+- 运行时间：2026-08-15 20:27:38 UTC
 - 运行状态：成功
 - 本次总论文数：10
-- 精读区：4
-- 速读区：6
+- 精读区：7
+- 速读区：3
 
 ### 今日简报（AI）
-1) 今日精读2篇生成模型顶会论文，速读6篇覆盖自编码器、机器人世界模型与3D场景生成。  
-2) 最值得关注方向：用路径积分统一生成模型框架，以及多维快捷流（XYZFlow）在高效生成上的缩放突破。  
-3) 建议普通读者优先看《Unifying Generative Models with Path Integrals》，理解生成模型底层统一逻辑，再结合XYZFlow感受效率提升。
-- 详情：[/202608/14/README](/202608/14/README)
+今日精读7篇，聚焦流匹配模型与最优传输的理论突破，另有3篇速读覆盖视觉自回归与图像抠图技术。  
+最值得关注的是《Limit Points of Reflow》揭示的小批量最优传输动态极限，以及《DreOPD》提出的退化参考外推蒸馏策略，两者均为高效生成模型提供了新范式。  
+建议普通读者优先追踪流匹配模型的蒸馏效率提升，后续可关注其在图像生成和视频插帧中的实际应用落地。
+- 详情：[/202608/15/README](/202608/15/README)
 
 ### 精读区论文标签
-1. [Unifying Generative Models with Path Integrals](/202608/14/2608.12438v1-unifying-generative-models-with-path-integrals)  
-   标签：评分：10.0/10、query:fm
-   evidence：通过路径积分统一流、扩散、变分、对抗生成模型
-2. [XYZFlow:Scaling Multi dimensional Shortcut Flows for Efficient Generative Modeling](/202608/14/2608.12276v1-xyzflowscaling-multi-dimensional-shortcut-flows-for-efficient-generative-modeling)  
+1. [Limit Points of Reflow with Minibatch Optimal Transport](/202608/15/2608.07042v1-limit-points-of-reflow-with-minibatch-optimal-transport)  
    标签：评分：9.0/10、query:fm
-   evidence：用于高效生成建模的流匹配
-3. [ELVAE: Evidential Learning-Based Variational Autoencoder for Uncertainty-Aware Generation](/202608/14/2608.10398v1-elvae-evidential-learning-based-variational-autoencoder-for-uncertainty-aware-generation)  
+   evidence：整流流/流匹配生成模型及其极限点
+2. [DreOPD: Degraded-Reference Extrapolative On-Policy Distillation for Flow-matching Models](/202608/15/2608.09233v2-dreopd-degraded-reference-extrapolative-on-policy-distillation-for-flow-matching-models)  
+   标签：评分：9.0/10、query:fm
+   evidence：提出针对流匹配模型的在线策略蒸馏方法
+3. [Draw This First](/202608/15/2608.12064v1-draw-this-first)  
+   标签：评分：9.0/10、query:fm
+   evidence：潜在流匹配变换器用于草图生成和顺序预测
+4. [UniCycleFlow: Bidirectional Unpaired Image Translation with a Shared Rectified Flow](/202608/15/2608.06784v1-unicycleflow-bidirectional-unpaired-image-translation-with-a-shared-rectified-flow)  
    标签：评分：8.0/10、query:fm
-   evidence：带有潜在变量的变分自编码器
-4. [TGRHuman: Text-Guided Realistic 3D Human Generation via Diffusion Renderer](/202608/14/2608.12175v1-tgrhuman-text-guided-realistic-3d-human-generation-via-diffusion-renderer)  
+   evidence：整流流/流匹配用于双向图像翻译
+5. [Generative Models: Principles, Architectures, and Applications](/202608/15/2608.08101v1-generative-models-principles-architectures-and-applications)  
    标签：评分：8.0/10、query:fm
-   evidence：利用扩散渲染器生成3D人体
+   evidence：生成式AI原理与架构
+6. [Unifying Generative Models with Path Integrals](/202608/15/2608.12438v1-unifying-generative-models-with-path-integrals)  
+   标签：评分：8.0/10、query:fm
+   evidence：基于流的生成建模统一框架
+7. [Semantic Steering for Controllable Generation: Tuning-Free Concept Erasure in Multimodal Diffusion Transformers](/202608/15/2608.12829v1-semantic-steering-for-controllable-generation-tuning-free-concept-erasure-in-multimodal-diffusion-transformers)  
+   标签：评分：8.0/10、query:fm
+   evidence：扩散概率模型用于可控生成
 
 ### 速读区论文标签
-1. [NAE: Normalizing AutoEncoder](/202608/14/2608.12084v1-nae-normalizing-autoencoder)  
+1. [SynVAR: Synergizing Spatial and Semantic Alignment in Visual Autoregressive Model](/202608/15/2608.07948v1-synvar-synergizing-spatial-and-semantic-alignment-in-visual-autoregressive-model)  
    标签：评分：7.0/10、query:fm
-   evidence：基于归一化流的潜变量模型
-2. [DreamX-Phi 1.0: Action-Conditioned Video World Model for Robotic Manipulation](/202608/14/2608.13489v1-dreamx-phi-10-action-conditioned-video-world-model-for-robotic-manipulation)  
+   evidence：视觉自回归生成模型
+2. [RenderMatte: Exact-Alpha Rendering and Group-Relative Alignment for Image Matting](/202608/15/2608.08487v1-rendermatte-exact-alpha-rendering-and-group-relative-alignment-for-image-matting)  
    标签：评分：7.0/10、query:fm
-   evidence：动作条件视频世界模型，生成未来观测
-3. [iARCS: Iterative Agentic RL for Controllable 3D Scene Generation](/202608/14/2608.06161v2-iarcs-iterative-agentic-rl-for-controllable-3d-scene-generation)  
-   标签：评分：6.0/10、query:fm
-   evidence：迭代式智能体强化学习用于可控3D场景生成
-4. [Population-Level Generative Modeling for Ranking Data](/202608/14/2608.08422v2-population-level-generative-modeling-for-ranking-data)  
-   标签：评分：6.0/10、query:fm
-   evidence：排名数据的生成建模
-5. [Statistical analysis of block structured latent variable models](/202608/14/2608.10328v1-statistical-analysis-of-block-structured-latent-variable-models)  
-   标签：评分：6.0/10、query:fm
-   evidence：潜在变量模型的统计分析
-6. [SCULPT: Subtractive Composition for 3D Part Generation](/202608/14/2608.13541v1-sculpt-subtractive-composition-for-3d-part-generation)  
-   标签：评分：6.0/10、query:fm
-   evidence：使用减法合成的3D部件生成
+   evidence：适配FLUX扩散模型用于抠图
+3. [RL-Native Distillation: Exploiting Scored Trajectories for Few-Step Image Generation](/202608/15/2608.09226v1-rl-native-distillation-exploiting-scored-trajectories-for-few-step-image-generation)  
+   标签：评分：7.0/10、query:fm
+   evidence：扩散强化学习与蒸馏用于少步图像生成
 
 
 <div class="dpr-home-promo-card dpr-home-panel">

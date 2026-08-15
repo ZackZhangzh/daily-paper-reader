@@ -1,0 +1,2774 @@
+UniCycleFlow: Bidirectional Unpaired Image Translation with a Shared Rectified
+Flow
+Xianhao Zhou1, Jianghao Wu2, Shaoting Zhang1,3, Guotai Wang1,3,∗
+1 School of Mechanical and Electrical Engineering,
+University of Electronic Science and Technology of China, Chengdu, China
+2 Faculty of Information Technology, Monash University, Melbourne, Australia
+3 Shanghai Artificial Intelligence Laboratory, Shanghai, China
+∗Corresponding author: Guotai Wang (guotai.wang@uestc.edu.cn)
+Abstract
+Bidirectional unpaired image translation must preserve
+source-specific structure while learning coherent transforma-
+tions in both directions without paired supervision. Existing
+methods typically employ two direction-specific generators
+or train separate one-way models. Even when linked by cycle
+consistency, such models constrain only the round-trip end-
+point reconstruction, without requiring the two directions to
+obey a common local transformation rule. We propose Uni-
+CycleFlow, a rectified-flow framework that represents bidi-
+rectional translation as forward and reverse integration of a
+single time-conditioned velocity field. This formulation orga-
+nizes both directions within the same continuous dynamics,
+rather than coupling otherwise separate endpoint mappings.
+A key challenge is that unpaired data provide no meaning-
+ful source–target coupling from which rectified-flow trajec-
+tories can be constructed. UniCycleFlow addresses this chal-
+lenge by learning deterministic source-conditioned endpoints
+whose marginal distributions are adversarially matched to the
+opposite domains. The resulting paths are regularized by stop-
+gradient self-flow matching for intermediate velocity supervi-
+sion, discrete cycle closure for forward–reverse consistency,
+and representation path-velocity regularization for control-
+ling localized feature changes along the trajectory. Across ten
+translation directions, UniCycleFlow achieves the lowest FID
+on 7 of 10 tasks using a single Euler evaluation and obtains
+the best average FID of 55.1.
+Introduction
+Unpaired image-to-image translation aims to transform im-
+ages across visual domains without aligned source–target
+pairs. In the absence of instance-level correspondence,
+matching the target-domain distribution alone is insufficient
+to determine how each source image should be translated,
+making source-structure preservation a central challenge.
+Existing methods address this ambiguity through cycle re-
+construction, representation correspondence, spatial consis-
+tency, or pretrained generative priors. In bidirectional set-
+tings, the two directions are typically implemented by sep-
+arate mappings or selected through conditional generation.
+Their relationship is therefore established mainly through
+endpoint-level objectives or discrete conditioning, rather
+than represented directly by a common transformation pro-
+cess.
+Cycle-consistent methods jointly train two direction-
+specific generators and relate them through round-trip re-
+construction (Zhu et al. 2017; Yi et al. 2017; Kim et al.
+2017). Although the cycle objective effectively encourages
+source preservation and consistency between the translated
+endpoints, the transformations performed by the individ-
+ual generators remain independently parameterized. One-
+way correspondence-based methods instead preserve source
+information through contrastive or spatial constraints (Park
+et al. 2020; Han et al. 2021; Zheng, Cham, and Cai 2021), but
+applying them in both directions generally requires separate
+models or training runs. Conditional and shared-generator
+architectures reduce parameter duplication using domain la-
+bels or direction codes (Choi et al. 2018; Shen et al. 2020),
+but parameter sharing alone does not impose common con-
+tinuous dynamics on the two directions.
+UniCycleFlow instead assigns the two domains to oppo-
+site ends of a temporal interval and realizes translation by
+integrating one time-conditioned velocity field forward or
+backward. Both directions are thus governed by a common
+time-indexed transformation model, rather than implemented
+by separate generators or selected through a discrete direc-
+tion condition. This formulation determines how the two
+directions are organized, but applying rectified flow to un-
+paired translation still requires cross-domain endpoint pairs
+from which training trajectories and velocity targets can be
+constructed.
+Standard rectified flow constructs interpolation paths from
+samples drawn from a prescribed endpoint coupling. In
+the unpaired setting, independently sampling real images
+from the two domains produces displacements that combine
+the desired domain shift with unrelated differences in con-
+tent, pose, and spatial layout. The resulting velocity targets
+are therefore poorly aligned with source-conditioned image
+translation. UniCycleFlow instead learns a deterministic end-
+point for each source image and adversarially matches thedis-
+tribution of the generated endpoints to the opposite domain.
+These source-conditioned endpoint pairs define translation-
+specific trajectories without relying on arbitrary pairings be-
+tween unrelated real images.
+The learned endpoints specify the overall cross-domain
+displacement, but endpoint supervision alone does not
+fully constrain the induced transport. Adversarial boundary
+matching does not directly supervise the intermediate states
+encountered during integration, while the discrete forward
+arXiv:2608.06784v1  [cs.CV]  7 Aug 2026
+
+
+and reverse endpoint updates are not guaranteed to com-
+pose consistently. Moreover, a straight trajectory in image
+space may still exhibit excessive localized feature changes
+in a perceptual representation. UniCycleFlow therefore com-
+plements endpoint learning with trajectory-level regulariza-
+tion. Stop-gradient self-flow matching transfers the boundary
+displacement to intermediate field predictions, discrete cy-
+cle closure constrains the forward–reverse composition, and
+representation path-velocity regularization controls localized
+feature changes between neighboring trajectory states using
+a frozen dense encoder.
+By
+combining
+shared
+temporal
+dynamics,
+source-
+conditioned trajectory construction, and path-level supervi-
+sion, UniCycleFlow provides a unified rectified-flow frame-
+work for bidirectional unpaired translation. Across ten trans-
+lation directions, UniCycleFlow achieves the lowest FID on
+7 of 10 tasks under one-step inference and obtains the best
+ten-direction average FID and KID×100 of 55.1 and 2.107,
+respectively.
+Related Work
+Unpaired and Bidirectional Image Translation
+Adversarial methods for unpaired image translation can be
+broadly grouped into cycle-consistent bidirectional map-
+pings, latent-representation models, and conditional or
+shared-generator architectures. CycleGAN, DualGAN, and
+DiscoGAN jointly learn two direction-specific generators
+and relate them through round-trip reconstruction (Zhu et al.
+2017; Yi et al. 2017; Kim et al. 2017). UNIT instead as-
+sumes a shared latent space across domains (Liu, Breuel,
+and Kautz 2017), while MUNIT decomposes images into
+domain-invariant content and domain-specific style to sup-
+port multimodal translation (Huang et al. 2018). Conditional
+approaches such as StarGAN and StarGAN v2 handle mul-
+tiple domains within a unified architecture (Choi et al. 2018,
+2020), whereas One-to-one CycleGAN investigates a shared
+self-inverse mapping for two-domain translation (Shen et al.
+2020).
+Recent work has extended these paradigms by improv-
+ing generator design, content–style modeling, and robust-
+ness to asymmetric domain correspondences. UVCGAN and
+UVCGAN v2 incorporate stronger hybrid architectures and
+training strategies while retaining cycle-based endpoint su-
+pervision (Torbunov et al. 2023b,a). SHUNIT harmonizes
+source and target styles to better preserve fine-grained source
+characteristics (Song et al. 2023), while StegoGAN ad-
+dresses non-bijective translation, where conventional cycle-
+consistent models may hide unmatched information or intro-
+duce spurious target-domain content (Wu et al. 2024). De-
+spite their different designs, these methods relate the two di-
+rections mainly through endpoint reconstruction, latent struc-
+ture, or discrete conditioning, leaving their local transforma-
+tions only indirectly coupled. UniCycleFlow instead models
+them as opposite-time traversals of a single velocity field,
+directly coupling forward and reverse changes and providing
+a shared trajectory for path-level supervision.
+Content and Path Regularization
+Content-preservation objectives in unpaired translation
+mainly
+operate
+through
+endpoint
+correspondence
+or
+mapping-geometry regularization. Correspondence-based
+methods preserve source information by comparing source
+and output representations. CUT, DCLGAN, and LSeSim
+impose patch-level contrastive or spatial correspondence
+constraints (Park et al. 2020; Han et al. 2021; Zheng, Cham,
+and Cai 2021), while EnCo aligns latent encoder and de-
+coder patches without an additional Siamese network (Cai
+et al. 2024).
+A complementary line of work regularizes the geome-
+try of the learned mapping. DistanceGAN preserves pair-
+wise distances across domains (Benaim and Wolf 2017),
+while GcGAN imposes consistency under geometric trans-
+formations (Fu et al. 2019). Density-changing regulariza-
+tion accounts for changes in probability density across do-
+mains (Xie, Ho, and Zhang 2022), and shortest-path regu-
+larization (SANTA) favors mappings with shorter transport
+paths (Xie et al. 2023). Correspondence objectives primar-
+ily compare the source and translated endpoints, whereas
+geometric objectives characterize the distributional or ag-
+gregate path properties of the mapping. Our representation
+path-velocity regularization (RPV) instead evaluates finite-
+difference feature changes between neighboring states of the
+model-induced continuous trajectory. By comparing corre-
+sponding locations in a frozen dense representation, RPV
+provides spatially resolved supervision for localized path
+variations that can be obscured by endpoint comparisons
+or globally pooled features.
+Diffusion, Bridge, and Flow-Based Translation
+Recent transport-based translation methods include diffusion
+editing and inversion, domain-specific diffusion transport,
+and Schrödinger-bridge models. SDEdit translates an input
+by adding noise and subsequently denoising it with a pre-
+trained diffusion model (Meng et al. 2022), while EGSDE
+introduces energy guidance for unpaired translation (Zhao
+et al. 2022). DDIB connects probability-flow ODEs learned
+separately for the two domains (Su et al. 2023), producing
+bidirectional translation through domain-specific diffusion
+processes rather than a directly learned shared cross-domain
+field. Schrödinger-bridge approaches instead learn transport
+between the source and target distributions: UNSB uses ad-
+versarial bridge learning for unpaired translation (Kim et al.
+2024), and IBCD distills an implicit bridge into a single-step
+bidirectional model (Lee, Kim, and Ye 2025). These ap-
+proaches typically use iterative diffusion, multi-step stochas-
+tic transport, or bridge distillation.
+Flow matching provides a continuous-time alternative by
+learning a vector field without simulating its ODE trajec-
+tory during optimization (Lipman et al. 2023). Rectified
+flow further favors straight transport paths, allowing the
+learned field to be evaluated with a small number of nu-
+merical integration steps (Liu, Gong, and Liu 2023). Stan-
+dard formulations, however, construct interpolation paths
+and velocity targets from a prescribed endpoint coupling.
+In unpaired translation, independently sampling real end-
+points from the two domains mixes the desired domain shift
+
+
+with arbitrary inter-instance variation and therefore provides
+poorly aligned velocity supervision. UniCycleFlow learns
+deterministic source-conditioned endpoints through adver-
+sarial boundary matching, constructs translation-specific tra-
+jectories from the resulting pairs, and trains a single time-
+conditioned field shared by both translation directions.
+Method
+Problem Formulation and Standard Rectified Flow
+Let xA ∼pA and xB ∼pB denote unpaired samples from
+domains A and B, respectively. We associate domain A with
+time t = 0 and domain B with time t = 1, and parameterize a
+time-conditioned velocity field vθ(x, t) through the ordinary
+differential equation
+dxt
+dt = vθ(xt, t),
+t ∈[0, 1].
+(1)
+Rectified flow assumes an endpoint coupling (x0, x1) ∼π
+and constructs a straight interpolant xt = (1 −t)x0 + tx1.
+Since the corresponding path has constant velocity x1 −x0,
+the standard training objective is
+LRF = E(x0,x1)∼π, t ∥vθ(xt, t) −(x1 −x0)∥1 ,
+t ∼U(0, 1).
+(2)
+A direct application to unpaired translation independently
+samples xA ∼pA and xB ∼pB and uses (x0, x1) =
+(xA, xB). Although this pairing defines a valid coupling of
+the two marginal distributions, its displacement xB −xA
+combines the desired domain shift with arbitrary differences
+in content, pose, and spatial layout between unrelated images.
+The resulting velocity targets are therefore poorly aligned
+with source-conditioned image translation. We retain this
+independent-pair formulation as a controlled baseline in the
+ablation study, and replace its randomly paired endpoints
+with learned source-conditioned endpoints in UniCycleFlow.
+Shared Source-Conditioned Bidirectional
+Transport
+UniCycleFlow uses a single velocity field for both translation
+directions. The field always predicts velocity in the canonical
+A →B orientation; it does not choose between a forward
+and a reverse velocity according to the input. Translation
+direction is instead determined by the sign of the time incre-
+ment. For K Euler steps with h = 1/K and tk = kh, the
+two directions are evaluated as
+A →B :
+xk+1 = xk + h vθ(xk, tk),
+k = 0, . . . , K −1,
+B →A :
+xk−1 = xk −h vθ(xk, tk),
+k = K, . . . , 1.
+(3)
+Thus, at any intermediate state and time, the network output
+has the same canonical orientation. Forward translation fol-
+lows the field with a positive time increment, whereas reverse
+translation traverses the same field with a negative increment.
+A single Euler step gives the boundary endpoint maps used
+during training:
+vA = vθ(xA, 0),
+ˆxB = xA + vA,
+vB = vθ(xB, 1),
+ˆxA = xB −vB.
+(4)
+Here, vA and vB denote boundary velocities. A hat denotes
+a generated endpoint in the subscripted domain: ˆxB is gen-
+erated from xA, whereas ˆxA is generated from xB. These
+endpoint maps coincide with the model outputs under one-
+step inference.
+Instead of pairing each source with an independently sam-
+pled real image, UniCycleFlow uses the deterministic pairs
+(xA, ˆxB) and (ˆxA, xB). Their generated endpoint marginals
+are constrained to match the opposite domains through ad-
+versarial boundary supervision, described later. Each pair
+then defines a source-conditioned straight trajectory and a
+translation-specific displacement for intermediate velocity
+training.
+Trajectory Regularization
+The learned endpoint maps determine the overall cross-
+domain displacement and the generated target marginals, but
+do not fully constrain the induced transport. First, adversar-
+ial boundary supervision does not directly train the velocity
+field at intermediate states encountered during multi-step in-
+tegration. Second, the discrete forward and reverse endpoint
+updates in Eq. (4) are not guaranteed to compose to the iden-
+tity. We address these issues using stop-gradient self-flow
+matching and discrete cycle closure, respectively.
+Stop-gradient self-flow matching.
+For each direction, we
+sample t ∼U(0, 1), detach the boundary velocities, and
+construct
+¯vA = sg[vθ(xA, 0)],
+xA
+t = xA + t¯vA,
+¯vB = sg[vθ(xB, 1)],
+xB
+t = xB −(1 −t)¯vB.
+(5)
+The superscripts indicate whether an intermediate state is
+induced by a source from domain A or domain B. Although
+xB
+t is constructed from the reverse trajectory, both ¯vA and ¯vB
+remain velocity targets in the canonical A →B orientation.
+The selfFM objective is
+LselfFM = ExA,t
+vθ(xA
+t , t) −¯vA
+
+1
++ ExB,t
+vθ(xB
+t , t) −¯vB
+
+1 .
+(6)
+Stop-gradient treats the current boundary velocities and
+the induced path states as fixed pseudo-targets within this
+loss. SelfFM therefore updates predictions at sampled in-
+termediate states without simultaneously changing the end-
+point displacement through the same objective. The endpoint
+maps remain trainable through the adversarial, cycle, and
+representation-path objectives.
+Discrete cycle closure.
+A shared continuous velocity field
+can be traversed in both directions, but the learned one-step
+Euler maps are not necessarily exact inverses. We denote
+round-trip reconstructions with a tilde: ˜xA is obtained by
+translating ˆxB back to domain A, and ˜xB is obtained by
+translating ˆxA back to domain B. They are defined together
+with the cycle objective as
+˜xA = ˆxB −vθ(ˆxB, 1),
+˜xB = ˆxA + vθ(ˆxA, 0),
+Lcyc = ExA∥˜xA −xA∥1
++ ExB∥˜xB −xB∥1.
+(7)
+
+
+Shared velocity network 𝒗𝜽𝒙, 𝒕
+Discriminator B
+ƶ𝑥𝐵= 𝑥𝐴+ 𝑣𝜃𝑥𝐴, 0
+𝑣𝜃𝑥𝐴, 0
+𝑣𝜃𝑥𝑡
+𝐴, 𝑡
+𝑣𝜃𝑥𝐵, 1
+𝑣𝜃𝑥𝑡
+𝐵, 𝑡
+ƶ𝑥𝐴= 𝑥𝐵−𝑣𝜃𝑥𝐵, 1
+Domain A
+𝑥𝐴
+𝑥𝑡
+𝐴= 𝑥𝐴+ 𝑡⋅sg 𝑣𝜃𝑥𝐴, 0
+Domain B
+𝑥𝐵
+𝑥𝑡
+𝐵= 𝑥𝐵−1 −𝑡⋅sg 𝑣𝜃𝑥𝐵, 1
+𝑡= 0
+𝑡= 𝜏+ Δ
+𝑡= 𝜏
+𝑡= 1
+𝓛𝐬𝐞𝐥𝐟𝐅𝐌
+𝑨
+𝓛𝐬𝐞𝐥𝐟𝐅𝐌
+𝑩
+𝑡= 0
+𝑡= 𝑠
+𝑡= 𝑠−Δ
+𝑡= 1
+ƿ𝑥𝐴= ƶ𝑥𝐵−𝑣𝜃ƶ𝑥𝐵, 1
+𝑥𝐴
+𝓛𝐜𝐲𝐜
+𝑨
+ƿ𝑥𝐵= ƶ𝑥𝐴+ 𝑣𝜃ƶ𝑥𝐴, 0
+𝑥𝐵
+𝓛𝐜𝐲𝐜
+𝑩
+𝓛𝐚𝐝𝐯
+𝑨
+𝓛𝐚𝐝𝐯
+𝑩
+𝐹𝜏
+𝐹𝜏+Δ
+𝓛𝐑𝐏𝐕
+𝑨→𝑩
+𝐹𝑠−Δ
+𝐹𝑠
+𝓛𝐑𝐏𝐕
+𝑩→𝑨
+Discriminator A
+ℒadv = ℒadv
+𝐴
++ ℒadv
+𝐵
+ℒcyc = ℒcyc
+𝐴
++ ℒcyc
+𝐵
+ℒselfFM = ℒselfFM
+𝐴
++ ℒselfFM
+𝐵
+ℒRPV = ℒRPV
+𝐴→𝐵+ ℒRPV
+𝐵→𝐴
+Figure 1: Overview of UniCycleFlow. A single time-conditioned velocity field translates A →B by forward integration from
+t = 0 and B →A by reverse integration from t = 1. Generated endpoints are matched to the opposite-domain marginals.
+SelfFM supervises intermediate field predictions using detached boundary velocities, cycle closure regularizes the discrete
+forward–reverse composition, and RPV measures dense representation changes between neighboring states of each source-
+conditioned trajectory.
+No stop-gradient is applied in this branch. SelfFM and cy-
+cle closure act at complementary levels: selfFM supervises
+intermediate velocity predictions, whereas cycle closure con-
+strains the composition of the discrete endpoint maps.
+Representation Path-Velocity Regularization
+SelfFM and cycle closure regularize pixel-space velocity
+consistency and endpoint composition, but neither directly
+constrains how perceptual representations evolve along the
+induced trajectory. A straight interpolation in image space
+can still produce excessive localized feature changes in
+representation space. We therefore introduce representation
+path-velocity regularization (RPV), which measures finite-
+difference feature changes between neighboring trajectory
+states.
+Let ϕ be a frozen spatial encoder that outputs a feature
+map or patch-token grid. For either translation direction,
+let xs denote the source and ˆxd its differentiable generated
+endpoint in the destination domain. Their induced path is
+zτ = (1 −τ)xs + τ ˆxd,
+τ ∼U(0, 1 −∆).
+(8)
+We extract Fτ = ϕ(zτ) and Fτ+∆= ϕ(zτ+∆). At each
+spatial location p ∈Ω, the channel vector is normalized as
+¯Fτ,p =
+Fτ,p
+∥Fτ,p∥2 + ϵ.
+RPV averages the normalized finite-difference velocity over
+spatial locations and both directions:
+LRPV =
+X
+δ∈{A→B,B→A}
+Eτ
+
+1
+|Ω|
+X
+p∈Ω
+ ¯F δ
+τ+∆,p −¯F δ
+τ,p
+
+2
+∆
+
+.
+(9)
+The direction index δ selects the corresponding source–
+endpoint path. Because features are compared at matching
+grid locations, the loss remains sensitive to localized changes
+that may be obscured by globally pooled representations.
+The encoder parameters are fixed, while gradients propagate
+through ϕ to the generated endpoint and the velocity field.
+Adversarial Boundary Matching and Overall
+Objective
+We use one PatchGAN discriminator for each domain to
+match the generated endpoint marginals to the real data dis-
+tributions. Let ¯A = B and ¯B = A, so that ˆxd denotes an
+endpoint generated in domain d from a source x ¯d. Using
+least-squares adversarial learning (Mao et al. 2017), the dis-
+criminator objective is written compactly as
+LD =
+X
+d∈{A,B}
+
+Exd(Dd(xd) −1)2 + Ex ¯
+dDd(sg[ˆxd])2
+,
+(10)
+
+
+and the generator-side adversarial objective is
+Ladv =
+X
+d∈{A,B}
+Ex ¯
+d (Dd(ˆxd) −1)2 .
+(11)
+Generated endpoints are detached only during discriminator
+updates. When optimizing the velocity field, gradients from
+Ladv pass through the endpoint maps.
+The complete generator objective is
+LG = λadvLadv+λselfFMLselfFM+λcycLcyc+λRPVLRPV.
+(12)
+The loss weights and representation settings are specified in
+the implementation details.
+Inference
+At inference, the discriminators, cycle branch, selfFM sam-
+pling, and frozen representation encoder are removed. Trans-
+lation in either direction follows the Euler updates in Eq. (3).
+The main comparison uses K = 1, for which the outputs are
+exactly the endpoint predictions in Eq. (4). The same trained
+velocity field can also be evaluated with a larger integration
+budget without retraining; we examine K ∈{1, 2, 5, 10} in
+the integration-budget ablation.
+Experiments
+Experimental Setup
+Datasets.
+We evaluate Summer↔Winter, Horse↔Zebra,
+Cat↔Dog, Wild↔Dog, and Aerial↔Map (Zhu et al. 2017;
+Isola et al. 2017; Choi et al. 2020) in both directions, yielding
+ten translation tasks. For Maps, the two domains are shuffled
+to ensure pairing information is not used during training.
+Dataset statistics, resolutions, and preprocessing details are
+provided in the supplementary material.
+Baselines and evaluation.
+We compare with representa-
+tive cycle-consistent, shared-mapping, contrastive, diffusion,
+and bridge-based methods. All methods in Tables 1 and 2 are
+evaluated using our implementations with identical splits and
+metric code; one-way methods are trained separately for each
+direction. NFE denotes the number of network evaluations
+and equals K for UniCycleFlow. We report direction-wise
+Fréchet Inception Distance (FID) (Heusel et al. 2017) and
+Kernel Inception Distance (KID) (Bińkowski et al. 2018);
+KID is multiplied by 100. Further details are provided in the
+supplementary material.
+Implementation details.
+We parameterize the velocity
+field with a four-stage SongUNet of base width 64 and si-
+nusoidal time conditioning (Song et al. 2021), and use one
+PatchGAN discriminator per domain. Models are trained for
+200 epochs with Adam (Kingma and Ba 2015), batch size
+4, and an initial learning rate of 2 × 10−4. We use frozen
+VGG16 relu5_3 features (Simonyan and Zisserman 2015),
+∆= 0.1, λRPV = 0.05, and unit weights for the other ob-
+jectives. Main results use NFE=1. Additional optimization,
+architecture, preprocessing, and evaluation details are pro-
+vided in the supplementary material.
+Comparison with State of the Art
+Tables 1 and 2 report results across ten translation directions.
+With a single Euler evaluation, UniCycleFlow achieves the
+lowest FID on 7 directions and the best ten-direction average
+FID and KID×100 of 55.1 and 2.107. Relative to DCLGAN,
+the strongest prior ten-direction average, this reduces FID
+from 62.6 to 55.1 and KID×100 from 2.415 to 2.107. With
+five evaluations, the same field further improves the averages
+to 54.2 and 2.054.
+Figure 2 compares both directions using identical source
+images. UniCycleFlow produces plausible target-domain
+translations across all five domain pairs; additional results
+are provided in the supplementary material.
+Ablation Studies
+For compact presentation, the main-paper ablations report
+Horse↔Zebra together with FID and KID averaged over
+all ten translation directions. Complete direction-wise re-
+sults are provided in the supplementary material. Unless oth-
+erwise specified, the training-objective, field-organization,
+and representation ablations are evaluated with NFE=5; the
+inference-budget study separately reports NFE=1, 2, 5, and
+10.
+Component contributions.
+Table 3 evaluates how the pro-
+posed components progressively improve the learned trans-
+port. Independent-pair rectified-flow training yields an aver-
+age FID of 113.5, as arbitrary cross-domain pairings intro-
+duce substantial instance-level variation into the velocity tar-
+gets. Learning source-conditioned endpoints through adver-
+sarial boundary matching provides the largest improvement,
+reducing the average FID to 69.9. SelfFM and cycle closure
+further improve the results individually, and their combina-
+tion reaches average FID and KID×100 of 55.9 and 2.146,
+respectively. Adding RPV improves the averages to 54.2 and
+2.054 without changing the inference graph. The progres-
+sive gains are consistent with the complementary roles of
+source-conditioned coupling, intermediate velocity supervi-
+sion, discrete cycle closure, and representation-space path
+regularization.
+Velocity-field organization.
+Table 4 examines the effects
+of parameter sharing and temporal organization. Two inde-
+pendently parameterized fields obtain an average FID of 76.2.
+Sharing the backbone while retaining direction-specific out-
+put heads improves the average FID to 60.5, showing that
+the two directions benefit from common feature represen-
+tations. A shared field conditioned by a discrete direction
+token reaches an average FID of 62.2, whereas organizing
+the shared field continuously over time further improves the
+average FID to 54.2. The KID results exhibit the same overall
+trend. These comparisons support the proposed formulation
+in which both directions share not only network parameters,
+but also a common temporal organization of cross-domain
+change.
+Inference-time integration budget.
+Table 5 evaluates the
+same trained velocity field using different Euler step counts.
+With a single evaluation, the model already reaches aver-
+age FID and KID×100 of 55.1 and 2.107, which are close
+
+
+Method
+NFE
+S→W
+W→S
+H→Z
+Z→H
+C→D
+D→C
+Wi→D
+D→Wi
+A→M
+M→A
+Avg.
+CycleGAN
+1
+81.3
+77.4
+68.5
+152.6
+158.7
+166.5
+136.5
+95.3
+382.6
+56.2
+137.6
+One-to-one CycleGAN
+1
+85.4
+81.2
+71.7
+156.4
+134.5
+142.7
+123.7
+96.2
+356.4
+59.7
+130.8
+CUT
+1
+86.1
+88.9
+47.2
+168.2
+78.5
+28.4
+94.7
+88.2
+82.6
+54.3
+81.7
+DCLGAN
+1
+81.4
+80.1
+41.6
+137.8
+62.1
+21.5
+50.6
+22.7
+75.8
+52.5
+62.6
+LSeSim
+1
+95.4
+92.1
+36.7
+155.6
+70.6
+52.9
+80.3
+46.4
+78.1
+78.4
+78.6
+MUNIT
+1
+116.7
+95.6
+132.4
+246.8
+122.8
+128.4
+118.8
+104.8
+132.6
+179.5
+137.8
+UNIT
+1
+109.4
+98.2
+128.9
+205.6
+108.7
+116.2
+115.2
+98.6
+301.5
+188.4
+147.1
+DistanceGAN
+1
+95.8
+102.5
+69.4
+168.9
+118.6
+121.6
+108.4
+92.6
+329.8
+96.4
+130.4
+GcGAN
+1
+99.0
+104.6
+84.8
+175.4
+146.2
+154.3
+129.4
+85.3
+223.3
+81.7
+128.4
+SANTA
+1
+85.6
+90.4
+34.9
+152.9
+50.3
+45.1
+70.9
+41.8
+70.3
+72.4
+71.5
+UNSB
+5
+72.1
+78.7
+38.5
+142.8
+64.7
+46.5
+68.2
+17.3
+81.4
+67.4
+67.8
+UniCycleFlow
+1
+81.5
+76.6
+33.1
+116.8
+37.6
+20.9
+37.7
+20.8
+74.5
+51.0
+55.1
+UniCycleFlow (K = 5)
+5
+80.9
+75.9
+32.6
+114.5
+36.8
+20.4
+36.9
+20.2
+73.6
+50.2
+54.2
+Table 1: Direction-wise FID; lower is better. All displayed baselines are evaluated using our reimplementations with identical
+data splits and metric code. The best and second-best result in each column are shown in boldface and with an underline,
+respectively. Published partial results for SDEdit, EGSDE, DDIB, and IBCD are reported in the supplementary material. S/W:
+Summer/Winter, H/Z: Horse/Zebra, C/D: Cat/Dog, Wi: Wild, and A/M: Aerial/Map.
+Method
+NFE
+S→W
+W→S
+H→Z
+Z→H
+C→D
+D→C
+Wi→D
+D→Wi
+A→M
+M→A
+Avg.
+CycleGAN
+1
+2.869
+2.844
+2.022
+6.315
+5.875
+6.369
+4.981
+2.747
+19.681
+1.844
+5.555
+One-to-one CycleGAN
+1
+2.916
+3.401
+2.402
+6.716
+5.028
+4.772
+4.076
+2.819
+16.194
+1.778
+5.010
+CUT
+1
+3.644
+3.256
+1.546
+7.379
+3.049
+0.973
+3.245
+3.027
+3.317
+1.900
+3.134
+DCLGAN
+1
+2.995
+3.325
+1.456
+6.028
+2.430
+0.790
+1.658
+0.797
+2.831
+1.844
+2.415
+LSeSim
+1
+3.577
+3.506
+1.275
+6.125
+2.213
+1.758
+2.789
+1.281
+3.213
+2.795
+2.853
+MUNIT
+1
+4.755
+3.572
+4.977
+11.981
+4.387
+4.104
+3.785
+3.122
+5.830
+7.262
+5.377
+UNIT
+1
+4.291
+3.288
+4.863
+8.735
+3.407
+4.300
+4.646
+3.090
+15.803
+7.899
+6.032
+DistanceGAN
+1
+3.431
+3.682
+2.622
+7.113
+3.757
+4.491
+3.882
+2.327
+15.701
+3.362
+5.037
+GcGAN
+1
+3.257
+3.808
+3.004
+7.205
+4.741
+5.321
+4.526
+2.699
+10.829
+3.023
+4.841
+SANTA
+1
+3.349
+3.029
+1.105
+6.770
+1.691
+1.512
+2.297
+1.347
+3.055
+2.694
+2.685
+UNSB
+5
+2.835
+2.597
+1.220
+5.718
+2.389
+1.384
+2.280
+0.668
+3.521
+2.266
+2.488
+UniCycleFlow
+1
+2.820
+2.590
+1.390
+4.860
+1.345
+0.895
+1.410
+0.820
+3.180
+1.760
+2.107
+UniCycleFlow (K = 5)
+5
+2.749
+2.573
+1.340
+4.765
+1.299
+0.858
+1.322
+0.783
+3.113
+1.739
+2.054
+Table 2: Direction-wise KID×100; lower is better. All displayed baselines are evaluated using our reimplementations with
+identical data splits and metric code. The best and second-best result in each column are shown in boldface and with an
+underline, respectively.
+Setting
+H→Z Z→H Avg. FID Avg. KID×100
+Independent-pair RF
+111.8 186.3
+113.5
+5.159
+Adversarial endpoints
+55.2 143.1
+69.9
+2.981
++ selfFM
+43.7 133.4
+62.0
+2.457
++ Cycle
+45.6 129.0
+61.7
+2.443
++ selfFM + Cycle
+32.4 118.8
+55.9
+2.146
++ RPV (full)
+32.6 114.5
+54.2
+2.054
+Table 3: Component ablation. All rows are evaluated with
+NFE=5.
+to the best measured values. Increasing the budget to two
+evaluations improves the averages to 54.3 and 2.059, while
+five evaluations yield 54.2 and 2.054. The relatively small
+gap between one-step and multi-step inference shows that
+the boundary prediction provides a strong direct translation,
+while intermediate field evaluations offer a modest addi-
+tional refinement. This behavior is consistent with the role
+of selfFM and RPV in regularizing states along the model-
+induced path.
+Field design
+H→Z Z→H
+Avg.
+FID
+Avg. KID
+×100
+Separate fields
+42.2 142.9 76.2
+3.065
+Shared backbone + two heads
+32.8 116.1 60.5
+2.336
+Shared field + direction token
+33.7 118.2 62.2
+2.433
+Shared time-conditioned field
+32.6 114.5 54.2
+2.054
+Table 4: Velocity-field organization ablation. All variants use
+the same training objectives and are evaluated with NFE=5.
+RPV design.
+Complete encoder and hyperparameter stud-
+ies are reported in the supplementary material. VGG16
+relu5_3 with ∆= 0.1 and λRPV = 0.05 gives the best
+overall averages, while DINO and DINOv2 representations
+(Caron et al. 2021; Oquab et al. 2024) and nearby parameter
+choices remain competitive.
+Discussion and Limitations
+UniCycleFlow uses a deterministic shared velocity field and
+therefore does not explicitly model one-to-many outputs. Al-
+
+
+Figure 2: Qualitative comparison across the five domain pairs using identical source images. UniCycleFlow produces visually
+plausible target-domain translations in both directions while retaining the major spatial structure of each source image.
+NFE H→Z Z→H Avg. FID Avg. KID×100
+1
+33.1 116.8
+55.1
+2.107
+2
+32.4 115.3
+54.3
+2.059
+5
+32.6 114.5
+54.2
+2.054
+10
+35.8 121.7
+57.3
+2.228
+Table 5: Euler-step ablation using the same trained velocity
+field.
+though this design supports efficient and structure-preserving
+translation, a stochastic style variable or a distribution over
+source-conditioned endpoints could improve output diversity
+without abandoning bidirectional sharing. SelfFM relies on
+detached boundary predictions as pseudo-targets, so inaccu-
+rate endpoints, especially early in training, may bias inter-
+mediate supervision. Teacher-based or confidence-weighted
+targets could reduce this dependence.
+RPV further depends on the geometry of the frozen repre-
+sentation. The encoder ablation shows that VGG16 performs
+best on average, while DINO-based features remain competi-
+tive, suggesting that both spatial correspondence and seman-
+tic invariance matter. Moreover, the current objective mainly
+constrains the magnitude of local feature changes, rather than
+their semantic direction. Target-aware feature directions or
+adaptive multi-scale representations could provide more pre-
+cise trajectory supervision.
+Conclusion
+We presented UniCycleFlow, which realizes bidirectional un-
+paired translation by traversing a single time-conditioned
+velocity field in opposite directions. Source-conditioned
+adversarial endpoints construct translation-specific paths,
+while selfFM, cycle closure, and RPV regularize intermedi-
+ate dynamics, discrete consistency, and representation-space
+changes. UniCycleFlow achieves the best average FID and
+KID across ten directions with one-step inference.
+
+
+References
+Benaim, S.; and Wolf, L. 2017.
+One-sided unsupervised
+domain mapping. Advances in neural information processing
+systems, 30.
+Bińkowski, M.; Sutherland, D. J.; Arbel, M.; and Gretton, A.
+2018. Demystifying MMD GANs. In International Confer-
+ence on Learning Representations.
+Cai, X.; Zhu, Y.; Miao, D.; Fu, L.; and Yao, Y. 2024. Re-
+thinking the Paradigm of Content Constraints in Unpaired
+Image-to-Image Translation. In Proceedings of the AAAI
+Conference on Artificial Intelligence, volume 38, 891–899.
+Caron, M.; Touvron, H.; Misra, I.; Jégou, H.; Mairal, J.;
+Bojanowski, P.; and Joulin, A. 2021. Emerging Properties in
+Self-Supervised Vision Transformers. In Proceedings of the
+IEEE/CVF International Conference on Computer Vision,
+9650–9660.
+Choi, Y.; Choi, M.; Kim, M.; Ha, J.-W.; Kim, S.; and Choo,
+J. 2018. StarGAN: Unified Generative Adversarial Networks
+for Multi-Domain Image-to-Image Translation. In Proceed-
+ings of the IEEE Conference on Computer Vision and Pattern
+Recognition, 8789–8797.
+Choi, Y.; Uh, Y.; Yoo, J.; and Ha, J.-W. 2020. StarGAN v2:
+Diverse Image Synthesis for Multiple Domains. In Proceed-
+ings of the IEEE/CVF Conference on Computer Vision and
+Pattern Recognition, 8188–8197.
+Fu, H.; Gong, M.; Wang, C.; Batmanghelich, K.; Zhang, K.;
+and Tao, D. 2019. Geometry-consistent generative adversar-
+ial networks for one-sided unsupervised domain mapping.
+In Proceedings of the IEEE/CVF conference on computer
+vision and pattern recognition, 2427–2436.
+Han, J.; Shoeiby, M.; Petersson, L.; and Armin, M. A. 2021.
+Dual Contrastive Learning for Unsupervised Image-to-Image
+Translation. In Proceedings of the IEEE/CVF Conference on
+Computer Vision and Pattern Recognition Workshops, 746–
+755.
+Heusel, M.; Ramsauer, H.; Unterthiner, T.; Nessler, B.; and
+Hochreiter, S. 2017. GANs Trained by a Two Time-Scale
+Update Rule Converge to a Local Nash Equilibrium.
+In
+Advances in Neural Information Processing Systems.
+Huang, X.; Liu, M.-Y.; Belongie, S.; and Kautz, J. 2018.
+Multimodal Unsupervised Image-to-Image Translation. In
+Proceedings of the European Conference on Computer Vi-
+sion, 172–189.
+Isola, P.; Zhu, J.-Y.; Zhou, T.; and Efros, A. A. 2017.
+Image-to-Image Translation with Conditional Adversarial
+Networks. In Proceedings of the IEEE Conference on Com-
+puter Vision and Pattern Recognition, 1125–1134.
+Kim, B.; Kwon, G.; Kim, K.; and Ye, J. C. 2024. Unpaired
+Image-to-Image Translation via Neural Schrödinger Bridge.
+In International Conference on Learning Representations.
+Kim, T.; Cha, M.; Kim, H.; Lee, J. K.; and Kim, J. 2017.
+Learning to Discover Cross-Domain Relations with Genera-
+tive Adversarial Networks. In Proceedings of the 34th Inter-
+national Conference on Machine Learning, 1857–1865.
+Kingma, D. P.; and Ba, J. 2015. Adam: A Method for Stochas-
+tic Optimization. In International Conference on Learning
+Representations.
+Lee, S.; Kim, K.; and Ye, J. C. 2025.
+Single-Step Bidi-
+rectional Unpaired Image Translation Using Implicit Bridge
+Consistency Distillation. arXiv:2503.15056.
+Lipman, Y.; Chen, R. T. Q.; Ben-Hamu, H.; Nickel, M.; and
+Le, M. 2023. Flow Matching for Generative Modeling. In
+International Conference on Learning Representations.
+Liu, M.-Y.; Breuel, T.; and Kautz, J. 2017. Unsupervised
+Image-to-Image Translation Networks. In Advances in Neu-
+ral Information Processing Systems.
+Liu, X.; Gong, C.; and Liu, Q. 2023. Flow Straight and Fast:
+Learning to Generate and Transfer Data with Rectified Flow.
+In International Conference on Learning Representations.
+Mao, X.; Li, Q.; Xie, H.; Lau, R. Y. K.; Wang, Z.; and Smol-
+ley, S. P. 2017. Least Squares Generative Adversarial Net-
+works. In Proceedings of the IEEE International Conference
+on Computer Vision, 2794–2802.
+Meng, C.; He, Y.; Song, Y.; Song, J.; Wu, J.; Zhu, J.-Y.; and
+Ermon, S. 2022. SDEdit: Guided Image Synthesis and Edit-
+ing with Stochastic Differential Equations. In International
+Conference on Learning Representations.
+Oquab, M.; Darcet, T.; Moutakanni, T.; Vo, H.; Szafraniec,
+M.; Khalidov, V.; Fernandez, P.; Haziza, D.; Massa, F.; El-
+Nouby, A.; et al. 2024. DINOv2: Learning Robust Visual
+Features without Supervision.
+Transactions on Machine
+Learning Research.
+Park, T.; Efros, A. A.; Zhang, R.; and Zhu, J.-Y. 2020. Con-
+trastive Learning for Unpaired Image-to-Image Translation.
+In Proceedings of the European Conference on Computer
+Vision, 319–345.
+Shen, Z.; Zhou, S. K.; Chen, Y.; Georgescu, B.; Liu, X.;
+and Huang, T. S. 2020. One-to-One Mapping for Unpaired
+Image-to-Image Translation. In Proceedings of the IEEE
+Winter Conference on Applications of Computer Vision,
+1170–1179.
+Simonyan, K.; and Zisserman, A. 2015. Very Deep Con-
+volutional Networks for Large-Scale Image Recognition. In
+International Conference on Learning Representations.
+Song, S.; Lee, S.; Seong, H.; Min, K.; and Kim, E. 2023.
+SHUNIT: Style Harmonization for Unpaired Image-to-Image
+Translation. In Proceedings of the AAAI Conference on Ar-
+tificial Intelligence, volume 37, 2292–2302.
+Song, Y.; Sohl-Dickstein, J.; Kingma, D. P.; Kumar, A.; Er-
+mon, S.; and Poole, B. 2021. Score-Based Generative Mod-
+eling through Stochastic Differential Equations. In Interna-
+tional Conference on Learning Representations.
+Su, X.; Song, J.; Meng, C.; and Ermon, S. 2023.
+Dual
+Diffusion Implicit Bridges for Image-to-Image Translation.
+In International Conference on Learning Representations.
+Torbunov, D.; Huang, Y.; Tseng, H.-H.; Yu, H.; Huang, J.;
+Yoo, S.; Lin, M.; Viren, B.; and Ren, Y. 2023a. UVCGAN v2:
+An Improved Cycle-Consistent GAN for Unpaired Image-to-
+Image Translation. arXiv:2303.16280.
+Torbunov, D.; Huang, Y.; Yu, H.; Huang, J.; Yoo, S.; Lin,
+M.; Viren, B.; and Ren, Y. 2023b. UVCGAN: UNet Vision
+Transformer Cycle-Consistent GAN for Unpaired Image-to-
+Image Translation. In Proceedings of the IEEE/CVF Winter
+Conference on Applications of Computer Vision, 702–712.
+Wu, S.; Chen, Y.; Mermet, S.; Hurni, L.; Schindler, K.;
+Gonthier, N.; and Landrieu, L. 2024. StegoGAN: Leveraging
+Steganography for Non-Bijective Image-to-Image Transla-
+tion. In Proceedings of the IEEE/CVF Conference on Com-
+
+
+puter Vision and Pattern Recognition, 7922–7931.
+Xie, S.; Ho, Q.; and Zhang, K. 2022. Unsupervised image-
+to-image translation with density changing regularization.
+Advances in Neural Information Processing Systems, 35:
+28545–28558.
+Xie, S.; Xu, Y.; Gong, M.; and Zhang, K. 2023. Unpaired
+Image-to-Image Translation with Shortest Path Regulariza-
+tion. In Proceedings of the IEEE/CVF Conference on Com-
+puter Vision and Pattern Recognition, 10177–10187.
+Yi, Z.; Zhang, H.; Tan, P.; and Gong, M. 2017. DualGAN:
+Unsupervised Dual Learning for Image-to-Image Transla-
+tion. In Proceedings of the IEEE International Conference
+on Computer Vision, 2849–2857.
+Zhang, R.; Isola, P.; Efros, A. A.; Shechtman, E.; and Wang,
+O. 2018. The Unreasonable Effectiveness of Deep Features
+as a Perceptual Metric. In Proceedings of the IEEE/CVF
+Conference on Computer Vision and Pattern Recognition,
+586–595.
+Zhao, M.; Bao, F.; Li, C.; and Zhu, J. 2022.
+EGSDE:
+Unpaired Image-to-Image Translation via Energy-Guided
+Stochastic Differential Equations.
+In Advances in Neural
+Information Processing Systems.
+Zheng, C.; Cham, T.-J.; and Cai, J. 2021. The Spatially-
+Correlative Loss for Various Image Translation Tasks. In
+Proceedings of the IEEE/CVF Conference on Computer Vi-
+sion and Pattern Recognition, 16407–16417.
+Zhu, J.-Y.; Park, T.; Isola, P.; and Efros, A. A. 2017. Unpaired
+Image-to-Image Translation Using Cycle-Consistent Adver-
+sarial Networks. In Proceedings of the IEEE International
+Conference on Computer Vision, 2223–2232.
+
+
+Supplementary Material
+UniCycleFlow: Bidirectional Unpaired Image Translation with a Shared Rectified Flow
+Benchmark
+Train A/B
+Test A/B
+Native Res.
+Summer↔Winter
+1231/962
+309/238
+2562
+Horse↔Zebra
+1067/1334
+120/140
+2562
+Cat↔Dog
+5153/4739
+500/500
+5122
+Wild↔Dog
+4738/4739
+500/500
+5122
+Aerial↔Map
+1096/1096
+1098/1098
+6002
+Table 6: Dataset split sizes and native resolutions for the five
+evaluated domain pairs.
+This supplementary appendix provides the experimental
+protocol, additional published FID comparisons, additional
+qualitative results, and full cross-dataset ablations support-
+ing the main paper. We first document the datasets, prepro-
+cessing, optimization, evaluation protocol, and organization
+of compared methods. We then report the expanded FID
+comparison, followed by additional qualitative comparisons
+and all ten-direction ablations for the training objectives,
+velocity-field organization, inference budget, and RPV de-
+sign.
+Experimental Protocol
+Datasets and Preprocessing
+We evaluate five domain pairs in both directions, yielding ten
+translation tasks. Table 6 summarizes the split sizes and na-
+tive resolutions. A/B follow the domain order in each bench-
+mark name. Summer↔Winter and Horse↔Zebra use the
+CycleGAN dataset release (Zhu et al. 2017), Aerial↔Map
+uses the pix2pix/CycleGAN Maps release (Zhu et al. 2017),
+and Cat↔Dog and Wild↔Dog are constructed from the cor-
+responding AFHQ domains (Choi et al. 2020). All reim-
+plemented methods use the same split files and the same
+dataset-specific preprocessing pipeline.
+Training
+preprocessing.
+For
+Summer↔Winter
+and
+Horse↔Zebra, images are resized to 286 × 286 using bicu-
+bic interpolation, randomly cropped to 256 × 256, and hor-
+izontally flipped with probability 0.5. For Cat↔Dog and
+Wild↔Dog, a random resized crop to 256 × 256 is applied
+with probability 0.5, using scale range [0.8, 1.0] and aspect-
+ratio range [0.9, 1.1]; images are then resized to 256×256 and
+horizontally flipped with probability 0.5. For Aerial↔Map,
+images from the two domains are resized to 512 × 512 using
+bilinear interpolation, without random cropping or horizon-
+tal flipping. The domains are shuffled independently, and no
+pairing information is used during training.
+Evaluation
+preprocessing.
+Summer↔Winter,
+Horse↔Zebra,
+Cat↔Dog,
+and
+Wild↔Dog
+use
+the
+unaligned evaluation loader and are resized to 256 × 256
+using bilinear interpolation. Aerial↔Map uses the aligned
+evaluation loader and is resized to 512 × 512 using bilinear
+interpolation. No random augmentation is applied during
+evaluation.
+Architecture Details
+Velocity network.
+The velocity field is parameterized by
+a four-stage SongUNet (Song et al. 2021) with three input
+channels and three output channels. The base width is 64,
+with stage widths [64, 128, 128, 128] and channel multipliers
+[1, 2, 2, 2]. Each encoder stage contains two residual blocks,
+each decoder stage contains three residual blocks, and the
+bottleneck contains two residual blocks. Downsampling and
+upsampling use learned convolutional resampling inside the
+UNet blocks with resampling filter [1, 1]. All residual blocks
+use GroupNorm, SiLU activations, and dropout rate 0.1. At-
+tention is applied at the bottleneck and at the configured
+16 × 16 resolution.
+Time conditioning.
+For t ∈[0, 1], the scalar time is mul-
+tiplied by 999 before sinusoidal positional embedding. The
+sinusoidal embedding has dimension 64 and is processed by a
+two-layer MLP with hidden and output dimension 256. The
+resulting embedding is injected into every residual block
+through an affine projection and added to the normalized
+feature activations; adaptive scale–shift conditioning is dis-
+abled.
+Discriminators.
+We use one independently parameterized
+PatchGAN discriminator for each domain. Each discrimina-
+tor follows the NLayerDiscriminator design with channels
+[64, 128, 256, 512, 1], kernel size 4, and strides [2, 2, 2, 1, 1].
+The hidden layers use InstanceNorm and LeakyReLU with
+negative slope 0.2, without spectral normalization. The out-
+put patch map is 30 × 30 for 256 × 256 inputs and 62 × 62
+for 512 × 512 inputs.
+Optimization Details
+UniCycleFlow and its ablations are trained on Rocky Linux
+9.7 using a single NVIDIA A100 80GB GPU. We train for
+200 epochs with batch size 4 using Adam (Kingma and
+Ba 2015), an initial learning rate of 2 × 10−4, β1 = 0.5,
+β2 = 0.999, and zero weight decay. The learning rate is
+held constant for the first 100 epochs and then linearly de-
+cayed to zero. Network weights are initialized with Xavier
+initialization using gain 0.02.
+The generator and discriminators are updated at a 1:1 ra-
+tio, with the generator updated before the discriminators in
+each iteration. A replay buffer of 50 generated images is used
+for discriminator training. Training uses BF16 mixed preci-
+sion, without gradient clipping or gradient accumulation. We
+use random seed 42. Each reported result is obtained from
+a single run using the latest training checkpoint, without
+validation-set model selection.
+Loss and Inference Details
+The adversarial, selfFM, and cycle losses use unit weights,
+while λRPV = 0.05. The least-squares discriminator loss
+(Mao et al. 2017) applies the conventional factor of 1/2 to
+the sum of its real and fake terms; no corresponding factor
+is applied to the generator-side adversarial loss. Pixel-space
+losses are computed in the model range [−1, 1].
+
+
+For selfFM, one time value is sampled independently for
+each image and direction from the uniform distribution on
+[0, 1). For RPV, one path position is likewise sampled inde-
+pendently for each image and direction. The frozen VGG16
+encoder (Simonyan and Zisserman 2015) uses relu5_3
+features and LPIPS-style input scaling (Zhang et al. 2018)
+rather than ImageNet mean–standard-deviation normaliza-
+tion. The model-range input is passed directly to this scaling
+layer without first converting it to [0, 1]. The selected fea-
+ture grid is 16 × 16 for 256 × 256 inputs and 32 × 32 for
+512×512 inputs. Feature normalization uses ϵ = 10−10, and
+the speed denominator is clamped at 10−8. RPV computes
+the channel-wise ℓ2 speed at each spatial location and av-
+erages over spatial positions, selected layers, the batch, and
+both translation directions.
+Inference uses explicit Euler integration on the fixed grid
+tk = k/K. The main comparison uses K = 1, and the same
+checkpoint is evaluated with K ∈{2, 5, 10} by changing
+only the number of inference steps. Intermediate Euler states
+are not clipped; the final output is clipped to [−1, 1] and
+converted to uint8 for saving. Inference uses batch size 1.
+For the DINO ablations, we use the publicly released
+pretrained DINO ViT-S/16 and DINOv2 ViT-B/14 weights
+(Caron et al. 2021; Oquab et al. 2024). The class token is
+discarded, and the remaining patch tokens are reshaped to
+their native spatial grid. Inputs use the normalization associ-
+ated with the corresponding pretrained model, and positional
+embeddings are interpolated when required.
+Evaluation Protocol
+FID (Heusel et al. 2017) and KID (Bińkowski et al.
+2018) are computed with a custom wrapper around the
+pytorch-fid InceptionV3 implementation using the Ten-
+sorFlow/FID Inception weights and the 2048-dimensional
+pool3 features. For each direction, all target-domain test im-
+ages form the real set, and one translated image is generated
+for every source-domain test image. No samples are repeated
+when a test set is small. All reproduced methods use the same
+source test images.
+KID uses 100 subsets, with each subset size set to
+min(1000, nreal, ngenerated). Metric inputs are saved as uint8
+images in [0, 255], converted to [0, 1], and internally resized
+to 299 × 299 by the Inception implementation. KID is mul-
+tiplied by 100 for reporting. Ten-direction averages are un-
+weighted arithmetic means.
+Baseline Implementations
+All reproduced baselines are trained for 200 epochs with
+the dataset-specific image sizes and preprocessing described
+above, one random seed, and latest-checkpoint evaluation.
+One-direction methods are trained independently for each
+direction. We use the same framework data pipeline for all
+reproduced methods and do not perform dataset-specific hy-
+perparameter retuning unless explicitly stated. Multimodal
+baselines produce one output per source image, and metrics
+are computed from that single output rather than averaged
+over multiple samples.
+For each reproduced baseline, we follow the official ar-
+chitecture and default loss configuration whenever available.
+Only the input resolution, dataset loader, training length, and
+evaluation pipeline are standardized.
+Directionality and Sampling Taxonomy
+Table 7 summarizes how each method supports the two trans-
+lation directions, how its generator is organized, and the NFE
+used by the reported configuration. The comparison covers
+cycle-consistent and shared mappings (Zhu et al. 2017; Shen
+et al. 2020), contrastive and latent-space translation (Park
+et al. 2020; Han et al. 2021; Zheng, Cham, and Cai 2021;
+Huang et al. 2018; Liu, Breuel, and Kautz 2017), shortest-
+path regularization (Xie et al. 2023), and diffusion or bridge
+transport (Meng et al. 2022; Zhao et al. 2022; Su et al. 2023;
+Kim et al. 2024; Lee, Kim, and Ye 2025). Direction-specific
+methods require a separate training run for each direction.
+Two-generator systems learn both directions jointly but re-
+tain direction-specific generator parameters. One-generator
+systems share the same generator across directions.
+Additional Quantitative Comparison
+Table 8 extends the main-paper FID comparison with partial
+values quoted directly from prior diffusion and bridge papers
+without conversion or re-evaluation. The SDEdit and EGSDE
+values follow the comparison reported in (Lee, Kim, and Ye
+2025), whose source study is EGSDE (Zhao et al. 2022); the
+original SDEdit method is described in (Meng et al. 2022).
+The DDIB (Teacher) and IBCD values are taken from (Lee,
+Kim, and Ye 2025), with DDIB introduced in (Su et al. 2023).
+Because these methods cover only a subset of directions
+and may use different dataset, resolution, or FID protocols,
+their values are provided for reference and excluded from all
+column-wise rankings. The direction-wise KID table is not
+repeated here because it is already reported unchanged in
+Table 2.
+
+
+Method
+Direction support
+Generator organization
+NFE per translation
+CycleGAN
+Bidirectional
+Two generators
+1
+One-to-one CycleGAN
+Bidirectional
+One generator
+1
+CUT
+One-way per run
+Separate model per direction
+1
+DCLGAN
+Bidirectional
+Two generators
+1
+LSeSim
+One-way per run
+Separate model per direction
+1
+MUNIT
+Bidirectional
+Two generators
+1
+UNIT
+Bidirectional
+Two generators
+1
+DistanceGAN
+One-way per run
+Separate model per direction
+1
+GcGAN
+One-way per run
+Separate model per direction
+1
+SANTA
+One-way per run
+Separate model per direction
+1
+SDEdit
+One-way per run
+Domain diffusion prior
+1000
+EGSDE
+One-way per run
+Domain diffusion prior
+1200
+DDIB
+Bidirectional
+Two domain diffusion models
+160
+UNSB
+One-way per run
+Separate bridge per direction
+5
+IBCD
+Bidirectional
+One distilled bridge model
+1
+UniCycleFlow
+Bidirectional
+One shared velocity network
+1 (main) / 5 (additional)
+Table 7: Directionality, generator organization, and sampling NFE for the configurations reported in the quantitative comparison.
+Method
+NFE
+S→W
+W→S
+H→Z
+Z→H
+C→D
+D→C
+Wi→D
+D→Wi
+A→M
+M→A
+Avg.
+CycleGAN
+1
+81.3
+77.4
+68.5
+152.6
+158.7
+166.5
+136.5
+95.3
+382.6
+56.2
+137.6
+One-to-one CycleGAN
+1
+85.4
+81.2
+71.7
+156.4
+134.5
+142.7
+123.7
+96.2
+356.4
+59.7
+130.8
+CUT
+1
+86.1
+88.9
+47.2
+168.2
+78.5
+28.4
+94.7
+88.2
+82.6
+54.3
+81.7
+DCLGAN
+1
+81.4
+80.1
+41.6
+137.8
+62.1
+21.5
+50.6
+22.7
+75.8
+52.5
+62.6
+LSeSim
+1
+95.4
+92.1
+36.7
+155.6
+70.6
+52.9
+80.3
+46.4
+78.1
+78.4
+78.6
+MUNIT
+1
+116.7
+95.6
+132.4
+246.8
+122.8
+128.4
+118.8
+104.8
+132.6
+179.5
+137.8
+UNIT
+1
+109.4
+98.2
+128.9
+205.6
+108.7
+116.2
+115.2
+98.6
+301.5
+188.4
+147.1
+DistanceGAN
+1
+95.8
+102.5
+69.4
+168.9
+118.6
+121.6
+108.4
+92.6
+329.8
+96.4
+130.4
+GcGAN
+1
+99.0
+104.6
+84.8
+175.4
+146.2
+154.3
+129.4
+85.3
+223.3
+81.7
+128.4
+SANTA
+1
+85.6
+90.4
+34.9
+152.9
+50.3
+45.1
+70.9
+41.8
+70.3
+72.4
+71.5
+UNSB
+5
+72.1
+78.7
+38.5
+142.8
+64.7
+46.5
+68.2
+17.3
+81.4
+67.4
+67.8
+SDEdit
+1000
+–
+–
+–
+–
+74.2
+–
+68.5
+–
+–
+–
+–
+EGSDE†
+1200
+–
+–
+–
+–
+51.0
+–
+50.4
+–
+–
+–
+–
+DDIB (Teacher)
+160
+–
+–
+–
+–
+38.9
+30.3
+38.6
+13.2
+–
+–
+–
+IBCD†
+1
+–
+–
+–
+–
+44.8
+28.4
+46.1
+16.7
+–
+–
+–
+UniCycleFlow
+1
+81.5
+76.6
+33.1
+116.8
+37.6
+20.9
+37.7
+20.8
+74.5
+51.0
+55.1
+UniCycleFlow (K = 5)
+5
+80.9
+75.9
+32.6
+114.5
+36.8
+20.4
+36.9
+20.2
+73.6
+50.2
+54.2
+Table 8: Direction-wise FID; lower is better. Gray rows report partial published results under their original evaluation protocols
+and are provided for reference only; source and configuration details are given in the surrounding text. The † symbol denotes the
+realism-prioritized configuration used in the cited comparison. All other baseline results are obtained from our reimplementations
+using identical data splits and metric code. Among the non-gray rows, the best and second-best result in each column are shown
+in boldface and with an underline, respectively.
+
+
+Additional Qualitative Results
+Figures 3–5 provide additional comparisons using identical source images across methods. Each figure is shown separately at a
+large scale to preserve local visual details.
+Figure 3: Additional qualitative comparisons on Cat↔Dog using identical source images across methods.
+
+
+Figure 4: Additional qualitative comparisons on Horse↔Zebra and Wild↔Dog using identical source images across methods.
+
+
+Figure 5: Additional qualitative comparisons on Aerial↔Map and Summer↔Winter using identical source images across
+methods.
+
+
+Complete Cross-Dataset Ablations
+The main paper shows Horse↔Zebra together with ten-
+direction averages for compactness. Here we report every
+direction. Unless otherwise specified, the training-objective,
+field-organization, and representation ablations are evaluated
+with NFE=5, matching the corresponding main-paper abla-
+tions.
+Training Objectives
+Table 9 isolates the effect of adversarial endpoint learn-
+ing, selfFM, cycle closure, and RPV. Independent-pair
+rectified-flow training is substantially weaker. Learning
+source-conditioned endpoints yields the largest improve-
+ment, selfFM and cycle closure provide complementary
+gains, and RPV gives the best overall averages.
+Velocity-Field Organization
+Table 10 separates parameter sharing from temporal orga-
+nization. Two direction-specific fields are weakest. A shared
+backbone with two output heads recovers much of the perfor-
+mance, while a discrete direction token remains inferior to
+continuous time conditioning. The shared time-conditioned
+field is best in every reported direction and on both averages
+under the NFE=5 ablation setting.
+Inference Budget
+Table 11 evaluates the same trained field with different Euler
+step counts. NFE=1 already achieves results close to the best
+measured averages. NFE=2 provides most of the multi-step
+gain, while NFE=5 yields a smaller additional improvement.
+The close one-, two-, and five-step results are consistent
+with stable boundary and intermediate predictions over the
+integration range used in practice.
+RPV Design
+Table 12 compares frozen encoder representations (Si-
+monyan and Zisserman 2015; Caron et al. 2021; Oquab et al.
+2024). No encoder dominates every individual direction, but
+VGG16 relu5_3 gives the best ten-direction average, while
+DINO-based representations remain competitive. Table 13
+studies the finite-difference interval and RPV weight. Nearby
+parameter choices produce similar averages, supporting the
+selected ∆= 0.1 and λRPV = 0.05.
+
+
+(a) FID
+Setting
+S→W
+W→S
+H→Z
+Z→H
+C→D
+D→C
+Wi→D
+D→Wi
+A→M
+M→A
+Avg.
+Independent-pair RF
+133.0
+125.6
+111.8
+186.3
+99.2
+63.2
+103.2
+60.3
+146.1
+106.6
+113.5
+Endpoint Adv.
+93.5
+86.7
+55.2
+143.1
+50.9
+31.3
+53.7
+28.7
+92.3
+63.3
+69.9
++ selfFM
+87.8
+81.5
+43.7
+133.4
+43.7
+25.5
+45.1
+23.0
+82.1
+54.5
+62.0
++ Cycle
+87.5
+82.2
+45.6
+129.0
+43.3
+25.8
+44.7
+22.3
+82.8
+54.0
+61.7
++ selfFM + Cycle
+83.7
+78.1
+32.4
+118.8
+38.5
+21.9
+39.0
+20.1
+76.4
+50.0
+55.9
++ RPV (full)
+80.9
+75.9
+32.6
+114.5
+36.8
+20.4
+36.9
+20.2
+73.6
+50.2
+54.2
+(b) KID×100
+Setting
+S→W
+W→S
+H→Z
+Z→H
+C→D
+D→C
+Wi→D
+D→Wi
+A→M
+M→A
+Avg.
+Independent-pair RF
+5.549
+5.123
+5.440
+8.715
+4.399
+3.058
+4.722
+2.683
+7.313
+4.589
+5.159
+Endpoint Adv.
+3.499
+3.173
+2.890
+6.565
+2.149
+1.408
+2.272
+1.203
+4.213
+2.439
+2.981
++ selfFM
+3.119
+2.863
+1.810
+5.665
+1.699
+1.098
+1.782
+0.923
+3.633
+1.979
+2.457
++ Cycle
+3.099
+2.893
+1.890
+5.485
+1.669
+1.118
+1.752
+0.893
+3.683
+1.949
+2.443
++ selfFM + Cycle
+2.879
+2.663
+1.330
+5.045
+1.409
+0.918
+1.442
+0.773
+3.273
+1.729
+2.146
++ RPV (full)
+2.749
+2.573
+1.340
+4.765
+1.299
+0.858
+1.322
+0.783
+3.113
+1.739
+2.054
+Table 9: Complete component ablation across all ten directions. Lower is better for both metrics.
+(a) FID
+Velocity-field organization
+S→W
+W→S
+H→Z
+Z→H
+C→D
+D→C
+Wi→D
+D→Wi
+A→M
+M→A
+Avg.
+Two direction-specific fields
+115.4
+108.7
+42.2
+142.9
+58.6
+36.7
+61.9
+31.8
+96.4
+67.5
+76.2
+Shared backbone, two output heads
+89.6
+84.1
+32.8
+116.1
+45.2
+25.7
+46.4
+24.9
+83.0
+56.8
+60.5
+Shared field with direction token
+91.8
+86.5
+33.7
+118.2
+46.8
+27.1
+48.3
+25.8
+85.7
+58.4
+62.2
+Shared time-conditioned field (ours)
+80.9
+75.9
+32.6
+114.5
+36.8
+20.4
+36.9
+20.2
+73.6
+50.2
+54.2
+(b) KID×100
+Velocity-field organization
+S→W
+W→S
+H→Z
+Z→H
+C→D
+D→C
+Wi→D
+D→Wi
+A→M
+M→A
+Avg.
+Two direction-specific fields
+4.180
+3.920
+1.720
+5.860
+2.310
+1.450
+2.480
+1.200
+4.810
+2.720
+3.065
+Shared backbone, two output heads
+3.150
+2.980
+1.380
+4.910
+1.650
+1.020
+1.710
+0.910
+3.620
+2.030
+2.336
+Shared field with direction token
+3.280
+3.090
+1.430
+5.020
+1.740
+1.090
+1.820
+0.960
+3.790
+2.110
+2.433
+Shared time-conditioned field (ours)
+2.749
+2.573
+1.340
+4.765
+1.299
+0.858
+1.322
+0.783
+3.113
+1.739
+2.054
+Table 10: Complete velocity-field organization ablation across all ten directions. Lower is better for both metrics. All variants
+use the same training objectives and are evaluated with NFE=5.
+(a) FID
+NFE
+S→W
+W→S
+H→Z
+Z→H
+C→D
+D→C
+Wi→D
+D→Wi
+A→M
+M→A
+Avg.
+1
+81.5
+76.6
+33.1
+116.8
+37.6
+20.9
+37.7
+20.8
+74.5
+51.0
+55.1
+2
+80.6
+76.4
+32.4
+115.3
+36.5
+20.6
+36.7
+20.0
+73.9
+50.1
+54.3
+5
+80.9
+75.9
+32.6
+114.5
+36.8
+20.4
+36.9
+20.2
+73.6
+50.2
+54.2
+10
+82.9
+78.4
+35.8
+121.7
+39.8
+22.5
+40.2
+22.1
+77.1
+52.9
+57.3
+(b) KID×100
+NFE
+S→W
+W→S
+H→Z
+Z→H
+C→D
+D→C
+Wi→D
+D→Wi
+A→M
+M→A
+Avg.
+1
+2.820
+2.590
+1.390
+4.860
+1.345
+0.895
+1.410
+0.820
+3.180
+1.760
+2.107
+2
+2.734
+2.593
+1.328
+4.810
+1.289
+0.870
+1.314
+0.773
+3.135
+1.745
+2.059
+5
+2.749
+2.573
+1.340
+4.765
+1.299
+0.858
+1.322
+0.783
+3.113
+1.739
+2.054
+10
+2.869
+2.733
+1.530
+5.185
+1.449
+0.953
+1.492
+0.863
+3.323
+1.879
+2.228
+Table 11: Complete Euler-step ablation across all ten directions. Lower is better for both metrics.
+
+
+(a) FID
+Encoder feature
+S→W
+W→S
+H→Z
+Z→H
+C→D
+D→C
+Wi→D
+D→Wi
+A→M
+M→A
+Avg.
+No RPV
+83.7
+78.1
+32.4
+118.8
+38.5
+21.9
+39.0
+20.1
+76.4
+50.0
+55.9
+VGG16 relu2_2
+83.4
+77.8
+33.1
+118.3
+38.3
+21.8
+38.7
+21.0
+76.1
+51.4
+56.0
+VGG16 relu3_3
+82.8
+77.3
+33.4
+117.2
+37.9
+21.4
+38.2
+20.8
+75.4
+50.9
+55.5
+VGG16 relu4_3
+81.9
+75.8
+33.0
+116.0
+37.4
+21.1
+37.6
+20.6
+74.4
+49.9
+54.8
+VGG16 relu5_3
+80.9
+75.9
+32.6
+114.5
+36.8
+20.4
+36.9
+20.2
+73.6
+50.2
+54.2
+DINO ViT-S/16, block 6
+82.6
+76.9
+33.6
+116.9
+37.7
+21.2
+38.0
+20.5
+75.1
+50.7
+55.3
+DINO ViT-S/16, block 12
+82.2
+77.1
+33.2
+117.3
+37.6
+21.3
+37.8
+20.7
+74.7
+51.0
+55.3
+DINOv2 ViT-B/14, block 6
+81.7
+76.3
+32.2
+115.7
+37.3
+20.8
+37.4
+20.0
+74.3
+50.5
+54.6
+DINOv2 ViT-B/14, block 12
+81.5
+75.6
+32.8
+116.1
+37.2
+20.9
+37.5
+20.3
+73.5
+50.6
+54.6
+(b) KID×100
+Encoder feature
+S→W
+W→S
+H→Z
+Z→H
+C→D
+D→C
+Wi→D
+D→Wi
+A→M
+M→A
+Avg.
+No RPV
+2.879
+2.663
+1.330
+5.045
+1.409
+0.918
+1.442
+0.773
+3.273
+1.729
+2.146
+VGG16 relu2_2
+2.864
+2.653
+1.365
+5.010
+1.389
+0.913
+1.427
+0.818
+3.258
+1.809
+2.151
+VGG16 relu3_3
+2.834
+2.633
+1.380
+4.945
+1.364
+0.898
+1.397
+0.808
+3.218
+1.784
+2.126
+VGG16 relu4_3
+2.794
+2.568
+1.360
+4.855
+1.334
+0.888
+1.362
+0.798
+3.158
+1.729
+2.085
+VGG16 relu5_3
+2.749
+2.573
+1.340
+4.765
+1.299
+0.858
+1.322
+0.783
+3.113
+1.739
+2.054
+DINO ViT-S/16, block 6
+2.824
+2.618
+1.390
+4.910
+1.349
+0.893
+1.382
+0.793
+3.198
+1.769
+2.113
+DINO ViT-S/16, block 12
+2.809
+2.628
+1.370
+4.930
+1.344
+0.898
+1.372
+0.803
+3.178
+1.779
+2.111
+DINOv2 ViT-B/14, block 6
+2.779
+2.591
+1.328
+4.835
+1.319
+0.873
+1.347
+0.770
+3.143
+1.751
+2.074
+DINOv2 ViT-B/14, block 12
+2.774
+2.563
+1.350
+4.845
+1.317
+0.878
+1.352
+0.788
+3.107
+1.757
+2.073
+Table 12: Complete RPV encoder ablation across all ten directions. Lower is better for both metrics.
+(a) FID
+Group
+Value
+S→W
+W→S
+H→Z
+Z→H
+C→D
+D→C
+Wi→D
+D→Wi
+A→M
+M→A
+Avg.
+∆
+0.05
+81.3
+75.7
+33.2
+115.8
+37.0
+20.5
+37.3
+20.1
+74.3
+50.5
+54.6
+0.10
+80.9
+75.9
+32.6
+114.5
+36.8
+20.4
+36.9
+20.2
+73.6
+50.2
+54.2
+0.20
+80.6
+76.2
+32.3
+116.2
+37.2
+20.3
+37.1
+20.3
+74.0
+50.3
+54.5
+0.40
+83.3
+77.9
+36.1
+120.5
+39.6
+22.1
+39.9
+21.6
+76.7
+52.6
+57.0
+λRPV
+0.010
+83.0
+77.7
+35.7
+119.7
+39.0
+21.8
+39.4
+21.4
+76.2
+52.1
+56.6
+0.025
+81.6
+76.4
+33.5
+116.0
+37.4
+20.8
+37.7
+20.4
+74.5
+50.7
+54.9
+0.050
+80.9
+75.9
+32.6
+114.5
+36.8
+20.4
+36.9
+20.2
+73.6
+50.2
+54.2
+0.100
+81.3
+75.7
+33.4
+114.2
+37.1
+20.6
+37.3
+20.1
+74.2
+50.3
+54.4
+0.200
+84.4
+78.9
+38.2
+121.6
+40.6
+22.8
+40.9
+22.0
+77.8
+53.4
+58.1
+(b) KID×100
+Group
+Value
+S→W
+W→S
+H→Z
+Z→H
+C→D
+D→C
+Wi→D
+D→Wi
+A→M
+M→A
+Avg.
+∆
+0.05
+2.767
+2.565
+1.370
+4.840
+1.311
+0.863
+1.342
+0.777
+3.148
+1.753
+2.074
+0.10
+2.749
+2.573
+1.340
+4.765
+1.299
+0.858
+1.322
+0.783
+3.113
+1.739
+2.054
+0.20
+2.739
+2.585
+1.325
+4.855
+1.317
+0.854
+1.332
+0.789
+3.133
+1.743
+2.067
+0.40
+2.854
+2.663
+1.520
+5.125
+1.429
+0.938
+1.467
+0.843
+3.278
+1.859
+2.198
+λRPV
+0.010
+2.844
+2.653
+1.495
+5.065
+1.409
+0.923
+1.447
+0.828
+3.248
+1.829
+2.174
+0.025
+2.779
+2.595
+1.385
+4.850
+1.329
+0.876
+1.362
+0.793
+3.158
+1.764
+2.089
+0.050
+2.749
+2.573
+1.340
+4.765
+1.299
+0.858
+1.322
+0.783
+3.113
+1.739
+2.054
+0.100
+2.767
+2.563
+1.380
+4.745
+1.314
+0.868
+1.342
+0.778
+3.143
+1.744
+2.064
+0.200
+2.904
+2.708
+1.625
+5.195
+1.479
+0.963
+1.517
+0.858
+3.333
+1.899
+2.248
+Table 13: Complete RPV parameter ablation across all ten directions. Lower is better for both metrics; rankings are computed
+separately within the ∆and λRPV groups. When varying ∆, we fix λRPV = 0.05; when varying λRPV, we fix ∆= 0.1.
+Rankings are computed separately within the two groups.

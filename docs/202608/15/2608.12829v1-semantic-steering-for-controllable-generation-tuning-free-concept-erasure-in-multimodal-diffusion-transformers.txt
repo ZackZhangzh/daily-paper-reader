@@ -1,0 +1,1419 @@
+Semantic Steering for Controllable Generation: Tuning-Free
+Concept Erasure in Multimodal Diffusion Transformers
+Qiao Li
+Institute of Information Engineering,
+Chinese Academy of Sciences
+Beijing, China
+School of Cyber Security, University
+of Chinese Academy of Sciences
+Beijing, China
+liqiao@iie.ac.cn
+Xiaomeng Fu
+Institute of Information Engineering,
+Chinese Academy of Sciences
+Beijing, China
+School of Cyber Security, University
+of Chinese Academy of Sciences
+Beijing, China
+fuxiaomeng@iie.ac.cn
+Yuanshu Zhao
+Institute of Information Engineering,
+Chinese Academy of Sciences
+Beijing, China
+School of Cyber Security, University
+of Chinese Academy of Sciences
+Beijing, China
+zhaoyuanshu@iie.ac.cn
+Qipeng Wang
+Institute of Information Engineering,
+Chinese Academy of Sciences
+Beijing, China
+School of Cyber Security, University
+of Chinese Academy of Sciences
+Beijing, China
+wangqipeng@iie.ac.cn
+Jiao Dai✉
+Institute of Information Engineering,
+Chinese Academy of Sciences
+Beijing, China
+daijiao@iie.ac.cn
+Jizhong Han
+Institute of Information Engineering,
+Chinese Academy of Sciences
+Beijing, China
+hanjizhong@iie.ac.cn
+Uncovered
+Dressed
+Erase
+“An uncovered young person with long, wavy hair”
+Nude
+Dressed
+Erase
+“A photo of a nude woman”
+Erase  Nudity
+Photorealism
+Kelly Mckernan
+Ink Wash
+Erase
+“An ethereal being whose skin is made of swirling nebula, in Kelly McKernan style”
+Erase
+Van Gogh
+Cartoon
+Watercolor
+“A painting of a peasant woman planting potatoes, in the style of Van Gogh”
+Erase  Art  Style
+ Leonardo DiCaprio
+Caucasian man
+Erase
+“A front-facing portrait of Leonardo in a suit.” 
+Audrey Hepburn Caucasian woman
+Erase
+“A photo of Audrey Hepburn”
+Erase  Celebrity
+Artifact added for publication
+Figure 1: During the generation process with the multimodal diffusion transformer, our method applies steering vectors to
+erase diverse unwanted concepts, such as art styles, celebrities, and nudity, while supporting controllable generation.
+Abstract
+Multimodal Diffusion Transformers (MM-DiTs) have demonstrated
+remarkable text-to-image generation performance, surpassing tra-
+ditional U-Net-based diffusion models. Nevertheless, their powerful
+generative capabilities also raise significant safety concerns, as they
+may generate sensitive or inappropriate content. While existing
+concept erasure methods aim to mitigate such risks, most require
+This work is licensed under a Creative Commons Attribution 4.0 International License.
+MM ’26, Rio de Janeiro, Brazil
+© 2026 Copyright held by the owner/author(s).
+ACM ISBN 979-8-4007-2213-4/2026/11
+https://doi.org/10.1145/3767308.3835565
+modifying model parameters, which are often architecture-specific
+and impractical for deployed larger models. Several tuning-free
+approaches face challenges when applied to advanced large-scale
+MM-DiTs due to their deeply embedded knowledge, broad seman-
+tic space, and context-dependent text encoders. To address these
+challenges, we propose to erase concepts by directly manipulating
+the model’s internal representations. Our key insight, derived from
+an in-depth analysis of MM-DiT’s block-wise generative roles, is
+that text-conditioned semantic representations are most salient in
+the middle blocks of MM-DiTs. Based on this, we extract represen-
+tations of an unwanted concept and a desirable safe one from the
+middle block, construct a steering vector from their difference, and
+inject this single vector into consecutive early and middle blocks.
+arXiv:2608.12829v1  [cs.CV]  13 Aug 2026
+
+
+MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil
+Qiao Li et al.
+By operating exclusively on the sparse text-branch tokens and
+leveraging the straight sampling trajectory of rectified flow, our
+method achieves effective concept erasure with negligible overhead
+and without any training. Extensive experiments across MM-DiT
+models demonstrate that our method achieves state-of-the-art per-
+formance in erasing diverse concepts, enables effective control over
+the final output, and remains robust to adversarial attacks.
+CCS Concepts
+• Security and privacy →Usability in security and privacy; •
+Computing methodologies →Computer vision.
+Keywords
+Multimodal Diffusion Transformers; Concept Erasure
+ACM Reference Format:
+Qiao Li, Xiaomeng Fu, Yuanshu Zhao, Qipeng Wang, Jiao Dai, and Jizhong
+Han. 2026. Semantic Steering for Controllable Generation: Tuning-Free
+Concept Erasure in Multimodal Diffusion Transformers. In Proceedings of
+the 34th ACM International Conference on Multimedia (MM ’26), November
+10–14, 2026, Rio de Janeiro, Brazil. ACM, New York, NY, USA, 10 pages.
+https://doi.org/10.1145/3767308.3835565
+1
+Introduction
+Recently, multimodal diffusion transformers (MM-DiTs) [33], such
+as Stable Diffusion 3 series [9] and FLUX series [22], have emerged
+as the leading paradigm in text-to-image generation. These mod-
+els demonstrate stronger multimodal understanding and superior
+generation quality at high resolutions, outperforming traditional U-
+Net-based diffusion models [18, 38, 41, 42]. However, their remark-
+able generative capabilities also pose significant safety risks [3, 47].
+Trained on large-scale web-crawled data, these models may inad-
+vertently synthesize inappropriate or sensitive content, including
+not-safe-for-work (NSFW) material, copyrighted works, and images
+of real persons. To mitigate these risks, concept erasure techniques
+have been developed to prevent models from generating undesir-
+able target concepts.
+Most existing concept erasure methods [5, 10, 12–14, 16, 21, 25,
+50] require modifying the model parameters to remove or suppress
+unwanted concepts. However, many are architecture-specific and
+not directly transferable to more advanced MM-DiTs. Moreover,
+these methods may significantly degrade model’s generative capa-
+bilities and typically impose substantial computational overhead,
+making them impractical for large-scale, real-world deployments.
+To address these issues, several model tuning-free concept era-
+sure methods [20, 32, 40, 49] have been proposed. Most of these
+methods typically leverage prompt-based interventions to guide
+the model away from predefined negative terms, demonstrating
+effectiveness in traditional U-Net-based diffusion models.
+Unfortunately, these tuning-free erasure methods face critical
+limitations when applied to MM-DiT. First, due to extensive pre-
+training on large-scale datasets, MM-DiT embeds target concepts
+within its deep representations, forming intrinsic and robust knowl-
+edge that is largely unresponsive to superficial prompt-based in-
+terventions. Second, MM-DiT has an expanded semantic space,
+making it difficult for negative prompts (which rely on explicit
+keyword specifications) to address the full range of concept varia-
+tions and implicit associations, often leading to incomplete erasure.
+Third, some methods rely on linear separability of concepts in the
+token-level textual embedding space, which makes it challenging
+to apply them to sentence-level, context-dependent representations
+in the larger T5-XXL [35] text encoder used in MM-DiT.
+These limitations motivate a paradigm shift from external prompt
+engineering to direct intervention within the model’s internal repre-
+sentations. Recent works in large language models [7, 36, 43, 45, 52]
+and text-to-image models [8, 11, 37] have demonstrated the feasi-
+bility of controlling model’s output by steering internal activations
+at inference time. However, LLM-based methods are tailored to the
+discrete, autoregressive generation paradigm of language, render-
+ing them ill-suited for the continuous, iterative denoising process
+and the fundamentally different dual-modality architecture of MM-
+DiT. Most existing T2I-based methods are designed for small-scale
+UNet architectures and either demand per-block/per-timestep inter-
+ventions or extensive training, making them inherently inefficient
+or even infeasible for the deeper, multimodal blocks of MM-DiT
+architecture. As a result, steering internal representations for con-
+trollable generation in MM-DiT remains largely unexplored.
+To fill this gap, we investigate the internal generative mecha-
+nisms of MM-DiT and propose a lightweight yet effective semantic
+steering method for controllable concept erasure, exploiting its in-
+trinsic properties. We first conduct an in-depth analysis of the role
+of different multimodal blocks in image generation, revealing that
+middle blocks primarily encode the semantic representations of tar-
+get concepts, while early and late blocks encode the overall image
+structures and fine-grained details, respectively. Such observation
+leads to a key insight: we can extract highly salient semantic
+representations of a concept directly from the middle block
+of MM-DiT. This naturally inspires us to leverage such representa-
+tions to provide precise control over the model’s output. Specifically,
+given a contrastive pair of an unwanted concept and a desirable safe
+concept, we extract their respective semantic representations from
+the middle block and construct a steering vector by computing their
+difference. We then leverage the distinct roles of early and middle
+blocks to inject the vector into key consecutive blocks, achieving
+controllable concept erasure while preserving overall image fidelity
+with a single vector. Unlike prior text-to-image intervention works
+that rely on image token representations, our method efficiently
+constructs and injects the steering vector purely on the sparser
+text-branch tokens, thereby avoiding the redundancy introduced
+by the large number of image tokens. The steering vector guides
+generation coherently across all denoising steps by following the
+straight sampling trajectory of rectified flow in MM-DiT, enabling
+effective erasure with negligible overhead.
+Experiments on MM-DiT models demonstrate that our method
+achieves state-of-the-art performance in erasing diverse concepts,
+including celebrity, art style, and nudity, without requiring any
+training or fine-tuning, while enabling effective control over the
+output and exhibiting strong robustness to adversarial attacks.
+Our contributions are summarized as:
+• We propose a lightweight yet effective semantic steering
+method tailored to large-scale MM-DiT architecture for con-
+trollable concept erasure at inference time.
+
+
+Semantic Steering for Controllable Generation: Tuning-Free Concept Erasure in Multimodal Diffusion Transformers
+MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil
+• We design a steering framework that exploits MM-DiT’s
+properties, including block-wise roles in generation, infor-
+mation disparity in dual modalities, and rectified flow sam-
+pling, thereby achieving concept erasure while preserving
+image quality with a single vector and negligible overhead.
+• Extensive experiments demonstrate that our method achieves
+state-of-the-art performance in erasing diverse concepts
+(celebrity, art style, and nudity) across MM-DiT models (SDv3.5
+and FLUX.1), with controllable outputs and robustness against
+multiple adversarial attacks.
+2
+Related Work
+2.1
+Multimodal Diffusion Transformers
+Traditional text-to-image diffusion models are based on UNet [39]
+architectures and incorporate self-attention and text-to-image cross-
+attention mechanisms. These models are trained to predict noise
+during denoising process, using noise schedulers such as DDPM [18].
+Recently, multimodal diffusion transformers have brought about
+two paradigm shifts: architecture and training formulation. In
+terms of architecture, these models adopt Transformer-based back-
+bones [33] with multiple blocks and introduce cross-modal atten-
+tion. For instance, models like Stable Diffusion 3 series [9] employ
+joint self-attention mechanisms to concatenate text and image to-
+kens within the key, query, and value vectors of the Transformer
+architecture. They also integrate a T5-XXL [35] text encoder and
+CLIP-based [34] text encoders (CLIP-L/14 and OpenCLIP-bigG/14)
+to improve text-image alignment and cross-modal representation.
+In terms of training formulation, these new models leverage rec-
+tified flow [27, 29] with velocity predictions, directly connecting
+noise and data distributions via straight trajectories rather than
+curved paths in traditional diffusion models.
+2.2
+Concept Erasure in Diffusion Models
+Concept erasure techniques aim to prevent models from generating
+undesirable concepts, such as not-safe-for-work (NSFW) content,
+copyrighted artworks, and personal portraits. Most existing meth-
+ods [5, 13, 14, 16, 21, 25, 30, 50] achieve concept erasure by updating
+the model’s weights. For example, FMN [50] forces the model to
+forget unwanted concepts by locating and suppressing their cor-
+responding cross-attention maps through fine-tuning. MACE [30]
+uses LoRA [19] to fine-tune the cross-attention blocks for each con-
+cept and jointly optimizes the parameters across multiple concepts.
+UCE [13] derives a closed-form edition of the weights in diffu-
+sion models without fine-tuning. However, most of these methods
+suffer from degraded generative capability and substantial com-
+putational overhead, and some methods are highly architecture-
+specific, making them difficult to extend to MM-DiT. To overcome
+these problems, several tuning-free erasure methods [20, 32, 40, 49]
+typically rely on prompt-based intervention to alter the model’s
+denoising trajectories. For instance, Negative Prompting (NP) is a
+commonly used technique that replaces the unconditional input in
+classifier-free guidance with a negative prompt. Safe Latent Diffu-
+sion (SLD) [40] extends NP by incorporating three noise predictions
+to exclude unwanted semantics during denoising. TraSCE [20] in-
+troduces a loss-based guidance mechanism to enhance the flexibility
+of negative prompting. Nevertheless, current tuning-free concept
+Prompt
+Prompt
+…
+𝒙𝒃,𝒊
++
+𝒙𝒃,𝒊
+−
+Average
+Block b
+Text
+Text
+Branch
+…
+Block b
+Branch
+Prompt   :  a photo of a Caucasian woman.
+Prompt   :  a photo of Taylor Swift.
+Prompt
+Block i
+Text
+Branch
+𝒗𝒃
+𝒔𝒕𝒆𝒆𝒓
+Injection Module
+……
+𝒗𝒃
+𝒔𝒕𝒆𝒆𝒓
+Injection
+ Module
+Prompt: Taylor Swift accepts music 
+          award on the stage.
++
+-
+MM-DiT
++
+-
+Block 
+Block
+Block
+Block 
+Block 
+Block
+Construction 
+   (one timestep)
+Injection (all timesteps)
++
+Block 
+Positive Target Tokens
+Negative Target Tokens
+Block
+Figure 2: The overall pipeline of our proposed method. We
+construct a steering vector from the output target tokens in
+the text branch of the middle block b (top). We then inject
+the vector into consecutive early and middle blocks (bottom).
+The construction process is performed at an intermediate
+denoising timestep, while the injection process is conducted
+coherently across all timesteps.
+erasure methods struggle to effectively erase concepts when applied
+to larger-scale MM-DiTs, which embed target concepts deeply and
+exhibit a broader semantic space.
+2.3
+Internal Activation Intervention
+Recent works have explored manipulating internal activations
+at inference time to control model behavior. LLM-based meth-
+ods [7, 24, 36, 43, 45, 46, 52] construct steering vectors based on key
+activation values that encode human-interpretable features, and in-
+duce desired changes in the generated textual output when added to
+the forward passes of a frozen LLM. However, these approaches are
+tailored to the discrete, autoregressive nature of language modeling,
+rendering them incompatible with the continuous denoising process
+and multi-modal architecture of MM-DiT. For T2I-based methods,
+CASteer [11] constructs per-block and per-timestep steering vec-
+tors from cross-attention activations. SAeUron [8] trains additional
+sparse autoencoders to identify interpretable features for target ma-
+nipulation. Both are primarily designed for small-scale UNet-based
+architectures, and their significant computational overhead limits
+their scalability to deeper and larger-scale MM-DiTs. ACT [37] con-
+trols the model output by learning transport maps. Although it can
+be applied to DiT-based models, it still needs per-block mapping
+learning, thereby incurring non-negligible overhead. Moreover,
+these methods rely on image token representations, which may
+contain largely redundant information that hinders efficient and
+precise manipulation of the target concept.
+3
+Method
+Given an unwanted target concept and a desirable safe one, our
+goal is to construct a steering vector by computing the difference
+between their semantic representations, and inject it into key MM-
+DiT blocks to shift the unwanted output toward safe semantics.
+
+
+MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil
+Qiao Li et al.
+(b). “a photo of Taylor Swift wearing sequined dress at awards show”
+Original             Block 2            Block 5             Block 10           Block 12            Block 17            Block 22
+(a). “a painting of a starry night over a quiet fishing village, in the style of Van Gogh”
+Early Blocks
+Middle Blocks
+Late Blocks
+……
+……
+……
+……
+……
+……
+……
+(c). Visualization of the averaged attention maps of ‘Taylor Swift’ related tokens
+Figure 3: (a) and (b) are images generated by SDv3.5, where
+random Gaussian noise is injected into distinct Transformer
+blocks (each image corresponds to noise injection in a specific
+block, with other blocks unchanged). (c) is a visualization of
+the averaged attention maps of target-related tokens.
+We first provide the preliminaries (Section 3.1), then analyze the
+role of various blocks and denoising timesteps in image generation,
+and construct a steering vector in the text branch accordingly (Sec-
+tion 3.2). Finally, we describe how the vector is injected spatially
+and temporally (Section 3.3) to achieve effective target redirection.
+A pipeline of our method is illustrated in Figure 2.
+3.1
+Preliminaries
+We begin by analyzing MM-DiT’s architecture. As a hierarchical
+model, it comprises numerous multimodal Transformer blocks.
+Taken Stable Diffusion-v3.5 as an example, it contains 24 Trans-
+former blocks, and establishes a unified token space for visual and
+text modalities: 64×64 image tokens (flattened to 4096) in the image
+branch (when generating 1024 × 1024 images), and 154 or 333 text
+tokens (77 CLIP tokens plus 77 or 256 T5 tokens) in the text branch.
+Within each block, tokens interact via bidirectional cross-modal
+attention, with queries, keys, and values formed by concatenation:
+𝑄= [𝑄𝑡𝑒𝑥𝑡;𝑄𝑖𝑚𝑎𝑔𝑒], 𝐾= [𝐾𝑡𝑒𝑥𝑡;𝐾𝑖𝑚𝑎𝑔𝑒], and 𝑉= [𝑉𝑡𝑒𝑥𝑡;𝑉𝑖𝑚𝑎𝑔𝑒]
+This enables four interaction types: text-to-image (T2I), image-to-
+text (I2T), image-to-image (I2I), and text-to-text (T2T). The result-
+ing representations from both modalities are output from block 𝑏
+through separate branches and serve as input to block𝑏+1, denoted
+as 𝑋𝑡𝑒𝑥𝑡,𝑏and 𝑋𝑖𝑚𝑎𝑔𝑒,𝑏(where 𝑏∈{1, . . ., 𝐵}).
+Besides architecture, MM-DiT also differs significantly from tra-
+ditional diffusion models in its sampling strategy, adopting rectified
+flow. Rectified flow models a transport map between two distri-
+butions 𝜋0 (noise 𝑁∼(0, 𝐼)) and 𝜋1 (real data) by constructing
+straight-line trajectories between samples. To define these straight
+paths, the forward process is formulated as a linear interpolation
+in the latent space 𝐷:
+𝐷𝑡= 𝑡𝐷1 + (1 −𝑡)𝐷0, 𝐷0 ∼𝜋0, 𝐷1 ∼𝜋1
+(1)
+The velocity field 𝑉(𝐷𝑡,𝑡) is then trained to approximate the dy-
+namics of 𝐷𝑡. Once trained, it generates an image from a noise 𝑍
+across discrete steps from 𝑡𝑇= 0 to 𝑡0 = 1 by utilizing the velocity
+field to update 𝑍𝑡at each step:
+𝑍𝑡𝑖−1 = 𝑍𝑡𝑖+ (𝑡𝑖−1 −𝑡𝑖)𝑉(𝑍𝑡𝑖,𝑡𝑖), 𝑖= 𝑇, . . ., 1
+(2)
+3.2
+Steering Vector Construction
+To address the challenge of transferring existing tuning-free, prompt
+engineering-based concept erasure methods to MM-DiT, we seek to
+directly manipulate the model’s internal representations to guide
+the generation process. To better understand the semantic distribu-
+tion patterns within MM-DiT, we first analyze the role of different
+Transformer blocks, as well as denoising timesteps, in image gen-
+eration. Based on the analysis, we then selectively leverage token
+representations from the text branch to construct a steering vector,
+which represents a shift direction to guide the unwanted concepts
+toward desired semantics.
+Semantic Focus in Middle Blocks. To understand the distribu-
+tions of primary semantic representations within MM-DiT, we first
+analyze how different blocks influence the image generation pro-
+cess. Specifically, we inject random Gaussian noise into the output
+features of intermediate blocks and observe the resulting image
+generation (examples in Figure 3 (a)-(b)). Noise in early blocks ren-
+ders images completely unrecognizable due to global disruption,
+while noise in late blocks causes only minor fine-detail variations.
+Conversely, injecting noise into middle blocks significantly affects
+the formation of primary conceptual semantics (e.g., the swirling
+starry sky or Taylor Swift’s face). These observations highlight the
+strong hierarchical characteristic of MM-DiT architecture: early
+blocks model global structure, late blocks refine surface details, and
+middle blocks are most expressive of core semantic content.
+To further confirm that the middle blocks are the most represen-
+tative for target semantics, we visualize the averaged T2I attention
+maps of target-related tokens (e.g., “Taylor Swift”) across blocks
+(Figure 3 (c)). The attention patterns reveal that only in the middle
+blocks do such tokens attend significantly to the primary subject
+itself (e.g., Taylor’s face). These findings suggest that the middle
+blocks are the most suitable for extracting target concept’s primary
+semantics. Conversely, capturing the primary semantics in the early
+or late blocks is ineffective, as target semantics are entangled with
+coarse global structures or overwhelming fine-grained details and
+thus difficult to extract.
+Balanced Representation at Intermediate Timesteps. Besides
+analyzing the roles of model’s blocks, it is also crucial to consider the
+effect of denoising timesteps on semantic distributions. During the
+denoising process, MM-DiT adopts rectified flow sampling, where
+generations are iterative with representations evolving from coarse
+structures to fine details across timesteps. Similarly to the laws
+in MM-DiT blocks, early timesteps are dominated by global noise
+and contain limited semantics, whereas very late timesteps primar-
+ily encode minor details. Inspired by previous work [31], which
+shows that features at intermediate timesteps preserve meaning-
+ful structural cues while retaining salient details and filtering out
+redundant ones, the intermediate denoising steps can provide a
+faithful representation of the target’s core semantics, effectively
+balancing structural coherence and key visual details.
+Text Branch Vector Derivation. The analysis on MM-DiT’s blocks
+and denoising timesteps provide a key insight to achieve target
+concept erasure: primary concept semantics can be extracted most
+
+
+Semantic Steering for Controllable Generation: Tuning-Free Concept Erasure in Multimodal Diffusion Transformers
+MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil
+Table 1: Performance comparison between our method and baselines on erasing three conceptual categories from Stable
+Diffusion-v3.5-medium and FLUX.1. Metrics are color-coded by their evaluation objective: Yellow for erasure effectiveness,
+Green for aesthetic quality post-erasure, and Magenta for the impact on unrelated image quality (COCO-30K dataset). ↑
+represents that a higher value indicates better performance, and vice versa. (Bold: best. Underline: second-best.)
+Method
+Celebrity
+Art Style
+Nudity
+GIPHY↓
+LLaVA↓
+Aesthetic↑
+FID↓
+CLIP↑
+Gram↓
+LPIPS↑
+Aesthetic↑
+FID↓
+CLIP↑
+NudeNet↓
+Aesthetic↑
+FID↓
+CLIP↑
+SDv3.5 (base)
+0.602
+0.524
+5.621
+17.85
+0.329
+1
+0
+6.621
+17.85
+0.329
+0.739
+5.706
+17.85
+0.329
+SLD
+0.029
+0.022
+5.376
+18.77
+0.318
+0.271
+0.318
+6.474
+18.99
+0.324
+0.526
+5.716
+18.69
+0.288
+TraSCE
+0.061
+0.043
+5.504
+18.42
+0.299
+0.167
+0.574
+6.608
+18.97
+0.320
+0.460
+5.366
+18.81
+0.291
+STG
+0.046
+0.063
+5.511
+18.79
+0.294
+0.266
+0.402
+6.601
+18.94
+0.312
+0.490
+5.799
+18.78
+0.284
+NP
+0.034
+0.022
+5.414
+18.49
+0.315
+0.180
+0.536
+6.442
+18.66
+0.318
+0.296
+5.865
+18.77
+0.293
+Ours
+0.020
+0.002
+5.522
+18.34
+0.305
+0.137
+0.636
+6.367
+18.91
+0.325
+0.220
+5.868
+18.60
+0.299
+FLUX.1 (base)
+0.613
+0.602
+5.989
+19.83
+0.319
+1
+0
+6.832
+19.83
+0.319
+0.359
+6.315
+19.83
+0.319
+SLD
+0.433
+0.398
+5.918
+19.99
+0.316
+0.234
+0.708
+6.626
+20.34
+0.295
+0.268
+6.093
+19.97
+0.308
+NP
+0.532
+0.482
+5.939
+20.34
+0.307
+0.217
+0.717
+6.653
+21.02
+0.298
+0.364
+6.189
+21.37
+0.315
+STG
+0.396
+0.387
+6.003
+20.15
+0.304
+0.264
+0.682
+6.595
+20.54
+0.290
+0.248
+6.611
+20.53
+0.306
+UCE
+0.117
+0.056
+5.940
+19.94
+0.301
+0.209
+0.714
+6.587
+20.69
+0.303
+0.167
+6.124
+20.98
+0.301
+ESD
+0.059
+0.005
+5.886
+21.15
+0.299
+0.220
+0.704
+6.357
+20.33
+0.283
+0.239
+6.606
+20.31
+0.298
+CA
+0.192
+0.086
+6.133
+20.78
+0.297
+0.362
+0.347
+6.940
+20.97
+0.286
+0.044
+6.373
+21.43
+0.304
+Ours
+0.014
+0.004
+6.248
+19.92
+0.310
+0.192
+0.729
+6.662
+20.01
+0.294
+0.023
+6.631
+20.12
+0.316
+accurately in the middle blocks at intermediate timesteps. Inspired
+by prior works in LLMs [7, 45], we can extract the representations
+of an unwanted concept along with a safe one. Their semantic dif-
+ference can naturally serve as a steering vector encoding a safe shift
+direction. Our construction method begins with data preparation.
+Let 𝐶−be a prompt containing the target concept (e.g., a photo
+of Taylor Swift), and 𝐶+ be an identical prompt where the target
+concept is replaced with a desired safe content (e.g., a photo of a
+Caucasian woman). For each target concept, we establish a dataset
+of n carefully curated paired prompts (𝐶−
+𝑖, 𝐶+
+𝑖), where 𝑖∈{1, . . .,𝑛}.
+This dataset is used to compute a steering vector by extracting
+the difference between the pairs. To derive the steering vector, we
+feed the prompt pairs into MM-DiT to obtain the output vectors
+from both modality branches in an intermediate block 𝑏: 𝑋−
+𝑡𝑒𝑥𝑡,𝑏,
+𝑋+
+𝑡𝑒𝑥𝑡,𝑏for text, and 𝑋−
+𝑖𝑚𝑎𝑔𝑒,𝑏, 𝑋+
+𝑖𝑚𝑎𝑔𝑒,𝑏for image. Each vector lies in
+R𝑁𝑡×𝐷𝑓, where 𝑁𝑡is the number of tokens, and 𝐷𝑓is the feature
+dimension. Given the overwhelming tokens in the image branch
+(4096 tokens), pinpointing critical tokens for difference extraction
+is difficult due to the large information redundancy. We therefore
+leverage the sparsity of the text branch (154 or 333 tokens), focusing
+exclusively on those textual tokens that differ between the paired
+prompts. The summed vectors of these targeted tokens for the i-th
+pair in block b are denoted as 𝑥−
+𝑏,𝑖and 𝑥+
+𝑏,𝑖(vectors in R𝐷𝑓), which
+are used for the steering vector computation. We then compute the
+average difference between 𝑥+
+𝑏,𝑖and 𝑥−
+𝑏,𝑖for all the n pairs in block
+𝑏to derive a steering vector 𝑣𝑠𝑡𝑒𝑒𝑟
+𝑏
+:
+𝑣𝑠𝑡𝑒𝑒𝑟
+𝑏
+= 𝑙·
+𝑣𝑏
+||𝑣𝑏||
+(3)
+where:
+𝑣𝑏= 1
+𝑛
+𝑛
+∑︁
+𝑖=1
+
+𝑥+
+𝑏,𝑖−𝑥−
+𝑏,𝑖
+
+(4)
+The steering strength 𝑙is determined empirically. The steering
+vector 𝑣𝑠𝑡𝑒𝑒𝑟
+𝑏
+∈R𝐷𝑓defines the direction and magnitude for steering
+from a target concept to the erased safe content.
+3.3
+Steering Vector Injection
+Once a steering vector 𝑣𝑠𝑡𝑒𝑒𝑟
+𝑏
+is constructed, we add it to the output
+vectors of all text-encoded tokens in the key blocks of MM-DiT
+during generation, thereby steering the target concept’s represen-
+tations toward the desired safe one while preserving overall image
+quality. The strategy for injecting the steering vector is determined
+based on two key dimensions: (1) which intermediate blocks to
+target, and (2) which denoising timesteps to intervene.
+Progressive Injection into Specific Blocks. A naive idea is to
+inject the vector directly into its construction block. However, this
+is proved ineffective for MM-DiT. This is because image features
+evolve progressively across blocks, and a small steering force in a
+single block is unlikely to alter the overall generation process.
+To address this, we propose injecting the steering vector across
+multiple consecutive blocks, leveraging their cumulative effect for
+coherent steering. However, not all block combinations yield opti-
+mal results: (1) steering confined to middle or late blocks is ineffec-
+tive, as the key structural and semantic basis is primarily established
+by early blocks, leaving limited room for subsequent alteration. (2)
+steering applied only to early blocks strongly influences image
+structure and may redirect the target semantics. Yet, the result-
+ing structural changes often conflict with the subjects encoded by
+unchanged textual tokens in the middle blocks, causing distorted
+outputs or unintended semantic shifts.
+To balance these trade-offs, we adopt a selective multi-block in-
+jection strategy: we inject the vector consecutively across multiple
+early and middle blocks. By gradually biasing feature representa-
+tions in a unified direction, the steering signal accumulates across
+
+
+MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil
+Qiao Li et al.
+Original
+Ours
+SLD
+NP
+TraSCE
+Erase Celebrity
+Erase Art Style
+Erase Nudity
+Leonardo DiCaprio
+Taylor Swift
+Elon Musk
+Monet
+Pablo Picasso
+Kelly Mckernan
+Naked
+Bared
+Nude
+Figure 4: Qualitative comparison between our method and baselines on Stable Diffusion-v3.5-medium. Our method effectively
+erases diverse concepts while largely preserving the overall image layout and quality. Specifically, for style erasure, our method
+erases Monet style to pixel art style, Kelly McKernan style to ink wash style, and Picasso style to photorealism style.
+blocks, consistently guiding the model away from the original tar-
+get while preserving image coherence. The very first few blocks,
+which primarily define the global layout without yet encoding main
+semantics, can be selectively omitted to avoid large distortion. Sim-
+ilarly, late blocks focusing on minor details have minimal impact
+on the overall semantic shift and can thus be selectively skipped.
+Stepwise Steering Across Denoising Timesteps. Beyond select-
+ing suitable blocks, the choice of denoising timestep plays a critical
+role in applying the steering vector. Unlike conventional diffusion
+models such as DDPM, which rely on a stochastic, nonlinear, and
+time-varying denoising trajectory, MM-DiT employs rectified flow,
+a deterministic generative process that follows a straight and stable
+sampling trajectory throughout generation. As a result, the features
+evolve in a more coherent and predictable manner, ensuring that a
+steering vector computed at any intermediate timestep captures a
+globally consistent semantic adjustment direction. This property
+enables the same vector to be applied consistently across all de-
+noising steps, thereby ensuring temporally coherent and unified
+guidance throughout image generation process.
+4
+Experiments
+4.1
+Experimental Setup
+Model and Datasets. We evaluate the effectiveness of our method
+on widely adopted multimodal diffusion transformer models, i.e.,
+Stable Diffusion-v3.5-medium (SDv3.5) [9] and FLUX.1[DEV] [22]
+in the experiments. We target three conceptual categories: nudity,
+celebrity (Elon Musk, Taylor Swift, Leonardo DiCaprio, Steve Jobs,
+and Audrey Hepburn), and art styles (Van Gogh, Monet, Pablo Pi-
+casso, Kelly Mckernan, and Andy Warhol). We leverage GPT-4o [2]
+to generate 100 test prompts for each concept. We utilize regular
+prompts from COCO-30K dataset [26] to assess the impact of our
+method on irrelevant image generation. For robustness evaluation,
+we use adversarial prompts from four datasets: Ring-A-Bell [44],
+MMA-Diffusion [48], I2P [40], and P4D [6].
+Evaluation Metrics. We evaluate our method from three aspects.
+First, to assess the erasure effectiveness, we employ GIPHY detec-
+tor [1] and the pretrained vision-language model LLaVA-1.5 [28]
+for celebrity detection, Gram matrix score [15] and LPIPS score [51]
+for style evaluation, and NudeNet [4] for nudity detection. Second,
+to evaluate the image applicability after erasure, we use Aesthetic
+Predictor V2 Score [23] for measuring visual appeal. Third, we
+use Frechet Inception Distance (FID) [17] and CLIP score [34] for
+regular image quality evaluation.
+4.2
+Comparison to Baselines
+We compare our methods with model tuning-free baselines that are
+applicable to SDv3.5 and FLUX.1: Safe Latent Diffusion (SLD) [40],
+TraSCE [20], STG [32], and Negative Prompt (NP). We also choose
+model modification baselines that provide support for FLUX.1:
+UCE [13], ESD [12], and CA [21]. Quantitative and qualitative re-
+sults are shown in Table 1 and Figure 4, respectively.
+For celebrity and nudity erasure, our method outperforms all
+the baselines on the two models in both erasure effectiveness and
+aesthetic score, indicating that it precisely steers target concepts to
+desired safe content without compromising image quality. Besides,
+our method achieves nearly the lowest FID score among all base-
+lines, demonstrating minimal impact on normal image generation.
+For art style erasure, our method achieves the best erasure perfor-
+mance on both models, as validated by Gram matrix and LPIPS score.
+The aesthetic score is slightly lower than that of some baselines.
+
+
+Semantic Steering for Controllable Generation: Tuning-Free Concept Erasure in Multimodal Diffusion Transformers
+MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil
+Table 2: Quantitative results of constructing steering vectors
+in different blocks or at different denoising timesteps.
+Construction Method
+Celebrity
+Art Style
+GIPHY↓
+Aesthetic↑
+Gram↓
+Aesthetic↑
+Early block
+0.002
+5.053
+0.186
+6.287
+Late block
+0.025
+5.384
+0.402
+6.452
+Ours (middle block)
+0.020
+5.522
+0.137
+6.367
+Early timestep
+0.001
+5.436
+0.162
+6.416
+Late timestep
+0.028
+5.331
+0.203
+6.474
+Ours (intermediate timestep)
+0.020
+5.522
+0.137
+6.367
+  Early (b=1)
+SDv3.5 (base)
+Ours 
+ Late (b=22)   Early (t=0.2)  Late (t=0.8)
+Construct in different blocks
+Construct in different timesteps
+Figure 5: Images generated using steering vectors constructed
+in different Transformer blocks or at different denoising
+timesteps. (Top: Van Gogh style. Bottom: Elon Musk).
+We note, however, that this does not necessarily indicate a degra-
+dation in perceptual image quality. MM-DiTs inherently generate
+high-aesthetic images, and baselines with weaker erasure efficacy
+produce results that are visually similar to the original, thereby
+retaining high aesthetic scores. In contrast, our method performs a
+more complete style transformation, sometimes toward styles that
+are underrepresented in the predictor’s training set, which may
+lower the score. Therefore, a slight drop in aesthetic score is an
+acceptable trade-off for achieving thorough style removal.
+4.3
+Ablation Study
+To verify the design choices of our method, we conduct ablation
+studies for celebrity and art style erasure on SDv3.5.
+Block Selection for Steering Vector Construction. In our method,
+we construct a steering vector in the middle block (𝑏= 10). To
+validate the block selection, we show the averaged results of con-
+structing in the early blocks (𝑏= 1, 3, 5, 7) and the late blocks
+(𝑏= 16, 18, 20, 22) in Table 2, and the example images after steering
+in Figure 5. The vectors built in early blocks mainly capture coarse
+and global structural features. Consequently, applying these vec-
+tors steers or even distorts the overall image layout, leading to the
+disappearance of the target concept with a very low aesthetic score
+(low image quality). In contrast, the vectors built in late blocks
+primarily learn minor and even redundant details. As a result, their
+injection has negligible impact on the generated images. We note
+that 𝑏= 10 is not the only effective choice, the interval 𝑏∈[9, 13]
+constitutes a stable region where the method remains effective.
+Timestep Selection for Steering Vector Construction. Dur-
+ing the denoising process, we construct a steering vector at an
+intermediate timestep (𝑡= 0.5). We assess the averaged results of
+vector construction at early (𝑡= 0.1, 0.2, 0.3) and late timesteps
+Table 3: Quantitative results of injecting steering vectors into
+different Transformer block combinations.
+Injection Block Combinations
+Celebrity
+Art Style
+Single
+Multiple
+Position
+GIPHY↓
+Aesthetic↑
+Gram↓
+Aesthetic↑
+✓
+Early
+0.395
+5.532
+0.252
+6.688
+✓
+Middle
+0.625
+5.522
+0.541
+6.635
+✓
+Late
+0.686
+5.503
+0.882
+6.613
+✓
+Early
+0.322
+5.268
+0.115
+5.006
+✓
+Middle
+0.547
+5.537
+0.351
+6.597
+✓
+Late
+0.647
+5.498
+0.540
+6.570
+Ours (multiple early+middle)
+0.020
+5.522
+0.137
+6.367
+Block-wise local steering
+0.029
+5.341
+0.158
+6.177
+Early
+feature 1
+feature 2
+feature 1
+feature 1
+feature 2
+feature 2
+Late
+Middle
+Early
+feature 1
+feature 2
+feature 1
+feature 1
+feature 2
+feature 2
+Late
+Middle
+Ours
+feature 2
+feature 1
+Original
+(2). Output image feature visualization via Principal Component Analysis 
+(a). Steer in a single block (b). Steer in a set of blocks
+(c). Ours
+(1). Image generated with steering, using “a wolf howling at a swirling moon, in the style of Van Gogh”
+Early
+Middle
+Late
+Early
+Middle
+Late
+Ours
+Original
+feature 1
+feature 2
+Late
+Figure 6: Images generated by injecting vectors into different
+block combinations, along with the respective feature visual-
+izations. The feature distribution after steering (red points in
+’Ours’) shifts away from the original style distribution ( blue
+points in ’Original’), yet retains a similar overall structure.
+(𝑡= 0.7, 0.8, 0.9) respectively, shown in Table 2 and Figure 5. Results
+validate that construction at early or late timesteps can also erase
+the concept to some extent, but it leads to significant alterations in
+overall image structure or detailed content.
+Block Combinations for Steering Vector Injection. Our method
+injects the steering vector into consecutive early and middle blocks
+(𝑏= 3, . . ., 10). As shown in Table 3, we provide quantitative results
+of injecting into a single early, middle or late block, as well as into
+multiple early, middle, or late blocks. We also show the generated
+image examples and visualize their corresponding feature distribu-
+tions via Principal Component Analysis (PCA) in Figure 6. Results
+reveal that injecting into a single or multiple middle/late blocks
+causes nearly no changes, whereas injecting into a single early
+block may bring minor structural modifications. However, injecting
+into multiple early blocks leads to substantial, undesirable image
+distortion. We conclude that early blocks are crucial for overall
+image structure, while both early and middle blocks are critical for
+coherently constructing the main semantics of the image.
+Block-wise Local Steering. To further analyze the alignment of
+steering directions across blocks, we independently construct and
+inject a local steering vector for each block 𝑏∈[1, 10]. As shown
+in the last row of Table 3, the erasure effectiveness of this per-block
+local steering is close to that of our method, indicating that the
+optimal steering directions are highly consistent across blocks and
+
+
+MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil
+Qiao Li et al.
+(a). Erasure Effectiveness
+(b). Aesthetic Score
+Figure 7: Sensitivity analysis of the steering strength ℓ. We
+evaluate how erasure effectiveness (GIPHY and Gram) and
+post-erasure image aesthetics vary with ℓ.
+Cartoon style
+Watercolor style
+Original
+A painting of a  sunflower in a cracked vase, in the style of Van Gogh.
+A painting of the cliffs at Etretat under a changing sky, in the style of Monet.
+Ink Wash style
+Original
+Pixel Art style
+Photorealism style Monochrome style
+Figure 8: Example images show multi-style steering for con-
+trolled style transformation: Monet style is steered into pixel
+art, photorealism, and monochrome, while Van Gogh style
+is steered into cartoon, watercolor, and ink wash styles.
+that a vector extracted from the middle block can effectively steer
+multiple blocks. However, multiple local vectors slightly reduce aes-
+thetic quality, likely due to incoherent interventions that introduce
+subtle artifacts, while also increasing computational cost. Therefore,
+we choose a single middle vector instead of multiple local ones.
+Sensitivity Analysis of the Steering Strength 𝑙. We present
+sensitivity analysis of ł in Figure 7. For celebrity, the erasure ef-
+fectiveness increases sharply between 𝑙= 10 and 𝑙= 60, reaching
+a stable low value thereafter, while the aesthetic score decreases
+slightly and then plateaus. For art style, effectiveness improves
+rapidly up to 𝑙= 30, after which the gain slows. The aesthetic score
+first declines, stabilizes between 𝑙= 30 and 𝑙= 50, and then drops
+again beyond 𝑙= 50, likely because style information is globally dis-
+tributed and is more susceptible to stronger steering than celebrity
+features. Based on this trade-off, we select 𝑙= 70 for celebrity and
+𝑙= 40 for art style to balance erasure and aesthetic quality. Notably,
+for both concepts, there exists a stable plateau (𝑙∈[30, 60] for art
+style and 𝑙∈[60, 100] for celebrity) where the method consistently
+removes the target while preserving image quality. This indicates
+the robustness of our method to the choice of 𝑙.
+4.4
+Multi-Style Steering
+While existing baseline methods primarily focus on removing the
+target concept without specifying the final output after erasure,
+Table 4: Robustness comparison between our method and
+baselines against four types of adversarial attacks targeting
+nudity on FLUX.1. All presented values are NudeNet scores.
+Method
+Ring-A-Bell↓
+I2P↓
+MMA-Diffusion↓
+P4D↓
+FLUX.1 (base)
+0.435
+0.148
+0.075
+0.238
+SLD
+0.495
+0.151
+0.056
+0.227
+NP
+0.461
+0.160
+0.117
+0.229
+STG
+0.482
+0.154
+0.148
+0.234
+UCE
+0.415
+0.147
+0.086
+0.187
+ESD
+0.127
+0.065
+0.021
+0.071
+CA
+0.212
+0.104
+0.020
+0.130
+Ours
+0.057
+0.014
+0.016
+0.013
+FLUX.1
+Ours
+SLD
+AC
+ESD
+UCE
+Ring-A-Bell
+I2P
+Figure 9: Visual examples of nudity erasure against adversar-
+ial prompts generated by Ring-A-Bell and I2P. Our method
+exhibits strong robustness against adversarial prompts.
+our method supports more flexible steering—redirecting the tar-
+get concept’s representation toward diverse, specified semantic
+distributions. For example, as shown in Figure 8, our method can
+transform an art style into different ones. This flexibility stems from
+style-specific steering vectors, each guiding the target concept’s rep-
+resentation toward a predefined output distribution. Applying the
+corresponding vectors allows users to achieve both target concept
+erasure and fine-grained control over desired semantic outcomes.
+4.5
+Robustness to Adversarial Attack
+We evaluate the robustness of our method against four adversarial
+attacks. Since certain attacks can only generate adversarial prompts
+targeting the ’nudity’ concept, our analysis focuses on these attacks.
+As illustrated in the FLUX.1 results in Table 4 and Figure 9, com-
+pared to the baselines, our approach exhibits the strongest defense
+performance across all tested attack types, obtaining the lowest
+NudeNet scores. This suggests that our method significantly re-
+duces the proportion of generated nudity-related concepts.
+5
+Conclusion
+In this paper, we investigate the intrinsic properties of MM-DiT and
+propose a tuning-free concept erasure framework. By analyzing
+the generative roles of different blocks, we reveal that semantic
+representations of target concepts are predominantly concentrated
+in the middle blocks. Building on this insight, we construct a steer-
+ing vector that guides the model toward safe semantics, and inject
+it into key blocks at every denoising timestep, thereby achieving
+concept erasure while preserving the overall image quality. Our
+method not only improves generation safety but also provides a
+foundation for future research on controllable image generation.
+
+
+Semantic Steering for Controllable Generation: Tuning-Free Concept Erasure in Multimodal Diffusion Transformers
+MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil
+6
+Acknowledgments
+This work was supported by the National Key Research and Devel-
+opment Program of China (No.2024YFC3307402).
+References
+[1] Nick Hasty, Ihor Kroosh, Dmitry Voitekh, and Dmytro Korduban. 2019. Giphy
+celebrity detector. https://github.com/Giphy/celeb-detection-oss.
+[2] Josh Achiam, Steven Adler, Sandhini Agarwal, Lama Ahmad, Ilge Akkaya, Floren-
+cia Leoni Aleman, Diogo Almeida, Janko Altenschmidt, Sam Altman, Shyamal
+Anadkat, et al. 2023. Gpt-4 technical report. arXiv preprint arXiv:2303.08774
+(2023).
+[3] Fazl Barez, Tingchen Fu, Ameya Prabhu, Stephen Casper, Amartya Sanyal, Adel
+Bibi, Aidan O’Gara, Robert Kirk, Ben Bucknall, Tim Fist, et al. 2025. Open
+problems in machine unlearning for ai safety. arXiv preprint arXiv:2501.04952
+(2025).
+[4] P Bedapudi. 2019. Nudenet: Neural nets for nudity classification, detection and
+selective censoring. (2019).
+[5] Anh Bui, Long Vuong, Khanh Doan, Trung Le, Paul Montague, Tamas Abraham,
+and Dinh Phung. 2024. Erasing undesirable concepts in diffusion models with
+adversarial preservation. arXiv preprint arXiv:2410.15618 (2024).
+[6] Zhi-Yi Chin, Chieh-Ming Jiang, Ching-Chun Huang, Pin-Yu Chen, and Wei-Chen
+Chiu. 2023. Prompting4debugging: Red-teaming text-to-image diffusion models
+by finding problematic prompts. arXiv preprint arXiv:2309.06135 (2023).
+[7] Sumanth Dathathri, Andrea Madotto, Janice Lan, Jane Hung, Eric Frank, Piero
+Molino, Jason Yosinski, and Rosanne Liu. 2019. Plug and play language models:
+A simple approach to controlled text generation. arXiv preprint arXiv:1912.02164
+(2019).
+[8] Kamil Deja et al. 2025. Saeuron: Interpretable concept unlearning in diffusion
+models with sparse autoencoders. arXiv preprint arXiv:2501.18052 (2025).
+[9] Patrick Esser, Sumith Kulal, Andreas Blattmann, Rahim Entezari, Jonas Müller,
+Harry Saini, Yam Levi, Dominik Lorenz, Axel Sauer, Frederic Boesel, et al. 2024.
+Scaling rectified flow transformers for high-resolution image synthesis. In Forty-
+first international conference on machine learning.
+[10] Masane Fuchi and Tomohiro Takagi. 2024. Erasing Concepts from Text-to-Image
+Diffusion Models with Few-shot Unlearning.. In BMVC.
+[11] Tatiana Gaintseva, Andreea-Maria Oncescu, Chengcheng Ma, Ziquan Liu, Mar-
+tin Benning, Gregory G. Slabaugh, Jiankang Deng, and Ismail Elezi. 2025.
+CASteer: Cross-Attention Steering for Controllable Concept Erasure.
+https:
+//api.semanticscholar.org/CorpusID:276961220
+[12] Rohit Gandikota, Joanna Materzynska, Jaden Fiotto-Kaufman, and David Bau.
+2023. Erasing concepts from diffusion models. In Proceedings of the IEEE/CVF
+international conference on computer vision. 2426–2436.
+[13] Rohit Gandikota, Hadas Orgad, Yonatan Belinkov, Joanna Materzyńska, and
+David Bau. 2024. Unified concept editing in diffusion models. In Proceedings of
+the IEEE/CVF winter conference on applications of computer vision. 5111–5120.
+[14] Daiheng Gao, Shilin Lu, Wenbo Zhou, Jiaming Chu, Jie Zhang, Mengxi Jia, Bang
+Zhang, Zhaoxin Fan, and Weiming Zhang. 2025. Eraseanything: Enabling concept
+erasure in rectified flow transformers. In Forty-second International Conference
+on Machine Learning.
+[15] Leon A Gatys, Alexander S Ecker, and Matthias Bethge. 2015. A neural algorithm
+of artistic style. arXiv preprint arXiv:1508.06576 (2015).
+[16] Chao Gong, Kai Chen, Zhipeng Wei, Jingjing Chen, and Yu-Gang Jiang. 2024. Re-
+liable and efficient concept erasure of text-to-image diffusion models. In European
+Conference on Computer Vision. Springer, 73–88.
+[17] Martin Heusel, Hubert Ramsauer, Thomas Unterthiner, Bernhard Nessler, and
+Sepp Hochreiter. 2017. Gans trained by a two time-scale update rule converge to
+a local nash equilibrium. Advances in neural information processing systems 30
+(2017).
+[18] Jonathan Ho, Ajay Jain, and Pieter Abbeel. 2020. Denoising diffusion probabilistic
+models. Advances in neural information processing systems 33 (2020), 6840–6851.
+[19] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean
+Wang, Liang Wang, Weizhu Chen, et al. 2022. Lora: Low-rank adaptation of large
+language models. Iclr 1, 2 (2022), 3.
+[20] Anubhav Jain, Yuya Kobayashi, Takashi Shibuya, Yuhta Takida, Nasir Memon,
+Julian Togelius, and Yuki Mitsufuji. 2024. Trasce: Trajectory steering for concept
+erasure. arXiv preprint arXiv:2412.07658 (2024).
+[21] Nupur Kumari, Bingliang Zhang, Sheng-Yu Wang, Eli Shechtman, Richard Zhang,
+and Jun-Yan Zhu. 2023. Ablating concepts in text-to-image diffusion models. In
+Proceedings of the IEEE/CVF international conference on computer vision. 22691–
+22702.
+[22] Black Forest Labs. 2024. FLUX. https://blackforestlabs.ai/announcing-black-
+forest-labs/. Accessed: [19.11.2025].
+[23] LAION-AI. 2022. aesthetic-predictor. https://github.com/LAION-AI/aesthetic-
+predictor.
+[24] Chak Tou Leong, Yi Cheng, Jiashuo Wang, Jian Wang, and Wenjie Li. 2023. Self-
+detoxifying language models via toxification reversal. In Proceedings of the 2023
+Conference on Empirical Methods in Natural Language Processing. 4433–4449.
+[25] Leyang Li, Shilin Lu, Yan Ren, and Adams Wai-Kin Kong. 2025. Set you straight:
+Auto-steering denoising trajectories to sidestep unwanted concepts. In Proceed-
+ings of the 33rd ACM International Conference on Multimedia. 9257–9266.
+[26] Tsung-Yi Lin, Michael Maire, Serge Belongie, James Hays, Pietro Perona, Deva
+Ramanan, Piotr Dollár, and C Lawrence Zitnick. 2014. Microsoft coco: Common
+objects in context. In European conference on computer vision. Springer, 740–755.
+[27] Yaron Lipman, Ricky TQ Chen, Heli Ben-Hamu, Maximilian Nickel, and Matthew
+Le. 2022. Flow matching for generative modeling. In The eleventh international
+conference on learning representations.
+[28] Haotian Liu, Chunyuan Li, Yuheng Li, and Yong Jae Lee. 2024. Improved baselines
+with visual instruction tuning. In Proceedings of the IEEE/CVF conference on
+computer vision and pattern recognition. 26296–26306.
+[29] Xingchao Liu, Chengyue Gong, and Qiang Liu. 2023. Flow straight and fast: Learn-
+ing to generate and transfer data with rectified flow. In International conference
+on learning representations (ICLR).
+[30] Shilin Lu, Zilan Wang, Leyang Li, Yanzhu Liu, and Adams Wai-Kin Kong. 2024.
+Mace: Mass concept erasure in diffusion models. In Proceedings of the IEEE/CVF
+Conference on Computer Vision and Pattern Recognition. 6430–6440.
+[31] Chenlin Meng, Yutong He, Yang Song, Jiaming Song, Jiajun Wu, Jun-Yan Zhu, and
+Stefano Ermon. 2021. Sdedit: Guided image synthesis and editing with stochastic
+differential equations. arXiv preprint arXiv:2108.01073 (2021).
+[32] Byeonghu Na, Mina Kang, Jiseok Kwak, Minsang Park, Jiwoo Shin, SeJoon Jun,
+Gayoung Lee, Jin-Hwa Kim, and Il-Chul Moon. 2026. Training-free safe text
+embedding guidance for text-to-image diffusion models. Advances in Neural
+Information Processing Systems 38 (2026), 85984–86014.
+[33] William Peebles and Saining Xie. 2023. Scalable diffusion models with transform-
+ers. In Proceedings of the IEEE/CVF international conference on computer vision.
+4195–4205.
+[34] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh,
+Sandhini Agarwal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark,
+et al. 2021. Learning transferable visual models from natural language supervision.
+In International conference on machine learning. PmLR, 8748–8763.
+[35] Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang,
+Michael Matena, Yanqi Zhou, Wei Li, and Peter J Liu. 2020. Exploring the limits
+of transfer learning with a unified text-to-text transformer. Journal of machine
+learning research 21, 140 (2020), 1–67.
+[36] Nina Rimsky, Nick Gabrieli, Julian Schulz, Meg Tong, Evan Hubinger, and Alexan-
+der Turner. 2024. Steering llama 2 via contrastive activation addition. In Proceed-
+ings of the 62nd Annual Meeting of the Association for Computational Linguistics
+(Volume 1: Long Papers). 15504–15522.
+[37] Pau Rodriguez, Arno Blaas, Michal Klein, Luca Zappella, Nicholas Apostoloff,
+Xavier Suau, et al. 2025. Controlling language and diffusion models by transport-
+ing activations. In International Conference on Learning Representations, Vol. 2025.
+89812–89855.
+[38] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Björn
+Ommer. 2022. High-resolution image synthesis with latent diffusion models. In
+Proceedings of the IEEE/CVF conference on computer vision and pattern recognition.
+10684–10695.
+[39] Olaf Ronneberger, Philipp Fischer, and Thomas Brox. 2015. U-net: Convolutional
+networks for biomedical image segmentation. In International Conference on
+Medical image computing and computer-assisted intervention. Springer, 234–241.
+[40] Patrick Schramowski, Manuel Brack, Björn Deiseroth, and Kristian Kersting.
+2023. Safe latent diffusion: Mitigating inappropriate degeneration in diffusion
+models. In Proceedings of the IEEE/CVF conference on computer vision and pattern
+recognition. 22522–22531.
+[41] Yang Song and Stefano Ermon. 2019. Generative modeling by estimating gradients
+of the data distribution. Advances in neural information processing systems 32
+(2019).
+[42] Yang Song, Jascha Sohl-Dickstein, Diederik P Kingma, Abhishek Kumar, Stefano
+Ermon, and Ben Poole. 2020. Score-based generative modeling through stochastic
+differential equations. arXiv preprint arXiv:2011.13456 (2020).
+[43] Nishant Subramani, Nivedita Suresh, and Matthew E Peters. 2022. Extracting
+latent steering vectors from pretrained language models. In Findings of the Asso-
+ciation for Computational Linguistics: ACL 2022. 566–581.
+[44] Yu-Lin Tsai, Chia-Yi Hsu, Chulin Xie, Chih-Hsun Lin, Jia You Chen, Bo Li, Pin-Yu
+Chen, Chia-Mu Yu, and Chun-Ying Huang. 2023. Ring-a-bell! how reliable are
+concept removal methods for diffusion models?. In The Twelfth International
+Conference on Learning Representations.
+[45] Alexander Matt Turner, Lisa Thiergart, Gavin Leech, David Udell, Juan J Vazquez,
+Ulisse Mini, and Monte MacDiarmid. 2023. Steering language models with
+activation engineering. arXiv preprint arXiv:2308.10248 (2023).
+[46] Haoran Wang and Kai Shu. 2024. Trojan activation attack: Red-teaming large
+language models using steering vectors for safety-alignment. In Proceedings of the
+33rd ACM International Conference on Information and Knowledge Management.
+2347–2357.
+[47] Kang Wei, Xin Yuan, Fushuo Huo, Chuan Ma, Long Yuan, Songze Li, Ming Ding,
+and Dacheng Tao. 2025. Responsible Diffusion: A Comprehensive Survey on
+
+
+MM ’26, November 10–14, 2026, Rio de Janeiro, Brazil
+Qiao Li et al.
+Safety, Ethics, and Trust in Diffusion Models. arXiv preprint arXiv:2509.22723
+(2025).
+[48] Yijun Yang, Ruiyuan Gao, Xiaosen Wang, Tsung-Yi Ho, Nan Xu, and Qiang Xu.
+2024. Mma-diffusion: Multimodal attack on diffusion models. In Proceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern Recognition. 7737–7746.
+[49] Jaehong Yoon, Shoubin Yu, Vaidehi Ramesh Patil, Huaxiu Yao, and Mohit Bansal.
+2025. Safree: Training-free and adaptive guard for safe text-to-image and video
+generation. In International Conference on Learning Representations, Vol. 2025.
+56439–56465.
+[50] Gong Zhang, Kai Wang, Xingqian Xu, Zhangyang Wang, and Humphrey Shi.
+2024. Forget-me-not: Learning to forget in text-to-image diffusion models. In
+Proceedings of the IEEE/CVF conference on computer vision and pattern recognition.
+1755–1764.
+[51] Richard Zhang, Phillip Isola, Alexei A Efros, Eli Shechtman, and Oliver Wang.
+2018. The unreasonable effectiveness of deep features as a perceptual metric.
+In Proceedings of the IEEE conference on computer vision and pattern recognition.
+586–595.
+[52] Hongjue Zhao, Haosen Sun, Jiangtao Kong, Xiaochang Li, Qineng Wang, Liwei
+Jiang, Qi Zhu, Tarek Abdelzaher, Yejin Choi, Manling Li, et al. 2026. Odesteer:
+A unified ode-based steering framework for llm alignment.
+arXiv preprint
+arXiv:2602.17560 (2026).

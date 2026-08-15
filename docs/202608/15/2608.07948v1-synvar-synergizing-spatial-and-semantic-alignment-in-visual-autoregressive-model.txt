@@ -1,0 +1,1615 @@
+SynVAR: Synergizing Spatial and Semantic
+Alignment in Visual Autoregressive Model
+Zhennan Chen1∗, Tianxing Shi1∗, Pengcheng Xu2, Kepan Nan1,
+Qian Wang3, Zili Yi1, Jian Yang1, and Ying Tai1†
+1 State Key Laboratory for Novel Software Technology, Nanjing University
+2 Western University
+3 JIUTIAN Research, CMCC, China
+https://github.com/NJU-PCALab/SynVAR
+…
+Semantic Confusion
+VAR
+SynVAR
+Detail Degradation
+VAR
+SynVAR
+Spatial Error
+VAR
+SynVAR
+a photo of orange skateboard and a pink bowl
+a dog above a balloon
+a photo of a yellow sports ball and a green boat
+𝑟!
+…
+…
+…
+𝑟"
+𝑟#
+𝑟$$
+𝑟$"
+…
+…
+𝑟!
+𝑟"
+𝑟#
+𝑟$$
+𝑟$"
+…
+…
+…
+…
+…
+…
+𝑟!
+𝑟"
+𝑟#
+𝑟$$
+𝑟$"
+(a)
+(b)
+(c)
+(d)
+Fig. 1: (a)(b)(c): In complex scenes, existing VAR models are prone to spatial error,
+semantic confusion, and detail degradation. (d) Due to different formulations and mod-
+eling of the image, the solutions in existing diffusion models cannot play a positive role,
+while our method can significantly enhance the generation performance.
+Abstract. VAR has gained widespread popularity due to its next-scale
+prediction paradigm. However, it faces substantial performance bottle-
+necks when handling complex scenes with multiple objects and attributes.
+Existing diffusion-based enhancement methods fail to adequately address
+the unique challenge of cross-scale error propagation and accumulation
+in VAR. To this end, we propose SynVAR, the first training-free enhance-
+ment framework specifically tailored for the VAR paradigm, which intro-
+duces a spatial-semantic collaborative control strategy to effectively sup-
+press propagation error and improve generation quality. SynVAR com-
+prises three key components: (1) Global guidance to ensure reasonable
+spatial structure in the early stages, (2) Receptive field constraints to
+⋆Equal Contribution.
+†Corresponding Author.
+arXiv:2608.07948v1  [cs.CV]  8 Aug 2026
+
+
+2
+Z. Chen et al.
+mitigate early-stage semantic confusion, (3) High-frequency compensa-
+tion to recover fine-grained details. Extensive quantitative and qualita-
+tive experiments demonstrate the significant improvements in the ability
+of SynVAR to enhance the VAR’s capability for complex scene modeling.
+Keywords: Visual Autoregressive Model · Complex Scene Generation
+· Training-free Method
+1
+Introduction
+The Visual Autoregressive (VAR) model [31] revolutionizes the generation paradigm
+of “next-token prediction” in the previous AR models with “next-scale predic-
+tion”. This new formulation significantly advanced generated images’ quality and
+sampling efficiency and induced new AR-based large-scale text-to-image mod-
+els such as Infinity [18], Switti [35], and VARGPT [50]. Though thriving in
+quality and efficiency, they show deficiencies in spatial and semantic correctness
+in complex scenes, especially involving multiple objects, attributes, and spatial
+relations, which is essential and crucial for high-quality image generation. We
+demonstrate these issues in Figure 1(a)(b)(c). Specifically, the VAR may not
+accurately control the spatial relation of objects, and demonstrate visual seman-
+tics, and imagery details according to the text guidance in complex scenes. These
+indicate that the spatial and semantic relations in the VAR are not well aligned.
+To address these, we investigate the pattern within the VAR transformer during
+generation and propose a train-free framework for more precise and controllable
+generation of complex scenes, enhancing the spatial and semantic alignment in
+the VAR paradigm.
+𝑥!
+...
+𝑝(𝑥!"#|𝑥!)
+𝑝(𝑟$|𝑟%, 𝑟#, … , 𝑟$"#)
+𝑥"
+𝑥"#$
+...
+𝑥%
+𝑟%
+...
+𝑟&#$
+𝑟&
+...
+𝑟'
+(a) Diffusion model paradigm
+(b) VAR paradigm
+Fig. 2: Graphical models for diffusion and VAR inference models. Compared with the
+diffusion model, VAR is more prone to error accumulation and propagation.
+In our investigation, simply extending diffusion-based enhancement meth-
+ods such as iterative refinement [2, 9] and local attention [21, 38] to VAR faces
+a significant degradation, as shown in Figure 1(d). This is because VAR uses
+the different formulation and modeling of images from diffusion. As shown in
+Figure 2, in VAR, the prediction of each image scale is conditioned on all pre-
+vious scales, whereas the image latent in diffusion is only conditioned on that
+previous one. Such a difference causes the spatial and semantic errors at the low-
+resolution scale of VAR more prone to propagate and accumulate and difficult
+
+
+SynVAR
+3
+to restore fine texture details. This characteristic of VAR amplifies the degra-
+dation of VAR’s spatial and semantic misalignment in complex scenes, which
+invalidates the techniques to improve the image quality. Thus, this motivates us
+to rethink spatial and semantic relations and enhance the generation rationality
+of VAR in complex scenes.
+To address the issues above, we propose a collaborative correction mechanism
+for spatial and semantic control termed as SynVAR, which to our knowledge is
+the first training-free framework tailored for text-to-image models under the
+VAR paradigm. Specifically, the framework improves the spatial and semantic
+control from three aspects: 1) The global guidance optimizes the spatial parti-
+tioning strategy at the low-resolution scale stage and introduces explicit spatial
+priors in the cross-attention mechanism, ensuring the structural integrity of the
+image. 2) The receptive field constraint dynamically adjusts the interaction range
+of the front self-attention layers, effectively suppressing semantic confusion. 3)
+The high-frequency compensation enhances the high-frequency components of
+the features, enhancing the detail generation. Global guidance and receptive
+field constraint align spatial and semantic elements effectively, preventing error
+accumulation and ensuring that the final image accurately reflects the desired
+content. On this basis, the high-frequency compensation mechanism further en-
+hances the detail performance of the image. Experimental results show that
+SynVAR consistently improves performance on various models such as Infinity
+and Switti, achieving average improvements of 19.6% and 7.9% on the overall
+score of the Geneval [15] and T2I-CompBench [20], respectively.
+Our contributions are summarized as follows:
+– We conducted a detailed investigation into the failure mechanisms of the
+VAR model in complex scenes. Based on these findings, we introduce Syn-
+VAR, the first training-free enhancement framework designed specifically to
+address these issues in the VAR paradigm.
+– We propose an innovative approach for spatial and semantic alignment that
+combines global spatial guidance, receptive field constraints, and high-frequency
+compensation. This collaborative mechanism effectively reduces decision er-
+rors during the generation process and prevents the propagation of early-
+stage mistakes.
+– As a plug-and-play solution, SynVAR significantly improves the performance
+of various VAR-based text-to-image models on different benchmarks, proving
+its effectiveness.
+2
+Related Work
+Visual Autoregressive Modeling. Inspired by the success of language mod-
+els [1,3,22,30,32,33] in the visual generation domain, a discrete representation-
+based autoregressive paradigm has gradually been established. Early efforts, such
+as VQ-VAE [34] and VQGAN [14], established a strong foundation for visual
+autoregressive modeling by introducing the concept of encoding images into dis-
+crete visual tokens. These methods enabled the generation of images through a
+
+
+4
+Z. Chen et al.
+sequence of discrete symbols, similar to how text is processed in language mod-
+els. Subsequent efforts [4,5,12,27] introduced this paradigm into text-to-image
+synthesis. Building on these developments, VAR proposed the "next-scale pre-
+diction" strategy, transforming traditional one-dimensional token prediction into
+multi-scale image block prediction, thereby significantly enhancing both gener-
+ation quality and semantic consistency. Recent advances such as Infinity [18],
+Switti [35], and STAR [23] have further optimized image detail representation
+and text-image alignment from different perspectives. VARGPT [50] also adopts
+the next-scale prediction paradigm for visual autoregressive generation, as part of
+broader multimodal visual understanding and generation efforts. Despite these
+successes in standard scenarios, existing VAR models still struggle with chal-
+lenges in spatial and semantic alignment when handling complex prompts in-
+volving multiple objects and intricate attribute combinations.
+Complex Scene Generation. With the development of diffusion model [8,10,
+11, 19, 24–26, 28, 29, 39–46, 48, 49], various solutions have been proposed in the
+diffusion model domain for complex scene synthesis. To improve the results of
+combined generation, some methods [2,9,13,21,47] focus on integrating instance-
+level control through multi-stage sampling, where the generation process is iter-
+atively refined to ensure the correct placement and attributes of objects. Some
+methods [7, 37] have explored the use of a scoring function to guide the gener-
+ation process, enabling zero-shot layout control that adapts to complex scene
+requirements. Another category of solutions [6,17] optimizes the initial noise to
+obtain better generation results. However, due to differences in image modeling
+approaches, these solutions are not suitable for VAR. In this paper, we intro-
+duce a training-free framework, SynVAR, tailored for the cross-scale pattern in
+the VAR paradigm. which establishes a collaborative correction mechanism of
+spatial and semantics, effectively enhancing the generation performance of VAR
+in complex scene synthesis.
+3
+Method
+3.1
+Preliminaries
+VAR redefines autoregressive learning for images via next-scale prediction, in-
+spired by human perception (coarse-to-fine hierarchy). Instead of token-by-token
+generation, VAR generates multi-scale token maps (r0, r1, ..., rS) autoregres-
+sively, starting from the coarsest resolution (1 × 1) to the target resolution
+(H × W). At each step s, the model predicts the entire token map rs condi-
+tioned on all previous scales r0, r1, ..., rs−1:
+  p\l eft ( r _ {0} ,
+ 
+r
+_{1
+} , \ l dot s , r _ { S}\ri g ht )=\prod _{s=1}^{S} p\left (r_{s} \mid r_{0}, r_{1}, \ldots , r_{s-1}\right )\cdot p(s_0) 
+(1)
+Using this sequence of residuals, the feature fs at the s-th scale step can be
+obtained from the following formula:
+  f _{s} = f_{s-1 } + \phi \left (r_{s-1},(h_{s}, w_{s})\right ) \label {eq:f} 
+(2)
+
+
+SynVAR
+5
+where ϕ(·) represents upsampling rs−1 to resolution {hs, ws}. fs represents the
+cumulative sum of the upsampled sequence (r0, r1, ..., rs−1). In the VAR gen-
+eration process, once spatial or semantic errors occur in the early stage, this
+cross-scale dependency modeling can easily lead to the propagation and accu-
+mulation of errors, which is particularly common in complex scenarios.
+3.2
+Overview
+Self-attention layer
+Cross-attention layer
+FFN 
+𝑦!
+Global Guidance
+𝑦"
+Key
+Query 
+FFT
+filter
+add
+IFFT
+High-frequency Compensation
+High-frequency Compensation
+Global Guidance & Receptive Field Constraint
+prompt 𝑝: a dog above a balloon
+Receptive Field Constraint
+𝑟!
+𝑟"
+𝑟#
+𝑟$
+𝑟%&"
+𝑟%
+…
+𝑦#
+#$"
+%
+TextEncoder(={“a dog”, “a balloon”})
+Scale token of “a dog”
+Scale token of “a balloon”
+Self-attention token
+𝑅⋅𝐵𝑖𝑎𝑠
+Fig. 3: Overall Framework of SynVAR. Global guidance and receptive field constraint
+are completed in the early steps of generation, while high-frequency compensation is
+continuously applied throughout the entire generation process. Specifically, global guid-
+ance introduces spatial priors into the cross-attention layers, receptive field constraint
+adjusts the perceptual scope of different regions in the self-attention layers, and high-
+frequency compensation enhances the high-frequency components of the features.
+As shown in Figure 3, we propose SynVAR, a spatial-semantics collabora-
+tive correction mechanism based on the generative characteristics of VAR. We
+use global guidance to explicitly introduce spatial priors to enhance the accu-
+racy of object localization and recognition. Through receptive field constraints,
+we reduce interdependencies between different regions, preventing excessive in-
+formation cross-over. We also adopt a high-frequency enhancement strategy to
+improve image details further.
+3.3
+Global Guidance
+Some studies [16,31,36] have shown that VAR primarily generates coarse-grained
+information in the early stages. As shown in Figure 4, our further experiments
+reveal that there is an early fixation of semantic and spatial information during
+the VAR generation process. Specifically, when we artificially modify the spatial
+positions and semantic embeddings at various time steps during the generation,
+only changes made in the earlier stages have a meaningful impact on the final
+output. Quantitative analysis in Figure 5 indicates that spatial alignment and
+semantic consistency stabilize early in the process, with minimal adjustments
+taking place in the later stages. Therefore, to ensure structural integrity during
+
+
+6
+Z. Chen et al.
+a cat on the left of a dog -> a dog on the left of a cat
+a boy -> a girl
+𝑟!
+𝑟"
+𝑟#
+𝑟$
+𝑟%
+𝑟&
+𝑟'
+𝑟(
+𝑟)
+𝑟*
+𝑟"!
+𝑟""
+𝑟"#
+Fig. 4: Early fixation of semantic and spatial information. We force the replacement of
+semantic or spatial information in the VAR generation process, which can only affect
+the result in the early stage.
+the model’s generation process and avoid generation errors, we apply a global
+guidance in the early stages of generation.
+Fig. 5: Quantitative metrics at different steps. On
+the Geneval benchmark, the semantic and spatial
+related indicators are close to convergence in the
+early stage.
+In global guidance, we break
+the original input prompt p
+into a set of individual con-
+cepts {ci}N
+i=1, where N denotes
+the number of concepts in the
+prompt. We assign a global re-
+gion {hi, wi}N
+i=1 for each con-
+cept and each individual con-
+cepts {ci}N
+i=1 is encoded into a
+text embedding {yi}N
+i=1 via text
+encoder, which is then projected
+into Ki and V i. Simultaneously,
+a query vector Qi is extracted
+the token map rs−1. The de-
+tailed formulation is as follows:
+  \ be gin {s p li t } Q^{i} = \ ell _{Q
+}\
+lef t (r_{s-
+1}\rig
+h
+t
+ 
+) , K^{i}=\ell _{K}(y^{i}) , V^{i}=&\ell _{V}(y^{i}) \\ r^{i}_{s-1}=\mathrm {Softmax}\left (\frac {Q^{i} K^{i T}}{\sqrt {d}}\right ) V^{i}, \end {split} 
+(3)
+where ℓQ, ℓK, ℓV are linear projections. Then, we crop and concatenate the
+token maps ri
+s−1 containing conceptual information according to their respective
+corresponding regions to achieve the injection of spatial information:
+  
+r^{i}_{ s-1 } (h^{
+i
+},
+w^{i })=\ mat
+hrm {Crop}\left (r^{i}_{s-1}, (h^{i},w^{i})\right ) 
+(4)
+  r^
+{ca t }_{s-1}= 
+\mathrm {Co
+ncat}(r^{i}_{s-1}(h^{i},w^{i})_{i=1}^{N}) 
+(5)
+Finally, the sequence after the global guidance operation is used to obtain the
+output of the model:
+  f _{s} = 
+f
+_{s-
+1} + \ph i \
+left (r_{s-1}^{cat},(h_{s}, w_{s})\right ) 
+(6)
+
+
+SynVAR
+7
+This guidance strategy significantly improves early space errors, reduce gen-
+eration deviations, and enable the model to accurately render and correctly
+position multiple objects in complex scenes.
+3.4
+Receptive Field Constraint
+Fig. 6: Attention scores between different targets.
+the level of dependency among them remains con-
+sistently high, particularly in adjacent regions.
+The VAR model enhances the
+receptive field range effectively
+by using two-dimensional se-
+quences, which allows for more
+effective global contextual in-
+formation. However, as illus-
+trated in Figure 6, we observe
+that when multiple target re-
+gions are present, the atten-
+tion dependencies between dif-
+ferent regions remain high, es-
+pecially when they are close to
+each other. This leads to a high
+coupling of information between
+different object regions, result-
+ing in semantic confusion. To
+address this issue, we propose a
+receptive field constraint mech-
+anism to regulate the attention dependencies between tokens, helping VAR ob-
+tain the correct semantic information.
+In receptive field constraint, we introduce a gaussian mask into the self-
+attention to calculate the relative spatial proximity of tokens in the early stage
+of generation. Specifically, a bias term is computed based on their Euclidean
+distance in the feature map, the formula is as follows:
+  Bias[ q, k ] =
+ 
+\exp \ left 
+(
+-\
+frac {||p_q - q_k||_2^2}{\sigma ^2}\right ) \label {eq:bias} 
+(7)
+where pq and qk represent the coordination of the corresponding token of the
+query and key in the feature map. σ is a predefined decay factor controlling
+the spatial sensitivity. Then we define a binary mask to represent the region
+relationship of the query and key:
+  R[ q, k ]=\m a th bb { I} \left (\forall m, q \notin \mathcal {I}_{m} \vee k \notin \mathcal {I}_{m}\right ) \label {eq:r} 
+(8)
+where Im represents the set of token indices belonging to the m-th region. Lastly,
+we get the gaussian mask and use it for the modulation of the attention map:
+  A ^{\prime }= \ ma t hrm {
+S
+o
+ftmax}(\frac {QK^\top +(R\cdot Bias)}{\sqrt {d}}) \label {eq:self-attention} 
+(9)
+
+
+8
+Z. Chen et al.
+The advantage of this method is that it can retain the necessary context
+information while performing semantic decoupling. The greater the distance,
+the greater the attenuation, thus avoiding excessive cross-region interactions.
+We also tried a variety of different methods to implement the receptive field
+constraint, see Supplementary Material for details.
+3.5
+High-frequency Compensation
+Fig. 7: High-frequency ratio. As generation pro-
+gresses, high-frequency components increase. A
+small intensity coefficient is used due to its sensi-
+tivity.
+We decompose the feature map
+into low-frequency and high-
+frequency components to better
+observe the evolution of image
+details during the generation
+process. In the early stages, the
+model primarily generates low-
+frequency
+components,
+which
+capture the broad structure and
+general shape of the image.
+As the generation process pro-
+gresses, the proportion of high-
+frequency
+information
+gradu-
+ally increases, focusing on finer
+details and textures. This be-
+havior is illustrated in Figure
+7, where the model begins with
+low-frequency information and progressively shifts towards high-frequency op-
+timization, enhancing the image’s texture and details. To this end, we propose
+controlling the intensity of the high-frequency components in the feature maps
+during the generation process, thereby obtaining high-fidelity images with more
+richly detailed content.
+We begin by defining a high-pass filter with a linear gain controlled by the
+enhancing ratio δ, which allows us to adjust the strength of the high-frequency
+components:
+  D( u, 
+v
+) = \sq r t { (u - u_0)^2 + (v - v_0)^2} 
+(10)
+  HF( u, v ) = 1 + \delta \cdot D(u, v) 
+(11)
+where (u0, v0) denotes the center of the frequency spectrum, typically u0 = W/2
+and v0 = H/2 for an image of size H ×W. We then perform a Fourier transform
+on the input of each transformer layer to convert it to the frequency domain
+and enhance its high-frequency components through the above high-pass filter.
+Finally, we perform an inverse Fourier transform on the filtered signal to restore
+it back to the spatial domain:
+  \ til de {\ m athbf {F}} = \mathcal {F}^{-1} \left [ \mathcal {F}[\mathbf {F}] \cdot HF \right ] 
+(12)
+
+
+SynVAR
+9
+where F ∈RH×W ×C denotes the input feature map. F[·] and F−1[·] denote the
+2D Fourier and inverse Fourier transform, respectively. HF ∈RH×W represents
+a high-pass filter mask in the frequency domain. ˜F is the filtered feature map after
+enhancing high-frequency components. In this way, we are able to significantly
+enhance the details and texture information of the image, ensuring the richness
+and fineness of the details in the later stages of generation.
+The pseudocode for SynVAR is shown in Algorithm 1.
+Algorithm 1 SynVAR Algorithm Overview
+Input: input prompt p, global regions {hi, wi}N
+i=1 , individual concepts {ci}N
+i=1, Trans-
+former block input feature F.
+Hyperparameters: selected steps Ssteps, resolution of scales {hs, ws}S
+i=1 , decay fac-
+tor σ, enhancing ratio δ.
+Model: linear projections ℓQ, ℓK, ℓV
+, Text Encoder TE(·). F[·] and F−1[·] is the 2D
+Fourier and inverse Fourier transform.
+1: {yi}N
+i=1 ←TE({ci}N
+i=1)
+2: for s = 1, · · · , S do
+3:
+HF ←1 + δ ·
+p
+(u −u0)2 + (v −v0)2
+\triangleright High-frequency Compensation
+4:
+˜F = F −1 [F[F] · HF]
+5:
+rs−1 ←˜F
+6:
+if s ∈Ssteps then
+7:
+Bias ←exp
+
+−
+||pq−qk||2
+2
+σ2
+
+\triangleright Receptive Field Constraint in
+self-attention
+8:
+R ←I (∀m, q /∈Im ∨k /∈Im)
+9:
+rs−1 ←Softmax( QK⊤+(R·Bias)
+√
+d
+)V
+10:
+for i = 1, · · · , N do
+\triangleright Global Guidance in cross-attentions
+11:
+Qi ←ℓQ(rs−1); Ki ←ℓK(yi); V i ←ℓV (yi)
+12:
+ri
+s−1 ←Softmax
+
+QiKiT
+√
+d
+
+V i
+13:
+rcat
+s−1 ←Crop(ri
+s−1(hi, wi))
+14:
+fs ←fs−1 + ϕ
+ rcat
+s−1, (hs, ws)
+
+15:
+else
+16:
+fs ←fs−1 + ϕ (rs−1, (hs, ws))
+return Decoder(fs)
+4
+Experiments
+4.1
+Experiment Setting
+Implementation Details. For the influence step of global guidance and recep-
+tive field constraints, we choose to operate at step=2. The decay coefficient σ
+of the receptive field constraint is set to 0.5. The intensity control coefficient δ
+for high-frequency compensation is set to 0.01. Other parameters are consistent
+with the compatible base model. For large-scale quantitative evaluations, we
+leverage MLLM for automated global region and concept division, see Appendix
+
+
+10
+Z. Chen et al.
+Geneval
+T2I-CompBench
+Method
+Two_object ↑
+Counting ↑
+Position ↑
+Attribute_Binding ↑
+Overall ↑
+Color ↑
+Shape ↑
+Texture ↑
+Spatial ↑
+Complex ↑
+Overall ↑
+Infinity
+[CVPR2025]
+79.80
+58.13
+26.00
+58.00
+55.48
+74.99
+48.59
+62.90
+24.13
+38.89
+49.90
++Densediffusion
+75.00
+19.69
+21.75
+52.50
+42.23
+72.42
+48.39
+62.64
+24.78
+38.55
+49.36
++RAG-Diffusion
+70.71
+40.31
+30.00
+44.75
+46.44
+59.86
+34.85
+56.11
+27.05
+33.06
+42.19
++Ours
+91.92
+58.25
+63.00
+70.00
+70.79
+75.21
+51.85
+66.23
+46.00
+39.02
+55.66
+Ours vs Infinity
++12.12
++0.12
++37.00
++12.00
++15.31
++0.22
++3.26
++3.33
++21.87
++0.13
++5.76
+Switti
+[CVPR2025]
+73.99
+48.12
+14.25
+28.00
+41.09
+74.83
+52.00
+64.42
+19.09
+37.72
+49.61
++Densediffusion
+65.91
+18.44
+19.00
+27.75
+32.77
+71.25
+49.60
+61.15
+17.49
+36.68
+47.23
++RAG-Diffusoin
+36.62
+3.44
+21.00
+18.00
+19.76
+55.92
+37.81
+53.65
+12.42
+31.33
+38.22
++Ours
+75.25
+49.06
+16.25
+40.50
+45.27
+78.54
+54.67
+68.10
+22.14
+38.77
+52.44
+Ours vs Switti
++1.26
++0.94
++2.00
++12.50
++4.18
++3.71
++2.67
++3.68
++3.05
++1.05
++2.83
+Table 1: Quantitative results on Geneval and T2I-CompBench benchmark.
++RAG
+A kitchen counter: a sliced watermelon on the left, a loaf of bread in the 
+center, and a glass jar of pickles on the right.
+From left to right: a red cake, an orange cake, a yellow cake, and a green 
+cake.
+Three stacked blocks. Bottom block: large, wooden, labeled '1'. Middle block: 
+medium, red plastic, labeled '2'. Top block: small, blue metal, labeled '3'.
+A toy shelf: top row has a red fire truck and a yellow duck, and bottom 
+row has a purple teddy bear and an orange ball.
+Infinity
++DenseDiffusion
++Ours
+Infinity
++DenseDiffusion
++RAG
++Ours
+Infinity
++DenseDiffusion
++RAG
++Ours
+Infinity
++DenseDiffusion
++RAG
++Ours
+Three candles on a table. Left:a white candle. Middle: a red candle. Right: 
+a green candle
+From left to right: a yellow tennis ball, a white golf ball, a red billiard 
+ball.
+a blue sports ball on the top of a yellow umbrella
+a white cat ride on a black dog
+Switti
++DenseDiffusion
++RAG
++Ours
+Switti
++DenseDiffusion
++RAG
++Ours
+Switti
++DenseDiffusion
++RAG
++Ours
+Switti
++DenseDiffusion
++RAG
++Ours
+From left to right, there are four cups in sequence.
+A glass of water in front of a laptop.
+A basketball touching a soccer ball.
+A teddy bear leaning against a flower pot
++RAG
+Infinity
++DenseDiffusion
++Ours
+Infinity
++DenseDiffusion
++RAG
++Ours
+Switti
++DenseDiffusion
++RAG
++Ours
+Switti
++DenseDiffusion
++RAG
++Ours
+Fig. 8: Qualitative comparison of different methods for adapting VAR-based text-to-
+image models.
+for usage (Notably, our framework is MLLM-free. MLLMs are only employed
+for large-scale evaluation and user convenience, with additional experiments de-
+tailed in the Appendix). All experiments are implemented on a single A6000. We
+also provide runnable code in the Appendix for understanding and reproduction.
+Baselines and Benchmark. Since SynVAR is designed as a plug-and-play
+solution, we integrate it with existing VAR-base methods infinity and Switti for
+experiments. We apply consistent parameter settings across all models to ensure
+
+
+SynVAR
+11
+fair comparison. For the generation quality, we conduct experimental evaluation
+on two widely used benchmark Geneval [15] and T2I-CompBench [20].
+4.2
+Main Results
+Quantitative Comparison. As shown in Table 1, existing enhancement meth-
+ods generally have a negative impact on the performance of the original model,
+suggesting their limited effectiveness in addressing the inherent weaknesses of
+VAR-based methods under complex compositional prompts. In contrast, in-
+tegrating SynVAR leads to consistent and significant improvements. On the
+Geneval dataset, SynVAR boosts the overall performance of the Infinity model
+by 27.6% and that of Switti by 10.2%. Notably, SynVAR achieves clear gains on
+both spatial metrics (e.g., Position in Geneval and Spatial in T2I-CompBench)
+and semantic metrics (e.g., Attribute_Binding in Geneval and Shape/Texture in
+T2I-CompBench), demonstrating its capability to simultaneously reduce spatial
+errors and semantic mismatches.
+Qualitative Comparison. As illustrated in Figure 8, existing approaches fail to
+resolve spatial dislocation or semantic confusion when generating images from
+complex prompts. For instance, objects often appear in incorrect positions or
+exhibit inconsistent appearances. By contrast, SynVAR achieves more coherent
+spatial arrangements and preserves semantic fidelity more effectively. It not only
+reduces spatial errors and semantic confusion but also produces visually pleasing
+results with sharper structures and finer textures. Moreover, the generated global
+scene appears more harmonious and contextually aligned with the input prompt,
+indicating that SynVAR successfully captures both local detail and holistic scene
+layout. In addition, we have demonstrated more practical and interesting usages
+in the Appendix, such as overlapping, multi-objective fine-grained interaction,
+and the utilization of irregular masks.
+0.00%
+10.00%
+20.00%
+30.00%
+40.00%
+50.00%
+60.00%
+70.00%
+80.00%
+Infinity
+Infinity+Ours
+Switti
+Switti+Ours
+Aesthetic
+Alignment
+Fig. 9: User study on aesthetics and text-image
+alignment. Our approach shows a significant im-
+provement.
+User Study. To further val-
+idate the effectiveness of Syn-
+VAR from a human perspec-
+tive,
+we
+conducted
+a
+user
+study. We randomly selected 20
+prompts from the Geneval and
+T2Icombench to assess the aes-
+thetic quality and text-image
+alignment (including both se-
+mantic and spatial position) of
+the generated images. During
+the evaluation, we randomly
+displayed an image pair and its
+corresponding text description,
+and users selected the image
+that best matched the prompt
+based on their judgment. The
+results in Figure 9 show that
+
+
+12
+Z. Chen et al.
+more than 68% of users chose the image enhanced by SynVAR in terms of both
+aesthetics and alignment, indicating that SynVAR not only improves objective
+performance metrics but also aligns more closely with human visual perception
+and interpretive judgment.
+4.3
+Ablation Study
+Methods
+Two_object Counting Position Attribute_Binding Overall
+w/o Global Guidance
+74.49
+66.25
+23.75
+49.00
+53.37
+w/o Receptive Field Constraint
+80.30
+21.25
+36.25
+58.25
+49.01
+w/o High-Frequency Compensation
+86.38
+55.81
+59.50
+62.75
+66.11
+SynVAR
+91.92
+58.25
+63.00
+70.00
+70.79
+Table 2: Ablation performance of SynVAR on the Geneval.
+Effectiveness of Global Guidance. As shown in Table 2,removing the global
+guidance mechanism reduces the spatial position accuracy by 62.3%, and also
+causes a decrease in other indicators. This means that global guidance effectively
+improves the correctness of the spatial structure by explicitly injecting spatial
+priors, laying a solid foundation for the subsequent generation process, thereby
+improving the image indicators in all aspects. Figure 10(a) shows the visual effect
+of global guidance in ensuring the correct spatial structure.
+SynVAR
+w/o Global 
+Guidance
+SynVAR
+w/o Receptive Field 
+Constraint
+SynVAR
+w/o High-Frequency 
+Compensation
+(a)
+(b)
+(c)
+A bird on the left of a phone
+An orange motorcycle and a pink donut
+A dog is on the right of the stop sign
+Fig. 10: Qualitative analysis of global guidance, receptive field constraint and high-
+frequency compensation.
+Effectiveness of Receptive Field Constraint. The receptive field constraint
+helps reduce excessive interactions between regions, preserving object generation
+independence. Table 2 shows that it significantly lowers interference, allowing
+each region to generate its object independently, improving the counting met-
+ric. Figure 10(b) visually demonstrates this effect, where regions decouple their
+target objects while preserving semantic integrity.
+An ablation study on the decay coefficient σ in the receptive field constraint
+reveals a non-linear relationship with performance. From the data in Table 3,
+as σ increases, performance improves initially but declines beyond a point. This
+
+
+SynVAR
+13
+suggests that excessive constraint hinders performance, while a moderate σ bal-
+ances region independence and necessary information transfer, enhancing output
+quality. This is shown in Figure 11(a), where a balanced decay coefficient pro-
+duces better results.
+Methods Two_object Counting Position Attribute_Binding Overall
+σ = 0.1
+80.56
+46.25
+34.50
+57.75
+54.76
+σ = 0.3
+88.38
+54.69
+53.25
+65.50
+65.46
+σ = 0.5
+91.92
+58.25
+63.00
+70.00
+70.79
+σ = 0.7
+90.66
+57.50
+60.25
+67.50
+68.98
+σ = 1.0
+90.66
+55.00
+57.25
+67.00
+67.48
+Table 3: Ablation experiment of decay co-
+efficient σ in receptive field constraint.
+Methods Two_object Counting Position Attribute_Binding Overall
+δ = 0.002
+90.40
+56.56
+57.00
+65.00
+67.24
+δ = 0.005
+89.14
+55.00
+60.50
+69.25
+68.47
+δ = 0.01
+91.92
+58.25
+63.00
+70.00
+70.79
+δ = 0.02
+92.17
+54.37
+65.50
+67.00
+69.76
+δ = 0.03
+90.66
+51.25
+63.75
+66.50
+68.04
+Table 4: Ablation experiment of inten-
+sity control coefficient δ in High-frequency
+Compensation.
+σ=0.1
+σ=0.5
+σ=1.0
+δ=0.002
+δ=0.01
+δ=0.03
+(a)
+(b)
+Fig. 11: Qualitative analysis of decay coefficient σ and intensity control coefficient δ.
+Effectiveness of High-frequency Compensation. High-frequency compen-
+sation enhances fine-grained details like textures and intricate structures. While
+its impact on overall metrics is modest, it noticeably improves image quality.
+Figure 10(c) highlights its effect, refining details, especially in complex areas.
+We also conducted a user study to evaluate our advantages in terms of image
+quality (e.g., Aesthetics), see the supp for details.
+An analysis of the intensity control coefficient δ reveals that while perfor-
+mance remains stable with minor fluctuations, excessive enhancement can intro-
+duce artifacts, as shown in Table 4 and Figure 11(b). We chose δ=0.01 as an
+optimal value, balancing detail enhancement with image integrity.
+Selection of Early Steps for Global Guidance and Receptive Field Con-
+straints. We conduct ablation studies to verify the optimal stage for applying
+global guidance and receptive field constraints during the generation sequence.
+As shown in Table 5, extending these operations to multiple iterations leads to
+performance degradation, but the overall trend remained stable.
+We also visualize the attention regions during the VAR generation process,
+as illustrate in Figure 12. It can be observed that the attention focus stabilizes
+at very low resolutions, with minimal changes in subsequent steps. This supports
+the findings in Table 5, indicating that injecting structured priors at the critical
+decision window (step = 2) enables accurate correction of error sources while
+maintaining the coherence of the VAR generation.
+
+
+14
+Z. Chen et al.
+Step
+Two_object Counting Position Attribute_Binding Overall
+1
+83.33
+57.50
+45.00
+66.00
+63.43
+2
+91.92
+58.25
+63.00
+70.00
+70.79
+3
+81.06
+52.19
+36.25
+61.25
+57.69
+1, 2
+89.14
+54.06
+68.25
+68.00
+69.86
+1, 3
+86.11
+50.94
+55.00
+67.50
+64.89
+1, 2, 3
+92.68
+47.81
+74.50
+63.25
+69.56
+1, 2, 3, 4
+93.69
+39.38
+75.00
+60.00
+67.02
+1, 2, 3, 4, 5
+91.41
+32.81
+75.25
+58.50
+64.49
+Table 5: Quantitative comparison of global guidance and receptive field constraints
+at different steps.
+𝑟!
+𝑟"
+𝑟#
+𝑟$
+𝑟%
+Fig. 12: Visual analysis of the attention area during the generation process.
+Inference Time Cost. As shown in Table 6, we tested the single-image in-
+ference time consumption of different components. It can be seen that the in-
+ference overhead of Global and Receptive Field Constraints is almost negligi-
+ble compared to Vanilla VAR. High-Frequency Compensation, due to the fre-
+quency domain conversion involved, incurs additional time overhead, but this
+is traded off for improved aesthetic quality. Since our method does not in-
+volve any structural changes, SynVAR can seamlessly integrate with existing
+
+
+SynVAR
+15
+Methods
+Inference Time Cost (seconds/image)
+Vanilla VAR
+2.60
+w/ Global Guidance
+2.61
+w/ Receptive Field Constraint
+2.61
+w/ High-Frequency Compensation
+3.08
+SynVAR
+3.10
+SynVAR + Fastvar
+2.27
+Table 6: Single-image inference time consumption of dif-
+ferent SynVAR components.
+VAR acceleration schemes
+(such as Fastvar [16]),
+thereby ensuring image
+quality improvements while
+avoiding increasing infer-
+ence overhead. We have
+also provided performance
+metrics compatible with
+Fastvar in the Appendix.
+5
+Conclusion
+In this paper, we conduct an in-depth analysis of the failure mechanisms of
+VAR in complex scene generation and propose the first training-free enhance-
+ment framework for VAR, dubbed SynVAR. SynVAR implements a collaborative
+correction mechanism for spatial and semantic control through three key com-
+ponents: global guidance, receptive field constraints, and high-frequency com-
+pensation. Global guidance and receptive field constraints work during the early
+stages of generation, utilizing spatial priors and gaussian masks to capture pre-
+cise spatial and semantic information, effectively preventing the propagation and
+accumulation of errors. High-frequency compensation enhances high-frequency
+features, further improving the detail and generating high-fidelity images. Exten-
+sive experimental results demonstrate that SynVAR seamlessly integrates with
+various VAR-based text-to-image models and significantly improves generation
+performance. In the future, we will try to extend SynVAR to more types of
+generative models, hoping to provide more valuable insights to the community.
+6
+Limitation and Future Work
+Our framework mainly has two limitations. First, the capability of our frame-
+work to better align the semantic and spatial relations is limited by the prior of
+the VAR foundation model. If the semantic concepts are missed in the prior or
+the spatial relation deviation is unreasonable, our correction mechanism is defi-
+cient at such imprinted limitations of the foundation model. Second, for the best
+performance, the optimal early step of global guidance and receptive field con-
+straints through experiments and empirical settings. In the future, we expect to
+develop a lightweight fine-tuning and auto-selection strategies to edit the model
+prior and automatically select the optimal step for each single image.
+Acknowledgment
+This work was supported by Natural Science Foundation of Jiangsu Province:
+BK20241198, the Gusu Innovation and Entrepreneur Leading Talents: No. ZXL20
+24362 and Natural Science Foundation of China: No. 62406135, Nanjing University-
+China Mobile Communications Group Co. Ltd. Joint Institute.
+
+
+16
+Z. Chen et al.
+References
+1. Achiam, J., Adler, S., Agarwal, S., Ahmad, L., Akkaya, I., Aleman, F.L., Almeida,
+D., Altenschmidt, J., Altman, S., Anadkat, S., et al.: Gpt-4 technical report. arXiv
+preprint arXiv:2303.08774 (2023)
+2. Bar-Tal, O., Yariv, L., Lipman, Y., Dekel, T.: Multidiffusion: Fusing diffusion paths
+for controlled image generation (2023)
+3. Brown, T., Mann, B., Ryder, N., Subbiah, M., Kaplan, J.D., Dhariwal, P., Nee-
+lakantan, A., Shyam, P., Sastry, G., Askell, A., et al.: Language models are few-shot
+learners. Advances in neural information processing systems 33, 1877–1901 (2020)
+4. Chang, H., Zhang, H., Barber, J., Maschinot, A., Lezama, J., Jiang, L., Yang,
+M.H., Murphy, K., Freeman, W.T., Rubinstein, M., et al.: Muse: Text-to-image
+generation via masked generative transformers. arXiv preprint arXiv:2301.00704
+(2023)
+5. Chang, H., Zhang, H., Jiang, L., Liu, C., Freeman, W.T.: Maskgit: Masked genera-
+tive image transformer. In: Proceedings of the IEEE/CVF conference on computer
+vision and pattern recognition. pp. 11315–11325 (2022)
+6. Chefer, H., Alaluf, Y., Vinker, Y., Wolf, L., Cohen-Or, D.: Attend-and-excite:
+Attention-based semantic guidance for text-to-image diffusion models. ACM trans-
+actions on Graphics (TOG) 42(4), 1–10 (2023)
+7. Chen, M., Laina, I., Vedaldi, A.: Training-free layout control with cross-attention
+guidance. In: Proceedings of the IEEE/CVF winter conference on applications of
+computer vision. pp. 5343–5353 (2024)
+8. Chen, Z., Gao, R., Xiang, T.Z., Lin, F.: Diffusion model for camouflaged object
+detection. In: ECAI 2023, pp. 445–452. IOS Press (2023)
+9. Chen, Z., Li, Y., Wang, H., Chen, Z., Jiang, Z., Li, J., Wang, Q., Yang, J., Tai,
+Y.: Region-aware text-to-image generation via hard binding and soft refinement.
+arXiv preprint arXiv:2411.06558 (2024)
+10. Chen, Z., Zhu, J., Chen, X., Zhang, J., Chen, J., Zeng, Z., Zhang, W., Wang,
+C., Yang, J., Tai, Y.: L2p: Unlocking latent potential for pixel generation. arXiv
+preprint arXiv:2605.12013 (2026)
+11. Chen, Z., Zhu, J., Chen, X., Zhang, J., Hu, X., Zhao, H., Wang, C., Yang, J., Tai,
+Y.: Dip: Taming diffusion models in pixel space. arXiv preprint arXiv:2511.18822
+(2025)
+12. Deng, H., Pan, T., Diao, H., Luo, Z., Cui, Y., Lu, H., Shan, S., Qi, Y., Wang,
+X.: Autoregressive video generation without vector quantization. arXiv preprint
+arXiv:2412.14169 (2024)
+13. Du, N., Chen, Z., Chen, Z., Gao, S., Chen, X., Jiang, Z., Yang, J., Tai, Y.:
+Textcrafter: Accurately rendering multiple texts in complex visual scenes. arXiv
+preprint arXiv:2503.23461 (2025)
+14. Esser, P., Rombach, R., Ommer, B.: Taming transformers for high-resolution image
+synthesis. In: Proceedings of the IEEE/CVF conference on computer vision and
+pattern recognition. pp. 12873–12883 (2021)
+15. Ghosh, D., Hajishirzi, H., Schmidt, L.: Geneval: An object-focused framework for
+evaluating text-to-image alignment. Advances in Neural Information Processing
+Systems 36, 52132–52152 (2023)
+16. Guo, H., Li, Y., Zhang, T., Wang, J., Dai, T., Xia, S.T., Benini, L.: Fastvar:
+Linear visual autoregressive modeling via cached token pruning. arXiv preprint
+arXiv:2503.23367 (2025)
+
+
+SynVAR
+17
+17. Guo, X., Liu, J., Cui, M., Li, J., Yang, H., Huang, D.: Initno: Boosting text-
+to-image diffusion models via initial noise optimization. In: Proceedings of the
+IEEE/CVF Conference on Computer Vision and Pattern Recognition. pp. 9380–
+9389 (2024)
+18. Han, J., Liu, J., Jiang, Y., Yan, B., Zhang, Y., Yuan, Z., Peng, B., Liu, X.: Infinity:
+Scaling bitwise autoregressive modeling for high-resolution image synthesis. arXiv
+preprint arXiv:2412.04431 (2024)
+19. Ho, J., Jain, A., Abbeel, P.: Denoising diffusion probabilistic models. Advances in
+neural information processing systems 33, 6840–6851 (2020)
+20. Huang, K., Sun, K., Xie, E., Li, Z., Liu, X.: T2i-compbench: A comprehensive
+benchmark for open-world compositional text-to-image generation. Advances in
+Neural Information Processing Systems 36, 78723–78747 (2023)
+21. Kim, Y., Lee, J., Kim, J.H., Ha, J.W., Zhu, J.Y.: Dense text-to-image genera-
+tion with attention modulation. In: Proceedings of the IEEE/CVF International
+Conference on Computer Vision. pp. 7701–7711 (2023)
+22. Liu, D., Zhao, S., Zhuo, L., Lin, W., Qiao, Y., Li, H., Gao, P.: Lumina-mgpt: Illu-
+minate flexible photorealistic text-to-image generation with multimodal generative
+pretraining. arXiv preprint arXiv:2408.02657 (2024)
+23. Ma, X., Zhou, M., Liang, T., Bai, Y., Zhao, T., Chen, H., Jin, Y.: Star: Scale-
+wise text-to-image generation via auto-regressive representations. arXiv preprint
+arXiv:2406.10797 (2024)
+24. Nan, K., Xie, R., Zhou, P., Fan, T., Yang, Z., Chen, Z., Li, X., Yang, J., Tai, Y.:
+Openvid-1m: A large-scale high-quality dataset for text-to-video generation. arXiv
+preprint arXiv:2407.02371 (2024)
+25. Peebles, W., Xie, S.: Scalable diffusion models with transformers. In: Proceedings
+of the IEEE/CVF International Conference on Computer Vision. pp. 4195–4205
+(2023)
+26. Ramesh, A., Dhariwal, P., Nichol, A., Chu, C., Chen, M.: Hierarchical text-
+conditional image generation with clip latents. arXiv preprint arXiv:2204.06125
+1(2), 3 (2022)
+27. Razavi, A., Van den Oord, A., Vinyals, O.: Generating diverse high-fidelity images
+with vq-vae-2. Advances in neural information processing systems 32 (2019)
+28. Saharia, C., Chan, W., Saxena, S., Li, L., Whang, J., Denton, E.L., Ghasemipour,
+K., Gontijo Lopes, R., Karagol Ayan, B., Salimans, T., et al.: Photorealistic text-
+to-image diffusion models with deep language understanding. Advances in neural
+information processing systems 35, 36479–36494 (2022)
+29. Song, J., Meng, C., Ermon, S.: Denoising diffusion implicit models. arXiv preprint
+arXiv:2010.02502 (2020)
+30. Sun, P., Jiang, Y., Chen, S., Zhang, S., Peng, B., Luo, P., Yuan, Z.: Autoregres-
+sive model beats diffusion: Llama for scalable image generation. arXiv preprint
+arXiv:2406.06525 (2024)
+31. Tian, K., Jiang, Y., Yuan, Z., Peng, B., Wang, L.: Visual autoregressive modeling:
+Scalable image generation via next-scale prediction. Advances in neural information
+processing systems 37, 84839–84865 (2024)
+32. Touvron, H., Lavril, T., Izacard, G., Martinet, X., Lachaux, M.A., Lacroix, T.,
+Rozière, B., Goyal, N., Hambro, E., Azhar, F., et al.: Llama: Open and efficient
+foundation language models. arXiv preprint arXiv:2302.13971 (2023)
+33. Touvron, H., Martin, L., Stone, K., Albert, P., Almahairi, A., Babaei, Y., Bash-
+lykov, N., Batra, S., Bhargava, P., Bhosale, S., et al.: Llama 2: Open foundation
+and fine-tuned chat models. arXiv preprint arXiv:2307.09288 (2023)
+
+
+18
+Z. Chen et al.
+34. Van Den Oord, A., Vinyals, O., et al.: Neural discrete representation learning.
+Advances in neural information processing systems 30 (2017)
+35. Voronov, A., Kuznedelev, D., Khoroshikh, M., Khrulkov, V., Baranchuk, D.: Switti:
+Designing scale-wise transformers for text-to-image synthesis. arXiv preprint
+arXiv:2412.01819 (2024)
+36. Wang, Y., Guo, L., Li, Z., Huang, J., Wang, P., Wen, B., Wang, J.: Training-
+free text-guided image editing with visual autoregressive model. arXiv preprint
+arXiv:2503.23897 (2025)
+37. Xie, J., Li, Y., Huang, Y., Liu, H., Zhang, W., Zheng, Y., Shou, M.Z.: Boxdiff: Text-
+to-image synthesis with training-free box-constrained diffusion. In: Proceedings
+of the IEEE/CVF International Conference on Computer Vision. pp. 7452–7461
+(2023)
+38. Yang, L., Yu, Z., Meng, C., Xu, M., Ermon, S., Cui, B.: Mastering text-to-image
+diffusion: Recaptioning, planning, and generating with multimodal llms. In: Forty-
+first International Conference on Machine Learning (2024)
+39. Yang, S., Chen, Z., Lin, Y., Chen, X., Cai, G., Yu, H., Wu, P., Yang, Q.: A sur-
+vey on vision-language models for multimodal federated learning tasks. Authorea
+Preprints (2025)
+40. Yang, Z., Jiang, Z., Li, X., Zhou, H., Dong, J., Zhang, H., Du, Y.: D 4-vton:
+Dynamic semantics disentangling for differential diffusion based virtual try-on. In:
+European Conference on Computer Vision. pp. 36–52. Springer (2024)
+41. Yang, Z., Li, Y., He, S., Li, X., Xu, Y., Dong, J., Du, Y.: Omnivton: Training-free
+universal virtual try-on. In: Proceedings of the IEEE/CVF International Confer-
+ence on Computer Vision. pp. 16702–16711 (2025)
+42. Yang, Z., Tai, Y., Zhan, J., Zheng, Y., Qian, J., Yang, J.: Orthotryon: Geomet-
+ric orthogonalization for conflict-free unified fashion generation. arXiv preprint
+arXiv:2606.27880 (2026)
+43. Zhao, C., Cai, W., Dong, C., Hu, C.: Wavelet-based fourier information interaction
+with frequency diffusion adjustment for underwater image restoration. In: Proceed-
+ings of the IEEE/CVF conference on computer vision and pattern recognition. pp.
+8281–8291 (2024)
+44. Zhao, C., Chen, J., Li, H., Kang, Z., Lu, S., Wei, X., Zhang, K., Yang, J., Tai, Y.:
+Luve: Latent-cascaded ultra-high-resolution video generation with dual frequency
+experts. arXiv preprint arXiv:2602.11564 (2026)
+45. Zhao, C., Dong, C., Cai, W., Wang, Y.: Learning a physical-aware diffusion model
+based on transformer for underwater image enhancement. IEEE Transactions on
+Geoscience and Remote Sensing (2026)
+46. Zhao, C., Xu, Y., Chen, Z., Gu, E., Zhang, K., Liu, X., Yang, J., Tai, Y.: From
+zero to detail: A progressive spectral decoupling paradigm for uhd image restora-
+tion with new benchmark. IEEE Transactions on Pattern Analysis and Machine
+Intelligence (2026)
+47. Zhou,
+D.,
+Li,
+M.,
+Yang,
+Z.,
+Yang,
+Y.:
+Dreamrenderer:
+Taming
+multi-
+instance attribute control in large-scale text-to-image models. arXiv preprint
+arXiv:2503.12885 (2025)
+48. Zhou, D., Li, Y., Ma, F., Zhang, X., Yang, Y.: Migc: Multi-instance generation con-
+troller for text-to-image synthesis. In: Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition. pp. 6818–6828 (2024)
+49. Zhou, D., Xie, J., Yang, Z., Yang, Y.: 3dis: Depth-driven decoupled instance syn-
+thesis for text-to-image generation. arXiv preprint arXiv:2410.12669 (2024)
+
+
+SynVAR
+19
+50. Zhuang, X., Xie, Y., Deng, Y., Liang, L., Ru, J., Yin, Y., Zou, Y.: Vargpt: Unified
+understanding and generation in a visual autoregressive multimodal large language
+model. arXiv preprint arXiv:2501.12327 (2025)
+7
+More Model Details
+7.1
+Explanation of Global Region Division
+In Figure 13, we present an example image of the global region division {hi, wi}N
+i=1.
+The global region division ensures coverage of the entire area, ensuring that the
+generated content conforms to the specified spatial layout while ensuring inter-
+action and integration of adjacent areas. This collaborative design significantly
+improves the attribute fidelity of the generated images while promoting har-
+monious coordination across different regions, resulting in more cohesive and
+visually consistent outputs.
+Fig. 13: Several schematic diagrams of regional division.
+7.2
+Automatic Global Regional and Concept Division
+In order to facilitate quantitative testing and user use, we use MLLM to auto-
+matically segment spatial regions and generate bounding boxes and sub-prompts
+from a long prompt, as shown in Figure 14. It is worth noting that our method
+
+
+20
+Z. Chen et al.
+does not inherently rely on MLLM, as this process can also be performed man-
+ually. We provide more experimental analysis in Section 8.1.
+Your task is described as follows:
+Extract the key entities and their corresponding attributes from the input text, and determine how many regions should be splited. 
+For each key object identified in the previous step, use precise spatial imagination to assign each object to a specific area within the image and start numbering from 0. The area refers to dividing the entire image into 
+different regions for a general layout. Each key entities is assigned to a region. And for each entity in the region, give it a more detailed description based on the original text. 
+For each entity, place it in the designated rectangular position, reasonably plan its top-left corner coordinates and scaling size relative to the entire image in accordance with human aesthetics, ensuring that it does not 
+exceed its allocated region. Additionally, any two rectangles must not overlap and should have gaps between them.
+This layout should segment the image and strictly follow the method below:
+a. Extract all entities and their related attributes from the input text, excluding any redundancy information.
+b. Determine if the image needs to be divided into multiple rows based on the key entities identification from step a (It should be noted that a single entity should not be split into different rows, except when describing 
+different parts of a person like the head, clothes/body, and lower garment):
+• If so, segment the image into several rows and assign an identifier to each row from top to bottom (e.g., Row0, Row1, ...).
+• Specify the percentage of height each row occupies within the image (e.g., Row0 (height=0.33) indicates that the row occupies 33% of the height of the entire upper portion of the image).
+c. Within each row, further assess the need for division into multiple regions based on the key entities identification from step a (it should be noted that each region should contain only one entity):
+• If required, divide each row from left to right into several blocks and assign a number to each block (e.g., Region0, Region1, ...).
+• If the image is divided into only a row, it is necessary to divide the row into different regions because we need at least two regions.
+• Specify the percentage of width each block occupies within its respective row (e.g., Region0 (Row0, width=0.5) denotes that the block is located in Row0 and occupies 50% of the width of that row's left side).
+d. Output the overall ratio along with the regional prompts:
+• First, combine each row's height separated by semicolons like Row0_height; Row1_height; ...; Rown_height. If there is only one row, skip this step.
+• Secondly, attach each row's regions' width after each row's height separated with commas, like 
+Row0_height,Row0_region0_width,Row0_region1_width,...Row0_regionm_width;Row1_height,Row1_region0_width,...;Rown_height,...Rown_regionj_width.
+• If the row doesn't have more than one region, just continue to the next row.
+• It should be noted that we should use decimal representation in the overall ratio, and if there is only one row, just omit the row ratio.
+• For the regional prompts, create sentences using imagination by combining the corresponding entities and their related attributes, along with the information from the original text that was ignored in step a.
+• Final split ratio cannot be "1".
+e. Output all entities' top-left corner coordinates and scaling sizes:
+• For each entity extracted from step a, place it in the designated rectangular position, reasonably plan its top-left corner coordinates and scaling size relative to the entire image in accordance with human aesthetics and 
+the regional prompt from step d, ensuring that it does not exceed its allocated region from step b and c. Additionally, any two rectangles must not overlap and should have gaps between them.
+• Output the coordinates and scaling sizes of the entities in list format: Concept_prompt_list,
+You are a master of composition who excels at extracting key objects and their attributes from input text, creating layouts and planning key entities‘ coordinate positions that conform to human aesthetics. If you are ready, I 
+will provide you with relevant requirements.
+Got it! I'm ready to assist you in extracting key objects, their attributes, and creating detailed. Please provide your requirements, and I'll help you craft a visually and narratively rich scene!
+Understood! I will follow the detailed method you provided to extract key entities, assign them to regions, and create a visually balanced and aesthetically pleasing layout. Please provide the input text, and I will process it step 
+by step according to your instructions.
+Caption: From left to right, a blonde ponytail Europe girl in white shirt, a brown curly hair African girl in blue shirt printed with a bird, an Asian young man with black short hair in suit are walking in the campus happily.
+a.Key entities identification:
+Entity1). A blonde ponytail European girl in a white shirt
+Entity2). A brown curly hair African girl in a blue shirt printed with a bird
+Entity3). An Asian young man with black short hair in a suit
+b.Rows:
+We have three distinct entities, so we will split the image horizontally into one row to display all three individuals walking together. Since no further vertical division is needed, this row will occupy the entire image.
+Row0 (height=1): The row will capture all three individuals walking in the campus.
+c.Regions within rows:
+We will divide the row horizontally into three regions to represent each person.
+Region0 (width=0.33): A blonde ponytail European girl in a white shirt, smiling as she walks with a relaxed stride.
+Region1 (width=0.33): A brown curly hair African girl in a blue shirt printed with a bird, her curly hair bouncing as she moves with a sense of joy.
+Region2 (width=0.34): An Asian young man with black short hair in a tailored suit, looking confident and composed as he walks beside them.
+d.Overall ratio:
+Since there is only one row, we directly specify the region widths for the row.
+Final split ratio: 0.33, 0.33, 0.34
+e.Entities' top-left corner coordinates and scaling sizes:
+Now we will place each entity within their respective regions, ensuring appropriate spacing and balance.
+From the step a, we know that Entity1 is "A blonde ponytail European girl in a white shirt", Entity2 is "A brown curly hair African girl in a blue shirt printed with a bird" and Entity3 is "An Asian young man with black 
+short hair in a suit".
+1.Entity1 (A blonde ponytail European girl in white shirt) in Region0:
+2.Entity2 (A brown curly hair African girl in blue shirt printed with a bird) in Region1:
+3.Entity3 (An Asian young man with black short hair in suit) in Region2:
+Concep_prompt_list: ["A blonde ponytail European girl in a white shirt","A brown curly hair African girl in a blue shirt printed with a bird","An Asian young man with black short hair in a suit"]
+Regular Expressions
+Concept_prompt_list: ["A blonde ponytail European girl in a white shirt","A brown curly hair African girl in a blue shirt printed with a bird","An Asian young man with black short hair in a suit"]
+hw_split_ratio: 0.33, 0.33, 0.34
+Fig. 14: Automatic Global Region and Concept Division.
+8
+More Analysis
+8.1
+Effectiveness of Different MLLM
+To facilitate large-scale evaluation and enhance user-friendliness, we employ
+MLLMs to automate global region and concept division. Table 7 presents the
+performance of our framework when integrating different MLLMs as the lay-
+out planner. Benefiting from the advanced capabilities of modern MLLMs, the
+automated division achieves a high success rate (over 92%, with rare failures
+primarily attributed to output formatting errors). Notably, even under planner
+failure rates of 8% (Qwen3-VL-7B) and 2% (GPT-4o), our approach consistently
+yields substantial overall improvements (↑24% and ↑25%, respectively) over the
+
+
+SynVAR
+21
+baseline. This demonstrates that our method is highly robust and fundamentally
+insensitive to occasional planning failures. Furthermore, the comparable gains
+achieved across various MLLMs—closely approaching the upper bound of GPT-
+4o with manual improvements (↑28%)—confirm that the significant performance
+boost intrinsically stems from our proposed architecture, rather than relying on
+a specific MLLM.
+Method
+Two-object ↑Counting ↑Position ↑Attribute-Binding ↑
+Overall ↑
+Failure Rate
+Base-infiniy
+79.80
+58.13
+26.00
+58.00
+55.48
+-
+Qwen3-VL-7B
+88.73
+57.88
+60.50
+68.00
+68.76(↑24%)
+8%
+GPT-4o
+90.14
+57.96
+60.25
+69.00
+69.34(↑25%)
+2%
+Qwen3-VL-32B
+89.63
+58.07
+62.00
+69.00
+69.53 (↑25%)
+0%
+GPT-4o+Manual improvements
+91.92
+58.25
+63.00
+70.00
+70.79 (↑28%)
+0%
+Table 7: The impact of different MLLMs on performance. It can be observed that the
+performance improvement mainly depends on our method, not the MLLM itself (even
+though current MLLMs can already handle planning content well). Manual improve-
+ments refer to prompts that have been further optimized manually (e.g., considering
+the target size to create the mask).The code we provide in the supp can be run locally
+without loading any MLLM.
+8.2
+More Practical Usages.
+As shown in Figure 15(a), our method supports overlapping and fine-grained
+bounding box specifications. Figure 15(b) details how we handle prompts with
+multiple instances of the same concept, treating them as distinct entities in
+the output (e.g., identifying three separate apples in a scene). Additionally, our
+model supports non-rectangular masks to improve usability (Figure 15(c)). To-
+gether, these results demonstrate our model’s robust flexibility in accommodat-
+ing multiple instances with diverse spatial layouts and orientations.
+1
+2
+(a) two people hugging tightly.
+(b) Three apples
+(c) Two arrows
+mask
+One apple One apple
+One apple
+box
+Fig. 15: Demonstration of our model’s flexibility in practical generation scenarios.
+(a) Handling overlapping and fine-grained interactive bounding boxes. (b) Seamless
+generation of multiple instances belonging to the same concept (e.g., three distinct
+apples) within a single scene. (c) Support for non-rectangular mask guidance to further
+enhance usability.
+8.3
+Different Mask Strategies
+We tried different mask strategies within the receptive field constraint: (a). Const
+mask: M = cR, the cross region is filled with a const value; (b). Guassian mask:
+
+
+22
+Z. Chen et al.
+defined in Section 3.4 in the paper, use a distance decay weighted mask instead
+of a const value; (c). TopK-pruning mask: for each query, fill those with top-K
+highest attention score in the cross region with a const value.
+(a) Const mask
+(b) Guassian mask
+(c) Top-K-pruning mask
+Fig. 16: Different mask strategies in receptive field constraints.
+As shown in Table 8, the Const mask and TopK-pruning mask strategies may
+ignore the connection in spatial distance, resulting in a decline in performance,
+while the Gaussian mask calculates the relative spatial proximity of the mark-
+ers in the early stage of generation and uses moderate interaction to achieve
+a balance between maintaining regional independence and promoting necessary
+information transfer, ultimately improving the quality of the generated results.
+Methods
+Two_object Counting Position Attribute_Binding Overall
+const
+87.37
+59.06
+57.75
+69.75
+68.48
+topK-pruning
+87.37
+58.75
+59.00
+69.25
+68.59
+gaussian
+91.92
+58.25
+63.00
+70.00
+70.79
+Table 8: Quantitative experimental results of different mask strategies.
+8.4
+The compatibility of SynVAR
+We provide the inference overhead of SynVAR compatibility with FastVAR. As
+shown in Table 9, after being compatible with FastVAR, SynVAR still maintains
+its superior performance, further demonstrating the strong compatibility of our
+method.
+Methods
+Two_object Position Attribute_Binding Overall
+Fastvar
+79.29
+27.50
+60.25
+56.99
+Fastvar + SynVAR
+88.38
+66.00
+65.75
+69.16
+Table 9: Performance of SynVAR with Fastvar on the Geneval.
+
+
+SynVAR
+23
+8.5
+More Qualitative Results
+As shown in Figure 17 and Figure 18, we present additional qualitative results
+comparing SynVAR, RAG-Diffusion and Densediffusion that further highlight-
+ing SynVAR’s superior performance in semantic depiction and spatial control.
+Through the generation of complex scenes, SynVAR demonstrates its ability
+to accurately capture the details described in the input text while maintaining
+overall coherence and naturalness in the generated content.
+8.6
+Stability of SynVAR
+We validated stability by applying different random seeds under identical pa-
+rameter settings. As shown in Figure 19, occasional suboptimal outcomes were
+observed, such as incorrect object counts. These cases can be regarded as ac-
+ceptable variations, given that similar issues are inherent in most existing T2I
+models during image generation.
+
+
+24
+Z. Chen et al.
+Fig. 17: More qualitative results of SynVAR.
+
+
+SynVAR
+25
+Fig. 18: More qualitative results of SynVAR
+
+
+26
+Z. Chen et al.
+Fig. 19: SynVAR generation results using different seeds show more stable generation
+results.
