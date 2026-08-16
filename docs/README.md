@@ -18,52 +18,43 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-15
-- 运行时间：2026-08-15 20:27:38 UTC
+- 最新运行日期：2026-08-16
+- 运行时间：2026-08-16 19:43:43 UTC
 - 运行状态：成功
-- 本次总论文数：10
-- 精读区：7
-- 速读区：3
+- 本次总论文数：7
+- 精读区：6
+- 速读区：1
 
 ### 今日简报（AI）
-今日精读7篇，聚焦流匹配模型与最优传输的理论突破，另有3篇速读覆盖视觉自回归与图像抠图技术。  
-最值得关注的是《Limit Points of Reflow》揭示的小批量最优传输动态极限，以及《DreOPD》提出的退化参考外推蒸馏策略，两者均为高效生成模型提供了新范式。  
-建议普通读者优先追踪流匹配模型的蒸馏效率提升，后续可关注其在图像生成和视频插帧中的实际应用落地。
-- 详情：[/202608/15/README](/202608/15/README)
+今日精读6篇，聚焦两项9.0高分工作：实时长时流式人体动画与几何对齐驱动的驾驶视频生成。  
+最值得关注《LiveAnimate》的实时流式生成能力和《GeoFlow》利用几何先验提升视频物理一致性。  
+普通读者可优先体验这两项技术如何让视频生成更流畅、更符合现实运动规律。
+- 详情：[/202608/16/README](/202608/16/README)
 
 ### 精读区论文标签
-1. [Limit Points of Reflow with Minibatch Optimal Transport](/202608/15/2608.07042v1-limit-points-of-reflow-with-minibatch-optimal-transport)  
+1. [LiveAnimate: Stable Long-Form Streaming Human Animation in Real-Time](/202608/16/2608.11745v2-liveanimate-stable-long-form-streaming-human-animation-in-real-time)  
    标签：评分：9.0/10、query:fm
-   evidence：整流流/流匹配生成模型及其极限点
-2. [DreOPD: Degraded-Reference Extrapolative On-Policy Distillation for Flow-matching Models](/202608/15/2608.09233v2-dreopd-degraded-reference-extrapolative-on-policy-distillation-for-flow-matching-models)  
+   evidence：扩散概率模型用于实时人体动画
+2. [GeoFlow: Efficient Driving Video Generation via Geometry-Aligned Priors](/202608/16/2608.12203v1-geoflow-efficient-driving-video-generation-via-geometry-aligned-priors)  
    标签：评分：9.0/10、query:fm
-   evidence：提出针对流匹配模型的在线策略蒸馏方法
-3. [Draw This First](/202608/15/2608.12064v1-draw-this-first)  
-   标签：评分：9.0/10、query:fm
-   evidence：潜在流匹配变换器用于草图生成和顺序预测
-4. [UniCycleFlow: Bidirectional Unpaired Image Translation with a Shared Rectified Flow](/202608/15/2608.06784v1-unicycleflow-bidirectional-unpaired-image-translation-with-a-shared-rectified-flow)  
+   evidence：流匹配生成建模
+3. [TRACE-GS: On-Policy Trajectory Distillation with Privileged Geometric Conditioning for Sparse-View 3DGS Restoration](/202608/16/2608.10286v1-trace-gs-on-policy-trajectory-distillation-with-privileged-geometric-conditioning-for-sparse-view-3dgs-restoration)  
    标签：评分：8.0/10、query:fm
-   evidence：整流流/流匹配用于双向图像翻译
-5. [Generative Models: Principles, Architectures, and Applications](/202608/15/2608.08101v1-generative-models-principles-architectures-and-applications)  
+   evidence：用于3D高斯溅射修复的扩散先验
+4. [Making Every Step Count: Spatio-Temporal Information Allocation for Imaging Inverse Problems](/202608/16/2608.11747v1-making-every-step-count-spatio-temporal-information-allocation-for-imaging-inverse-problems)  
    标签：评分：8.0/10、query:fm
-   evidence：生成式AI原理与架构
-6. [Unifying Generative Models with Path Integrals](/202608/15/2608.12438v1-unifying-generative-models-with-path-integrals)  
+   evidence：基于流的生成建模用于成像逆问题
+5. [GeoCache: Training-Free Acceleration of Multi-View Texture Diffusion via Geometric Delta Transport](/202608/16/2608.13255v1-geocache-training-free-acceleration-of-multi-view-texture-diffusion-via-geometric-delta-transport)  
    标签：评分：8.0/10、query:fm
-   evidence：基于流的生成建模统一框架
-7. [Semantic Steering for Controllable Generation: Tuning-Free Concept Erasure in Multimodal Diffusion Transformers](/202608/15/2608.12829v1-semantic-steering-for-controllable-generation-tuning-free-concept-erasure-in-multimodal-diffusion-transformers)  
+   evidence：多视图纹理扩散加速
+6. [SNM-VFI: Symmetric Nonlinear Motion-Guided Generative Video Frame Interpolation](/202608/16/2608.13460v1-snm-vfi-symmetric-nonlinear-motion-guided-generative-video-frame-interpolation)  
    标签：评分：8.0/10、query:fm
-   evidence：扩散概率模型用于可控生成
+   evidence：用于视频帧插值的视频扩散模型
 
 ### 速读区论文标签
-1. [SynVAR: Synergizing Spatial and Semantic Alignment in Visual Autoregressive Model](/202608/15/2608.07948v1-synvar-synergizing-spatial-and-semantic-alignment-in-visual-autoregressive-model)  
-   标签：评分：7.0/10、query:fm
-   evidence：视觉自回归生成模型
-2. [RenderMatte: Exact-Alpha Rendering and Group-Relative Alignment for Image Matting](/202608/15/2608.08487v1-rendermatte-exact-alpha-rendering-and-group-relative-alignment-for-image-matting)  
-   标签：评分：7.0/10、query:fm
-   evidence：适配FLUX扩散模型用于抠图
-3. [RL-Native Distillation: Exploiting Scored Trajectories for Few-Step Image Generation](/202608/15/2608.09226v1-rl-native-distillation-exploiting-scored-trajectories-for-few-step-image-generation)  
-   标签：评分：7.0/10、query:fm
-   evidence：扩散强化学习与蒸馏用于少步图像生成
+1. [Renormalising Generative Models for Active Inference: Foundations, Derivations, and Verification](/202608/16/2608.09512v1-renormalising-generative-models-for-active-inference-foundations-derivations-and-verification)  
+   标签：评分：6.0/10、query:fm
+   evidence：主动推理中的生成模型
 
 
 <div class="dpr-home-promo-card dpr-home-panel">

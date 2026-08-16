@@ -1,0 +1,942 @@
+Title: TRACE-GS: On-Policy Trajectory Distillation with Privileged Geometric Conditioning for Sparse-View 3DGS Restoration
+
+URL Source: https://arxiv.org/pdf/2608.10286v1
+
+Published Time: Wed, 12 Aug 2026 00:26:16 GMT
+
+Number of Pages: 17
+
+Markdown Content:
+# TRACE-GS: On-Policy Trajectory Distillation with Privileged Geometric Conditioning for Sparse-View 3DGS Restoration 
+
+## Linlian Jiang 1,2 , Yuchen Xi 3, Sadman Rakib Pinon 1,2 , Ruigang Yang 3, Yang Wang 1,2 †, Xinxin Zuo 1†
+
+> 1
+
+Concordia University 2Mila – Quebec AI Institute 3Shanghai Jiao Tong University 
+
+{linlian.jiang,sadmanrakib.pinon}@mail.concordia.ca, {yuchen.x,ryang2}@sjtu.edu.cn, {yang.wang,xinxin.zuo}@concordia.ca 
+
+Project Page: https://linlianjiang.github.io/trace-gs/ 
+
+Abstract 
+
+We present TRACE-GS , an on-policy tra jectory distillation framework that leverages privileged g eometric conditioning at training time, thereby adapting a diffusion prior to sparse-view 3D Gaussian Splatting (3DGS) restoration. Rather than pursuing increasingly sophisticated restoration architectures, we identify a more fundamental limitation shared by exist-ing diffusion-based approaches: supervision at independently noised states does not cover those reached during inference. In sparse-view 3DGS, under-constrained geometry biases de-noising from the outset, and the resulting deviations com-pound along the rollout. TRACE-GS instead performs on-policy trajectory distillation: a teacher conditioned on richer geometry from additional training views supplies targets along the sparse-view student’s own rollout, aligning denoising di-rections and cross-view responses at each visited state. This training-only geometry places TRACE-GS in the learning us-ing privileged information (LUPI) setting. At deployment, only the sparse-view student is retained, and its restored ren-derings serve as pseudo-observations for 3DGS refinement. To the best of our knowledge, TRACE-GS is the first to derive on-policy supervision from privileged geometry for sparse-view 3DGS restoration, achieving consistent gains and strong generalization across datasets and sparse-view settings. 
+
+## 1 Introduction 
+
+3D reconstruction and novel view synthesis (NVS) are fun-damental to virtual reality (Jiang et al. 2024), autonomous driving (Hess et al. 2025), and robotics (Hsu et al. 2026). For these tasks, 3D Gaussian Splatting (3DGS) (Kerbl et al. 2023) has emerged as a leading choice for its real-time rendering. It achieves high reconstruction quality from dense multi-view observations, but this quality deteriorates in sparse-view set-tings common in practical capture. Existing methods for sparse-view 3DGS have leveraged various priors to mitigate ambiguity under limited obser-vations. One line regularizes the reconstruction through techniques such as auxiliary depth supervision (Li et al. 2024a; Zheng et al. 2025), consistency constraints (Zhang et al. 2024), and Gaussian dropout (Park, Ryu, and Kim 2025). While these approaches help reduce overfitting, they lack an explicit generative mechanism for recovering con-tent in severely under-observed regions. A complementary 
+
+> †
+
+Corresponding authors. Restoration (Ours) Restoration (Off-Policy) GT visited states 
+
+On-Policy Supervision Off-Policy Supervision 
+
+supervision states rollout rollout accumulated drift mismatch      
+
+> Ntzitz0zNtzitz0z
+
+Figure 1: Off-policy mismatch in sparse-view 3DGS restora-tion. Top: supervision at independently forward-noised states misses rollout states, letting deviations accumulate; on-policy supervision covers visited states. Bottom: on-policy restoration recovers sharper detail from 6 views. line therefore uses pretrained diffusion models as generative restoration priors, restoring artifact-laden novel-view ren-derings and feeding the outputs back as pseudo-observations for 3DGS refinement (Liu et al. 2024; Luo et al. 2025b). Early work adopts single-image diffusion (Wu et al. 2025a), producing plausible restorations but processing each view in-dependently, which can introduce cross-view inconsistencies that hinder subsequent 3DGS optimization. This has moti-vated video diffusion methods (Wu et al. 2025b; Yin et al. 2025), which jointly model view sequences along camera trajectories to enforce consistency across views. Although increasingly sophisticated video diffusion ar-chitectures improve sequence-level cross-view modeling, a fundamental training–inference mismatch remains. During training, supervision is applied at independently noised states derived from clean target sequences, whereas inference fol-lows a sequential rollout driven by the model’s own denois-ing predictions. Thus, the model encounters self-generated states not directly covered by the training objective, creating an off-policy state mismatch (Li et al. 2024b) (see Fig. 1). In sparse-view 3DGS restoration, this mismatch interacts with under-constrained geometry: artifact-laden renderings bias arXiv:2608.10286v1 [cs.CV] 10 Aug 2026 denoising directions from the outset, and the resulting devi-ations can compound along the rollout (Ning et al. 2024). To address these coupled challenges, we seek a training signal that both (i) provides reliable denoising directions and 
+
+(ii) supervises the model at states it actually encounters along its inference trajectory. On-policy distillation offers a natu-ral framework for the latter by supervising the model along its own rollout, and has shown promise in distilling autore-gressive models (Agarwal et al. 2024; Gu et al. 2024). Its effectiveness, however, depends critically on the availabil-ity of reliable guidance at these on-policy states. We ob-serve that training scenes typically contain additional views from which a better-constrained 3DGS can be reconstructed, yielding renderings with more reliable geometry and fewer artifacts. When conditioned on these dense-view renderings, the same restoration model can therefore provide less biased denoising directions without requiring architectural changes. Because the geometry enabled by these additional views is available only during training, it constitutes privileged infor-mation in the learning using privileged information (LUPI) setting (Vapnik and Vashist 2009; Lopez-Paz et al. 2015): it can guide model learning, while deployment relies solely on sparse-view inputs. We thus introduce TRACE-GS, an on-policy trajectory distillation framework built on a coherent supervision mecha-nism: the teacher uses privileged geometry to provide reliable denoising targets, while the student’s own rollout determines where they are applied. By design, teacher and student have identical architecture and capacity, with their conditioning asymmetry arising solely from the geometry of dense- and sparse-view 3DGS renderings. We first align their predic-tions at independently noised states, reducing the student’s initial direction bias. Unlike prior diffusion-based refinement methods (Wu et al. 2025b; Yin et al. 2025), whose supervi-sion remains confined to such independently sampled states, TRACE-GS extends supervision to the rollout states them-selves, querying the frozen teacher at each one without sep-arately propagating teacher states. To further constrain how the student uses cross-view evidence beyond what direction matching captures, we introduce on-policy retrieval align-ment that matches the two paths’ retrieval responses along that trajectory. At deployment, only the sparse-conditioned student is retained; its restored renderings serve as pseudo-observations for sparse-view 3DGS refinement. Our contributions can be summarized as follows: 
+
+• We identify that off-policy mismatch and geometry-induced bias compound in sparse-view 3DGS restora-tion, and address both by coupling reliable targets with student-visited states. 
+
+• We formulate geometry-asymmetric LUPI, deriving ve-locity and cross-view targets from an identical-capacity teacher with training-only geometric conditioning. 
+
+• To the best of our knowledge, TRACE-GS is the first to supervise sparse-view 3DGS restoration on-policy, using privileged dense-view geometry to define the target at each visited state. Experiments across datasets and spar-sity levels show strong performance and generalization. 
+
+## 2 Related Work 
+
+Sparse-View 3DGS Restoration with Diffusion Priors. 
+
+Sparse-view 3DGS is severely under-constrained, often pro-ducing floaters, fragmented geometry, and blurred textures in under-observed regions (Wu et al. 2025b; Yin et al. 2025). Regularization-based methods mitigate these failures using auxiliary depth supervision (Li et al. 2024a; Zheng et al. 2025), consistency constraints (Zhang et al. 2024), or Gaus-sian dropout (Park, Ryu, and Kim 2025). Diffusion priors have also been incorporated at the reconstruction level: Re-conFusion (Wu et al. 2024) regularizes NeRF optimiza-tion, whereas OracleGS (Topaloğlu et al. 2026) weights diffusion-generated views by MVS uncertainty during 3DGS optimization. A complementary line restores artifact-laden novel-view renderings with pretrained diffusion models and feeds them back as pseudo-observations for 3DGS refine-ment. Difix3D+ (Wu et al. 2025a) uses single-image diffu-sion, whereas GenFusion and GSFixer (Wu et al. 2025b; Yin et al. 2025) jointly restore view sequences with video diffu-sion. Despite different view-coupling strategies, these restor-ers supervise independently forward-noised states rather than those reached by the sparse-conditioned rollout. This leaves conditioning-induced errors uncorrected along the rollout, limiting the restoration prior’s effectiveness. 
+
+On-Policy Distillation. Diffusion distillation methods (Yin et al. 2024; Luo et al. 2023; Zhou et al. 2024) primarily target one-step generation, supervising states obtained by noising student outputs rather than intermediate states along a multi-step rollout. For multi-step diffusion, rollout states remain unsupervised, creating a training–inference mismatch linked to exposure bias (Ning et al. 2023; Li et al. 2024b; Ning et al. 2024). On-policy distillation supervises states along student rollouts, following on-policy imitation learning (Ross, Gor-don, and Bagnell 2011); related formulations show promise in autoregressive LLMs (Agarwal et al. 2024; Gu et al. 2024; Zhao et al. 2026), few-step diffusion trajectory matching (Luo et al. 2025a), and diffusion self-correction (Qin et al. 2026). On-policy supervision remains unexplored in sparse-view 3DGS restoration, where reliable targets are unavailable from sparse conditioning alone; TRACE-GS derives them from training-time dense-view geometry. 
+
+Learning Using Privileged Information. Learning using privileged information (LUPI) exploits information avail-able during training but absent at deployment (Vapnik and Vashist 2009). Generalized distillation transfers knowledge derived from such information through a privileged teacher to a deployable student (Lopez-Paz et al. 2015), with recent extensions addressing missing-modality settings (Chen et al. 2024). Recent deep formulations use privileged information to model noisy supervision (Collier et al. 2022), transfer knowledge from enhanced training inputs (Tzortzis et al. 2024), or guide policies with privileged task states (Mes-sikommer et al. 2025). However, access alone does not guar-antee transfer (Provodin et al. 2024), motivating careful de-sign of how the privileged signal is transferred to the de-ployable model. Unlike these formulations, TRACE-GS de-rives its privileged signal from the geometric fidelity gap be-tween dense- and sparse-view renderings, yielding a teacher– student pair that differs only in geometric conditioning. ... 
+
+... 
+
+uTi -1 uTi 1uT
+
+u Si 1uSi-  
+
+> i
+> Stz-1 i
+> StzStudent Cross-AttN Teacher Cross-AttN
+
+3DGS 
+
+sg TiF  ( , , )i              
+
+> StidHztR
+> (,,)i
+> StisHztR
+> Reference Reference Tokens
+> Si
+
+F 
+
+> traj ret
+
+= +L L L
+
+> ret
+
+LDense Views dV 
+
+> Sparse Views s
+
+V
+
+> dR
+> s
+
+R 
+
+> richer geometry d
+
+c
+
+> T
+
+v
+
+> S
+
+v 
+
+> Sparse Renders Dense Renders Same Target Trajectory Input Views + LoRA Weights Restored Novel Views
+> ref
+
+T
+
+> QQ
+> Frozen
+> KV
+> traj
+
+L
+
+> gradient flow
+> ref T
+> sc
+> less reliable geometry
+> 0
+> Stz
+> sg
+
+... ...  
+
+> (Teacher Diffusion) (Student Diffusion)
+> iT-1 iT
+> student on-policy states stop-gradient (sg)
+> teacher query at visited state (no rollout)
+> (C) On-Policy Retrieval Alignment
+> ˆSI
+> Retrieval Responses
+> S
+
+
+
+(A) Privileged Geometry Formulation (B) On-Policy Trajectory Distillation scheduler velocity 
+
+> T
+
+
+
+> P
+
+Figure 2: Overview of TRACE-GS. (A) Given Vs ⊂ V d, we independently reconstruct a 3DGS from each view set and render paired sequences Rs and Rd along the same target trajectory. (B) Built on the same frozen video-diffusion backbone, the teacher and student use a frozen LoRA ϕT and a trainable LoRA ϕS cloned from a shared initialization, and are conditioned on Rd and 
+
+Rs, respectively, forming a geometry-asymmetric pair. The student rolls out its reverse trajectory, while the teacher is queried at the same student-visited states without its own rollout. (C) At these states, Ltraj aligns velocity predictions, while Lret aligns cross-view retrieval responses. Only ϕS is updated and retained for deployment. 
+
+## 3 Method 
+
+We present TRACE-GS, an on-policy trajectory distillation framework using training-time privileged geometry to super-vise student-visited states in sparse-view 3DGS restoration. Fig. 2 illustrates the geometry-asymmetric LUPI formulation (Sec. 3.2) and on-policy distillation along the student rollout (Sec. 3.4); the preceding direction alignment is described in Sec. 3.3. Once trained, only the student model is deployed. 
+
+3.1 Preliminary 
+
+Sparse-View 3D Gaussian Splatting. 3D Gaussian Splat-ting (3DGS) (Kerbl et al. 2023) reconstructs a scene from K
+
+posed images Vs = {(Ii, P i)}Ki=1 (each image Ii paired with camera pose Pi) as a set of learnable Gaussian primitives G,which are rendered to novel views via differentiable alpha compositing. We focus on the sparse-view setting (Wu et al. 2025b), where K is small (e.g., K ∈ { 3, 6, 9}). Given a target camera trajectory P = {Pn}Ln=1 , the resulting novel-view sequence is R = { ˜In = Render( G, P n)}Ln=1 .
+
+Diffusion-Based Restoration. Diffusion-based restoration adapts a video diffusion model (Yang et al. 2024; Wan et al. 2025) to restore an artifact-laden sequence R from a sparse-view 3DGS G. Given a denoising schedule tM > · · · > t 0,it starts from ztM ∼ N (0 , I) and updates 
+
+zti−1 = Ti(zti , v θ (zti , t i, R )) ,
+
+where Ti is the scheduler update to ti−1. The decoded se-quence bI = {bIn}Ln=1 is paired with its target poses {Pn}Ln=1 .During deployment, these posed pseudo-observations and Vs
+
+supervise iterative optimization of G, yielding its refined ver-sion G′ for final novel-view inference. 
+
+3.2 Geometry-Asymmetric Learning with Privileged Information 
+
+Motivation. Reliable guidance is difficult to obtain from sparse-view conditioning alone. At deployment, sparse-view restoration methods (Wu et al. 2025b; Yin et al. 2025) op-erate with only a few input views (e.g., 3, 6, or 9), typically resulting in incomplete geometry and artifact-prone render-ings. Training scenes often provide many more views. Yet, to match the sparse deployment setting, existing methods restrict conditioning to the same sparse subset, leaving the remaining views and their geometric evidence unexploited. 
+
+The natural question is: how can we transfer this training-time geometric advantage to a restorer that sees only sparse views at deployment? 
+
+Knowledge distillation (Hinton, Vinyals, and Dean 2015) of-fers a principled mechanism for transferring this advantage and is commonly instantiated through a teacher–student ar-chitecture. Unlike conventional formulations (Sengupta et al. 2024), which typically rely on model-capacity asymmetry 
+
+to transfer knowledge from a high-capacity teacher to a smaller student, we introduce a new formulation for sparse-view 3DGS restoration, which we call geometry asymmetry :knowledge is transferred from a teacher whose conditioning carries more reliable geometry to an architecturally identical, equal-capacity student conditioned on less reliable geometry. 
+
+Privileged Geometry Formulation. Let Vs ⊂ V d denote the sparse and dense view sets. As shown in Fig. 2(A), we reconstruct a 3DGS from each and render both along the same target trajectory P, yielding paired sequences Rs and Rd. The restoration model maps Rd to a training-only pseudo-target 
+
+bIT and Rs to deployable pseudo-observations bIS :
+
+Vd
+
+> 3DGS
+
+−−−−→ Rd
+
+> encodes
+
+99K cd
+
+> restore
+
+−−−−−→ bIT (training only) ,
+
+Vs
+
+> 3DGS
+
+−−−−→ Rs
+
+> encodes
+
+99K cs
+
+> restore
+
+−−−−−→ bIS
+
+> update
+
+⇝ G′ (deployment) .
+
+(1) Here, cb denotes the geometry implicitly carried by Rb for 
+
+b ∈ { s, d }, with dashed arrows marking this association. Since Rd is rendered from a 3DGS fitted with more views, it typically carries more reliable geometry than Rs.Because the additional views Vd \ V s are available dur-ing training but not at deployment, the richer geometry cd
+
+they enable constitutes privileged information . This naturally casts sparse-view restoration as a learning using privileged information (LUPI) problem (Vapnik and Vashist 2009; Lopez-Paz et al. 2015). Accordingly, the dense-view path provides privileged training supervision, whereas only the sparse-view output bIS updates the 3DGS at deployment. 
+
+3.3 Privileged Geometry Supervision 
+
+Geometry-Asymmetric Teacher–Student Roles. To instan-tiate the geometry-asymmetric LUPI formulation, we define a privileged teacher role and a deployable student role within a single velocity predictor vθ,ϕ (Yang et al. 2024). The two roles share the frozen backbone θ and a trainable LoRA ϕ,differing only in their conditioning. They receive the same zt,obtained by forward-noising the latent encoding of bIT with a shared noise sample ϵ at timestep t, and are conditioned on Rd and Rs, respectively, which correspond to the same target-view sequence: 
+
+vT = vθ,ϕ (zt, t, R d)
+
+| {z } 
+
+> teacher role (privileged)
+> Rd99K cd,|V d|>|V s|
+
+, vS = vθ,ϕ (zt, t, R s)
+
+| {z } 
+
+> student role (standard)
+> Rs99K cs,|V s|=K∈{ 3,6,9}
+
+. (2) The dense-conditioned prediction vT therefore provides the privileged supervisory direction for vS .
+
+Privileged Direction Alignment. To reduce the direction gap induced by the different geometric reliability of Rs
+
+and Rd, we align the two paths’ single-step predictions at forward-noised states: 
+
+Lalign = E(Rs,R d), t, ϵ 
+
+h
+
+∥vS − sg[ vT ]∥22
+
+i
+
+, (3) where ϵ ∼ N (0 , I) and sg[ ·] denotes stop-gradient, so the alignment is directional: it pulls vS toward the dense-conditioned direction without backpropagating through vT .Both paths receive standard flow-matching supervision on 
+
+bIT , yielding Lwarm = LS 
+
+> fm
+
++ LT 
+
+> fm
+
++ λalign Lalign , anchoring both predictions to the pseudo-target velocity and discourag-ing a conditioning-invariant shortcut. Because ϕ is shared, 
+
+vT is recomputed each update and remains an online target. 
+
+3.4 On-Policy Trajectory Distillation with Privileged Geometry 
+
+The privileged direction alignment in Sec. 3.3 provides one-step dense-conditioned supervision only at independently sampled forward-noised states, leaving the recursive student rollout unaddressed and creating two coupled limitations: (i) Student-visited states lack direct supervision. This omission creates an off-policy gap analogous to that in imitation learning (Ross, Gordon, and Bagnell 2011). (ii) Geometry-induced errors compound along the roll-out. Under-constrained sparse-view geometry biases denoising directions from the outset; as each state builds on the previous prediction, the resulting errors accumulate (Ning et al. 2023; Li et al. 2024b). These effects interact: biased directions push the student into uncovered states, where subsequent predictions can deviate further. We therefore query the dense-conditioned teacher at each visited state, as shown in Fig. 2(B). 
+
+Student On-Policy Rollout. With ϕT frozen, the student rolls out on a time grid {t′
+
+> i
+
+}Ni=0 resampled each iteration from the deployment schedule. Starting from zSt′
+
+> N
+
+∼ N (0 , I),it updates for i = N, . . . , 1:
+
+uSi = vθ,ϕ S (zSt′ 
+
+> i
+
+, t ′
+
+> i
+
+, R s), zSt′ 
+
+> i−1
+
+= sg 
+
+h
+
+Ti(zSt′ 
+
+> i
+
+, u Si )
+
+i
+
+. (4) The visited trajectory is ZS = {(zSt′
+
+> i
+
+, t ′
+
+> i
+
+)}Ni=1 .
+
+Privileged Teacher Supervision. At each student-visited state, we query the frozen teacher without a separate rollout, so supervision stays anchored to the states actually visited: 
+
+uTi = vθ,ϕ T (zSt′ 
+
+> i
+
+, t ′
+
+> i
+
+, R d), i = 1 , . . . , N. (5) This supplies privileged supervision at states not covered by the preceding direction alignment. 
+
+Trajectory Distillation Loss. We align the student predic-tions with the frozen teacher targets along ZS :
+
+Ltraj = E(Rs,R d), z St′
+
+> N
+
+"
+
+1
+
+N
+
+> N
+
+X
+
+> i=1
+
+uSi − sg[ uTi ] 22
+
+#
+
+. (6) Gradients flow to ϕS through uSi at each visited state, but not through the detached scheduler transitions. 
+
+On-Policy Retrieval Alignment. The teacher and student paths attend to the same timestep-invariant reference-view tokens Tref (Yin et al. 2025), but path-specific LoRA projec-tions can yield different retrieval responses. Velocity match-ing aligns denoising directions but does not directly constrain these responses. We therefore introduce on-policy retrieval alignment to match the student’s responses to the teacher’s at the same visited states, as illustrated in Fig. 2(C). 
+
+F bi = Softmax 
+
+
+
+Hbi W bQ
+
+
+
+Eb ⊤
+
+/√d
+
+ 
+
+Tref W bV
+
+
+
+,
+
+(7) H(zSt′ 
+
+> i
+
+, t ′
+
+> i
+
+, R b; θ, ϕ b), b ∈ { S, T }
+
+Eb = Tref W bK , reference keys ref. values 
+
+where b ∈ { S, T } indexes paths conditioned on Rs and Rd,respectively; Hbi are hidden states, and W bQ,K,V include ϕb.Let ¯F bi = Norm( F bi ) denote the token-wise ℓ2-normalized response. We align the student response with its frozen priv-ileged counterpart: 
+
+Lret = E(Rs,R d), z St′
+
+> N
+
+"
+
+1
+
+N
+
+> N
+
+X
+
+> i=1
+
+¯F Si − sg  ¯F Ti
+
+ 22
+
+#
+
+. (8) The overall on-policy training objective is 
+
+L = Ltraj + λret Lret . (9) 
+
+Deployment-Time 3DGS Refinement. After training, only the student ϕS is retained. Given a scene reconstructed from 
+
+K sparse views, the student restores its artifact-prone ren-derings Rs without access to the dense-view reconstruction or the teacher. The restored renderings serve as pseudo-observations for refining the 3DGS representation G (cf. Eq. (1)), alternating with 3DGS optimization for a fixed num-ber of rounds. Alg. 1 summarizes the full procedure. Algorithm 1: On-Policy Distillation and Deployment 
+
+Require: Vs, Vd, P; deployment schedule {tj }Mj=0 , solver 
+
+{T i}; N, N r , λ ret ; frozen θ; aligned ϕ (Sec. 3.3) 
+
+1: ϕT ← Freeze(Clone( ϕ)) , ϕS ← Clone( ϕ)
+
+2: Rb ← Render(3DGS( Vb), P), b ∈ { s, d }
+
+// Training: On-policy distillation 
+
+3: while not converged do 
+
+4: {t′
+
+> i
+
+}Ni=0 ← Resample( {tj }Mj=0 , N ) ▷ training grid 
+
+5: zSt′
+
+> N
+
+∼ N (0, I) ▷ initial noise 
+
+6: for i = N, . . . , 1 do 
+
+7: (ubi , F bi ) ← vθ,ϕ b (zSt′
+
+> i
+
+, t ′
+
+> i
+
+, R b), b ∈ { S, T } ▷ stu-dent/teacher 
+
+8: zSt′
+
+> i−1
+
+← sg[ Ti(zSt′
+
+> i
+
+, u Si )] ▷ detached transition 
+
+9: Update ϕS with Ltraj + λret Lret 
+
+// Deployment: 3DGS refinement 
+
+10: G ← 3DGS( Vs)
+
+11: for r = 1 , . . . , N r do 
+
+12: bIS ← Restore( θ, ϕ S , Render( G, P)) 
+
+13: G ← Update( G; Vs, bIS , P) ▷ pseudo-obs. update 
+
+14: G′ ← G 
+
+## 4 Experiments 
+
+4.1 Experimental Settings 
+
+Implementation Details. We freeze a pretrained video-diffusion restoration backbone (Yin et al. 2025; Yang et al. 2024) and train rank-32 LoRA adapters at 480 × 720 resolu-tion. Training uses AdamW with a learning rate of 1 × 10 −5,batch size 2/GPU, λalign = 1 , and λret = 0 .15 . Each iteration resamples an N = 10 -step rollout from the M = 50 -step deployment schedule. Deployment alternates restoration and 3DGS optimization for Nr = 3 rounds on one NVIDIA A100 GPU (see the supplement for computational costs). 
+
+Training Data. We construct the training set from 112 scenes of DL3DV (Ling et al. 2024). For each scene, we sample 
+
+K ∈ { 3, 6, 9} input views to reconstruct a sparse-view 3DGS and use all available training views for its dense-view coun-terpart. We render both along shared trajectories, obtaining 150 paired clips per scene. Sparse-view renderings from 7K and 17K iterations form the student input Rs and are paired with the same dense-view renderings Rd from 30K itera-tions. A frozen pretrained restorer generates pseudo-targets 
+
+bIT from Rd. The latent encodings of bIT are forward-noised to sample the warm-up states. Each clip contains 49 frames, and both paths share the same pair of reference views. 
+
+Evaluation Datasets and Metrics. We evaluate on three benchmark datasets: 1) DL3DV-Benchmark (Ling et al. 2024), 2) Mip-NeRF 360 (Barron et al. 2022), and 3) NeRF-Busters (Warburg et al. 2023). We report PSNR, SSIM, and LPIPS (Zhang et al. 2018). 
+
+4.2 Comparison with State-of-the-Art Methods 
+
+In-Domain Sparse-View Reconstruction. We first evaluate TRACE-GS on the DL3DV-Benchmark (Ling et al. 2024), whose 28 scenes share the same data domain as our DL3DV training set but are disjoint from the training scenes. We PSNR ↑ SSIM ↑ LPIPS ↓                                                      
+
+> Method 3693693693DGS 13.72 17.11 19.05 0.410 0.547 0.625 0.521 0.372 0.293 Difix3D+ 15.07 18.26 20.12 0.481 0.589 0.656 0.473 0.329 0.259 GenFusion 14.64 18.36 20.32 0.498 0.610 0.688 0.493 0.374 0.314 GSFixer 16.21 19.11 20.60 0.536 0.625 0.675 0.478 0.360 0.307 Ours 16.92 19.46 21.07 0.553 0.639 0.680 0.463 0.349 0.295
+
+Table 1: Quantitative comparison on DL3DV-Benchmark with 3, 6, and 9 input views. Colors from yellow to red indicate increasing performance. GSFixer Ours GT 
+
+Figure 3: Qualitative comparison on DL3DV. GSFixer blurs reflective and under-observed regions (zoomed), whereas TRACE-GS restores sharper detail closer to the GT. compare against 3DGS (Kerbl et al. 2023), Difix3D+ (Wu et al. 2025a), GenFusion (Wu et al. 2025b), and GSFixer (Yin et al. 2025) under the 3-, 6-, and 9-view settings. As shown in Table 1, TRACE-GS achieves the best PSNR across all view settings, leads all metrics in the challenging 3-view case, and remains best or second-best in SSIM as views increase. Its PSNR gain over vanilla 3DGS grows from 2.02 to 2.35 and 3.20 dB as views decrease from 9 to 6 and 3. This trend is consistent with our geometry-asymmetric design: sparser coverage makes the student’s geometry less reliable, widening the conditioning gap and thereby increasing the advantage of privileged dense-view guidance; on-policy dis-tillation applies this guidance along the student’s own rollout. Fig. 3 shows this on reflective and under-observed re-gions: GSFixer blurs storefront reflections and chair con-tours, whereas ours restores sharper, more faithful structure. 
+
+Out-of-Domain Sparse-View Reconstruction. To assess generalization, we evaluate on Mip-NeRF 360 (Barron et al. 2022) and NeRFBusters (Warburg et al. 2023), which were Mip-NeRF 360 NeRFBusters                                                                                                                                                                               
+
+> PSNR ↑SSIM ↑LPIPS ↓PSNR ↑SSIM ↑LPIPS ↓
+> Method 369369369369369369Zip-NeRF (ICCV’23) 12.77 13.61 14.30 0.271 0.284 0.312 0.705 0.663 0.633 13.00 13.50 14.09 0.354 0.369 0.380 0.653 0.620 0.580 ReconFusion ∗(CVPR’24) 15.50 16.93 18.19 0.358 0.401 0.432 0.585 0.544 0.511 15.62 17.12 18.26 0.371 0.415 0.439 0.574 0.558 0.527 3DGS (SIGGRAPH’23) 13.06 14.96 16.79 0.251 0.355 0.447 0.576 0.505 0.446 13.84 15.98 18.12 0.415 0.502 0.574 0.587 0.503 0.441 2DGS (SIGGRAPH’24) 13.07 15.02 16.67 0.243 0.338 0.423 0.580 0.506 0.449 13.18 15.56 17.81 0.387 0.480 0.571 0.522 0.437 0.358 Difix3D+ (CVPR’25) 13.92 15.94 17.54 0.298 0.382 0.452 0.578 0.468 0.391 15.48 18.46 20.05 0.457 0.581 0.636 0.473 0.354 0.302 GenFusion (CVPR’25) 15.03 16.90 18.29 0.357 0.430 0.489 0.578 0.494 0.440 14.93 18.05 20.28 0.516 0.601 0.669 0.505 0.396 0.324 GSFixer (ICML’26) 15.61 17.27 18.63 0.370 0.426 0.481 0.559 0.478 0.420 16.00 18.54 20.28 0.519 0.597 0.651 0.482 0.395 0.335 Ours 16.34 17.99 19.20 0.396 0.455 0.506 0.543 0.450 0.402 16.60 19.26 20.79 0.540 0.619 0.678 0.467 0.373 0.318
+
+Table 2: Quantitative comparison on out-of-domain datasets. We evaluate against baselines on Mip-NeRF 360 (Barron et al. 2022) and NeRFBusters (Warburg et al. 2023) under {3, 6, 9} views. ∗ denotes results reproduced by us using their official implementation. Colors from yellow to red indicate increasing performance. 3DGS  DIFIX3D+  GSFixer  Ours  GT 3 views 6 views 9 views 3 views 6 views 9 views 
+
+Mip-NeRF 360 NeRFBusters 
+
+Figure 4: Qualitative comparison on out-of-domain sparse-view reconstruction using 3, 6, and 9 views on Mip-NeRF 360 (Barron et al. 2022) (left) and NeRFBusters (Warburg et al. 2023) (right). Orange boxes mark compared regions. Baseline failures shift from broken coarse geometry at 3 views to oversmoothed detail at denser settings, while TRACE-GS preserves both. unseen during training and differ from DL3DV in capture style, scene scale, and camera trajectories. We compare against NeRF-based methods (Zip-NeRF (Barron et al. 2023) and ReconFusion (Wu et al. 2024)), splatting-based methods (3DGS (Kerbl et al. 2023) and 2DGS (Huang et al. 2024)), and diffusion-based 3DGS restoration methods (Difix3D+ (Wu et al. 2025a), GenFu-sion (Wu et al. 2025b), and GSFixer (Yin et al. 2025)). As shown in Table 2, TRACE-GS achieves the best PSNR and SSIM at every sparsity level on both datasets and leads all three metrics under 3 views as well as on Mip-NeRF 360 with 6 views. Under 3 views, it outperforms GSFixer by 0.73 dB in PSNR on Mip-NeRF 360 and 0.60 dB on NeRFBusters. Fig. 4 reveals the same progression on both datasets. At 3 views, baselines lose coarse geometry: the table legs in Mip-NeRF 360 fragment and Pikachu’s ear structure in NeRFBusters collapses, while ours preserves both. As views increase, the bottleneck shifts to fine detail: GSFixer over-smooths flower petals and sofa contours in Mip-NeRF 360 and surface details on the hydrant and dumpster in NeRF-Busters, whereas ours preserves them. Together, these re-sults suggest that on-policy distillation transfers training-time privileged guidance beyond the training distribution. 
+
+4.3 Ablation Studies 
+
+Our ablations evaluate the two requirements identified in Sec. 1: (i) reliable denoising directions and (ii) supervision at student-visited states. 
+
+Effect of Privileged Geometry. Table 3 shows that increas-ing teacher views from 3 (B) to 12 (C), 18 (D), and all (F) monotonically improves every metric on both benchmarks, reaching 19.15 dB on DL3DV and surpassing the no-teacher baseline (A) by 0.51 dB. Fig. 5 illustrates what this recovers: (A) is illegible, whereas (D) restores the coarse layout of the text. The non-privileged three-view teacher (B) falls be-low (A), indicating that distillation alone provides no benefit without additional geometric evidence. 
+
+Effect of On-Policy Supervision. Variants (E) and (F) share the same all-view teacher and training budget, differing only in the queried states: independently sampled in (E) and student-visited in (F), thereby isolating the effect of the off-policy state mismatch described in Sec. 3.4. On-policy super-vision improves all metrics on both benchmarks. The same comparison in Fig. 5 shows this on a text region whose fine strokes are refined late in the reverse trajectory: (E) bends strokes into letter-like but incorrect shapes, whereas (F) re-solves legible characters. Fig. 6 traces the same gap across denoising: the variants remain close in early steps but separate in the later half, where the off-policy variant plateaus while the on-policy variant continues to improve. Together, this structured distortion and late-emerging gap are consistent with errors accumulating at student-visited states left uncovered by independent-timestep supervision, rather than with a capacity difference between the otherwise identical variants. Even without Lret , ( F−)outperforms (E) on all metrics, and retrieval alignment adds a further consistent gain. (E) Off-policy (F) Ours GT (A) Baseline (D) Distil. (18V) 
+
+Figure 5: Qualitative comparison on a zoomed text region. Privileged geometry recovers coarse structure, while on-policy supervision corrects fine strokes along the student rollout, yielding text closest to GT. Teacher Priv. DL3DV Mip-NeRF 360 Method views geom. PSNR ↑ SSIM ↑ LPIPS ↓ PSNR ↑ SSIM ↑ LPIPS ↓                                                               
+
+> (A) Baseline ––18.64 0.612 0.382 17.17 0.426 0.486 (B) Distil. 3✗18.36 0.608 0.389 16.93 0.421 0.489 (C) Distil. 12 ✓18.80 0.616 0.379 17.26 0.434 0.480 (D) Distil. 18 ✓18.92 0.619 0.375 17.59 0.440 0.471 (E) Off-policy all ✓18.98 0.619 0.374 17.53 0.443 0.474 (F −) w/o Lret all ✓19.09 0.622 0.372 17.77 0.450 0.466 (F) Ours all ✓19.15 0.624 0.369 17.84 0.452 0.465
+
+Table 3: Ablation of privileged geometry and on-policy supervision on DL3DV-Benchmark (in-domain) and Mip-NeRF 360 (out-of-domain), averaged over 3, 6, and 9 stu-dent input views. (A) is the frozen pretrained restorer; (B)– (F) share the same warm-up initialization and training bud-get. Under on-policy supervision, (B)–(D) and (F) increase teacher views from three to all; (B) uses no privileged geom-etry. Variant (E) instead uses independently sampled states, and ( F−) sets λret = 0 . “All” denotes all training views. 0 10 20 30 40 49      
+
+> Denoising Step
+> 14.0 14.5 15.0 15.5 16.0 16.5 17.0
+> PSNR (dB)
+> Off-policy On-policy 010 20 30 40 49
+> Denoising Step
+> 0.386 0.396 0.406 0.416 0.426 0.436 0.446
+> LPIPS
+> Off-policy On-policy
+
+Figure 6: Per-step restoration quality along the reverse dif-fusion trajectory on held-out Mip-NeRF 360 clips with per-frame GT, averaged across view settings before 3DGS re-finement. The variants remain close in early denoising steps but diverge later: the off-policy variant plateaus, whereas the on-policy variant continues to improve. This late-emerging gap is consistent with errors accumulating at rollout states left uncovered by independent-state supervision. 
+
+## 5 Conclusion 
+
+We introduce TRACE-GS, an on-policy trajectory distilla-tion framework that, to the best of our knowledge, is the first to derive on-policy supervision from training-time privileged geometry for sparse-view 3DGS restoration. In its single su-pervision mechanism, this geometry defines the target, and the student’s own rollout determines where it is applied. A dense-conditioned teacher is queried at these states to align denoising directions and cross-view retrieval responses, without a teacher rollout. Only the sparse-conditioned stu-dent remains at deployment. Across in- and out-of-domain benchmarks, TRACE-GS achieves consistent gains under 3, 6, and 9 views, most pronounced under severe sparsity. 
+
+Limitations and Future Work. Our formulation targets static scenes, as in prior sparse-view restoration work, and extends naturally to dynamic capture. Since privileged ge-ometry is training-only, deployment needs neither additional views nor teacher computation, making TRACE-GS a drop-in refinement stage for sparse capture. Future work includes dynamic scenes and uncertainty-aware supervision. References 
+
+Agarwal, R.; Vieillard, N.; Zhou, Y.; Stanczyk, P.; Ramos Garea, S.; Geist, M.; and Bachem, O. 2024. On-policy distillation of language models: Learning from self-generated mistakes. In International Conference on Learning Representations , volume 2024, 21246–21263. Barron, J. T.; Mildenhall, B.; Verbin, D.; Srinivasan, P. P.; and Hedman, P. 2022. Mip-nerf 360: Unbounded anti-aliased neural radiance fields. In Proceedings of the IEEE/CVF con-ference on computer vision and pattern recognition , 5470– 5479. Barron, J. T.; Mildenhall, B.; Verbin, D.; Srinivasan, P. P.; and Hedman, P. 2023. Zip-nerf: Anti-aliased grid-based neural radiance fields. In Proceedings of the IEEE/CVF Interna-tional Conference on Computer Vision , 19697–19705. Chen, M.; Zhang, F.; Zhao, Z.; Yao, J.; Zhang, Y.; and Wang, Y. 2024. Probabilistic conformal distillation for enhancing missing modality robustness. Advances in Neural Informa-tion Processing Systems , 37: 36218–36242. Collier, M.; Jenatton, R.; Kokiopoulou, E.; and Berent, J. 2022. Transfer and marginalize: Explaining away label noise with privileged information. In International conference on machine learning , 4219–4237. PMLR. Gu, Y.; Dong, L.; Wei, F.; and Huang, M. 2024. Minillm: Knowledge distillation of large language models. In Inter-national Conference on Learning Representations , volume 2024, 32694–32717. Hess, G.; Lindström, C.; Fatemi, M.; Petersson, C.; and Svensson, L. 2025. Splatad: Real-time lidar and camera rendering with 3d gaussian splatting for autonomous driv-ing. In Proceedings of the Computer Vision and Pattern Recognition Conference , 11982–11992. Hinton, G.; Vinyals, O.; and Dean, J. 2015. Distill-ing the knowledge in a neural network. arXiv preprint arXiv:1503.02531 .Hsu, T.; Liu, G.; Kannala, J.; and Heikkilä, J. 2026. Scene-Agnostic Object-Centric Representation Learning for 3D Gaussian Splatting. In Proceedings of the IEEE/CVF Confer-ence on Computer Vision and Pattern Recognition , 219–228. Huang, B.; Yu, Z.; Chen, A.; Geiger, A.; and Gao, S. 2024. 2d gaussian splatting for geometrically accurate radiance fields. In ACM SIGGRAPH 2024 conference papers , 1–11. Jiang, Y.; Yu, C.; Xie, T.; Li, X.; Feng, Y.; Wang, H.; Li, M.; Lau, H.; Gao, F.; Yang, Y.; et al. 2024. Vr-gs: A physical dynamics-aware interactive gaussian splatting system in vir-tual reality. In ACM SIGGRAPH 2024 conference papers ,1–1. Kerbl, B.; Kopanas, G.; Leimkühler, T.; Drettakis, G.; et al. 2023. 3d gaussian splatting for real-time radiance field ren-dering. ACM Trans. Graph. , 42(4): 139–1. Li, J.; Zhang, J.; Bai, X.; Zheng, J.; Ning, X.; Zhou, J.; and Gu, L. 2024a. Dngaussian: Optimizing sparse-view 3d gaus-sian radiance fields with global-local depth normalization. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 20775–20785. Li, M.; Qu, T.; Yao, R.; Sun, W.; and Moens, M.-F. 2024b. Alleviating exposure bias in diffusion models through sam-pling with shifted time steps. In International Conference on Learning Representations , volume 2024, 16816–16838. Ling, L.; Sheng, Y.; Tu, Z.; Zhao, W.; Xin, C.; Wan, K.; Yu, L.; Guo, Q.; Yu, Z.; Lu, Y.; et al. 2024. Dl3dv-10k: A large-scale scene dataset for deep learning-based 3d vision. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 22160–22169. Liu, X.; Chen, J.; Kao, S.-h.; Tai, Y.-W.; and Tang, C.-K. 2024. Deceptive-nerf/3dgs: Diffusion-generated pseudo-observations for high-quality sparse-view reconstruction. In European Conference on Computer Vision , 337–355. Springer. Lopez-Paz, D.; Bottou, L.; Schölkopf, B.; and Vapnik, V. 2015. Unifying distillation and privileged information. arXiv preprint arXiv:1511.03643 .Luo, W.; Hu, T.; Zhang, S.; Sun, J.; Li, Z.; and Zhang, Z. 2023. Diff-instruct: A universal approach for transferring knowledge from pre-trained diffusion models. Advances in Neural Information Processing Systems , 36: 76525–76546. Luo, Y.; Hu, T.; Sun, J.; Cai, Y.; and Tang, J. 2025a. Learning few-step diffusion models by trajectory distribution match-ing. In Proceedings of the IEEE/CVF International Confer-ence on Computer Vision , 17719–17728. Luo, Y.; Zhou, S.; Lan, Y.; Pan, X.; and Loy, C. C. 2025b. 3denhancer: Consistent multi-view diffusion for 3d enhance-ment. In Proceedings of the Computer Vision and Pattern Recognition Conference , 16430–16440. Messikommer, N.; Xing, J.; Aljalbout, E.; and Scaramuzza, D. 2025. Student-informed teacher training. In Inter-national Conference on Learning Representations , volume 2025, 67308–67323. Ning, M.; Li, M.; Su, J.; Salah, A. A.; and Onal Ertugrul, I. 2024. Elucidating the exposure bias in diffusion models. In International Conference on Learning Representations ,volume 2024, 15167–15189. Ning, M.; Sangineto, E.; Porrello, A.; Calderara, S.; and Cucchiara, R. 2023. Input perturbation reduces exposure bias in diffusion models. arXiv preprint arXiv:2301.11706 .Park, H.; Ryu, G.; and Kim, W. 2025. Dropgaussian: Struc-tural regularization for sparse-view gaussian splatting. In 
+
+Proceedings of the computer vision and pattern recognition conference , 21600–21609. Provodin, D.; Akker, B. v. d.; Katsimerou, C.; Kaptein, M.; and Pechenizkiy, M. 2024. Rethinking Knowledge Transfer in Learning Using Privileged Information. arXiv preprint arXiv:2408.14319 .Qin, Y.; Wang, L.; Fei, H.; Zimmermann, R.; Bo, L.; Lu, Q.; and Wang, C. 2026. SOAR: Self-Correction for Opti-mal Alignment and Refinement in Diffusion Models. arXiv preprint arXiv:2604.12617 .Ross, S.; Gordon, G.; and Bagnell, D. 2011. A reduction of imitation learning and structured prediction to no-regret on-line learning. In Proceedings of the fourteenth international conference on artificial intelligence and statistics , 627–635. JMLR Workshop and Conference Proceedings. Sengupta, A.; Dixit, S.; Akhtar, M. S.; and Chakraborty, T. 2024. A good learner can teach better: Teacher-student collaborative knowledge distillation. In The Twelfth Interna-tional Conference on Learning Representations .Topaloğlu, A.; Li, K.; Niemeyer, M.; Navab, N.; Tekalp, A. M.; and Tombari, F. 2026. OracleGS: Grounding Gen-erative Priors for Sparse-View Gaussian Splatting. In 2026 IEEE/CVF Winter Conference on Applications of Computer Vision (WACV) , 77–87. IEEE. Tzortzis, I. N.; Makantasis, K.; Rallis, I.; Bakalos, N.; Doulamis, A.; and Doulamis, N. 2024. Learning using priv-ileged information for segmenting tumors on digital mam-mograms. arXiv preprint arXiv:2402.06379 .Vapnik, V.; and Vashist, A. 2009. A new learning paradigm: Learning using privileged information. Neural networks ,22(5-6): 544–557. Wan, T.; Wang, A.; Ai, B.; Wen, B.; Mao, C.; Xie, C.-W.; Chen, D.; Yu, F.; Zhao, H.; Yang, J.; et al. 2025. Wan: Open and advanced large-scale video generative models. arXiv preprint arXiv:2503.20314 .Warburg, F.; Weber, E.; Tancik, M.; Holynski, A.; and Kanazawa, A. 2023. Nerfbusters: Removing ghostly arti-facts from casually captured nerfs. In Proceedings of the IEEE/CVF International Conference on Computer Vision ,18120–18130. Wu, J. Z.; Zhang, Y.; Turki, H.; Ren, X.; Gao, J.; Shou, M. Z.; Fidler, S.; Gojcic, Z.; and Ling, H. 2025a. Difix3d+: Improv-ing 3d reconstructions with single-step diffusion models. In 
+
+Proceedings of the IEEE/CVF Conference on Computer Vi-sion and Pattern Recognition , 26024–26035. Wu, R.; Mildenhall, B.; Henzler, P.; Park, K.; Gao, R.; Wat-son, D.; Srinivasan, P. P.; Verbin, D.; Barron, J. T.; Poole, B.; et al. 2024. Reconfusion: 3d reconstruction with diffu-sion priors. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 21551–21561. Wu, S.; Xu, C.; Huang, B.; Geiger, A.; and Chen, A. 2025b. Genfusion: Closing the loop between reconstruction and gen-eration via videos. In Proceedings of the Computer Vision and Pattern Recognition Conference , 6078–6088. Yang, Z.; Teng, J.; Zheng, W.; Ding, M.; Huang, S.; Xu, J.; Yang, Y.; Hong, W.; Zhang, X.; Feng, G.; et al. 2024. CogVideoX: Text-to-Video Diffusion Models with An Ex-pert Transformer. arXiv preprint arXiv:2408.06072 .Yin, T.; Gharbi, M.; Zhang, R.; Shechtman, E.; Durand, F.; Freeman, W. T.; and Park, T. 2024. One-step diffusion with distribution matching distillation. In Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 6613–6623. Yin, X.; Zhang, Q.; Chang, J.; Feng, Y.; Fan, Q.; Yang, X.; Pun, C.-M.; Zhang, H.; and Cun, X. 2025. Gsfixer: Improving 3d gaussian splatting with reference-guided video diffusion priors. arXiv preprint arXiv:2508.09667 .Zhang, J.; Li, J.; Yu, X.; Huang, L.; Gu, L.; Zheng, J.; and Bai, X. 2024. Cor-gs: sparse-view 3d gaussian splatting via co-regularization. In European conference on computer vision , 335–352. Springer. Zhang, R.; Isola, P.; Efros, A. A.; Shechtman, E.; and Wang, O. 2018. The unreasonable effectiveness of deep features as a perceptual metric. In Proceedings of the IEEE conference on computer vision and pattern recognition , 586–595. Zhao, S.; Xie, Z.; Liu, M.; Huang, J.; Pang, G.; Chen, F.; and Grover, A. 2026. Self-Distilled Reasoner: On-Policy Self-Distillation for Large Language Models. arXiv preprint arXiv:2601.18734 .Zheng, Y.; Jiang, Z.; He, S.; Sun, Y.; Dong, J.; Zhang, H.; and Du, Y. 2025. Nexusgs: Sparse view synthesis with epipolar depth priors in 3d gaussian splatting. In Proceedings of the Computer Vision and Pattern Recognition Conference ,26800–26809. Zhou, M.; Zheng, H.; Wang, Z.; Yin, M.; and Huang, H. 2024. Score identity distillation: Exponentially fast distillation of pretrained diffusion models for one-step generation. In Forty-first International Conference on Machine Learning .Supplementary Material 
+
+Table of Contents 
+
+A Further Implementation Details 1
+
+A.1 Backbone . . . . . . . . . . . . . . . . . . . . . . . . . . 1A.2 Conditioning Pathways . . . . . . . . . . . . . . . . 1A.3 Teacher and Student Adapters . . . . . . . . . . . 2A.4 Training Details . . . . . . . . . . . . . . . . . . . . . 3A.5 Deployment . . . . . . . . . . . . . . . . . . . . . . . . 4
+
+B Evaluation Protocol 5C Computational Cost 5D Additional Visual Results 6E Supplementary Video 6
+
+This supplement specifies the implementation of TRACE-GS beyond what space permits in the main paper. Sec. A describes the backbone, conditioning interfaces, LoRA adapters, two-stage training schedule, and deployment-time refinement loop. Together, these details make precise the claim of Sec. 3.2 that, at each paired comparison state, the only role-dependent external condition is the rendered se-quence: the student receives Rs, whereas the teacher receives 
+
+Rd. Sec. B states the evaluation protocol and the sense in which our comparisons are matched. Sec. C characterizes the computational cost of on-policy supervision at training and deployment time. Sec. D reports additional visual re-sults, and Sec. E describes the accompanying downloadable supplementary video, which compares novel-view sequences along continuous camera trajectories. Unless stated otherwise, references to numbered equa-tions, tables, figures, and algorithms refer to the main pa-per. Notation follows the main paper: lowercase subscripts index view sets and their renderings ( s for sparse and d for dense), whereas uppercase subscripts index the two condi-tioning roles ( S for the sparse-conditioned student and T for the dense-conditioned teacher). Thus, the student is condi-tioned on Rs, while the teacher is conditioned on Rd.
+
+## A Further Implementation Details 
+
+A.1 Backbone 
+
+The frozen restoration backbone θ is a latent video DiT built on CogVideoX-5B-I2V (Yang et al. 2024) and aug-mented with reference cross-attention. TRACE-GS re-tains this restoration architecture and introduces no addi-tional deployment-time module; its changes are confined to training-time supervision, state sampling, and the teacher– student formulation. All pretrained base weights, including the reference-conditioning modules, remain frozen through-out training. Only rank-32 LoRA adapters are trainable, and during Stage 2 only the student adapter ϕS is optimized (Sec. A.3). The reference-guided restoration initialization and con-ditioning interface follow GSFixer (Yin et al. 2025). The backbone contains 42 transformer blocks with hidden width 
+
+d = 3072 , implemented using 48 attention heads with per-head dimension dh = 64 , and operates in the latent space of a frozen causal 3D VAE. The principal sublayers of each transformer block are: (i) joint 3D self-attention over the concatenated video and text tokens; (ii) reference cross-attention, whose queries are the video-token hidden states and whose keys and values are derived from the timestep-invariant reference tokens 
+
+Tref (Sec. A.2); (iii) a feed-forward network with expansion factor 4 (dff =12 ,288 ). Timestep conditioning is injected through expert adaptive layer normalization driven by a 512 -dimensional timestep embedding. Each clip contains 49 frames at 480 × 720 resolution. The frozen VAE compresses the spatial dimensions by a factor of 8. With a temporal compression factor of 4 and causal boundary handling, it maps the temporal dimension to 
+
+1+(49 −1) /4 = 13 latent frames. The resulting 13 ×60 ×90 
+
+latent grid is patchified using 2 × 2 spatial patches, yielding 
+
+13 × 30 × 45 = 17 ,550 video tokens per clip. 
+
+A.2 Conditioning Pathways 
+
+In addition to the denoising state and timestep, the backbone receives three content-conditioning inputs: the rendered se-quence, the reference tokens, and the text tokens. We de-scribe each in turn and then establish that only the rendered-sequence input is role-dependent. 
+
+Rendered-sequence condition. For b ∈ { s, d }, the frozen VAE encodes the 3DGS-rendered sequence Rb into a latent condition Enc VAE (Rb) on the same spatiotemporal grid as the denoising state. This is the VAE encoding of the rendered pixels and is distinct from the dashed encodes association in Eq. (1), which denotes the geometry cb implicitly carried by 
+
+Rb. Let ξ denote the denoising state supplied to both roles: 
+
+ξ = zt at a forward-noised Stage-1 state and ξ = zSt′
+
+> i
+
+at a student-visited on-policy state. The denoising and rendered-sequence latents are concatenated along the channel dimen-sion and passed through the shared patch-embedding projec-tion (Yin et al. 2025): 
+
+Xb = PatchEmbed (Concat ch [ξ, Enc VAE (Rb)]) . (10) The resulting tokens Xb form the video-token input to the DiT, where they are concatenated with the text tokens for joint self-attention. The VAE encoder and patch-embedding projection belong to the frozen base model and are identical for the two roles. Because Rb is independent of the denoising timestep, Enc VAE (Rb) is computed once per clip and reused across all queried denoising states. The geometry asymmetry is carried implicitly by these rendered pixels. Rs and Rd originate from 3DGS repre-sentations constrained by different numbers of input views, so the geometry they carry, cs and cd in the notation of Eq. (1), differs in reliability. This distinction is relative rather than absolute: cd need not represent ground-truth geometry; TRACE-GS only relies on it being, on average, better con-strained than cs, so that the dense-conditioned prediction pro-vides a more reliable supervisory direction. We introduce no role-specific depth, normal, point-cloud, camera-parameter, or other explicit geometry channel. 
+
+Reference tokens. Each clip is anchored by two observed reference views {Iref 1 , I ref 2 } ⊂ V s, which define the begin-ning and end of the clip trajectory (Yin et al. 2025). In-termediate target views are sampled between these anchors, yielding a 49 -frame clip with two reference views and 47 
+
+target views. The frozen DINOv2 and VGGT encoders extract semantic and geometric features from the reference views, respec-tively. DINOv2 processes each view independently, whereas VGGT jointly processes the reference pair to capture their multi-view geometric relationship. For r ∈ { 1, 2}, the two feature types are projected to the DiT hidden dimension and fused by addition, and the reference tokens are the concate-nation over both views: 
+
+T(r)ref = Proj 2D 
+
+ Enc DINO (Iref  
+
+> r
+
+)
+
++ Proj 3D 
+
+  Enc VGGT (Iref 1 , I ref 2 )
+
+> r
+
+ , (11) 
+
+Tref = Concat tok 
+
+h
+
+T(1) ref , T(2) ref 
+
+i
+
+, (12) where [·]r selects the tokens associated with the r-th reference view. The reference tokens are computed once per clip and reused at every denoising timestep. In each DiT block, the video-token hidden states provide the queries, while Tref 
+
+provides the keys and values for the reference cross-attention. Both reference views are selected from Vs ⊂ V d. The teacher and student therefore receive exactly the same ref-erence images and the same Tref , although the additional views in Vd \ V s are used to construct the teacher’s rendered condition Rd. The reference tokens thus carry shared seman-tic and geometric evidence, but that evidence is identical for the two roles and does not contribute to the teacher–student asymmetry. 
+
+Text tokens. We retain the T5 text-conditioning pathway of CogVideoX. For each paired clip, a frozen BLIP2 captioner generates a sample-specific caption from the first frame of the sparse artifact-rendered sequence Rs.We append the fixed quality suffix “. The video is of high quality, and the view is very clear. High quality, masterpiece, best quality, highres, ultra-detailed, fantastic. ” and encode the resulting prompt with the frozen T5 text encoder, following the restoration prompt setup of GSFixer (Yin et al. 2025). The positive text embedding is computed once per clip and reused across denoising states. To support classifier-free guidance, we apply caption dropout during training: with probability 0.1, the positive text embedding is replaced by an all-zero embedding rather than by the T5 encoding of an empty string. The dropout mask is sampled once per paired sample and shared between the two roles. Consequently, the teacher and student receive identical text tokens, whether the text condition is retained or dropped. Text conditioning is therefore sample-dependent but role-independent. 
+
+Localization of the role-dependent signal. As established above, the reference and text tokens are identical for the two roles, as are the denoising state and timestep at each compari-son state. Their rendered sequences Rs and Rd are generated along the same target trajectory P, so corresponding frames are pose-aligned, although P is not supplied as an explicit model input. The only role-dependent external input is there-fore the rendered-sequence latent Enc VAE (Rb) in Eq. (10): the privileged geometry cd affects the teacher only through the rendered pixels of Rd.The retrieval alignment in Eq. (7) therefore compares how two capacity-matched paths, conditioned on Rs and Rd, re-trieve the same reference evidence; its discrepancy cannot be attributed to different reference inputs or model-capacity asymmetry. 
+
+A.3 Teacher and Student Adapters 
+
+The teacher and student are matched exactly in architecture and capacity. Both roles use rank-32 LoRA adapters attached to the same frozen base model, with identical rank, scaling, and target modules. For each Stage-2 run, the teacher and student adapters are cloned from the same aligned Stage-1 initialization. During Stage 2, their parameter values subse-quently diverge, since ϕT is frozen while ϕS is optimized. 
+
+Low-rank update. For a linear layer W ∈ Rdout ×din of the frozen base model, the adapted weight is 
+
+W ′ = W + αr BA, A ∈ Rr×din , B ∈ Rdout ×r , (13) with rank r = 32 and scaling α = 32 . Hence α/r = 1 
+
+and W ′ = W + BA . LoRA dropout is disabled. We use the default initialization of our LoRA implementation, with the second factor B initialized to zero. Consequently, BA = 0
+
+at initialization, and attaching an adapter does not change the function computed by the pretrained model. Before Stage 1, the adapter-augmented model is therefore functionally iden-tical to the frozen pretrained restorer evaluated as variant (A) of Table 3. Stage 1 then produces the aligned initialization from which the Stage-2 teacher and student adapters are cloned; no separately pretrained teacher or student model is used. 
+
+Insertion points. Table 4 lists the adapted projections. Adapters are instantiated in both attention modules of all 
+
+42 transformer blocks, giving 42 × 2 × 4 = 336 adapted lin-ear layers and 672 low-rank factors. After the Stage-1 adapter Module Adapted projections LoRA Joint 3D self-attention to_q,to_k,to_v,to_out.0 ✓              
+
+> Reference cross-attention to_q,to_k,to_v,to_out.0 ✓
+> Feed-forward network —✗
+> Patch embedding and input projection —✗
+> Expert adaptive layer normalization —✗
+> Normalization layers and biases —✗
+> Final output projection —✗
+> VAE, DINOv2, VGGT, and T5 encoders —✗
+
+Table 4: LoRA insertion points, identical for the teacher and student adapters. Adapters are instantiated in both attention modules of all 42 transformer blocks, while the feed-forward and conditioning components remain unadapted. is cloned, the LoRA updates attached to to_q , to_k , and 
+
+to_v of the reference cross-attention make W bQ, W bK , and 
+
+W bV in Eq. (7) path-specific during Stage 2. The two roles re-trieve from the same reference tokens Tref through capacity-matched but separately parameterized projections, whose re-sponses are aligned by Lret .
+
+Parameter budget. Because the reference features are projected to the DiT hidden width before reference cross-attention, every adapted projection is square, with din =
+
+dout = d = 3072 . Each projection therefore contributes 
+
+r(din + dout ) = 2 rd parameters. With four adapted projec-tions in each of the two attention modules, one transformer block contributes 
+
+nblk = 8rd |{z} 
+
+> joint self-attention
+
++ 8rd |{z} 
+
+> reference cross-attention
+
+= 16 rd. (14) One adapter consequently contains 42 × 16 × 32 × 3072 = 66 ,060 ,288 parameters ( 66 .06 M), less than 1.5% of the frozen DiT backbone. 
+
+Adapter pairing. Stage 1 trains a single adapter ϕ shared by both roles. For each Stage-2 run, the resulting aligned initialization is loaded once and used to form 
+
+ϕT ← Freeze  Clone( ϕ), ϕS ← Clone( ϕ), (15) as summarized in Alg. 1. The two adapters are deep copies of the same tensors: no re-initialization occurs at cloning, no gradient path connects them thereafter, and ϕT is evalu-ated without gradient tracking. Because they share the same rank, scaling, target modules, and frozen backbone, the pair remains capacity-matched throughout Stage 2. Differences among the variants in Table 3 therefore cannot be attributed to teacher–student model-size asymmetry. The two roles share all frozen base-model weights and differ in parameter storage only through their adapter sets. We therefore retain a single copy of the frozen backbone and activate ϕT or ϕS for the corresponding forward pass. Relative to student-only training, the incremental cost is one frozen 66 .06 M-parameter adapter in storage and one no-gradient teacher forward at each queried state (Sec. C). 
+
+A.4 Training Details 
+
+Pseudo-target generation. The training targets bIT are generated once, offline, before either training stage. For each paired clip, a frozen pretrained GSFixer restorer is applied to the dense-view rendering Rd to produce bIT . This generator uses the same frozen backbone weights θ as the teacher and student, together with the fixed pretrained GSFixer adapter 
+
+ϕpre . Because it is conditioned on Rd, its outputs are de-rived from renderings whose geometry is typically better constrained than that of Rs.The generator adapter ϕpre is separate from the Stage-1 adapter ϕ and from the Stage-2 adapters ϕT and ϕS . The pseudo-target generator should therefore not be confused with the privileged teacher used during Stage 2: the for-mer produces bIT offline for the flow-matching supervision, whereas the latter is queried at student-visited states to pro-vide velocity and retrieval targets. The offline generator is never evaluated during Stage 2. 
+
+Two-stage schedule. Training proceeds in two stages that are run as separate jobs rather than as two phases of a sin-gle optimizer trajectory. Stage 1 runs for 500 iterations and optimizes 
+
+Lwarm = LS 
+
+> fm
+
++ LT 
+
+> fm
+
++ λalign Lalign , (16) at states obtained by forward-noising the latent encoding of 
+
+bIT . This objective combines flow-matching supervision on 
+
+bIT for both roles with the privileged-direction alignment of Sec. 3.3. The flow-matching terms anchor both predictions to the pseudo-target velocity and discourage a conditioning-invariant shortcut in which the shared adapter ignores the rendered-sequence condition. A single adapter ϕ is shared by the two roles throughout Stage 1. Although vT is detached within Lalign , ϕ is updated by the complete Stage-1 objective, including LT
+
+> fm
+
+. Conse-quently, the dense-conditioned prediction vT is recomputed at every Stage-1 optimization update and serves as an online alignment target, in contrast to the frozen teacher used in Stage 2. The resulting adapter is saved as the Stage-1 initial-ization. Stage 2 loads this checkpoint and forms the frozen teacher 
+
+ϕT and trainable student ϕS according to Eq. (15). It then optimizes 
+
+L = Ltraj + λret Lret (17) for 2,000 iterations. In the full TRACE-GS configuration, this objective is evaluated along student rollouts; the off-policy ablation instead evaluates the teacher–student objective at independently forward-noised states. The first 100 Stage-2 iterations use linear learning-rate warm-up. This optimizer warm-up is distinct from Stage 1, whose objective is denoted 
+
+Lwarm in Eq. (16) for consistency with the main paper. Variants (B)–(F) of Table 3 use the same Stage-1 initial-ization and the same number of Stage-2 optimization itera-tions. Stage 1 is held fixed across these variants; the teacher-view and privileged-geometry entries in Table 3 refer to the Stage-2 teacher configuration. The variants then differ in the number of Stage-2 teacher views and the states at which the teacher is queried. Variant (F −) additionally sets λret = 0 .Training is iteration-based rather than epoch-based: at each optimization step, a mini-batch is drawn from the precom-puted paired clip pool. The reported iteration counts therefore denote optimizer updates rather than complete passes over all training clips. 
+
+Detached rollout and gradient flow. In the full on-policy configuration, each Stage-2 iteration constructs an N = 10 -step student rollout on a time grid {t′
+
+> i
+
+}Ni=0 resampled from the 
+
+M = 50 -step deployment schedule. At each visited state zSt′
+
+> i
+
+,the student forward pass is evaluated with gradient tracking. The frozen teacher is queried without gradient tracking at the same state and timestep, providing the corresponding velocity and retrieval targets without performing a separate teacher rollout. After computing the local losses at step i, the student state is advanced according to 
+
+uSi = vθ,ϕ S
+
+
+
+zSt′ 
+
+> i
+
+, t ′
+
+> i
+
+, R s
+
+
+
+,zSt′ 
+
+> i−1
+
+= sg 
+
+h
+
+Ti
+
+
+
+zSt′ 
+
+> i
+
+, u Si
+
+i 
+
+,
+
+(18) where sg denotes stop-gradient. The losses from all N visited states are averaged, followed by one backward pass and one optimizer update per rollout. Gradients from every local loss contribute to updating the student adapter ϕS , but no gra-dient propagates through a scheduler transition or between successive rollout steps. This avoids full backpropagation through the rollout while still supervising states the student actually visits. Because the student computation graphs for all N local losses are re-tained until the shared backward pass, student-side activation memory increases with the rollout length, whereas teacher activations are not retained for backward (Sec. C). 
+
+Retrieval-response read-out. Equation (7) omits the transformer-block index for clarity. In all experiments, F bi
+
+is read from the reference cross-attention module of the fi-nal transformer block ( m⋆ = 42 ). This location is fixed a priori and is not selected through layer search. We use the final block because its reference retrieval response is closest to the predicted denoising velocity, while its query hidden states already incorporate the processing of all preceding blocks. At student-visited state i, the video-token hidden states of the final block provide the queries, while the shared reference tokens provide the keys and values: 
+
+Qbi = Hbi,m ⋆ W bQ,m ⋆ ,Kb = Tref W bK,m ⋆ , V b = Tref W bV,m ⋆ , (19) where b ∈ { S, T } denotes the sparse-conditioned student or the dense-conditioned teacher. The reference tokens are iden-tical for the two roles, whereas the projections are separately parameterized after the Stage-1 adapter is cloned. We retain the value-weighted response of all 48 attention heads before the output projection to_out.0 :
+
+F bi = Concat 48 
+
+> h=1
+
+"
+
+Softmax Qbi,h (Kbh)⊤
+
+√dh
+
+!
+
+V bh
+
+#
+
+, (20) where dh = 64 is the per-head dimension, so that F bi ∈
+
+Rnvid ×d with d = 3072 . For each video token q, we normal-ize its response independently along the channel dimension: 
+
+¯F bi,q = F bi,q 
+
+∥F bi,q ∥2 + ϵ , (21) where ϵ is a small constant for numerical stability. The retrieval-alignment loss is 
+
+Lret = E
+
+"
+
+1
+
+N
+
+> N
+
+X
+
+> i=1
+
+MSE   ¯F Si , sg  ¯F Ti
+
+ #
+
+, (22) where MSE uses mean reduction over the batch, video-token, and channel dimensions. The stop-gradient on the teacher re-sponse ensures that this term updates only ϕS . We introduce no layer subset, head selection, or cross-layer weighting, so 
+
+λret is the only hyperparameter controlling this term. 
+
+A.5 Deployment 
+
+Student-only inference. Of the two adapters, only ϕS is retained after training. Deployment uses the same backbone, conditioning interface, denoising schedule, and number of diffusion evaluations as a standard GSFixer restoration pass, and differs only in the values of a same-sized LoRA adapter. Neither the teacher adapter ϕT , the dense-view reconstruc-tion, nor the additional views Vd \ V s is used at any deploy-ment stage, and no teacher query or additional diffusion roll-out is performed. Privileged geometry therefore introduces no deployment-time overhead (Sec. C). 
+
+Iterative refinement. We index deployment quantities by the repair round r ∈ { 1, . . . , N r }; the main paper suppresses this index. Given a scene reconstructed from K sparse views, deployment alternates student restoration and 3DGS opti-mization for Nr = 3 repair rounds. The representation is optimized for J = 30 ,000 iterations in total, with repair invoked at 
+
+Jrepair = {7,000 , 17 ,000 , 27 ,000 }. (23) The first 7,000 iterations constitute a sparse-only cold start, during which the representation is optimized exclusively from the captured views Vs. The three repair calls are fol-lowed by 10 ,000 , 10 ,000 , and 3,000 additional 3DGS opti-mization iterations, respectively. At repair round r, a round-specific camera trajectory 
+
+P(r) = {P (r) 
+
+> n
+
+}Lr 
+
+> n=1
+
+is resampled rather than reused. It com-prises a 360 ◦ elliptical path whose scale and vertical varia-tion depend on r, with a randomly sampled vertical phase, together with bridge poses connecting the observed reference views to the ellipse. We render the current representation G(r)
+
+at these poses, obtaining 
+
+eR(r) =
+
+n
+
+Render 
+
+
+
+G(r), P (r)
+
+> n
+
+o Lr
+
+> n=1
+
+. (24) The rendered trajectory is partitioned into 49 -frame clips compatible with the restoration backbone, and each clip is restored by the deployed student under the full M = 50 -step reverse-diffusion schedule. Every restored frame retains the pose of its input rendering, yielding the posed pseudo-observation set 
+
+bV(r) 
+
+> S
+
+=
+
+n bI(r)
+
+> S,n
+
+, P (r)
+
+> n
+
+o Lr
+
+> n=1
+
+. (25) Within each repair round, restored frames from all clips are pooled into a single pseudo-observation set. Across rounds, the preceding set is cleared and replaced by bV(r) 
+
+> S
+
+: later rounds do not accumulate pseudo-observations from earlier rounds but replace them with restorations conditioned on the pro-gressively refined representation. No uncertainty, perceptual-quality, or confidence-based filtering is applied when con-structing bV(r) 
+
+> S
+
+; every restored frame generated in the current round is added as a posed pseudo-observation. The captured sparse views remain active throughout opti-mization. At iteration j, the sparse-view reconstruction loss retains unit weight, while the pseudo-observation reconstruc-tion loss is modulated by a global half-sinusoidal schedule: 
+
+L3DGS (j) = Lsparse + wreg (j) Lpseudo , (26) where Lsparse and Lpseudo denote the reconstruction losses used by the GSFixer refinement pipeline, evaluated on the captured views and the current pseudo-observations, respec-tively, and 
+
+wreg (j) = 
+
+
+
+0, 0 ≤ j < 7,000 ,λreg sin 
+
+
+
+π j − 7,000 
+
+J − 7,000 
+
+
+
+, 7,000 ≤ j ≤ J, 
+
+(27) with λreg = 1 . The schedule is defined once over the com-plete refinement interval and is not restarted after each repair call. It vanishes at both endpoints and reaches its maximum value of 1 at the midpoint, so generated content is introduced gradually rather than at full strength when it first becomes available, and is annealed out before optimization terminates. In contrast, the captured-view term retains unit weight at every iteration, keeping the representation anchored to the original observations rather than allowing refinement to be driven by generated content alone. 
+
+## B Evaluation Protocol 
+
+Baseline parity. Unless marked with an asterisk, baseline results in Tables 1 and 2 are taken from the common evalua-tion reported in GSFixer (Yin et al. 2025). We use the same benchmark scenes, {3, 6, 9} sparse input views, target views, 
+
+480 × 720 evaluation resolution, and metric implementation. For methods operating in the restore–refine regime, we ad-ditionally use the 3DGS refinement protocol described in Sec. A.5, including 30 ,000 optimization iterations, Nr = 3 
+
+repair rounds, the same trajectory-generation procedure, and the same pseudo-observation weighting schedule. At evalua-tion, TRACE-GS replaces only the restoration model within this pipeline; the reconstruction and evaluation protocols are otherwise unchanged. Results marked with an asterisk are obtained by running the official implementation of ReconFusion (Wu et al. 2024). We evaluate it using the same sparse input views, target views, evaluation resolution, and metric implementation as the other methods, and provide no additional test-time views. TRACE-GS and GSFixer further share the same pretrained CogVideoX-based restoration backbone, frozen VAE, tok-enization, 49 -frame clip construction, two-reference condi-tioning interface, and reference-view selection rule. At de-ployment, they use the same initial reconstruction protocol, trajectory-generation rule, 50 -step diffusion schedule, and downstream refinement settings. What is matched is the pro-cedure rather than the realized intermediate renderings: after the first repair round, each method conditions on its own progressively refined representation. Within the restoration model, TRACE-GS differs from GSFixer in its training su-pervision and the resulting student adapter. 
+
+Metric computation. PSNR, SSIM, and LPIPS are com-puted between rendered test views and ground-truth images at 480 × 720 resolution, with LPIPS evaluated using the VGG backbone. We first average each metric over the test views of a scene and then report the unweighted mean across scenes. The same image range, evaluation resolution, and metric implementation are used for all of our runs. Baseline values taken from GSFixer (Yin et al. 2025) are reported unchanged; the asterisked ReconFusion results are evaluated with the same implementation as our own runs. 
+
+## C Computational Cost 
+
+Training. Stage 1 adds a one-time 500 -iteration alignment run; the dominant diffusion-training cost arises from Stage 2. Each Stage-2 iteration evaluates the student and teacher at 
+
+N = 10 student-visited states, requiring N gradient-tracked student forwards, N no-gradient teacher forwards, and the detached scheduler transitions that construct the rollout. The teacher is queried at the student states rather than rolled out separately. The N local losses are averaged, followed by one backward pass and one optimizer update. Accordingly, the number of student and teacher model evaluations per iteration scales linearly with the rollout length N .The two roles share one copy of the frozen backbone and use separate 66 .06 M-parameter adapters (Sec. A.3). Only 
+
+ϕS requires gradients and optimizer states, and teacher acti-vations are not retained for backward. Because all N student losses are retained until the shared backward pass, student-side activation memory grows with the rollout length. The retrieval loss reuses responses produced during these for-wards and requires no additional backbone evaluation. Training-data construction is a one-time cost. For each of the 112 training scenes, we construct the required sparse-and dense-view 3DGS representations, render paired trajec-tories to obtain approximately 150 paired clips per scene, and generate dense-conditioned pseudo-targets offline. On four NVIDIA A100 GPUs ( 80 GB each), this preprocessing to-gether with the 2,000 Stage-2 iterations takes approximately five days end to end. 
+
+Deployment. TRACE-GS has the same algorithmic de-ployment cost as GSFixer under the shared restore–refine protocol of Sec. A.5: it uses the same backbone, M = 50 
+
+diffusion steps, and Nr = 3 repair rounds, with only the adapter values changed. Deployment runs on one NVIDIA A100 GPU ( 80 GB). The teacher, dense-view reconstruc-tion, and additional training views are not used, so privileged geometry introduces no additional deployment-time model evaluation, diffusion step, or repair round. 
+
+## D Additional Visual Results 
+
+We provide additional qualitative comparisons on Mip-NeRF 360 (Barron et al. 2022) and NeRFBusters (Warburg et al. 2023). Figures 7 and 8 compare TRACE-GS with vanilla 3DGS (Kerbl et al. 2023) and three diffusion-based restora-tion baselines: Difix3D+ (Wu et al. 2025a), GenFusion (Wu et al. 2025b), and GSFixer (Yin et al. 2025). Ground-truth views are shown for reference, and the examples cover the 
+
+3-, 6-, and 9-view settings. All methods use the same sparse input views, target views, evaluation resolution, and metric protocol described in Sec. B. Methods operating in the restore–refine regime additionally use the matched downstream 3DGS refinement schedule. Two visual behaviors recur across the examples. Some methods retain residual haze, floaters, or colored streaks in under-observed regions, whereas others suppress these artifacts at the cost of over-smoothing texture or remov-ing thin structures. The following examples illustrate these recurring behaviors. 
+
+Qualitative comparison on Mip-NeRF 360. In Fig. 7, vanilla 3DGS and Difix3D+ retain visible artifacts in several under-observed regions: floaters and colored streaks remain above the flower bed, while residual haze appears near the top of the kitchen view. GenFusion suppresses many of these artifacts but produces smoother results; for example, the gar-den table is covered by a hazy appearance that weakens its radial plank texture. GSFixer generally recovers the coarse scene layout but loses fine texture in regions with limited input-view coverage. In garden , GSFixer renders the lower-right lawn as a largely smoothed green region, whereas TRACE-GS bet-ter retains both the granular grass appearance and the ra-dial pattern of the table surface. In flowers , TRACE-GS produces more clearly separated flower-bed boundaries and background foliage, while the GSFixer result contains ra-dial smearing around the bed and a blurred tree line. In 
+
+room , GenFusion and GSFixer blur parts of the sofa and side-table region into the background, whereas TRACE-GS more clearly preserves the door frame, piano-bench legs, and reflections on the wooden floor. In kitchen , the chair back be-hind the model is also more clearly recovered by TRACE-GS. These improvements occur primarily in fine structures and under-observed regions, where the sparse-view reconstruc-tion provides less reliable conditioning. The qualitative be-havior is consistent with the per-step analysis in Fig. 6: the off-policy variant plateaus during the later denoising steps, whereas the on-policy variant continues to improve as finer structure is resolved. It is also consistent with the quantitative trends reported in Table 2. 
+
+Qualitative comparison on NeRFBusters. Figure 8presents the corresponding comparison on NeRF-Busters (Warburg et al. 2023). Its casually captured scenes contain thin structures, small objects, and reflective surfaces that are particularly sensitive to reconstruction and restora-tion errors. The same broad failure patterns remain visible. Vanilla 3DGS contains substantial haze in roses and cen-tury , obscuring the bouquet and nearby table regions, and produces strong smearing over the objects in table . GenFu-sion removes much of the haze but also alters local structure: the agave leaves in century become fragmented, with visible smearing around the planter, while the tabletop in table loses much of its surface detail. The differences are especially visible on thin structures and small objects. In roses , the small white object near the lower-right part of the table is absent from the 3DGS and GenFusion results and is only weakly defined by GS-Fixer, whereas TRACE-GS more clearly recovers its shape. TRACE-GS also better preserves the tabletop reflections. In the NeRFBusters flowers scene, GSFixer smears the fine baby’s-breath stems and introduces a red patch in the upper-left region that is absent from the ground truth; TRACE-GS preserves the stems without this visible artifact. In picnic ,TRACE-GS retains both the wooden-slat texture and the background visible through the gaps, whereas GenFusion fills several gaps with smoothed content. In table , TRACE-GS produces sharper boundaries around the circular table edge and the objects resting on it. The fabricated color patch in flowers , together with the loss of thin structures in the other examples, illustrates that plausible per-frame restoration does not necessarily preserve the evidence needed for stable novel-view reconstruction. These observations are consistent with the motivation of Sec. 3.4: supervising the student at its own visited states using targets derived from better-constrained geometry reduces, although does not eliminate, the restoration errors that can accumulate along the denoising rollout. 
+
+## E Supplementary Video 
+
+A supplementary video is included with the submission as a separate downloadable media supplement. It presents novel-view sequences rendered along continuous camera trajec-tories. Static figures do not fully reveal cross-view consis-tency: individually plausible frames may still exhibit flicker, floaters, or geometry that changes across viewpoints, and these effects become more apparent under continuous mo-tion. It complements static comparisons by revealing view-dependent instability. For each scene, the video compares standard 3DGS (Kerbl et al. 2023), GSFixer (Yin et al. 2025), and TRACE-GS using the same camera trajectory and syn-chronized playback, enabling direct comparison of temporal flicker, floaters, and cross-view geometric stability. 3DGS  DIFIX3D+  GSFixer  Ours  GT GenFusion Figure 7: Qualitative comparison on out-of-domain sparse-view reconstruction on Mip-NeRF 360 (Barron et al. 2022). From left to right: kitchen , garden , flowers , and room . Examples are drawn from the 3-, 6-, and 9-view settings. Rows from top to bottom: 3DGS, Difix3D+, GenFusion, GSFixer, TRACE-GS (ours), and ground truth. Baselines either leave haze and floaters in under-observed regions or remove them at the cost of over-smoothing; TRACE-GS reduces these artifacts while preserving more high-frequency structure. 3DGS  DIFIX3D+  GSFixer  Ours  GT GenFusion Figure 8: Qualitative comparison on out-of-domain sparse-view reconstruction on NeRFBusters (Warburg et al. 2023), with examples drawn from the 3-, 6-, and 9-view settings. Columns: roses , century , picnic , flowers , table .

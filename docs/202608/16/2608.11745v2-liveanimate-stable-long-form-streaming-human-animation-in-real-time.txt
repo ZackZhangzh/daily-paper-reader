@@ -1,0 +1,438 @@
+Title: LiveAnimate: Stable Long-Form Streaming Human Animation in Real-Time
+
+URL Source: https://arxiv.org/pdf/2608.11745v2
+
+Published Time: Fri, 14 Aug 2026 00:35:38 GMT
+
+Number of Pages: 16
+
+Markdown Content:
+# LiveAnimate: Stable Long-Form Streaming Human Animation in Real-Time 
+
+Yuxuan Zhang 1,2 Haozhong Xiong 2 Yubo Huang 2 Jiayi Song 2 Jinpeng Yu 2
+
+Haofan Wang 3 Jiaming Liu 2 Ruihua Huang 2 Liwei Wang 11 The Chinese University of Hong Kong,  
+
+> 2
+
+Qwen Applications Business Group of Alibaba, 3 Liblib AI 
+
+yxzhang@cse.cuhk.edu.hk, jmliu1217@gmail.com 
+
+https://liveanimate.github.io/ 0 s 10 s 60 s 300 s 600 s  
+
+> Generated Animation Pose + Face Reference Image Pose-relevant history
+
+Real-Time 20fps on 2xH100 Streaming causal blockwise generation Pose Retrieval consistent across pose revisits 
+
+Figure 1. LiveAnimate enables real-time, stable long-form streaming human animation. Given a reference image and a stream of body-pose and facial controls, LiveAnimate generates identity-consistent animation causally, one temporal block at a time. Pose-Retrieval Sink Attention recalls pose-relevant historical context when similar poses recur, preserving appearance over extended streams. With three-step sampling, LiveAnimate runs at ∼ 20 FPS on two NVIDIA H100 GPUs while maintaining stable long-form generation. 
+
+Abstract 
+
+Pose-driven human animation synthesizes a video of a tar-get person from a single reference image and a driving pose stream. Real-time generation is essential for interactive applications such as live streaming, telepresence, and vir-tual avatars, yet diffusion-based systems require minutes to hours per clip, precluding responsive interaction. We present LiveAnimate, to our knowledge the first animation system to combine real-time streaming with stable long-form generation at billion scale, built on a 14B-parameter video Diffusion Transformer (DiT). A two-stage training pipeline first adapts a pretrained bidirectional DiT into a block-causal autoregressive generator through Reference-Anchored Teacher-Forcing Adaptation, and then reduces the sampling budget to three steps through Block-wise Self-Forcing Distillation. To preserve appearance over extended streams, we introduce Pose-Retrieval Sink Attention (PR-Sink), a bounded KV-cache mechanism combining a Static Sink that permanently anchors the first generated block, a Dynamic Sink that holds a pose-retrieved historical block, and a three-slot Rolling Window. When a pose recurs, PR-Sink restores the relevant appearance context without re-taining the entire sequence, so memory and per-block la-tency remain constant regardless of stream duration. To-gether with Ulysses sequence parallelism and operator fu-sion, these designs enable 19.63 FPS streaming inference on two NVIDIA H100 GPUs. On a three-minute bench-mark, LiveAnimate maintains nearly constant perceptual quality and identity from the first 30 seconds to the final minute (IQA 4.047 vs. 4.026), while prior systems degrade substantially or require hours of offline computation for the same rollout. These results establish a new operating point in quality, latency, and duration for interactive full-body an-imation. arXiv:2608.11745v2 [cs.CV] 13 Aug 2026 Table 1. Capability comparison of human animation methods.                                 
+
+> LiveAnimate is the first to achieve real-time streaming with stable long-form generation at billion scale.
+> Method Streaming Real-Time Stable Long-Form Param Animate Anyone [14] ✗✗✗–UniAnimate-DiT [30] ✗✗✗14B One-to-All [25] ✗✗✗14B SCAIL [36] ✗✗✗14B Wan-Animate [1] ✗✗✗14B EverAnimate [20] ✗✗✓14B
+> LiveAnimate (Ours) ✓✓✓14B
+
+1. Introduction 
+
+Pose-driven human animation, which synthesizes avideo of a target person following a sequence of driving poses while preserving the appearance from a single ref-erence image, is a fundamental task with broad applica-tions in virtual try-on, digital human creation, live stream-ing, and telepresence. The core challenge is to simulta-neously maintain appearance fidelity, pose accuracy, and temporal coherence over extended sequences, a combina-tion that has proven difficult to achieve. Video diffusion models [12, 23, 24] have become the prevailing approach to this task. Animate Anyone [14], MagicAnimate [35], and UniAnimate-DiT [30] adopt reference-based conditioning with temporal attention for short-clip generation. Build-ing on billion-scale Diffusion Transformers (DiTs), Wan-Animate [1, 7] and SCAIL [36] scale this design to 14B-parameter backbones with 3D-consistent pose representa-tions. More recently, EverAnimate [20] extends generation to the minute scale through persistent latent propagation and restorative flow matching. However, a critical gap remains: all of these methods are offline, requiring minutes to hours per clip and precluding responsive interaction. As shown in Table 1, no prior full-body diffusion system simultaneously supports streaming generation, real-time inference, and stable long-form out-put. Most methods [14, 30, 36] generate fixed-length clips and provide no mechanism for processing an open-ended pose stream. Even the minute-scale EverAnimate [20] still requires 20 denoising steps per chunk, keeping it far from real time. Closing this gap requires solving three coupled problems: (i) reducing the inference cost of a billion-scale DiT to meet an interactive latency budget, (ii) converting a bidirectional video model into a causal generator without sacrificing quality, and (iii) preventing identity and appear-ance drift over arbitrarily long rollouts. To address these challenges, we present LiveAnimate, the first system to enable real-time streaming human an-imation with stable long-form generation using a 14B-parameter causal DiT. Our approach is built on a two-stage training pipeline . In Stage 1, Reference-Anchored Teacher-Forcing Adaptation converts the pretrained bidi-rectional DiT into a block-causal generator by condition-ing each training block on ground-truth clean history. Aglobal Ref Sink makes the reference-image latent visible to all generated blocks and is distinct from the generated-history sinks used at inference. In Stage 2, Block-wise Self-Forcing Distillation (BS-DMD), building on Self Forc-ing [16], first performs a Self-Forcing Rollout without gra-dient tracking and then applies Block-wise DMD Optimiza-tion to one replayed block at a time. This exposes every block position to a distribution-matching signal without re-taining the full rollout graph, allowing Stage-2 distillation of the 14B model to run on a single 8 ×80GB GPU node. To maintain temporal coherence over long-form streaming, we propose Pose-Retrieval Sink Attention (PR-Sink) , which combines a Static Sink, a pose-retrieved Dynamic Sink, and a bounded Rolling Window. The bank update objec-tive maximizes pose coverage, while retrieval supplies the historical block written into the Dynamic Sink. At the in-frastructure level, we employ Ulysses-style sequence paral-lelism [9] and operator fusion to distribute attention compu-tation across GPUs, achieving 19.63 FPS real-time stream-ing on 2 ×H100 GPUs. In summary, our contributions are threefold: • We present LiveAnimate, the first system to enable real-time streaming human animation with stable long-form generation at billion scale, achieving ∼20 FPS on 2×H100 GPUs. • We design a two-stage training pipeline: Reference-Anchored Teacher-Forcing Adaptation converts a pre-trained bidirectional DiT into a block-causal genera-tor, and Block-wise Self-Forcing Distillation reduces the sampling budget to three steps, with a one-block-at-a-time replay scheme that keeps training feasible on a sin-gle 8 ×80GB GPU node. We further propose PR-Sink, a bounded KV-cache strategy that combines a Static Sink, a pose-retrieved Dynamic Sink, and a Rolling Window to maintain appearance consistency over long-form streams. • On a three-minute long-form benchmark, LiveAnimate preserves perceptual quality and identity across the roll-out while producing video at ∼ 20 FPS, establishing a favorable trade-off among quality, latency, and duration against state-of-the-art offline systems. 
+
+2. Related Work 
+
+2.1. Video Diffusion Models 
+
+Video diffusion models have evolved from pixel-space U-Nets [12, 13] to latent-space architectures and Diffu-sion Transformers (DiTs) [23]. Video LDM [3] and Sta-ble Video Diffusion [2] showed that operating in a com-pressed VAE latent space enables high-resolution video generation at manageable cost. More recently, billion-scale DiTs have become strong backbones for controllable gener-ation; Wan [1], for example, scales to 14B parameters with a causal 3D VAE and a flow-matching objective. Our work builds on Wan2.2-Animate-14B[7] and adapts it from of-fline clip generation to causal, real-time streaming. 
+
+2.2. Pose-Driven Human Animation 
+
+Pose-driven human animation synthesizes realistic video of a target person performing motions specified by a driv-ing signal such as skeleton sequences or DensePose maps. Early methods based on GANs with warping-based gener-ators [26, 29] achieve real-time speed but produce artifacts under large pose changes. Diffusion models have since become the prevailing ap-proach to this task. Animate Anyone [14] introduced Ref-erenceNet for appearance encoding together with a pose guider and temporal attention, while MagicAnimate [35] used DensePose conditioning and segment-wise generation. MusePose [28] released an open-source pose-driven image-to-video framework following a similar reference-and-pose conditioning paradigm. Champ [42] instead employed 3D parametric body guidance to improve shape and motion controllability. UniAnimate-DiT [30] unified reference at-tention with long video generation using a DiT backbone. HumanDiT [10] likewise studied long-form pose-guided human video generation with a DiT backbone. EverAni-mate [20] further extends generation to the minute scale, mitigating long-horizon identity drift through persistent la-tent propagation and restorative flow matching. Some sys-tems further extend controllability and visual fidelity. One-to-All [25] proposed alignment-free character animation and image pose transfer; SteadyDancer [39] emphasized first-frame preservation; and SCAIL [36] introduced 3D-consistent pose representations. Wan-Animate [1, 7] uni-fied character animation and replacement on a large-scale video DiT. MultiAnimate [15] extended pose-guided ani-mation to multiple characters, while VACE [18] provided a general framework for controllable video creation and edit-ing. Most of these methods are designed for offline gen-eration and do not jointly target low-latency streaming and minute-scale temporal stability. 
+
+2.3. Autoregressive Video Generation 
+
+Autoregressive chunk-wise generation extends video be-yond a model’s training horizon, but repeated rollouts can accumulate visual degradation and semantic drift. Diffusion Forcing [5] introduced per-token noise levels for sequence generation, and CausVid [38] distilled a bidirectional video diffusion model into a fast causal generator. Self Forc-ing [16], building on distribution matching distillation [37], trained on the model’s own autoregressive rollouts to re-duce exposure bias. Causal Forcing [41] argued that distill-ing an autoregressive student directly from a bidirectional teacher violates frame-level ODE injectivity, and instead performs distillation from a teacher-forced autoregressive model. Rolling Forcing [22] further aligned rolling-window training with real-time long-video inference, while Context Forcing [6] used long-context conditioning for consistent autoregressive generation. Stable Video Infinity [21] recy-cles accumulated errors, and Rolling Sink [19] dynamically refreshes attention-sink frames to bridge limited-horizon training and open-ended testing. Collectively, these meth-ods mitigate rollout drift in general video generation, but they do not address pose-aware cache retention under strict real-time latency budgets. 
+
+3. Method 
+
+3.1. Overview 
+
+In this section, we present LiveAnimate, a framework for real-time streaming pose-driven human animation us-ing a billion-scale causal Diffusion Transformer. As il-lustrated in Figure 2, given a reference image Iref and a stream of driving pose skeletons {Pt}, our system gener-ates video blocks autoregressively, each denoised in 3 steps and followed by a clean KV cache update. The frame-work consists of three components: (1) a two-stage training pipeline comprising Reference-Anchored Teacher-Forcing Adaptation (Sec. 3.2) and Block-wise Self-Forcing Distilla-tion (Sec. 3.3); (2) Pose-Retrieval Sink Attention (PR-Sink, Sec. 3.4), a bounded KV-cache mechanism for stable long-form streaming; and (3) System Optimizations that enable 19.63 FPS inference on 2 ×H100 GPUs (Sec. 3.5). 
+
+3.2. Stage 1: Reference-Anchored Teacher-Forcing Adaptation 
+
+Standard video diffusion models denoise complete se-quences with bidirectional attention and therefore cannot directly emit temporal blocks causally. We adapt the pre-trained DiT into a block-causal autoregressive generator through Reference-Anchored Teacher-Forcing Adaptation. We partition the training video into temporal blocks of 
+
+Bf latent frames. During Stage 1, each block b is denoised while attending to ground-truth clean target blocks zGT 
+
+> <b
+
+rather than to its own previous predictions. This ground-truth clean history prevents autoregressive errors from en-tering the conditioning context during Stage 1; exposure to student-generated history is introduced only in Stage 2. A key distinction from standard teacher forcing [32] in unconditional generation is the Ref Sink , a global conditional-cache region that stores the reference-image KV states. In the conditional pose-driven setting, the model must maintain identity and appearance consistency with a given reference image throughout the entire generation. We encode the reference latent zref through a forward pass at the clean timestep ( t=0 ) and make the resulting Ref Sink glob-ally visible to all subsequent temporal blocks. For target-block queries Qb, block-causal self-attention reads the Ref Dynamic Sink Static Sink 
+
+> noise  ref image (ref) Pose (drive)
+> clean
+
+Causal DiT (Wan-animate) Causal Attention Feed Forward DiT blocks 
+
+⋯
+
+> LoRA
+> VAE Encoder
+> Face Encoder
+
+Stage 1: Reference-Anchored Teacher-Forcing Adaptation  
+
+> face
+> target
+> ref clean ref clean
+> KQ
+> Causal Attention Map
+> noise noise
+
+Stage 2: Block-wise Self-Forcing Distillation DMD Module Pass 1: Self-Forcing Rollout (No Gradient) 
+
+Student generates full trajectory using its own predictions as context 
+
+Pass 2: Block-wise DMD Optimization (One block at a time) 
+
+Re-rollout and compute loss only on the current block 
+
+> : Channel concat
+
+Real Model 
+
+Student DiT 
+
+（3 steps ）
+
+Student DiT 
+
+（3 steps ）
+
+Student DiT 
+
+（3 steps ）
+
+Student DiT 
+
+（3 steps ）
+
+Student DiT 
+
+（3 steps ）
+
+Block 1 Block 2 Block 3 Block N-1 Block N 
+
+...       
+
+> Z1Z2Z3ZN-1 ZN
+> Z1Z1ZN
+
+... 
+
+Student Self-Generated Trajectory (detach all) Context from Pass 1 (no grad) Student DiT 
+
+（3 steps ）
+
+Current Block T 
+
+> ZT
+
+(grad) Fake Model 
+
+DMD Loss LDMD = S real - S fake 
+
+Update Student LoRA Fake Score Real Score ️  
+
+> Z1Z1ZT
+
+... ZN
+
+... 
+
+Input Slide T = 1 -> 2 -> 3 -> ... -> N to optimize all blocks Context from Pass 2 (block T with grad) 
+
+Inference Stage: Pose-Retrieval Sink Attention (PR-Sink) 
+
+（1）Streaming Pose Input & Pose Retrieval 
+
+⋯⋯ t-3 t-2 t-1 t
+
+> (current)
+> Streaming Pose (Incoming)
+
+⋯      
+
+> Pose Fingerprint (whole-body)
+> Causal DiT (3-step)
+> Pose Memory Bank (Capacity = M) KVPose #1
+> KVPose #2
+> KVPose #M
+
+⋯ ⋯  
+
+> Retrieved KV (similar pose)
+> RoPE Re-index (position-consistent)
+> Kr’Vr’KrVr
+
+（2）Attention KV Cache (per layer)   
+
+> Kr’Vr’K0V0
+
+Rolling Window        
+
+> KVKVKVt-2 t-1 t
+> (current)
+
+Ref Sink    
+
+> Kref Vref
+> Fixed (never updated) Updated every block
+> →Slide forward every block From ref. image (conditional cache)
+
++  
+
+> concatenate along sequence dimension →Attention KV (per layer)
+
+（3）Generation of Current Block 
+
+> Noisy Latent (3 frames) Predicted Latent (3 frames) Decoded Frames (12 frames)
+
+Clean KV Update 
+
+> (t=0 forward) Write clean KV of block t to rolling window and update memory bank (if in first K blocks)
+
+…
+
+> Retrieve Most Similar Pose (from Memory Bank)
+
+⋯
+
++   
+
+> (first generated block) (retrieved pose) (3 most recent blocks) (global, all blocks)
+> Next block (t + 1)
+
+Figure 2. Overview of LiveAnimate. Given a reference image and streaming pose signals, our system generates video blocks autoregres-sively. Each block undergoes 3-step denoising followed by a clean KV update. PR-Sink augments a three-block rolling window with the first generated block and a pose-matched historical block selected from a compact memory bank. Ulysses sequence parallelism distributes attention computation across GPUs. 
+
+Sink, the ground-truth clean history, and the current block: Attn (Qb, K, V ) = softmax 
+
+ Qb[Kref ; K<b ]T
+
+√d
+
+
+
+[Vref ; V<b ]
+
+(1) where Kref , V ref are the key-value pairs from the reference frame, and K<b , V <b are the teacher-provided clean KV states from blocks preceding b. This design ensures the reference frame serves as a permanent context anchor— analogous to attention sinks in LLMs [34]—while adapting teacher forcing from text-to-video to the conditional gener-ation setting. At causal inference and during the Self-Forcing Rollout in Stage 2, a denoised block ˆz0
+
+b is written to the historical cache through the Clean KV Update , which performs an ad-ditional forward pass at the clean timestep: KV cache ← KV cache ∪ Forward (ˆ z0
+
+b , t =0 , C) (2) The Clean KV Update places historical states at the clean noise level used by the causal context. It does not remove errors already present in the generated latent. 
+
+3.3. Stage 2: Block-wise Self-Forcing Distillation 
+
+The teacher-forcing adaptation produces a high-quality causal generator, but it still requires 50 denoising steps per block, precluding real-time inference. In Stage 2, we reduce the sampling budget to three steps through block-wise self-forcing distribution matching distillation (BS-DMD), build-ing on Self Forcing [16]. Unlike Stage 1 teacher forcing, which conditions each training block on clean ground-truth history, Self Forcing exposes the student to autoregressive histories induced by its own predictions and thereby reduces the train–inference exposure gap. Directly backpropagating through an N -block self-forcing rollout would require retaining the activation graph of the entire autoregressive trajectory. We instead use a two-pass block-wise replay procedure. In the first pass, the stu-dent generates a complete trajectory without gradient track-ing: 
+
+(¯ z1, . . . , ¯zN ) = Rollout θ (ϵ1: N , C) (3) Every block is therefore generated under student-induced history, while the rollout activations are not retained for backward. In the second pass, we replay one block position T at a time. The contextual latent and KV states reconstructed from the first-pass trajectory are detached, and only the cur-rent block is recomputed with gradient tracking: 
+
+zθT = Gθ (ϵT ; sg(KV(¯ z<T )) , CT ) , (4) where sg( ·) denotes stop-gradient. We insert the recom-puted block into the otherwise detached trajectory, 
+
+˜z(T ) = [sg(¯ z1), . . . , z θT , . . . , sg(¯ zN )] , (5) and evaluate the distribution-matching objective on the con-catenated trajectory: 
+
+LT = LDMD 
+
+
+
+˜z(T ); C
+
+
+
+, T = 1 , . . . , N. (6) The teacher and critic thus evaluate a complete student-induced trajectory, whereas gradients reach the student only through the currently replayed block zθT . We backpropa-gate LT before proceeding to the next block and release the current block’s activation graph. Sliding T from 1 to 
+
+N provides a direct training signal to every block position without retaining backward activations for all blocks simul-taneously. Together with LoRA adaptation, this keeps peak memory low enough to distill the 14B-parameter student on a single 8 ×80GB GPU node. 
+
+3.4. Pose-Retrieval Sink Attention 
+
+Autoregressive streaming presents a memory–context dilemma. Retaining every historical key–value (KV) state gives complete context but makes memory and attention cost grow linearly with duration. A bounded cache has constant cost, but irreversibly discards appearance evidence once its block leaves the Rolling Window. This is especially harmful for articulated motion: when a subject returns to a previously observed pose, the Rolling Window may con-tain only the intervening views. Pose-Retrieval Sink Atten-tion (PR-Sink) addresses this dilemma by combining two complementary persistent regions: a Static Sink that per-manently anchors the sequence to its first generated block, and a Dynamic Sink whose content is refreshed with a pose-matched historical block retrieved from a compact mem-ory bank. The Static Sink provides time-invariant appear-ance context, whereas the Dynamic Sink restores view- and articulation-specific evidence when a pose recurs. 
+
+Bounded cache organization. For the current block t, each attention layer uses a Static Sink containing the first gen-erated block, a Dynamic Sink containing a pose-retrieved historical block, and a three-slot Rolling Window contain-ing two recent clean blocks t−2 and t−1 together with the current block t. Reference-image tokens are stored sepa-rately in the global Ref Sink and are not counted as ei-ther generated-history sink or as one of the Rolling Window slots. After block t is denoised, the Clean KV Update per-forms an additional forward pass at t=0 , writes the resulting KV state into the Rolling Window, and advances the win-dow before the next block is generated. Because the Static Sink, Dynamic Sink, Rolling Window, Ref Sink, and pose bank all have fixed capacities, cache storage and attention cost do not grow with stream duration. 
+
+Confidence-aware whole-body fingerprint. We extract 133 whole-body keypoints with ViTPose and convert them into the animation representation. Each frame contains body landmarks and landmarks for each hand. Let pb,t,k =(x, y, c ) contain the normalized coordinates and confidence of keypoint k in frame t of block b. We concatenate all landmarks from the three ordered pose frames and apply ℓ2
+
+normalization: 
+
+ϕb = Norm  Concat 3
+
+> t=1
+
+{pb,t,k }k∈K 
+
+ . (7) Here |K body | = 20 and |K lh | = |K rh | = 21 , yielding a 
+
+3 × 62 × 3 = 558 dimensional fingerprint. Temporal con-catenation preserves short-term motion configuration that would be lost under mean pooling. If pose detection fails for an entire frame, its portion of the fingerprint is zero padded; otherwise confidence is retained as the third co-ordinate. Global ℓ2 normalization makes the dot product between two fingerprints equal to their cosine similarity. 
+
+Diversity-preserving bank update. The memory bank 
+
+B = {(ϕi, KV i)} has a fixed capacity M = 5 . Each en-try stores the fingerprint and the unrotated keys and values from all transformer layers. Once the bank is full, an incom-ing block q may replace one existing entry. We test every possible replacement and choose the bank with the lowest average pairwise cosine similarity: 
+
+i∗ = arg min 
+
+> i
+
+AvgSim(( B \ { i}) ∪ { q}) . (8) We perform the replacement only if it lowers the current bank similarity. Thus, writing favors coverage : redundant poses are rejected, while novel articulations increase the di-versity of the stored context. Bank updates are restricted to the first 20 blocks, after which the selected representatives are reused throughout the stream. 
+
+Pose-nearest retrieval. Before generating block b, we compute its fingerprint from the incoming pose signal and retrieve 
+
+r(b) = arg max 
+
+> i∈B , i ̸=b−1
+
+ϕ⊤ 
+
+> b
+
+ϕi. (9) We exclude block b − 1 because it is already present in the Rolling Window; selecting it again would waste the Dynamic Sink on redundant local context. The retrieved KV state is copied into the Dynamic Sink. Bank writing Input image Pose signal        
+
+> EverAnimate Ours
+> One-to-all
+> UniAnimate-DiT
+> SCAIL
+> Wan-Animate
+> ~4 minutes 20s 40s 80s 120s 140s 180s 60s 100s 160s Latency (25 fps) ~5 hours ~2 hours ~4 hours ~3 hours ~2 hours
+
+Figure 3. Qualitative comparison on a full-body sequence. Frames are sampled every 20 seconds from a three-minute, 25-FPS rollout. The pose signal is shown above the generated frames, and red annotations highlight representative long-horizon artifacts in competing methods. The rightmost column reports end-to-end generation time: the baselines require approximately 2–5 hours, whereas LiveAnimate completes the sequence in approximately 4 minutes. 
+
+therefore seeks coverage , whereas bank reading seeks rel-evance to the current pose. PR-Sink is the union of the pose-conditioned Dynamic Sink and the permanent first-block Static Sink; neither component alone constitutes the full mechanism. 
+
+Position-consistent KV reuse. Historical blocks cannot be copied with their original rotary position embeddings (RoPE), because the Dynamic Sink has a different temporal position at retrieval time. We therefore cache Kraw before RoPE together with V . At attention time, keys from the Static Sink, Dynamic Sink, and Rolling Window are sep-arately re-rotated at their assigned positions in the current cache layout before being concatenated with the current block. This decouples content selection from its original timestamp and permits the same bank entry to be reused at any later point without positional mismatch. 
+
+3.5. System Optimizations 
+
+To meet the latency requirements of real-time streaming, we employ several infrastructure-level optimizations. Input image          
+
+> EverAnimate Ours One-to-all UniAnimate-DiT SCAIL Wan-Animate
+> 20s 40s 80s 120s 140s 180s 60s 100s 160s Pose signal Figure 4. Qualitative comparison on an upper-body sequence. Frames are sampled every 20 seconds from a three-minute rollout under the same reference image and driving-pose sequence. LiveAnimate maintains the subject’s identity, clothing, and dark background more consistently over time.
+
+Ulysses sequence parallelism. We distribute computation across N GPUs using the Ulysses all-to-all pattern [9]: each GPU computes Q, K, V projections on its local token shard, then all-to-all communication redistributes to head-parallel layout where each GPU computes full-sequence attention for H/N heads, followed by a reverse all-to-all gather. This requires 2 all-to-all operations per layer but each involves only head-dimension-sized tensors. The FFN computation remains embarrassingly parallel on local token shards, and the KV cache is maintained independently per GPU head shard with no additional communication overhead. 
+
+torch.compile. All DiT blocks are compiled with 
+
+max-autotune-no-cudagraphs mode. We pre-compile for three resolution buckets ( 480 ×480 , 672 ×384 ,
+
+384 ×672 ) with dynamic=False for maximum kernel ef-ficiency. 
+
+4. Experiments 
+
+4.1. Experimental Setup 
+
+Implementation details. We train LiveAnimate on 40k talking videos[8] and 20k human motion videos[17, 31]. Both training and inference support three aspect-ratio buck-ets: 480 ×480 ,384 ×672 , and 672 ×384 pixels. During train-ing, LiveAnimate is initialized from the Wan2.2-Animate-14B checkpoint and fine-tuned with LoRA of rank 128. Training proceeds in two stages on 8 NVIDIA H100 GPUs. In the first stage, we train for 10,000 steps with a learning rate of 5×10 −5. In the second stage, we continue train-ing for 20,000 steps with identical LoRA parameters, us-ing learning rates of 1×10 −5 for both the generator and the critic. Unless stated otherwise, we generate at resolution using blocks of three latent frames (12 RGB frames). Infer-ence is performed on two NVIDIA H100 80GB GPUs. 
+
+Evaluation protocol. We construct a three-minute bench-mark consisting of 24 pairs of reference images and driv-ing videos, divided into two complementary parts. The first part contains 12 in-the-wild videos collected from the web, covering full-body and upper-body motion, diverse appear-ances, and varied backgrounds. The second part supports controlled long-horizon evaluation: since long-form full-body motion footage is scarce, we derive 12 sequences from X-Dance [39] by playing each driving pose sequence for-ward, in reverse, and forward again to reach three minutes, with the reference image taken from the source video. Ev-ery frame therefore remains real human motion, while each pose recurs multiple times at large temporal intervals, di-rectly stressing identity and appearance consistency under pose recurrence. Each method receives the same reference image and driving pose sequence. We evaluate a short 0– 10 s prefix, the broader 0–30 s initial window, and three non-overlapping later segments: 30–90, 90–120, and 120–180 s. The nested short windows characterize initial quality, while the later segments isolate accumulated degradation. 
+
+Metrics. We assess complementary aspects of genera-tion quality without relying on pixel-aligned reconstruc-tion metrics, which can penalize perceptually valid motion and appearance variations. Aesthetic score (ASE)[33] and 0–10 0–30 30–90 90–120 120–180 2.2 2.4 2.6 2.8   
+
+> ASE ↑
+> 0–10 0–30 30–90 90–120 120–180 234
+> IQA ↑
+> 0–10 0–30 30–90 90–120 120–180 0.4 0.6 0.8
+> DINO-S ↑
+> 0–10 0–30 30–90 90–120 120–180 100 200 300 400 FID ↓
+> 0–10 0–30 30–90 90–120 120–180 0.02 0.04 0.06
+> V-MAE ↓
+> Temporal segment (s)
+> EverAnimate One-to-All Ours (combined) SCAIL UniAnimate-DiT Wan2.2-Animate
+
+Figure 5. Quality and identity over a three-minute rollout. Metrics are computed on a 0–10 s prefix, the 0–30 s initial window, and three subsequent temporal segments. The full LiveAnimate model is highlighted in red. Flat trajectories indicate resistance to accumulated degradation. Higher is better for ASE, IQA, and DINO-S; lower is better for FID and V-MAE. 
+
+no-reference image-quality assessment (IQA)[33] measure frame-level visual quality. DINO similarity (DINO-S)[4] measures appearance consistency with the reference iden-tity, while FID [11] and VideoMAE feature distance (V-MAE) [27] evaluate distributional quality and temporal rep-resentation error, respectively. Higher is better for ASE, IQA, and DINO-S; lower is better for FID and V-MAE. 
+
+Latency and throughput measurement. All latency and throughput numbers reported in this paper measure the DiT generation loop only, rather than end-to-end wall-clock time. Condition processing ( e.g ., reference and pose en-coding) and VAE encoding/decoding are excluded from the measurement, as their costs are either one-time or block-independent, can be overlapped on separate devices, and vary considerably across implementations. Since DiT for-ward passes dominate the recurrent per-block cost (Table 3), this protocol isolates the primary bottleneck and provides a fair basis for comparison across systems. 
+
+Baselines. We compare with five recent full-body an-imation systems: EverAnimate [20], One-to-All [25], SCAIL [36], UniAnimate-DiT [30], and Wan2.2-Animate [1, 7]. We additionally ablate the two components of PR-Sink. The w/o Dynamic Sink variant retains the Static Sink but disables pose-based historical retrieval, whereas the w/o Static Sink variant retains the pose-retrieved Dy-namic Sink but removes the permanent first-block anchor. The full model combines both sinks with the three-slot Rolling Window. 
+
+Long-video baseline protocol. The official implemen-tations of SCAIL and UniAnimate-DiT operate on fixed-length clips using the temporal context available during training and do not provide native long-form generation. For a controlled long-sequence comparison, we extend both methods with the same training-free sliding-window de-noising procedure. We initialize a single noise latent span-ning the complete target sequence. At every denoising step, we slide each model’s native temporal context window across this latent with a fixed stride. Each window is condi-tioned on the same reference identity image and the tempo-rally aligned local segment of the driving pose sequence. Predictions in overlapping regions are fused using trian-gular, or tent-shaped, weights that emphasize the temporal center of each window and suppress its boundaries. A single UniPC multistep ODE-solver update [40] is then applied to the fused full-sequence prediction, ensuring that the solver state evolves consistently along one global trajectory rather than independently within each window. This extension re-quires neither retraining nor positional-embedding extrapo-lation and is used uniformly for SCAIL and UniAnimate-DiT. EverAnimate and One-to-All are instead evaluated us-ing the long-video generation procedures provided by their official implementations. 
+
+4.2. Quantitative Comparison 
+
+Short-horizon quality. Figure 5 reports quality and iden-tity metrics across the temporal segments of the three-minute rollout. On the initial 0–30 s segment, LiveAnimate obtains the best ASE (2.823) and IQA (4.047). This result indicates that three-step distillation preserves strong percep-tual quality under a real-time inference budget. 
+
+Long-horizon stability. The main advantage of LiveAn-imate is its behavior as the rollout grows. Its IQA re-mains essentially unchanged, from 4.047 in the first seg-ment to 4.026 in the final segment, and ASE remains sta-ble from 2.823 to 2.824. DINO-S decreases by only 0.015, from 0.833 to 0.818. In contrast, One-to-All exhibits pro-nounced accumulation: IQA falls from 3.402 to 1.786, DINO-S from 0.769 to 0.328, and FID rises from 146.29 to 386.33. Wan2.2-Animate also loses identity similarity over time, with DINO-S decreasing from 0.795 to 0.770. These trends support our central claim that explicitly managing long-range context is important for streaming animation. Table 2. Scaling efficiency of Ulysses sequence parallelism on H100 GPUs at 480 ×480 . Results are measured on the three-minute benchmark. Latency denotes the time required to generate one 12-frame block. Speedup is relative to one GPU, and effi-ciency is speedup divided by the number of GPUs.                 
+
+> GPUs Latency (ms) FPS Speedup Efficiency 1966.96 12.41 1.00 ×100.0% 2611.28 19.63 1.58 ×79.1% 4542.25 22.13 1.78 ×44.6%
+
+Table 3. Steady-state inference profile on the three-minute benchmark. Steady state denotes inference after compilation and warm-up. Throughput is computed from 12 RGB frames per block. Component times exclude VAE decoding.                               
+
+> Component Avg. (s) Min. (s) Max. (s) Share FPS Sink read 0.003303 0.003197 0.005136 0.540% –Denoising 0.458884 0.451726 0.476683 75.070% –Clean KV Update 0.149078 0.146292 0.168945 24.388% –Sink write 0.000011 0.000009 0.000023 0.0018% –Block total 0.611276 0.601543 0.631650 100.00% 19.63
+
+Comparison with offline long-video methods. SCAIL and UniAnimate-DiT attain higher identity similarity (DINO-S) than LiveAnimate throughout the rollout. As the qual-itative comparison shows, however, both methods exhibit inter-frame flickering (Figure 3), whereas LiveAnimate re-mains stable over time. EverAnimate maintains competi-tive per-frame quality but is not a real-time system, requir-ing hours of offline computation for each three-minute se-quence. LiveAnimate is thus the only evaluated method that sustains visibly consistent quality over the full rollout while generating in real time. 
+
+Sequence-parallel scaling. Table 2 evaluates Ulysses scal-ing on the same three-minute benchmark. Moving from one to two H100 GPUs increases throughput from 12.41 to 19.63 FPS, yielding a 1.58 × speedup at 79.1% parallel effi-ciency. Expanding to four GPUs improves throughput only to 22.13 FPS: the speedup saturates at 1.78 × and efficiency falls to 44.6%, as the additional all-to-all communication in-creasingly offsets the reduction in per-GPU attention com-putation. We therefore adopt two-way sequence parallelism by default, as it offers the best trade-off between throughput and GPU count. 
+
+Inference-time breakdown. Table 3 reports the steady-state latency breakdown on our three-minute benchmark. LiveAnimate processes each 12-frame block in 0.611 s, cor-responding to 19.63 FPS. Because each block is emitted as soon as its driving poses arrive and the KV cache has a fixed size, both latency and memory are independent of the elapsed stream length. Denoising accounts for 75.07% of the runtime, followed by the Clean KV Update at 24.39%. The latter performs an additional forward pass at the clean Input image 20s 140s 180s 60s 100s Pose signal 
+
+> full w/o dynamic sink w/o static sink w/o RoPE follow w/o DMD
+
+Figure 6. Qualitative ablation over a three-minute rollout. 
+
+Frames are sampled every 40 seconds from 20 to 180 seconds un-der the same reference image and driving-pose sequence. 
+
+timestep ( t=0 ) and stores the resulting KV state for sub-sequent blocks. PR-Sink retrieval and bank maintenance together contribute only 0.542%, demonstrating that long-range pose-aware context incurs negligible overhead. VAE decoding is excluded from the block time; it is indepen-dent across blocks and can be pipelined on a separate de-vice concurrently with DiT inference, so it does not extend the generation critical path. Under our evaluation settings, all evaluated baselines require approximately 2–5 hours to synthesize the same three-minute sequence. LiveAnimate therefore provides a substantial speed advantage, achiev-ing real-time streaming while maintaining bounded mem-ory over long sequences. 0–10 0–30 30–90 90–120 120–180 2.75 2.80       
+
+> ASE ↑
+> 0–10 0–30 30–90 90–120 120–180 3.9 4.0
+> IQA ↑
+> 0–10 0–30 30–90 90–120 120–180 0.70 0.75 0.80
+> DINO-S ↑
+> 0–10 0–30 30–90 90–120 120–180 100 105 110 115 120
+> FID ↓
+> 0–10 0–30 30–90 90–120 120–180 0.005 0.010 0.015 0.020
+> V-MAE ↓
+> 0–10 0–30 30–90 90–120 120–180 2.80 2.82 2.84 2.86 2.88
+> 0–10 0–30 30–90 90–120 120–180 4.00 4.05 4.10
+> 0–10 0–30 30–90 90–120 120–180 0.80 0.82 0.84
+> 0–10 0–30 30–90 90–120 120–180 100 110 120
+> 0–10 0–30 30–90 90–120 120–180 0.008 0.010 0.012
+> Component ablations Sampling steps Temporal segment (s)
+> Full (3-step) w/o dynamic sink w/o static sink Teacher forcing w/o RoPE follow 2-step Full (3-step) 4-step
+
+Figure 7. Quantitative ablation over the three-minute rollout. Top: component and cache variants, including separate removal of the static and dynamic sinks. The w/o-DMD variant replaces DMD-based self-forcing distillation with conventional teacher forcing. Bottom: the sampling-step trade-off with the full PR-Sink configuration. Higher is better for ASE, IQA, and DINO-S; lower is better for FID and V-MAE. 
+
+4.3. Qualitative Comparison 
+
+Figure 3 presents the more challenging full-body exam-ple, which evaluates articulated motion, identity preserva-tion, and background stability under large pose changes. The competing methods fail in visibly different ways. One-to-All suffers a severe collapse of image quality as the roll-out progresses. UniAnimate-DiT and SCAIL maintain the global structure but exhibit inter-frame flickering. Wan-Animate and EverAnimate remain stable in the early seg-ments but show noticeable color drift and background drift at later timestamps. In contrast, LiveAnimate follows the driving poses while preserving both the subject’s appear-ance and the scene throughout the three minutes. The ac-companying runtime comparison further highlights the effi-ciency gap: competing methods require approximately 2–5 hours to generate the 25-FPS sequence, whereas LiveAni-mate completes it in about 4 minutes. Figure 4 presents an upper-body example that isolates long-term identity and appearance preservation under sub-tler motion. UniAnimate-DiT, SCAIL, and Wan-Animate exhibit background flickering across the sequence, and One-to-All again suffers a severe drop in image quality. Ev-erAnimate and LiveAnimate both remain stable and consis-tent over the full rollout, though only LiveAnimate does so in real time. 
+
+4.4. Ablation Study 
+
+Qualitative ablation. Figure 6 visualizes the three-minute rollout under each variant. Removing the Dynamic Sink largely preserves the scene but introduces localized appear-ance errors when poses recur, as highlighted around the face and shoulder. Removing the Static Sink is far more damag-ing: the subject and background change completely over the sequence, showing that pose-matched retrieval alone cannot provide a time-invariant identity anchor. Replacing DMD-based distillation with conventional teacher forcing causes illumination and appearance to fluctuate across the rollout, and disabling RoPE follow leads to progressive color and background shifts despite broadly correct poses. The full model remains consistent across recurring poses through-out the three minutes. 
+
+Quantitative ablation. Figure 7 reports the corresponding metric trajectories. Removing the Dynamic Sink moder-ately degrades long-horizon quality, reducing final-segment DINO-S from 0.818 to 0.805 and increasing FID from 100.90 to 106.52. Removing the Static Sink is substan-tially worse: final-segment DINO-S collapses to 0.693, yet the variant retains moderate frame-level scores (ASE 2.726, IQA 3.833), showing that frame-level metrics alone cannot diagnose identity failure. These trends confirm the com-plementary roles of the two sinks: the Static Sink sup-plies a stable global appearance anchor, while the Dy-namic Sink restores pose-specific evidence that has left the Rolling Window. Disabling RoPE follow also weakens final-segment identity (DINO-S 0.801). Replacing DMD-based distillation with teacher forcing degrades the rollout steadily, with IQA falling from 3.849 to 3.438 and DINO-S from 0.780 to 0.679, indicating that self-forcing limits er-ror accumulation under few-step sampling. Finally, four sampling steps yield the strongest frame-level scores but re-quire an extra denoising pass, while two steps weaken long-horizon identity (final DINO-S 0.783); three steps provide the best efficiency–quality compromise. 
+
+5. Conclusion 
+
+We presented LiveAnimate, a streaming pose-driven hu-man animation system that combines real-time generation with stable long-form quality. A two-stage training pipeline converts a pretrained bidirectional DiT into a block-causal generator and distills it to three sampling steps, trainable on a single 8 ×80GB GPU node, while Pose-Retrieval Sink Attention maintains long-range appearance context under a bounded cache. On the three-minute benchmark, LiveAni-mate sustains nearly constant perceptual quality and iden-tity at 19.63 FPS on two H100 GPUs, with memory and latency independent of stream duration, whereas offline baselines degrade visibly or require hours of computation. These results bring billion-scale video diffusion models within reach of interactive applications such as live stream-ing, telepresence, and virtual avatars. 
+
+Limitations and future work. LiveAnimate currently gen-erates at 480 ×480 with three denoising steps, which limits visual fidelity and resolution, and it does not support multi-person scenes or large camera motion. Extending LiveAni-mate toward higher-resolution streaming generation, multi-person animation, and camera-dynamic scenes is left to fu-ture work. References 
+
+[1] Alibaba Wan Team. Wan: Open and advanced large-scale video generative models. arXiv preprint arXiv:2503.20314 ,2025. 2, 3, 8 [2] Andreas Blattmann, Tim Dockhorn, Sumith Kulal, Daniel Mendelevitch, Maciej Kilian, Dominik Lorenz, Yam Levi, Zion English, Vikram Voleti, Adam Letts, et al. Stable video diffusion: Scaling latent video diffusion models to large datasets. arXiv preprint arXiv:2311.15127 , 2023. 2 [3] Andreas Blattmann, Robin Rombach, Huan Ling, Tim Dock-horn, Seung Wook Kim, Sanja Fidler, and Karsten Kreis. Align your latents: High-resolution video synthesis with la-tent diffusion models. In CVPR , 2023. 2 [4] Mathilde Caron, Hugo Touvron, Ishan Misra, Hervé Jégou, Julien Mairal, Piotr Bojanowski, and Armand Joulin. Emerg-ing properties in self-supervised vision transformers. In 
+
+ICCV , 2021. 8 [5] Boyuan Chen, Diego Marti Monso, Yilun Du, Max Sim-chowitz, Russ Tedrake, and Vincent Sitzmann. Diffusion forcing: Next-token prediction meets full-sequence diffu-sion. In NeurIPS , 2024. 3 [6] Shuo Chen, Cong Wei, Sun Sun, Ping Nie, Kai Zhou, Ge Zhang, Ming-Hsuan Yang, and Wenhu Chen. Context forc-ing: Consistent autoregressive video generation with long context. arXiv preprint arXiv:2602.06028 , 2026. 3 [7] Gang Cheng, Xin Gao, Li Hu, Siqi Hu, Mingyang Huang, Chaonan Ji, et al. Wan-animate: Unified character anima-tion and replacement with holistic replication. arXiv preprint arXiv:2509.14055 , 2025. 2, 3, 8 [8] Ariel Ephrat, Inbar Mosseri, Oran Lang, Tali Dekel, Kevin Wilson, Avinatan Hassidim, William T. Freeman, and Michael Rubinstein. Looking to listen at the cocktail party: A speaker-independent audio-visual model for speech sepa-ration. In ACM TOG , 2018. 7 [9] Jiarui Fang and Shangchun Zhao. Usp: A unified sequence parallelism approach for long context generative ai. arXiv preprint arXiv:2405.07719 , 2024. 2, 7 [10] Qijun Gan, Yi Ren, Chen Zhang, Zhenhui Ye, Pan Xie, Xiang Yin, Zehuan Yuan, Bingyue Peng, and Jianke Zhu. Humandit: Pose-guided diffusion transformer for long-form human motion video generation. arXiv preprint arXiv:2502.04847 , 2025. 3 [11] Martin Heusel, Hubert Ramsauer, Thomas Unterthiner, Bernhard Nessler, and Sepp Hochreiter. Gans trained by a two time-scale update rule converge to a local nash equilib-rium. In NeurIPS , 2017. 8 [12] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffu-sion probabilistic models. In NeurIPS , 2020. 2 [13] Jonathan Ho, Tim Salimans, Alexey Gritsenko, William Chan, Mohammad Norouzi, and David J Fleet. Video dif-fusion models. arXiv preprint arXiv:2204.03458 , 2022. 2 [14] Li Hu, Xin Gao, Peng Zhang, Ke Sun, Bang Zhang, and Liefeng Bo. Animate anyone: Consistent and controllable image-to-video synthesis for character animation. arXiv preprint arXiv:2311.17117 , 2024. 2, 3 [15] Yingcheng Hu, Haowen Gong, Chuanguang Yang, Zhulin An, Yongjun Xu, and Songhua Liu. Multianimate: Pose-guided image animation made extensible. arXiv preprint arXiv:2602.21581 , 2026. 3 [16] Xun Huang, Zhengqi Li, Guande He, Mingyuan Zhou, and Eli Shechtman. Self forcing: Bridging the train-test gap in autoregressive video diffusion. In NeurIPS , 2025. 2, 3, 4 [17] Yasamin Jafarian and Hyun Soo Park. Learning high fidelity depths of dressed humans by watching social media dance videos. In Proceedings of the IEEE/CVF conference on com-puter vision and pattern recognition , pages 12753–12762, 2021. 7 [18] Zeyinzi Jiang, Zhen Han, Chaojie Mao, Jingfeng Zhang, Yulin Pan, and Yu Liu. Vace: All-in-one video creation and editing. In ICCV , pages 17191–17202, 2025. 3 [19] Haodong Li, Shaoteng Liu, Zhe Lin, and Manmohan Chan-draker. Rolling sink: Bridging limited-horizon training and open-ended testing in autoregressive video diffusion. arXiv preprint arXiv:2602.07775 , 2026. 3 [20] Wuyang Li, Yang Gao, Mariam Hassan, Lan Feng, Wentao Pan, Po-Chien Luan, and Alexandre Alahi. Everanimate: Minute-scale human animation via latent flow restoration. 
+
+arXiv preprint arXiv:2605.15042 , 2026. 2, 3, 8 [21] Wuyang Li, Wentao Pan, Po-Chien Luan, Yang Gao, and Alexandre Alahi. Stable video infinity: Infinite-length video generation with error recycling. In ICLR , 2026. 3 [22] Kunhao Liu, Wenbo Hu, Jiale Xu, Ying Shan, and Shijian Lu. Rolling forcing: Autoregressive long video diffusion in real time. In ICLR , 2026. 3 [23] William Peebles and Saining Xie. Scalable diffusion models with transformers. In ICCV , 2023. 2 [24] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Björn Ommer. High-resolution image syn-thesis with latent diffusion models. In CVPR , 2022. 2 [25] Shijun Shi, Jing Xu, Zhihang Li, Chunli Peng, Xiaoda Yang, Lijing Lu, Kai Hu, and Jiangning Zhang. One-to-all ani-mation: Alignment-free character animation and image pose transfer. In CVPR , pages 4011–4021, 2026. 2, 3, 8 [26] Aliaksandr Siarohin, Stephane Lathuiliere, Sergey Tulyakov, Elisa Ricci, and Nicu Sebe. First order motion model for image animation. In NeurIPS , 2019. 3 [27] Zhan Tong, Yibing Song, Jue Wang, and Limin Wang. Videomae: Masked autoencoders are data-efficient learners for self-supervised video pre-training. In NeurIPS , 2022. 8 [28] Zhengyan Tong, Chao Li, Zhaokang Chen, Bin Wu, and Wenjiang Zhou. Musepose: A pose-driven image-to-video framework for virtual human generation. https : / / github.com/TMElyralab/MusePose , 2024. Open-source project. 3 [29] Ting-Chun Wang, Ming-Yu Liu, Jun-Yan Zhu, Guilin Liu, Andrew Tao, Jan Kautz, and Bryan Catanzaro. Video-to-video synthesis. In NeurIPS , 2018. 3 [30] Xiang Wang, Shiwei Zhang, Longxiang Tang, Yingya Zhang, Changxin Gao, Yuehuan Wang, and Nong Sang. Unianimate-dit: Human image animation with large-scale video diffusion transformer. arXiv preprint arXiv:2504.11289 , 2025. 2, 3, 8 [31] Zhenzhi Wang, Yixuan Li, Yanhong Zeng, Youqing Fang, Yuwei Guo, Wenran Liu, Jing Tan, Kai Chen, Tianfan Xue, Bo Dai, and Dahua Lin. Humanvid: Demystifying train-ing data for camera-controllable human image animation. In 
+
+NeurIPS , 2024. 7 [32] Ronald J Williams and David Zipser. A learning algorithm for continually running fully recurrent neural networks. Neu-ral Computation , 1(2):270–280, 1989. 3 [33] Haoning Wu, Zicheng Zhang, Weixia Zhang, Chaofeng Chen, Liang Liao, Chunyi Li, Yixuan Gao, Annan Wang, Erli Zhang, Wenxiu Sun, Qiong Yan, Xiongkuo Min, Guang-tao Zhai, and Weisi Lin. Q-Align: Teaching LMMs for visual scoring via discrete text-defined levels. In Proceedings of the 41st International Conference on Machine Learning , pages 54015–54029. PMLR, 2024. 7, 8 [34] Guangxuan Xiao, Yuandong Tian, Beidi Chen, Song Han, and Mike Lewis. Efficient streaming language models with attention sinks. In ICLR , 2024. 4 [35] Zhongcong Xu, Jianfeng Zhang, Jun Hao Liew, Hanshu Yan, Jia-Wei Liu, Chenxu Zhang, Jiashi Feng, and Mike Zheng Shou. Magicanimate: Temporally consistent human im-age animation using diffusion model. arXiv preprint arXiv:2311.16498 , 2024. 2, 3 [36] Wenhao Yan, Sheng Ye, Zhuoyi Yang, Jiayan Teng, Zhen-Hui Dong, Kairui Wen, Xiaotao Gu, Yong-Jin Liu, and Jie Tang. Scail: Towards studio-grade character animation via in-context learning of 3d-consistent pose representations. 
+
+arXiv preprint arXiv:2512.05905 , 2025. 2, 3, 8 [37] Tianwei Yin, Michaël Gharbi, Richard Zhang, Eli Shecht-man, Frédo Durand, William T. Freeman, and Taesung Park. One-step diffusion with distribution matching distillation. In 
+
+CVPR , pages 6613–6623, 2024. 3 [38] Tianwei Yin, Qiang Zhang, Richard Zhang, William T Free-man, Frédo Durand, Eli Shechtman, and Xun Huang. From slow bidirectional to fast autoregressive video diffusion mod-els. In CVPR , 2025. 3 [39] Jiaming Zhang, Shengming Cao, Rui Li, Xiaotong Zhao, Yu-tao Cui, Xinglin Hou, Gangshan Wu, Haolan Chen, Xu Yu, Limin Wang, and Kai Ma. Steadydancer: Harmonized and coherent human image animation with first-frame preserva-tion. arXiv preprint arXiv:2511.19320 , 2025. 3, 7 [40] Wenliang Zhao, Lujia Bai, Yongming Rao, Jie Zhou, and Jiwen Lu. UniPC: A unified predictor-corrector framework for fast sampling of diffusion models. In NeurIPS , 2023. 8 [41] Hongzhou Zhu, Min Zhao, Guande He, Hang Su, Chongx-uan Li, and Jun Zhu. Causal forcing: Autoregressive diffu-sion distillation done right for high-quality real-time inter-active video generation. arXiv preprint arXiv:2602.02214 ,2026. 3 [42] Shenhao Zhu, Junming Leo Chen, Zuozhuo Dai, Zilong Dong, Yinghui Xu, Xun Cao, Yao Yao, Hao Zhu, and Siyu Zhu. Champ: Controllable and consistent human image ani-mation with 3d parametric guidance. In ECCV , 2024. 3 LiveAnimate: Stable Long-Form Streaming Human Animation in Real-Time 
+
+# Supplementary Material 
+
+6. Additional Qualitative Results 
+
+We provide seven additional three-minute examples to complement the qualitative comparisons in Sec. 4. Fig-ures 8 and 9 cover full-body and upper-body animation un-der diverse identities, clothing, backgrounds, camera fram-ing, and motion patterns. For each example, we show the reference image together with the driving pose signal and generated frame at 20-second intervals from 20 to 180 sec-onds. These uniformly sampled results expose temporal changes throughout the rollout rather than selecting only adjacent or early frames. The first two examples in Figure 8 contain large changes in limb configuration and body orientation, whereas the last two emphasize upper-body motion, facial variation, and gestures near the face. Despite these differences, the generated subjects remain recognizable and their clothing and backgrounds do not exhibit progressive changes over the sampled timestamps. Figure 9 further tests appearance preservation across a dim indoor scene, a bright outdoor scene, and a close-up portrait. The outputs track both re-peated and newly observed poses while maintaining scene-specific appearance. Together with the quantitative three-minute evaluation in the main paper, these examples pro-vide additional qualitative evidence that LiveAnimate sup-ports stable long-form streaming across varied motion and visual conditions. Input image Result 20s 40s 80s 120s 140s 180s 60s 100s 160s Pose signal Input image Result Pose signal Input image Result Pose signal Input image Result Pose signal Figure 8. Additional qualitative results on four three-minute sequences. For each example, the left column shows the reference image, while the rows on the right show the driving pose signals and corresponding outputs sampled every 20 seconds from 20 to 180 seconds. The examples include full-body dance sequences with large pose changes and upper-body sequences dominated by facial expressions and hand motion. Across the rollout, LiveAnimate follows the input poses while preserving the reference identity, clothing, and scene appearance. Input image Result 20s 40s 80s 120s 140s 180s 60s 100s 160s Pose signal Input image Result Pose signal 
+
+> Input image Result Pose signal
+
+Figure 9. Additional qualitative results on three three-minute sequences. We show the reference image, driving pose signal, and generated outputs at 20-second intervals. The sequences cover indoor full-body motion, an outdoor dance sequence, and an upper-body subject performing frequent hand gestures. LiveAnimate maintains the subject’s appearance and background while responding to substan-tial changes in body configuration over the three-minute rollout.
